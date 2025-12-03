@@ -1,0 +1,21 @@
+{
+    "name": "asi-wallet-sdk",
+    "version": "0.0.1",
+    "description": "ASI Wallet SDK",
+    "license": "MIT",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "dev": "tsc -p tsconfig.build.json --watch",
+        "build": "tsc -p tsconfig.build.json"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
