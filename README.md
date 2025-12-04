@@ -4,16 +4,7 @@ A TypeScript-based wallet SDK for the ASI Chain ecosystem, providing secure key 
 
 ## Overview
 
-The ASI Wallet SDK is a lightweight, modular library designed to simplify wallet integration and key management for ASI Chain applications. It includes built-in support for local key management, RPC communication, and extensible wallet components.
-
-## Features
-
-- **Key Management**: Secure local key management with `LocalKeyManager` component
-- **RPC Client**: Integrated RPC client for blockchain communication
-- **Type-Safe**: Full TypeScript support with comprehensive type definitions
-- **Modular Architecture**: Clean separation of concerns with distinct components for different functionalities
-- **Error Handling**: Robust error handling with custom error types
-- **Development Playground**: Included React-based playground for testing and development
+The ASI Wallet SDK is a lightweight, modular library designed to simplify wallet integration and key management for ASI Chain applications. It includes built-in support for local key management and extensible wallet components.
 
 ## Project Structure
 
@@ -23,8 +14,7 @@ asi-chain-wallet-sdk/
 │   ├── components/              # Core wallet components
 │   │   ├── client/             # Client component
 │   │   ├── keyManager/         # Key management interface
-│   │   ├── localKeyManager/    # Local key implementation
-│   │   └── rpcClient/          # RPC client component
+│   │   └── localKeyManager/    # Local key implementation
 │   ├── errors/                 # Custom error definitions
 │   ├── types/                  # TypeScript type definitions
 │   └── index.ts                # SDK entry point
@@ -64,12 +54,13 @@ Install dependencies for SDK:
 npm install
 ```
 
-Switch 
-cd playground
-npm install
-cd ..
+Install dependencies for Playground:
 ```
-
+cd playground
+```
+```
+npm install
+```
 ### Build
 
 Build the SDK:
