@@ -1,5 +1,8 @@
-export type TWalletSDK = any
+export type TWalletSDK = any;
 
-export default function init(): void {
-    console.log("asi-wallet-sdk");
-}  
+import { AsiWalletClient } from "./components/client";
+import { LocalKeyManager } from "./components/localKeyManager";
+
+export { LocalKeyManager };
+
+export default AsiWalletClient;
