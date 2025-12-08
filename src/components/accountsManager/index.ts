@@ -1,10 +1,11 @@
+import { ec as EC } from "elliptic";
 import KeyManager, { KeyManageClientModes } from "../keyManager";
 import { keccak256 } from "js-sha3";
 import { blake2bHex } from "blakejs";
-import bs58 from "bs58";
 import * as tinysecp from "tiny-secp256k1";
-
 import * as bip39 from "bip39";
+import * as bip32 from "bip32";
+import bs58 from "bs58";
 
 // Polyfill Buffer for browser environments
 import { Buffer } from "buffer";
@@ -12,7 +13,7 @@ if (typeof window !== "undefined" && !(window as any).Buffer) {
     (window as any).Buffer = Buffer;
 }
 
-import * as bip32 from "bip32";
+const secp256k1 = new EC("secp256k1");
 
 export async function generateMnemonic(strength = 128): Promise<string> {
     return bip39.generateMnemonic(strength);
@@ -117,15 +118,22 @@ export class AccountManager {
         const path = buildBip44Path(60, 0, 0, 0); // Example for Ethereum
         console.log("BIP44 Path:", path);
 
-        const privateKey = derivePrivateKey(masterNode, path);
+        // const privateKey = derivePrivateKey(masterNode, path);
+        const privateKey = "624f6e76d5fabc410fba7578a4dbed603b86987784f835fda96fb996ad89f87c";
+
         console.log("Derived Private Key:", privateKey);
+        console.log("key length:", privateKey.length);
+
+        const keyPair = secp256k1.keyFromPrivate(privateKey, "hex");
 
         const address = this.deriveAddressFromPublicKey(
-            privateKey.toString()
+            keyPair.getPublic("hex")
         );
 
-        console.log("privateKey", Buffer.from(privateKey).toString("hex"));
+        console.log("privateKey", keyPair.getPrivate("hex"));
         console.log("Derived Address:", address);
+
+        return { privateKey, address}
     }
 
     public createWallet(options: AccountManagerOptions) {
@@ -154,15 +162,28 @@ export class AccountManager {
 
     private deriveAddressFromPublicKey(publicKey: string): string {
         const publicKeyBytes = decodeBase16(publicKey);
+        console.log("pubKeyBytes", publicKeyBytes);
         const hash = keccak256(publicKeyBytes.slice(1));
+        console.log("hash", hash);
+
         const addressBase = hash.slice(-40);
+        console.log("ethAddress", addressBase);
+
         //
         const ethAddrBytes = decodeBase16(addressBase);
         const ethHash = keccak256(ethAddrBytes);
+        console.log("ethAddrBytes", ethAddrBytes);
+        console.log("ethHash", ethHash);
 
         const payload = `${prefix.coinId}${prefix.version}${ethHash}`;
+        console.log("payload", payload);
+
         const payloadBytes = decodeBase16(payload);
+        console.log("payloadBytes", payloadBytes);
+
         const checksum = blake2bHex(payloadBytes, undefined, 32).slice(0, 8);
+        console.log("checksum", checksum);
+
         return encodeBase58(`${payload}${checksum}`);
     }
 

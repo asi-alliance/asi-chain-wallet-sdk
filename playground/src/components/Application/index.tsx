@@ -1,15 +1,22 @@
-import { AccountManager } from "asi-wallet-sdk";
+import { AccountManager, RChainService } from "asi-wallet-sdk";
+import { Networks } from "../../config";
 
 const accountManager = new AccountManager();
-const wallet = accountManager.createWallet({
-    accountName: "My First Wallet",
-    password: "strongpassword",
-    network: "devnet",
-});
+// const wallet = accountManager.createWallet({
+//     accountName: "My First Wallet",
+//     password: "strongpassword",
+//     network: "devnet",
+// });
 
-accountManager.createWalletFromMnemonic();
+const readOnlyURL =  Networks.DevNet.ReadOnlyURL as string;
 
-console.log("Created Wallet:", wallet);
+const account = await accountManager.createWalletFromMnemonic();
+const chainService = new RChainService({readOnlyURL: readOnlyURL});
+
+console.log("Balance is: ", await chainService.getASIBalance(account.address));
+
+
+// console.log("Created Wallet:", wallet);
 
 export default function App() {
 
