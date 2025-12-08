@@ -1,8 +1,7 @@
-export type TWalletSDK = any;
 
-import { AsiWalletClient } from "./components/client";
-import { LocalKeyManager } from "./components/localKeyManager";
+// import { AsiWalletClient } from "./components/client";
+import { AccountManager } from "./components/accountsManager";
 
-export { LocalKeyManager };
+export { AccountManager };
 
-export default AsiWalletClient;
+// export default AsiWalletClient;
