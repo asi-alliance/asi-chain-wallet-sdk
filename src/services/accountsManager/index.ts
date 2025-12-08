@@ -1,17 +1,15 @@
 import { ec as EC } from "elliptic";
-import KeyManager, { KeyManageClientModes } from "../keyManager";
+import KeyManager from "../keyManager";
 import { keccak256 } from "js-sha3";
 import { blake2bHex } from "blakejs";
 import * as tinysecp from "tiny-secp256k1";
 import * as bip39 from "bip39";
 import * as bip32 from "bip32";
 import bs58 from "bs58";
+import { setupBufferPolyfill } from "../../utils/polyfills";
+import { WalletClientModes } from "../../config";
 
-// Polyfill Buffer for browser environments
-import { Buffer } from "buffer";
-if (typeof window !== "undefined" && !(window as any).Buffer) {
-    (window as any).Buffer = Buffer;
-}
+setupBufferPolyfill();
 
 const secp256k1 = new EC("secp256k1");
 
@@ -68,7 +66,7 @@ export interface AccountManagerOptions {
     accountName: string;
     password: string;
     network: string;
-    keyManagerMode?: KeyManageClientModes;
+    keyManagerMode?: WalletClientModes;
 }
 
 export interface Account {
@@ -101,7 +99,7 @@ export class AccountManager {
     constructor(accounts?: Account[], options?: AccountManagerOptions) {
         this.accounts = accounts || [];
         this.keyManager = new KeyManager(
-            options?.keyManagerMode || KeyManageClientModes.LOCAL
+            options?.keyManagerMode || WalletClientModes.LOCAL
         );
     }
 
