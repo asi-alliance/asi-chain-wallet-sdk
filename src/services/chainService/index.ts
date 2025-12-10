@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import { AssetId } from "../../domains/Asset";
-import { Address } from "../../types";
 import { DEFAULT_AXIOS_TIMEOUT_MS } from "../../config";
+import { Address } from "../../domains/Wallet";
 
 // const AssetsCache: Map<Address, Assets> = new Map();
 
