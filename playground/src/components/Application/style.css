@@ -1,0 +1,13 @@
+.account {
+    padding: 20px;
+    margin: 5px;
+    border: 1px solid orange;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 50px;
+}
+
+.account-actions,
+.account-details {
+    min-width: 300px;
+}

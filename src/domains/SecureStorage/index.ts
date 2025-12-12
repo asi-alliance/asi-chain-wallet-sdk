@@ -22,8 +22,8 @@ const SecureWebWalletsStorageConfig: SecureWebWalletsStorageConfig = {
     SALT_LENGTH: 16,
     IV_LENGTH: 12,
     KEY_DERIVATION_ITERATIONS: 200000,
-    CIPHER: "AES",
-    KDF: "PBKDF2",
+    CIPHER: "AES", // change CryptoJS.AES occurrences if changing
+    KDF: "PBKDF2", // change CryptoJS.PBKDF2 occurrences if changing
 };
 
 export interface WalletData {
@@ -34,10 +34,7 @@ export interface WalletData {
 }
 
 export interface EncryptedData {
-    cipher: string;
-    kdf: string;
     salt: Base64;
-    iterations: number;
     iv: Base64;
     data: Ciphertext;
     version: number;
@@ -79,10 +76,7 @@ export default class SecureWebWalletsStorage {
 
         return {
             version: SecureWebWalletsStorageConfig.VERSION,
-            cipher: SecureWebWalletsStorageConfig.CIPHER,
-            kdf: SecureWebWalletsStorageConfig.KDF,
             salt: CryptoJS.enc.Base64.stringify(salt),
-            iterations: SecureWebWalletsStorageConfig.KEY_DERIVATION_ITERATIONS,
             iv: CryptoJS.enc.Base64.stringify(iv),
             data: encryptedData,
         };
