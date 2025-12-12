@@ -11,3 +11,11 @@
 .account-details {
     min-width: 300px;
 }
+
+.transfer- {
+    padding: 5px;
+}
+
+.transfer- label {
+    margin-right: 5px;
+}

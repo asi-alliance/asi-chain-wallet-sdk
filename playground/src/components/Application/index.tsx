@@ -1,14 +1,14 @@
 import { type ReactElement, useEffect, useState } from "react";
+import { Networks } from "../../config";
 import {
     SecureWebWalletsStorage,
     AccountManager,
     RChainService,
     type WalletData,
 } from "asi-wallet-sdk";
-import { Networks } from "../../config";
 import "./style.css";
 
-const DevnetConfig = Networks["DevNet"];
+const DevnetConfig = Networks["Dev"];
 
 console.log("DevnetConfig", DevnetConfig);
 
@@ -16,6 +16,7 @@ const storage = new SecureWebWalletsStorage();
 const accountManager = new AccountManager();
 const chainService = new RChainService({
     readOnlyURL: DevnetConfig.ReadOnlyURL,
+    validatorURL: DevnetConfig.ValidatorURL,
     // nodeURL: "",
     // graphqlURL: "",
 });
@@ -35,6 +36,8 @@ const Account = ({ account }: IAccountProps): ReactElement => {
 
     const [recipientAddress, setRecipientAddress] = useState<string>("");
     const [amountToTransfer, setAmountToTransfer] = useState<number>();
+
+    const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
     const handleAddressChange = (event) => {
         setRecipientAddress(event.target.value);
@@ -61,7 +64,23 @@ const Account = ({ account }: IAccountProps): ReactElement => {
         }
     };
 
-    const transfer = async () => {};
+    const transfer = async () => {
+        try {
+            setIsTransferring(true);
+
+            const result = await chainService.transfer(
+                account.address,
+                recipientAddress,
+                amountToTransfer.toString(),
+                account.privateKey
+            );
+            console.log(result);
+        } catch (error) {
+            console.error(error?.message);
+        } finally {
+            setIsTransferring(false);
+        }
+    };
 
     useEffect(() => {
         fetchBalance(account.address);
@@ -107,16 +126,16 @@ const Account = ({ account }: IAccountProps): ReactElement => {
                 <p>
                     <b>Transfer</b>
                 </p>
-                <div className="to-address">
+                <div className="transfer- to-address">
                     <label htmlFor="">To Address</label>
                     <input
                         type="text"
-                        placeholder="toAddress"
+                        placeholder="to Address"
                         onChange={handleAddressChange}
                         value={recipientAddress}
                     />
                 </div>
-                <div className="amount">
+                <div className="transfer- amount">
                     <label htmlFor="">ASI Amount</label>
                     <input
                         type="number"
@@ -125,9 +144,13 @@ const Account = ({ account }: IAccountProps): ReactElement => {
                         value={amountToTransfer}
                     />
                 </div>
-                <div className="transfer">
+                <div className="transfer- transfer">
                     <button
-                        disabled={!recipientAddress || !amountToTransfer}
+                        disabled={
+                            !recipientAddress ||
+                            !amountToTransfer ||
+                            isTransferring
+                        }
                         onClick={transfer}
                     >
                         Transfer
