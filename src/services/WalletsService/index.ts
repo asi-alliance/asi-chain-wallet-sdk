@@ -65,6 +65,12 @@ export class WalletsService {
         return { ...this.createWallet(privateKey), mnemonic };
     }
 
+    public static deriveAddressFromPrivateKey(privateKey: string): string {
+        const keyPair: KeyPair = KeysService.getKeyPairFromPrivateKey(privateKey);
+
+        return this.deriveAddressFromPublicKey(keyPair.publicKey);
+    }
+
     public static deriveAddressFromPublicKey(publicKey: string): string {
         const publicKeyBytes: Uint8Array = decodeBase16(publicKey);
 

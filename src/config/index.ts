@@ -1,9 +1,8 @@
-import { Networks } from "../services/accountsManager";
 
 export interface WalletClientConfig {
     mode: string;
-    network: string;
-    availableNetworks: Networks[];
+    // network: string;
+    // availableNetworks: Networks[];
 }
 
 export enum WalletClientModes {
@@ -13,8 +12,8 @@ export enum WalletClientModes {
 
 export const DEFAULT_CLIENT_CONFIG: WalletClientConfig = {
     mode: WalletClientModes.LOCAL,
-    network: Networks.DEVNET,
-    availableNetworks: [Networks.MAINNET, Networks.TESTNET, Networks.DEVNET],
+    // network: Networks.DEVNET,
+    // availableNetworks: [Networks.MAINNET, Networks.TESTNET, Networks.DEVNET],
 };
 
 const DEFAULT_AXIOS_TIMEOUT_MS: number = 30000;
