@@ -15,7 +15,6 @@ export const DEFAULT_CLIENT_CONFIG: WalletClientConfig = {
     mode: WalletClientModes.LOCAL,
     network: Networks.DEVNET,
     availableNetworks: [Networks.MAINNET, Networks.TESTNET, Networks.DEVNET],
-    
 };
 
 const DEFAULT_AXIOS_TIMEOUT_MS: number = 30000;

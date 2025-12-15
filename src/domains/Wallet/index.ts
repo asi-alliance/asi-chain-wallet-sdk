@@ -12,4 +12,6 @@ export default class Wallet {
         this.address = address;
         this.assets = new Map();
     }
+
+    
 }
