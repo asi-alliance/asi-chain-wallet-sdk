@@ -48,15 +48,6 @@ export function derivePrivateKey(
 
 const prefix = { coinId: "000000", version: "00" };
 
-// 1. mnemonic = generateMnemonic()
-// 2. seed = mnemonicToSeed(mnemonic)
-// 3. masterNode = seedToMasterNode(seed)
-// 4. path = buildBip44Path(coinType, account, change, index)
-// 5. childNode = masterNode.derivePath(path)
-// 6. privateKey = childNode.privateKey
-// 7. publicKey = childNode.publicKey
-// 8. address = deriveAddress(privateKey or publicKey)
-
 const encodeBase58 = (hex: string): string => {
     const bytes = decodeBase16(hex);
     return bs58.encode(bytes);
@@ -84,7 +75,7 @@ export enum Networks {
     MAINNET = "mainnet",
 }
 
-const decodeBase16 = (hex: string): Uint8Array => {
+export const decodeBase16 = (hex: string): Uint8Array => {
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
         bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
@@ -105,22 +96,21 @@ export class AccountManager {
 
     public async createWalletFromMnemonic() {
         const mnemonic = await generateMnemonic();
-        console.log("mnemonic:", mnemonic);
+        // console.log("mnemonic:", mnemonic);
 
         const seed = await mnemonicToSeed(mnemonic);
-        console.log("seed:", seed);
+        // console.log("seed:", seed);
 
         const masterNode = seedToMasterNode(seed);
-        console.log("masterNode:", masterNode.toBase58());
+        // console.log("masterNode:", masterNode.toBase58());
 
         const path = buildBip44Path(60, 0, 0, 0); // Example for Ethereum
-        console.log("BIP44 Path:", path);
+        // console.log("BIP44 Path:", path);
 
-        // const privateKey = derivePrivateKey(masterNode, path);
-        const privateKey = "624f6e76d5fabc410fba7578a4dbed603b86987784f835fda96fb996ad89f87c";
+        const privateKey = derivePrivateKey(masterNode, path);
 
-        console.log("Derived Private Key:", privateKey);
-        console.log("key length:", privateKey.length);
+        // console.log("Derived Private Key:", privateKey);
+        // console.log("key length:", privateKey.length);
 
         const keyPair = secp256k1.keyFromPrivate(privateKey, "hex");
 
@@ -128,8 +118,8 @@ export class AccountManager {
             keyPair.getPublic("hex")
         );
 
-        console.log("privateKey", keyPair.getPrivate("hex"));
-        console.log("Derived Address:", address);
+        // console.log("privateKey", keyPair.getPrivate("hex"));
+        // console.log("Derived Address:", address);
 
         return { privateKey, address}
     }
@@ -138,7 +128,7 @@ export class AccountManager {
         // todo add index
         const keyPair = this.keyManager.generateKeyPair();
 
-        console.log("Generated Key Pair:", keyPair);
+        // console.log("Generated Key Pair:", keyPair);
 
         if (!keyPair?.publicKey || !keyPair?.privateKey) {
             throw new Error("Key pair generation failed.");
@@ -160,27 +150,26 @@ export class AccountManager {
 
     private deriveAddressFromPublicKey(publicKey: string): string {
         const publicKeyBytes = decodeBase16(publicKey);
-        console.log("pubKeyBytes", publicKeyBytes);
+        // console.log("pubKeyBytes", publicKeyBytes);
         const hash = keccak256(publicKeyBytes.slice(1));
-        console.log("hash", hash);
+        // console.log("hash", hash);
 
         const addressBase = hash.slice(-40);
-        console.log("ethAddress", addressBase);
+        // console.log("ethAddress", addressBase);
 
-        //
         const ethAddrBytes = decodeBase16(addressBase);
         const ethHash = keccak256(ethAddrBytes);
-        console.log("ethAddrBytes", ethAddrBytes);
-        console.log("ethHash", ethHash);
+        // console.log("ethAddrBytes", ethAddrBytes);
+        // console.log("ethHash", ethHash);
 
         const payload = `${prefix.coinId}${prefix.version}${ethHash}`;
-        console.log("payload", payload);
+        // console.log("payload", payload);
 
         const payloadBytes = decodeBase16(payload);
-        console.log("payloadBytes", payloadBytes);
+        // console.log("payloadBytes", payloadBytes);
 
         const checksum = blake2bHex(payloadBytes, undefined, 32).slice(0, 8);
-        console.log("checksum", checksum);
+        // console.log("checksum", checksum);
 
         return encodeBase58(`${payload}${checksum}`);
     }
