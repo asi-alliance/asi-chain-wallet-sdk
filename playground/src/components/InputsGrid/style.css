@@ -1,0 +1,69 @@
+.grid {
+  --mnemonic-columns: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--mnemonic-columns), minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.grid > * {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.grid > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.grid > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.grid > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.grid > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.grid > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+.grid > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+
+.grid > *:nth-child(7) {
+  animation-delay: 240ms;
+}
+
+.grid > *:nth-child(8) {
+  animation-delay: 280ms;
+}
+
+.grid > *:nth-child(9) {
+  animation-delay: 320ms;
+}
+
+.grid > *:nth-child(10) {
+  animation-delay: 360ms;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .grid {
+    --mnemonic-columns: 1;
+    gap: 12px;
+  }
+}
