@@ -1,4 +1,7 @@
 import * as bip39 from "bip39";
+import { setupBufferPolyfill } from "../..//utils/polyfills/";
+
+setupBufferPolyfill();
 
 export enum MnemonicStrength {
     TWELVE_WORDS = 128,
@@ -24,3 +27,4 @@ export default class MnemonicService {
         return words.join(" ");
     }
 }
+

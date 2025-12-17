@@ -1,7 +1,11 @@
 import CryptoService, { type EncryptedData } from "../../services/crypto";
-import Wallet, { type StringifiedWalletMeta, type Address } from "../Wallet";
+import Wallet, {
+    type StringifiedWalletMeta,
+    type Address,
+    StoredWalletMeta,
+} from "../Wallet";
 
-export type Wallets = Map<Address, Wallet>
+export type Wallets = Map<Address, Wallet>;
 
 export type VaultRawData = string;
 
@@ -51,7 +55,9 @@ export default class Vault {
         return keys;
     }
 
-    public static getVaultDataFromStorage(vaultKey: string): VaultRawData | null {
+    public static getVaultDataFromStorage(
+        vaultKey: string
+    ): VaultRawData | null {
         this.ensureBrowserEnvironment();
 
         return localStorage.getItem(vaultKey);
@@ -66,7 +72,10 @@ export default class Vault {
 
         const storageKey: string = `${Vault.vaultPrefix}_${vaultKey}`;
 
-        localStorage.setItem(storageKey, JSON.stringify(this.encryptedVaultData));
+        localStorage.setItem(
+            storageKey,
+            JSON.stringify(this.encryptedVaultData)
+        );
     }
 
     public lock(password: string): void {
@@ -84,10 +93,16 @@ export default class Vault {
     }
 
     public unlock(password: string): void {
-        if (!this.isLocked || !this.encryptedVaultData) {
-            throw new Error("Vault is already unlocked");
+        if (!this.isLocked) {
+            return;
         }
-        
+
+        if (!this.encryptedVaultData) {
+            throw new Error(
+                "Vault was unlocked on undefined encryptedVaultData"
+            );
+        }
+
         const decryptedData: string = CryptoService.decryptWithPassword(
             this.encryptedVaultData,
             password
@@ -95,7 +110,7 @@ export default class Vault {
 
         const parsedWalletsRawData = JSON.parse(decryptedData);
 
-
+        this.metaToWallets(parsedWalletsRawData);
     }
 
     public isEmpty(): boolean {
@@ -117,7 +132,7 @@ export default class Vault {
     public getWalletAddresses(): Address[] {
         this.ensureUnlocked();
 
-        return Array.from(this.wallets.keys())
+        return Array.from(this.wallets.keys());
     }
 
     public addWallet(wallet: Wallet): void {
@@ -138,20 +153,39 @@ export default class Vault {
         return this.wallets.get(address);
     }
 
+    public hasWallet(address: Address): boolean {
+        this.ensureUnlocked();
+
+        return this.wallets.has(address);
+    }
+
     private metaToWallets(meta: StoredWalletsMetaRecords): Wallets {
         const wallets: Wallets = new Map();
         const addresses: Address[] = Object.keys(meta) as Address[];
 
         addresses.forEach((address: Address) => {
-            const walletMeta: StringifiedWalletMeta = JSON.parse(meta[address]);
-            // wallets.set(address, new Wallet(walletMeta))
+            const walletMeta: StoredWalletMeta = JSON.parse(meta[address]);
+
+            const wallet = Wallet.fromEncryptedData(
+                walletMeta.name,
+                {
+                    address: walletMeta.address,
+                    encryptedPrivateKey: walletMeta.encryptedPrivateKey,
+                    iv: walletMeta.cryptoIV,
+                    salt: walletMeta.cryptoSalt,
+                    version: +walletMeta.cryptoVersion,
+                },
+                +walletMeta.index
+            );
+
+            wallets.set(address, wallet);
         });
 
         return wallets;
     }
 
     private toString(): string {
-        const walletsMeta: StoredWalletsMetaRecords = {}
+        const walletsMeta: StoredWalletsMetaRecords = {};
 
         this.ensureUnlocked();
 
