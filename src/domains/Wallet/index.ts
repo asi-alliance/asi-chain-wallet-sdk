@@ -1,16 +1,30 @@
+import Asset, { Assets } from "../Asset";
 import CryptoService from "../../services/crypto";
 import { WalletsService } from "../../services/WalletsService";
-import Asset, { Assets } from "../Asset";
 
-export type Address = string;
+type AddressBrand = { readonly __brand: unique symbol };
+export type Address = `1111${string & AddressBrand}`;
+
+export interface StoredWalletMeta {
+    name: string;
+    address: Address;
+    encryptedPrivateKey: string;
+    cryptoIV: string;
+    cryptoSalt: string;
+    cryptoVersion: string;
+}
+
+export type StringifiedWalletMeta = string;
+
 export type WalletMemory = Map<string, string>;
 
-const enum MemoryKeys {
+export enum WalletMemoryKeys {
     PRIVATE_KEY = "private_key",
     CRYPTO_SALT = "crypto_salt",
     CRYPTO_IV = "crypto_iv",
     CRYPTO_VERSION = "crypto version",
 }
+
 export default class Wallet {
     private name: string;
     private address: Address;
@@ -39,7 +53,7 @@ export default class Wallet {
 
     public lock(): void {
         const privateKey: string | undefined = this.memory.get(
-            MemoryKeys.PRIVATE_KEY
+            WalletMemoryKeys.PRIVATE_KEY
         );
 
         if (!privateKey) {
@@ -53,13 +67,13 @@ export default class Wallet {
     public unlock(password: string): void {
         try {
             const iv: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_IV
+                WalletMemoryKeys.CRYPTO_IV
             );
             const salt: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_SALT
+                WalletMemoryKeys.CRYPTO_SALT
             );
             const version: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_VERSION
+                WalletMemoryKeys.CRYPTO_VERSION
             );
             const encryptedPrivateKey: string = this.privateKey;
 
@@ -84,7 +98,7 @@ export default class Wallet {
         this.assets.set(asset.getId(), asset);
     }
 
-    public getAddress(): string {
+    public getAddress(): Address {
         return this.address;
     }
 
@@ -96,14 +110,18 @@ export default class Wallet {
             password
         );
 
-        this.memory.set(MemoryKeys.PRIVATE_KEY, encryptedPrivateKeyData.data);
-        this.memory.set(MemoryKeys.CRYPTO_IV, encryptedPrivateKeyData.iv);
-        this.memory.set(MemoryKeys.CRYPTO_SALT, encryptedPrivateKeyData.salt);
+        this.memory.set(WalletMemoryKeys.PRIVATE_KEY, encryptedPrivateKeyData.data);
+        this.memory.set(WalletMemoryKeys.CRYPTO_IV, encryptedPrivateKeyData.iv);
+        this.memory.set(WalletMemoryKeys.CRYPTO_SALT, encryptedPrivateKeyData.salt);
         this.memory.set(
-            MemoryKeys.CRYPTO_VERSION,
+            WalletMemoryKeys.CRYPTO_VERSION,
             encryptedPrivateKeyData.version.toString()
         );
 
         return encryptedPrivateKeyData.data;
+    }
+
+    public toString(): StringifiedWalletMeta {
+        return this.address;
     }
 }

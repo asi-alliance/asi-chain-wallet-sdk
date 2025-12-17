@@ -5,6 +5,7 @@ import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "../../utils/constants";
 import { blake2bHex } from "blakejs";
 import { keccak256 } from "js-sha3";
 import MnemonicService from "../mnemonic";
+import { Address } from "../../domains/Wallet";
 
 export interface CreateWalletOptions {
     name?: string;
@@ -65,13 +66,14 @@ export class WalletsService {
         return { ...this.createWallet(privateKey), mnemonic };
     }
 
-    public static deriveAddressFromPrivateKey(privateKey: string): string {
-        const keyPair: KeyPair = KeysService.getKeyPairFromPrivateKey(privateKey);
+    public static deriveAddressFromPrivateKey(privateKey: string): Address {
+        const keyPair: KeyPair =
+            KeysService.getKeyPairFromPrivateKey(privateKey);
 
         return this.deriveAddressFromPublicKey(keyPair.publicKey);
     }
 
-    public static deriveAddressFromPublicKey(publicKey: string): string {
+    public static deriveAddressFromPublicKey(publicKey: string): Address {
         const publicKeyBytes: Uint8Array = decodeBase16(publicKey);
 
         const hash: string = keccak256(publicKeyBytes.slice(1));
@@ -90,6 +92,6 @@ export class WalletsService {
             32
         ).slice(0, 8);
 
-        return encodeBase58(`${addressPayload}${checksum}`);
+        return encodeBase58(`${addressPayload}${checksum}`) as Address; // payload prefix should always start with `1111`
     }
 }

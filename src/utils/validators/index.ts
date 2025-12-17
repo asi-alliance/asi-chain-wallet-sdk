@@ -1,3 +1,5 @@
+import { Address } from "../../domains/Wallet";
+
 const INVALID_ACCOUNT_NAME_CHARS: RegExp = /[<>:"/\\|?*]/;
 
 export const validateAccountName = (
@@ -23,4 +25,18 @@ export const validateAccountName = (
     }
 
     return { isValid: true };
+};
+
+const ADDRESS_START_STRING = "1111";
+const ADDRESS_MINIMUM_LENGTH = 50;
+const ADDRESS_MAXIMUM_LENGTH = 54;
+const ADDRESS_ALPHABET_REGEX = /^[a-zA-Z0-9]+$/;
+
+export const isAddress = (address: string): address is Address => {
+    return (
+        address.startsWith(ADDRESS_START_STRING) &&
+        address.length >= ADDRESS_MINIMUM_LENGTH &&
+        address.length <= ADDRESS_MAXIMUM_LENGTH &&
+        ADDRESS_ALPHABET_REGEX.test(address)
+    );
 };
