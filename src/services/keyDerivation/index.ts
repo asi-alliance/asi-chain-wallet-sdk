@@ -1,6 +1,9 @@
 import * as bip39 from "bip39";
 import * as bip32 from "bip32";
 import * as tinysecp from "tiny-secp256k1";
+import { setupBufferPolyfill } from "../..//utils/polyfills/";
+
+setupBufferPolyfill();
 
 export default class KeyDerivationService {
     public static buildBip44Path(
@@ -25,11 +28,11 @@ export default class KeyDerivationService {
         return node.privateKey.toString("hex");
     }
 
-    public static mnemonicToSeed(
+    public static async mnemonicToSeed(
         mnemonic: string,
         passphrase = ""
     ): Promise<Uint8Array> {
-        return bip39.mnemonicToSeed(mnemonic, passphrase);
+        return await bip39.mnemonicToSeed(mnemonic, passphrase);
     }
 
     public static seedToMasterNode(seed: any): bip32.BIP32Interface {

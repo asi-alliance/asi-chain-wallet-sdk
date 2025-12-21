@@ -1,16 +1,32 @@
-import CryptoService from "../../services/crypto";
-import { WalletsService } from "../../services/WalletsService";
 import Asset, { Assets } from "../Asset";
+import CryptoService, { EncryptedData } from "../../services/crypto";
+import { WalletsService } from "../../services/WalletsService";
+import { isAddress } from "../../utils/validators";
 
-export type Address = string;
+type AddressBrand = { readonly __brand: unique symbol };
+export type Address = `1111${string & AddressBrand}`;
+
+export interface StoredWalletMeta {
+    name: string;
+    address: Address;
+    encryptedPrivateKey: string;
+    cryptoIV: string;
+    cryptoSalt: string;
+    cryptoVersion: string;
+    index: string;
+}
+
+export type StringifiedWalletMeta = string;
+
 export type WalletMemory = Map<string, string>;
 
-const enum MemoryKeys {
+export enum WalletMemoryKeys {
     PRIVATE_KEY = "private_key",
     CRYPTO_SALT = "crypto_salt",
     CRYPTO_IV = "crypto_iv",
     CRYPTO_VERSION = "crypto version",
 }
+
 export default class Wallet {
     private name: string;
     private address: Address;
@@ -20,26 +36,80 @@ export default class Wallet {
     private memory: WalletMemory;
     private index: number | null;
 
-    constructor(
+    private constructor(
         name: string,
-        privateKey: string,
-        password: string,
-        index: number | null
+        index: number | null,
+        address: Address,
+        encryptedPrivateKey: string,
+        memory: Map<string, string>
     ) {
         this.name = name;
         this.index = index;
-        this.address = WalletsService.deriveAddressFromPrivateKey(privateKey);
-
-        this.memory = new Map();
+        this.address = address;
+        this.privateKey = encryptedPrivateKey;
+        this.memory = memory;
         this.assets = new Map();
-
-        this.privateKey = this.encryptPrivateKey(privateKey, password);
         this.isLocked = true;
+    }
+
+    public static fromPrivateKey(
+        name: string,
+        privateKey: string,
+        password: string,
+        index: number | null = null
+    ): Wallet {
+        const address: Address =
+            WalletsService.deriveAddressFromPrivateKey(privateKey);
+
+        const encrypted: EncryptedData = this.encryptPrivateKey(
+            privateKey,
+            password
+        );
+
+        const memory = new Map([
+            [WalletMemoryKeys.PRIVATE_KEY, encrypted.data],
+            [WalletMemoryKeys.CRYPTO_IV, encrypted.iv],
+            [WalletMemoryKeys.CRYPTO_SALT, encrypted.salt],
+            [WalletMemoryKeys.CRYPTO_VERSION, String(encrypted.version)],
+        ]);
+
+        return new Wallet(name, index, address, encrypted.data, memory);
+    }
+
+    public static fromEncryptedData(
+        name: string,
+        options: {
+            address: string;
+            encryptedPrivateKey: string;
+            iv: string;
+            salt: string;
+            version: number;
+        },
+        index: number | null
+    ): Wallet {
+        if (!isAddress(options.address)) {
+            throw new Error("Invalid address format");
+        }
+
+        const memory = new Map([
+            [WalletMemoryKeys.PRIVATE_KEY, options.encryptedPrivateKey],
+            [WalletMemoryKeys.CRYPTO_IV, options.iv],
+            [WalletMemoryKeys.CRYPTO_SALT, options.salt],
+            [WalletMemoryKeys.CRYPTO_VERSION, String(options.version)],
+        ]);
+
+        return new Wallet(
+            name,
+            index,
+            options.address,
+            options.encryptedPrivateKey,
+            memory
+        );
     }
 
     public lock(): void {
         const privateKey: string | undefined = this.memory.get(
-            MemoryKeys.PRIVATE_KEY
+            WalletMemoryKeys.PRIVATE_KEY
         );
 
         if (!privateKey) {
@@ -53,14 +123,15 @@ export default class Wallet {
     public unlock(password: string): void {
         try {
             const iv: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_IV
+                WalletMemoryKeys.CRYPTO_IV
             );
             const salt: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_SALT
+                WalletMemoryKeys.CRYPTO_SALT
             );
             const version: string | undefined = this.memory.get(
-                MemoryKeys.CRYPTO_VERSION
+                WalletMemoryKeys.CRYPTO_VERSION
             );
+
             const encryptedPrivateKey: string = this.privateKey;
 
             if (!iv || !salt || !version) {
@@ -79,31 +150,62 @@ export default class Wallet {
             throw new Error("Unlock Failed: " + error?.message);
         }
     }
-
+    
     public registerAsset(asset: Asset): void {
         this.assets.set(asset.getId(), asset);
     }
 
-    public getAddress(): string {
+    public transfer(): void {
+        this.ensureUnlocked();
+    }
+
+    public getAddress(): Address {
         return this.address;
     }
 
-    public transfer(): void {}
+    public getName(): string {
+        return this.name;
+    }
 
-    private encryptPrivateKey(privateKey: string, password: string) {
-        const encryptedPrivateKeyData = CryptoService.encryptWithPassword(
-            privateKey,
-            password
-        );
+    public getIndex(): number | null {
+        return this.index;
+    }
 
-        this.memory.set(MemoryKeys.PRIVATE_KEY, encryptedPrivateKeyData.data);
-        this.memory.set(MemoryKeys.CRYPTO_IV, encryptedPrivateKeyData.iv);
-        this.memory.set(MemoryKeys.CRYPTO_SALT, encryptedPrivateKeyData.salt);
-        this.memory.set(
-            MemoryKeys.CRYPTO_VERSION,
-            encryptedPrivateKeyData.version.toString()
-        );
+    public getMemory(): WalletMemory {
+        return this.memory;
+    }
 
-        return encryptedPrivateKeyData.data;
+    public getAssets(): Assets {
+        return this.assets;
+    }
+
+    public isWalletLocked(): boolean {
+        return this.isLocked;
+    }
+
+    public toString(): StringifiedWalletMeta {
+        const meta: StoredWalletMeta = {
+            name: this.name,
+            address: this.address,
+            encryptedPrivateKey:
+                this.memory.get(WalletMemoryKeys.PRIVATE_KEY) ?? "",
+            cryptoIV: this.memory.get(WalletMemoryKeys.CRYPTO_IV) ?? "",
+            cryptoSalt: this.memory.get(WalletMemoryKeys.CRYPTO_SALT) ?? "",
+            cryptoVersion:
+                this.memory.get(WalletMemoryKeys.CRYPTO_VERSION) ?? "",
+            index: this.index?.toString() ?? "",
+        };
+
+        return JSON.stringify(meta);
+    }
+
+    private ensureUnlocked(): void {
+        if (this.isLocked) {
+            throw new Error("Wallet is locked");
+        }
+    }
+
+    private static encryptPrivateKey(privateKey: string, password: string) {
+        return CryptoService.encryptWithPassword(privateKey, password);
     }
 }
