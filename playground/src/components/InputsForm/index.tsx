@@ -1,5 +1,5 @@
 import InputsGrid from "../InputsGrid";
-import { DEFAULT_WORDS_COUNT, WORD_COUNTS } from "../../utils/constants/index";
+import { DEFAULT_WORDS_COUNT, WordsCountVariants } from "../../utils/constants";
 import {
     clippedWordCount,
     sanitizeWord,
@@ -277,7 +277,7 @@ const InputsForm = ({
                         value={wordCount}
                         onChange={handleSelectChange}
                     >
-                        {WORD_COUNTS.map((count) => (
+                        {WordsCountVariants.map((count) => (
                             <option key={count} value={count}>
                                 {count}
                             </option>

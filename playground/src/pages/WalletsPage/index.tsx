@@ -1,11 +1,13 @@
+import WalletCard from "../../components/WalletCard";
+import SelectModal from "../../components/SelectModal";
+import TransferModal from "../../components/TransferModal";
+import PasswordModal from "../../components/PasswordModal";
+import CreateWalletModal, {
+    type TWalletCreatePayload,
+} from "../../components/CreateWalletModal";
 import { useMemo, useState, type ReactElement } from "react";
-import { type TWalletCreatePayload } from "../CreateWalletModal";
-import TransferModal from "../TransferModal";
-import PasswordModal from "../PasswordModal";
-import SelectModal from "../SelectModal";
-import CreateWalletModal from "../CreateWalletModal";
-import WalletCard from "../WalletCard";
 import "./style.css";
+
 
 type TWallet = {
     id: string;
@@ -17,7 +19,7 @@ type TWallet = {
     name: string;
 };
 
-const App = (): ReactElement => {
+const WalletsPage = (): ReactElement => {
     const [privateKeyWallets, setPrivateKeyWallets] = useState<TWallet[]>(
         () => [
             {
@@ -102,6 +104,7 @@ const App = (): ReactElement => {
             id: `mn-${Date.now()}`,
             type: "mnemonic",
             index: nextIndex,
+            // TODO: тут будет derived address из SDK по mnemonic + index
             address: "0xMN_...DERIVED",
             balance: 0,
             isLocked: false,
@@ -113,6 +116,7 @@ const App = (): ReactElement => {
         setIsCreateOpen(false);
     };
 
+    // ---------- SEND ----------
     const openTransferForWallet = (wallet: TWallet) => {
         setTransferFromWallet(wallet);
         setIsTransferOpen(true);
@@ -123,15 +127,14 @@ const App = (): ReactElement => {
         setTransferFromWallet(null);
     };
 
+    // WalletCard даёт только index:number → поэтому для PK wallet (index null) send просто не нажмётся
     const handleSendByIndex = (index: number) => {
         const wallet =
-            mnemonicWallets.find((wallet) => wallet.index === index) ??
-            privateKeyWallets.find((wallet) => wallet.index === index) ??
+            mnemonicWallets.find((w) => w.index === index) ??
+            privateKeyWallets.find((w) => w.index === index) ??
             null;
 
-        if (!wallet) {
-            return;
-        }
+        if (!wallet) return;
         openTransferForWallet(wallet);
     };
 
@@ -142,9 +145,11 @@ const App = (): ReactElement => {
             amount,
         });
 
+        // TODO: тут будет SDK send
         closeTransfer();
     };
 
+    // ---------- ACTIONS (SelectModal) ----------
     const openActions = (wallet: TWallet) => {
         setSelectedWallet(wallet);
         setIsActionsOpen(true);
@@ -155,15 +160,12 @@ const App = (): ReactElement => {
         setSelectedWallet(null);
     };
 
+    // ---------- LOCK / UNLOCK ----------
     const openLockUnlock = () => {
-        if (!selectedWallet) {
-            return;
-        }
-
+        if (!selectedWallet) return;
         setPasswordTitle(
             selectedWallet.isLocked ? "Unlock wallet" : "Lock wallet"
         );
-
         setIsPasswordOpen(true);
     };
 
@@ -174,27 +176,25 @@ const App = (): ReactElement => {
 
         if (!selectedWallet) return;
 
+        // TODO: тут будет SDK lock/unlock
         const toggle = (list: TWallet[]) =>
-            list.map((wallet) =>
-                wallet.id === selectedWallet.id
-                    ? { ...wallet, isLocked: !wallet.isLocked }
-                    : wallet
+            list.map((w) =>
+                w.id === selectedWallet.id ? { ...w, isLocked: !w.isLocked } : w
             );
 
         if (selectedWallet.type === "privateKey") {
             setPrivateKeyWallets(toggle);
+        } else {
+            setMnemonicWallets(toggle);
         }
-
-        setMnemonicWallets(toggle);
 
         setIsPasswordOpen(false);
         closeActions();
     };
 
+    // ---------- SelectModal options ----------
     const actionOptions = useMemo(() => {
-        if (!selectedWallet) {
-            return [];
-        }
+        if (!selectedWallet) return [];
 
         return [
             {
@@ -213,12 +213,15 @@ const App = (): ReactElement => {
         ];
     }, [selectedWallet]);
 
+    // ---------- RENDER ----------
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
                 <h2 className="wallets-page__title">Wallets</h2>
             </div>
+
             <div className="wallets-page__grid">
+                {/* LEFT: Private key wallets */}
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
@@ -234,23 +237,22 @@ const App = (): ReactElement => {
                     </div>
 
                     <div className="wallets-page__list">
-                        {privateKeyWallets.map((wallet) => (
+                        {privateKeyWallets.map((w) => (
                             <div
-                                key={wallet.id}
+                                key={w.id}
                                 className="wallets-page__card-wrap"
-                                onClick={() => openActions(wallet)}
+                                onClick={() => openActions(w)}
                                 role="button"
                                 tabIndex={0}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter")
-                                        openActions(wallet);
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") openActions(w);
                                 }}
                             >
                                 <WalletCard
-                                    index={wallet.index}
-                                    address={wallet.address}
-                                    balance={wallet.balance}
-                                    isLocked={wallet.isLocked}
+                                    index={w.index}
+                                    address={w.address}
+                                    balance={w.balance}
+                                    isLocked={w.isLocked}
                                     onSend={handleSendByIndex}
                                 />
                             </div>
@@ -258,6 +260,7 @@ const App = (): ReactElement => {
                     </div>
                 </section>
 
+                {/* RIGHT: Mnemonic wallets */}
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
@@ -271,24 +274,24 @@ const App = (): ReactElement => {
                             Derive
                         </button>
                     </div>
+
                     <div className="wallets-page__list">
-                        {mnemonicWallets.map((wallet) => (
+                        {mnemonicWallets.map((w) => (
                             <div
-                                key={wallet.id}
+                                key={w.id}
                                 className="wallets-page__card-wrap"
-                                onClick={() => openActions(wallet)}
+                                onClick={() => openActions(w)}
                                 role="button"
                                 tabIndex={0}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter")
-                                        openActions(wallet);
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") openActions(w);
                                 }}
                             >
                                 <WalletCard
-                                    index={wallet.index}
-                                    address={wallet.address}
-                                    balance={wallet.balance}
-                                    isLocked={wallet.isLocked}
+                                    index={w.index}
+                                    address={w.address}
+                                    balance={w.balance}
+                                    isLocked={w.isLocked}
                                     onSend={handleSendByIndex}
                                 />
                             </div>
@@ -296,6 +299,8 @@ const App = (): ReactElement => {
                     </div>
                 </section>
             </div>
+
+            {/* Create modal */}
             {isCreateOpen && (
                 <CreateWalletModal
                     mode={createMode}
@@ -304,6 +309,8 @@ const App = (): ReactElement => {
                     onClose={closeCreate}
                 />
             )}
+
+            {/* Actions modal */}
             {isActionsOpen && selectedWallet && (
                 <SelectModal
                     title={`${selectedWallet.name} (${selectedWallet.type})`}
@@ -311,6 +318,8 @@ const App = (): ReactElement => {
                     onClose={closeActions}
                 />
             )}
+
+            {/* Password modal */}
             {isPasswordOpen && (
                 <PasswordModal
                     title={passwordTitle}
@@ -318,6 +327,8 @@ const App = (): ReactElement => {
                     onClose={closePassword}
                 />
             )}
+
+            {/* Transfer modal */}
             {isTransferOpen && transferFromWallet && (
                 <TransferModal
                     toAddress=""
@@ -331,4 +342,4 @@ const App = (): ReactElement => {
     );
 };
 
-export default App;
+export default WalletsPage;

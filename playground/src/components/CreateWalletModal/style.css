@@ -1,0 +1,139 @@
+.wallet-create-modal__overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.wallet-create-modal__overlay--nested {
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 1100;
+}
+
+.wallet-create-modal__content {
+	background: #fff;
+	border-radius: 12px;
+	box-shadow: 0 4px 32px rgba(0,0,0,0.18);
+	padding: 32px 28px 24px 28px;
+	min-width: 340px;
+	max-width: 95vw;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.wallet-create-modal__content--nested {
+	min-width: 320px;
+	padding: 24px 20px 18px 20px;
+}
+
+.wallet-create-modal__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+.wallet-create-modal__title {
+	font-size: 1.3rem;
+	font-weight: 600;
+	margin: 0;
+}
+
+.wallet-create-modal__close {
+	background: none;
+	border: none;
+	font-size: 1.5rem;
+	cursor: pointer;
+	color: #888;
+	transition: color 0.2s;
+}
+.wallet-create-modal__close:hover {
+	color: #d00;
+}
+
+.wallet-create-modal__form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.wallet-create-modal__row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.wallet-create-modal__inline {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.wallet-create-modal__hint {
+	color: #888;
+	font-size: 0.95em;
+}
+
+input[type="text"],
+input[type="password"] {
+	padding: 8px 10px;
+	border: 1px solid #ccc;
+	border-radius: 6px;
+	font-size: 1em;
+	outline: none;
+	transition: border 0.2s;
+}
+input[type="text"]:focus,
+input[type="password"]:focus {
+	border: 1.5px solid #007bff;
+}
+
+label {
+	font-size: 1em;
+	font-weight: 500;
+}
+
+.wallet-create-modal__error {
+	color: #d00;
+	background: #ffeaea;
+	border-radius: 5px;
+	padding: 7px 12px;
+	font-size: 0.98em;
+	margin-top: 2px;
+}
+
+.wallet-create-modal__actions {
+	display: flex;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.wallet-create-modal__button {
+	background: #007bff;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 8px 18px;
+	font-size: 1em;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+.wallet-create-modal__button:hover {
+	background: #0056b3;
+}
+.wallet-create-modal__button--secondary {
+	background: #f3f3f3;
+	color: #333;
+	border: 1px solid #ccc;
+}
+.wallet-create-modal__button--secondary:hover {
+	background: #e2e2e2;
+}
