@@ -4,7 +4,7 @@ import "./style.css";
 export interface IPasswordModalProps {
     title: string;
     onSubmit: (password: string) => void;
-    onClose: () => void;
+    onClose?: () => void;
 }
 
 const PasswordModal = ({
@@ -38,13 +38,15 @@ const PasswordModal = ({
                         <button className="submit-button" type="submit">
                             Submit
                         </button>
-                        <button
-                            className="cancel-button"
-                            type="button"
-                            onClick={onClose}
-                        >
-                            Cancel
-                        </button>
+                        {onClose && (
+                            <button
+                                className="cancel-button"
+                                type="button"
+                                onClick={onClose}
+                            >
+                                Cancel
+                            </button>
+                        )}
                     </div>
                 </form>
             </div>

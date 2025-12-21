@@ -1,16 +1,16 @@
 import type { ReactElement } from "react";
 import "./style.css";
 
-type TSelectModalOption = {
+export type TSelectModalOption = {
     title: string;
     onClick: () => void;
     disabled?: boolean;
 };
 
-interface ISelectModalProps {
+export interface ISelectModalProps {
     title: string;
     options: TSelectModalOption[];
-    onClose: () => void;
+    onClose?: () => void;
 }
 
 const SelectModal = ({
@@ -26,6 +26,7 @@ const SelectModal = ({
                     {options.map((option, index) => (
                         <li key={index}>
                             <button
+                                className="select-button"
                                 onClick={option.onClick}
                                 disabled={option.disabled}
                             >
@@ -34,7 +35,11 @@ const SelectModal = ({
                         </li>
                     ))}
                 </ul>
-                <button className="close-button" onClick={onClose}>Close</button>
+                {onClose && (
+                    <button className="close-button" onClick={onClose}>
+                        Close
+                    </button>
+                )}
             </div>
         </div>
     );

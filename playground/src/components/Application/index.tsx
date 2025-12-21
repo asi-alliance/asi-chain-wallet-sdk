@@ -1,334 +1,291 @@
-import { useMemo, useState, type ReactElement } from "react";
-import { type TWalletCreatePayload } from "../CreateWalletModal";
-import TransferModal from "../TransferModal";
-import PasswordModal from "../PasswordModal";
-import SelectModal from "../SelectModal";
-import CreateWalletModal from "../CreateWalletModal";
-import WalletCard from "../WalletCard";
+import {
+    Wallet,
+    Vault,
+    MnemonicService,
+    KeyDerivationService,
+    KeysService,
+} from "asi-wallet-sdk";
+import { type ReactElement, useEffect, useState } from "react";
+import ModalsMeta, { ApplicationContext, ModalProps, Modals } from "./meta";
+import WalletsPage from "@pages/WalletsPage";
+import { IPasswordModalProps } from "@components/PasswordModal";
+import { ISelectModalProps, TSelectModalOption } from "@components/SelectModal";
+import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+import { BIP32Interface } from "bip32";
+import { IWalletCreateModalProps, TWalletCreatePayload } from "@components/CreateWalletModal";
 import "./style.css";
 
-type TWallet = {
-    id: string;
-    type: "privateKey" | "mnemonic";
-    index: number | null;
-    address: string;
-    balance: string | number;
-    isLocked: boolean;
-    name: string;
-};
+const VAULT_STORAGE_KEY = "test_vault";
 
-const App = (): ReactElement => {
-    const [privateKeyWallets, setPrivateKeyWallets] = useState<TWallet[]>(
-        () => [
-            {
-                id: "pk-1",
-                type: "privateKey",
-                index: null,
-                address: "0xPK_...A1B2",
-                balance: "—",
-                isLocked: false,
-                name: "PK wallet #1",
-            },
-        ]
-    );
+const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_STORAGE_KEY);
 
-    const [mnemonicWallets, setMnemonicWallets] = useState<TWallet[]>(() => [
-        {
-            id: "mn-0",
-            type: "mnemonic",
-            index: 0,
-            address: "0xMN_...0000",
-            balance: "—",
-            isLocked: false,
-            name: "Mnemonic #0",
-        },
-        {
-            id: "mn-1",
-            type: "mnemonic",
-            index: 1,
-            address: "0xMN_...0001",
-            balance: "—",
-            isLocked: true,
-            name: "Mnemonic #1",
-        },
-    ]);
+const vault = new Vault(encryptedVaultData);
 
-    const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [createMode, setCreateMode] = useState<"privateKey" | "mnemonic">(
-        "privateKey"
-    );
+const Application = (): ReactElement => {
+    const [currentModal, setCurrentModal] = useState<Modals>();
+    const [currentModalProps, setCurrentModalProps] = useState<ModalProps>();
+    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    const [selectedWallet, setSelectedWallet] = useState<TWallet | null>(null);
-    const [isActionsOpen, setIsActionsOpen] = useState(false);
+    const [masterNode, setMasterNode] = useState<BIP32Interface>();
+    const [currentMnemonic, setCurrentMnemonic] = useState<string>();
+    const [currentPassword, setCurrentPassword] = useState<string>();
 
-    const [isPasswordOpen, setIsPasswordOpen] = useState(false);
-    const [passwordTitle, setPasswordTitle] = useState("Enter password");
-
-    const [isTransferOpen, setIsTransferOpen] = useState(false);
-    const [transferFromWallet, setTransferFromWallet] =
-        useState<TWallet | null>(null);
-
-    const modalTitle = useMemo(() => {
-        return createMode === "privateKey" ? "Add wallet" : "Derive wallet";
-    }, [createMode]);
-
-    const openCreate = (mode: "privateKey" | "mnemonic") => {
-        setCreateMode(mode);
-        setIsCreateOpen(true);
+    const unlockVault = (password) => {
+        try {
+            vault.unlock(password);
+            setIsModalOpen(false);
+            alert(vault.isVaultLocked());
+        } catch (error) {
+            alert("Unlock failed " + error?.message || "");
+            setCurrentModal(Modals.UNLOCK_VAULT);
+        }
     };
 
-    const closeCreate = () => setIsCreateOpen(false);
-
-    const handleCreate = (payload: TWalletCreatePayload) => {
-        console.log("CREATE WALLET:", payload);
-
-        if (payload.mode === "privateKey") {
-            const newWallet: TWallet = {
-                id: `pk-${Date.now()}`,
-                type: "privateKey",
-                index: null,
-                address: "0xPK_...NEW",
-                balance: 0,
-                isLocked: true,
-                name: payload.name || "PrivateKey wallet",
-            };
-
-            setPrivateKeyWallets((prev) => [newWallet, ...prev]);
-        }
-
-        const nextIndex = mnemonicWallets.length;
-
-        const newWallet: TWallet = {
-            id: `mn-${Date.now()}`,
-            type: "mnemonic",
-            index: nextIndex,
-            address: "0xMN_...DERIVED",
-            balance: 0,
-            isLocked: false,
-            name: payload.name || `Mnemonic #${nextIndex}`,
+    const createUnlockVaultModalProps = (): IPasswordModalProps => {
+        return {
+            title: "Unlock wallet",
+            onSubmit: unlockVault,
         };
-
-        setMnemonicWallets((prev) => [newWallet, ...prev]);
-
-        setIsCreateOpen(false);
     };
 
-    const openTransferForWallet = (wallet: TWallet) => {
-        setTransferFromWallet(wallet);
-        setIsTransferOpen(true);
-    };
+    const createWalletWithPayload = (data: TWalletCreatePayload): void => {
+        
+    }
 
-    const closeTransfer = () => {
-        setIsTransferOpen(false);
-        setTransferFromWallet(null);
-    };
-
-    const handleSendByIndex = (index: number) => {
-        const wallet =
-            mnemonicWallets.find((wallet) => wallet.index === index) ??
-            privateKeyWallets.find((wallet) => wallet.index === index) ??
-            null;
-
-        if (!wallet) {
-            return;
+    const createCreateWalletProps = (mode: "privateKey" | "mnemonic", variant?): IWalletCreateModalProps => {
+        return {
+            mode,
+            variant,
+            title: "Create Wallet",
+            isInputMode: false,
+            onSubmit: createWalletWithPayload,
+            onClose: () => {
+                setCurrentModalProps(createWalletCreateOptions());
+                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            }
         }
-        openTransferForWallet(wallet);
-    };
+    }
 
-    const handleConfirmTransfer = (toAddress: string, amount: number) => {
-        console.log("TRANSFER:", {
-            from: transferFromWallet?.address,
-            toAddress,
-            amount,
-        });
-
-        closeTransfer();
-    };
-
-    const openActions = (wallet: TWallet) => {
-        setSelectedWallet(wallet);
-        setIsActionsOpen(true);
-    };
-
-    const closeActions = () => {
-        setIsActionsOpen(false);
-        setSelectedWallet(null);
-    };
-
-    const openLockUnlock = () => {
-        if (!selectedWallet) {
-            return;
+    const createWalletRestoreProps = (mode: "privateKey" | "mnemonic", variant?): IWalletCreateModalProps => {
+        return {
+            mode,
+            variant,
+            title: "Create Wallet",
+            isInputMode: true,
+            onSubmit: createWalletWithPayload,
+            onClose: () => {
+                setCurrentModalProps(createWalletCreateOptions());
+                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            }
         }
+    }
 
-        setPasswordTitle(
-            selectedWallet.isLocked ? "Unlock wallet" : "Lock wallet"
-        );
-
-        setIsPasswordOpen(true);
-    };
-
-    const closePassword = () => setIsPasswordOpen(false);
-
-    const handlePasswordSubmit = (password: string) => {
-        console.log("PASSWORD SUBMIT:", password);
-
-        if (!selectedWallet) return;
-
-        const toggle = (list: TWallet[]) =>
-            list.map((wallet) =>
-                wallet.id === selectedWallet.id
-                    ? { ...wallet, isLocked: !wallet.isLocked }
-                    : wallet
-            );
-
-        if (selectedWallet.type === "privateKey") {
-            setPrivateKeyWallets(toggle);
-        }
-
-        setMnemonicWallets(toggle);
-
-        setIsPasswordOpen(false);
-        closeActions();
-    };
-
-    const actionOptions = useMemo(() => {
-        if (!selectedWallet) {
-            return [];
-        }
-
-        return [
+    const createWalletCreateOptions = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
             {
-                title: "Send",
+                title: "Mnemonic 12",
                 onClick: () => {
-                    closeActions();
-                    openTransferForWallet(selectedWallet);
+                    setCurrentModalProps(createCreateWalletProps("mnemonic", 12));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
                 },
-                disabled:
-                    selectedWallet.index === null || selectedWallet.isLocked,
             },
             {
-                title: selectedWallet.isLocked ? "Unlock" : "Lock",
-                onClick: () => openLockUnlock(),
+                title: "Mnemonic 24",
+                onClick: () => {
+                    setCurrentModalProps(createCreateWalletProps("mnemonic", 24));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Private Key",
+                onClick: () => {
+                    setCurrentModalProps(createCreateWalletProps("privateKey"));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
             },
         ];
-    }, [selectedWallet]);
+
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+            onClose: () => {
+                setCurrentModalProps(createSelectWalletCreateModalProps());
+                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
+            },
+        };
+    };
+
+    const createWalletRestoreOptions = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
+            {
+                title: "Mnemonic 12",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("mnemonic", 12));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Mnemonic 24",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("mnemonic", 24));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Private Key",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("privateKey"));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+        ];
+
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+            onClose: () => {
+                setCurrentModalProps(createSelectWalletCreateModalProps());
+                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
+            },
+        };
+    };
+
+    const createSelectWalletCreateModalProps = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
+            {
+                title: "Create",
+                onClick: () => {
+                    setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+                    setCurrentModalProps(createWalletCreateOptions());
+                },
+            },
+            {
+                title: "Restore",
+                onClick: () => {
+                    setCurrentModal(Modals.SELECT_WALLET_RESTORE_OPTIONS);
+                    setCurrentModalProps(createWalletRestoreOptions());
+                },
+            },
+        ];
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+        };
+    };
+
+    useEffect(() => {
+        if (vault.isVaultLocked()) {
+            setCurrentModalProps(createUnlockVaultModalProps());
+            setCurrentModal(Modals.UNLOCK_VAULT);
+            setIsModalOpen(true);
+
+            return;
+        }
+
+        if ((vault.isEmpty())) {
+            setCurrentModalProps(createSelectWalletCreateModalProps());
+            setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            setIsModalOpen(true);
+
+            return;
+        }
+    }, []);
+
+    const createKeyPairWallet = (name: string, password: string) => {
+        const { privateKey, publicKey } = KeysService.generateKeyPair();
+
+        return {
+            privateKey,
+            publicKey,
+            wallet: Wallet.fromPrivateKey(name, privateKey, password, null),
+        };
+    };
+
+    const createMnemonic12Wallet = (name: string, password: string) => {
+        const mnemonic = MnemonicService.generateMnemonic(
+            MnemonicStrength.TWELVE_WORDS
+        );
+        const masterNode = masterNodeFromMnemonic(mnemonic);
+
+        setCurrentMnemonic(mnemonic);
+        setMasterNode(masterNode);
+
+        return deriveNextWallet(masterNode, name, password, 0);
+    };
+
+    const createMnemonic24Wallet = (name: string, password: string) => {
+        const mnemonic = MnemonicService.generateMnemonic(
+            MnemonicStrength.TWENTY_FOUR_WORDS
+        );
+        const masterNode = masterNodeFromMnemonic(mnemonic);
+
+        setCurrentMnemonic(mnemonic);
+        setMasterNode(masterNode);
+
+        return deriveNextWallet(masterNode, name, password, 0);
+    };
+
+    const masterNodeFromMnemonic = (mnemonic: string) => {
+        const seed = KeyDerivationService.mnemonicToSeed(mnemonic);
+
+        return KeyDerivationService.seedToMasterNode(seed);
+    };
+
+    const deriveNextWallet = (masterNode, name, password, lastIndex) => {
+        const nextIndex: number = lastIndex++;
+
+        const path: string = KeyDerivationService.buildBip44Path(
+            60,
+            0,
+            0,
+            nextIndex
+        );
+
+        const privateKey = KeyDerivationService.derivePrivateKey(
+            masterNode,
+            path
+        );
+
+        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+
+        return {
+            privateKey,
+            publicKey,
+            wallet: Wallet.fromPrivateKey(
+                name,
+                privateKey,
+                password,
+                nextIndex
+            ),
+        };
+    };
 
     return (
-        <div className="wallets-page">
-            <div className="wallets-page__header">
-                <h2 className="wallets-page__title">Wallets</h2>
-            </div>
-            <div className="wallets-page__grid">
-                <section className="wallets-page__column">
-                    <div className="wallets-page__column-header">
-                        <h3 className="wallets-page__column-title">
-                            Private Key wallets
-                        </h3>
-                        <button
-                            className="wallets-page__action"
-                            type="button"
-                            onClick={() => openCreate("privateKey")}
-                        >
-                            Add
-                        </button>
-                    </div>
-
-                    <div className="wallets-page__list">
-                        {privateKeyWallets.map((wallet) => (
-                            <div
-                                key={wallet.id}
-                                className="wallets-page__card-wrap"
-                                onClick={() => openActions(wallet)}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter")
-                                        openActions(wallet);
-                                }}
-                            >
-                                <WalletCard
-                                    index={wallet.index}
-                                    address={wallet.address}
-                                    balance={wallet.balance}
-                                    isLocked={wallet.isLocked}
-                                    onSend={handleSendByIndex}
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className="wallets-page__column">
-                    <div className="wallets-page__column-header">
-                        <h3 className="wallets-page__column-title">
-                            Mnemonic wallets
-                        </h3>
-                        <button
-                            className="wallets-page__action"
-                            type="button"
-                            onClick={() => openCreate("mnemonic")}
-                        >
-                            Derive
-                        </button>
-                    </div>
-                    <div className="wallets-page__list">
-                        {mnemonicWallets.map((wallet) => (
-                            <div
-                                key={wallet.id}
-                                className="wallets-page__card-wrap"
-                                onClick={() => openActions(wallet)}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter")
-                                        openActions(wallet);
-                                }}
-                            >
-                                <WalletCard
-                                    index={wallet.index}
-                                    address={wallet.address}
-                                    balance={wallet.balance}
-                                    isLocked={wallet.isLocked}
-                                    onSend={handleSendByIndex}
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            </div>
-            {isCreateOpen && (
-                <CreateWalletModal
-                    mode={createMode}
-                    title={modalTitle}
-                    onSubmit={handleCreate}
-                    onClose={closeCreate}
-                />
+        <ApplicationContext.Provider
+            value={{
+                masterNode,
+                setMasterNode,
+                currentMnemonic,
+                setCurrentMnemonic,
+                currentModalProps,
+                setCurrentModalProps,
+                currentModal,
+                setCurrentModal,
+                isModalOpen,
+                setIsModalOpen,
+            }}
+        >
+            <h1>Playground</h1>
+            <main>
+                <WalletsPage />
+            </main>
+            {isModalOpen && (
+                <div className="modal-wrapper">
+                    {ModalsMeta[currentModal].modal(currentModalProps)}
+                </div>
             )}
-            {isActionsOpen && selectedWallet && (
-                <SelectModal
-                    title={`${selectedWallet.name} (${selectedWallet.type})`}
-                    options={actionOptions}
-                    onClose={closeActions}
-                />
-            )}
-            {isPasswordOpen && (
-                <PasswordModal
-                    title={passwordTitle}
-                    onSubmit={handlePasswordSubmit}
-                    onClose={closePassword}
-                />
-            )}
-            {isTransferOpen && transferFromWallet && (
-                <TransferModal
-                    toAddress=""
-                    amount={0}
-                    commission={0.001}
-                    onConfirm={handleConfirmTransfer}
-                    onCancel={closeTransfer}
-                />
-            )}
-        </div>
+        </ApplicationContext.Provider>
     );
 };
 
-export default App;
+export default Application;

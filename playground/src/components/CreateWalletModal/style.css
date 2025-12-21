@@ -133,7 +133,9 @@ label {
 	background: #f3f3f3;
 	color: #333;
 	border: 1px solid #ccc;
+	color: white;
+	background-color: rgb(255, 0, 0);
 }
 .wallet-create-modal__button--secondary:hover {
-	background: #e2e2e2;
+	background-color: #d00;
 }

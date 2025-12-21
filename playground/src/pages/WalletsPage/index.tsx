@@ -104,7 +104,6 @@ const WalletsPage = (): ReactElement => {
             id: `mn-${Date.now()}`,
             type: "mnemonic",
             index: nextIndex,
-            // TODO: тут будет derived address из SDK по mnemonic + index
             address: "0xMN_...DERIVED",
             balance: 0,
             isLocked: false,
@@ -116,7 +115,6 @@ const WalletsPage = (): ReactElement => {
         setIsCreateOpen(false);
     };
 
-    // ---------- SEND ----------
     const openTransferForWallet = (wallet: TWallet) => {
         setTransferFromWallet(wallet);
         setIsTransferOpen(true);
@@ -127,7 +125,6 @@ const WalletsPage = (): ReactElement => {
         setTransferFromWallet(null);
     };
 
-    // WalletCard даёт только index:number → поэтому для PK wallet (index null) send просто не нажмётся
     const handleSendByIndex = (index: number) => {
         const wallet =
             mnemonicWallets.find((w) => w.index === index) ??
@@ -145,11 +142,9 @@ const WalletsPage = (): ReactElement => {
             amount,
         });
 
-        // TODO: тут будет SDK send
         closeTransfer();
     };
 
-    // ---------- ACTIONS (SelectModal) ----------
     const openActions = (wallet: TWallet) => {
         setSelectedWallet(wallet);
         setIsActionsOpen(true);
@@ -160,7 +155,6 @@ const WalletsPage = (): ReactElement => {
         setSelectedWallet(null);
     };
 
-    // ---------- LOCK / UNLOCK ----------
     const openLockUnlock = () => {
         if (!selectedWallet) return;
         setPasswordTitle(
@@ -176,7 +170,6 @@ const WalletsPage = (): ReactElement => {
 
         if (!selectedWallet) return;
 
-        // TODO: тут будет SDK lock/unlock
         const toggle = (list: TWallet[]) =>
             list.map((w) =>
                 w.id === selectedWallet.id ? { ...w, isLocked: !w.isLocked } : w
@@ -192,7 +185,6 @@ const WalletsPage = (): ReactElement => {
         closeActions();
     };
 
-    // ---------- SelectModal options ----------
     const actionOptions = useMemo(() => {
         if (!selectedWallet) return [];
 
@@ -213,7 +205,6 @@ const WalletsPage = (): ReactElement => {
         ];
     }, [selectedWallet]);
 
-    // ---------- RENDER ----------
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
@@ -221,7 +212,6 @@ const WalletsPage = (): ReactElement => {
             </div>
 
             <div className="wallets-page__grid">
-                {/* LEFT: Private key wallets */}
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
@@ -260,7 +250,6 @@ const WalletsPage = (): ReactElement => {
                     </div>
                 </section>
 
-                {/* RIGHT: Mnemonic wallets */}
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
@@ -300,7 +289,6 @@ const WalletsPage = (): ReactElement => {
                 </section>
             </div>
 
-            {/* Create modal */}
             {isCreateOpen && (
                 <CreateWalletModal
                     mode={createMode}
@@ -310,7 +298,6 @@ const WalletsPage = (): ReactElement => {
                 />
             )}
 
-            {/* Actions modal */}
             {isActionsOpen && selectedWallet && (
                 <SelectModal
                     title={`${selectedWallet.name} (${selectedWallet.type})`}
@@ -319,7 +306,6 @@ const WalletsPage = (): ReactElement => {
                 />
             )}
 
-            {/* Password modal */}
             {isPasswordOpen && (
                 <PasswordModal
                     title={passwordTitle}
@@ -328,7 +314,6 @@ const WalletsPage = (): ReactElement => {
                 />
             )}
 
-            {/* Transfer modal */}
             {isTransferOpen && transferFromWallet && (
                 <TransferModal
                     toAddress=""

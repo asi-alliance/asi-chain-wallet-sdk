@@ -60,11 +60,16 @@
 	cursor: not-allowed;
 }
 
-.modal-content button:not(:disabled):hover {
-	background: #005fa3;
+.modal-content .select-button:not(:disabled):hover {
+	background: rgb(0, 38, 143);
 }
 
-.modal-content .close-button {
-    background: #e53935;
+.modal-content .close-button {	
+	background: #d00;
     color: #fff;
 }
+
+.modal-content .close-button:hover {
+	background-color: rgb(255, 0, 0);;
+}
+

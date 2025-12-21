@@ -29,19 +29,19 @@ const WalletCard = ({
                 {index === null ? "null" : index}
             </div>
             <div className="wallet-card-body">
+                <div className="wallet-card-state">
+                    {isLocked ? "Encrypted" : "Decrypted"}
+                </div>
                 <div className="wallet-card-address">address: {address}</div>
                 <div className="wallet-card-balance">balance: {balance}</div>
-                <div className="wallet-card-state">
-                    isLocked: {isLocked ? "yes" : "no"}
-                </div>
+                <button
+                    className="wallet-card-send"
+                    onClick={handleSend}
+                    disabled={!canSend}
+                >
+                    Send
+                </button>
             </div>
-            <button
-                className="wallet-card-send"
-                onClick={handleSend}
-                disabled={!canSend}
-            >
-                Send
-            </button>
         </div>
     );
 };
