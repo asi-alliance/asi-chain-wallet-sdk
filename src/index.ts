@@ -1,12 +1,6 @@
-import WalletClient from "./client";
-import RChainService from "./services/chainService";
-import SecureWebWalletsStorage from "./domains/SecureStorage";
+import Wallet from "./domains/Wallet";
+import Vault from "./domains/Vault";
+import MnemonicService from "./services/mnemonic";
+import KeyDerivationService from "./services/keyDerivation";
 
-import { AccountManager } from "./services/accountsManager";
-import type { WalletData } from "./domains/SecureStorage";
-
-export type { WalletData };
-
-export { SecureWebWalletsStorage, AccountManager, RChainService };
-
-export default WalletClient;
+export { Wallet, Vault, MnemonicService, KeyDerivationService };

@@ -1,10 +1,8 @@
 import { type ReactElement, useEffect, useState } from "react";
 import { Networks } from "../../config";
 import {
-    SecureWebWalletsStorage,
-    AccountManager,
-    RChainService,
-    type WalletData,
+     Wallet, Vault, MnemonicService,
+     KeyDerivationService
 } from "asi-wallet-sdk";
 import "./style.css";
 
@@ -12,14 +10,15 @@ const DevnetConfig = Networks["Dev"];
 
 console.log("DevnetConfig", DevnetConfig);
 
-const storage = new SecureWebWalletsStorage();
-const accountManager = new AccountManager();
-const chainService = new RChainService({
-    readOnlyURL: DevnetConfig.ReadOnlyURL,
-    validatorURL: DevnetConfig.ValidatorURL,
-    // nodeURL: "",
-    // graphqlURL: "",
-});
+const vault = new Vault();
+console.log(vault);
+
+// const chainService = new RChainService({
+//     readOnlyURL: DevnetConfig.ReadOnlyURL,
+//     validatorURL: DevnetConfig.ValidatorURL,
+//     // nodeURL: "",
+//     // graphqlURL: "",
+// });
 
 const accountId0 = "account0";
 const accountId1 = "account1";
@@ -27,64 +26,64 @@ const accountId1 = "account1";
 const password = "somePassword";
 
 interface IAccountProps {
-    account: WalletData;
+    account?: any;
 }
 
 const Account = ({ account }: IAccountProps): ReactElement => {
-    const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
-    const [balance, setBalance] = useState<string | null>(null);
+    // const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
+    // const [balance, setBalance] = useState<string | null>(null);
 
-    const [recipientAddress, setRecipientAddress] = useState<string>("");
-    const [amountToTransfer, setAmountToTransfer] = useState<number>();
+    // const [recipientAddress, setRecipientAddress] = useState<string>("");
+    // const [amountToTransfer, setAmountToTransfer] = useState<number>();
 
-    const [isTransferring, setIsTransferring] = useState<boolean>(false);
+    // const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
-    const handleAddressChange = (event) => {
-        setRecipientAddress(event.target.value);
-    };
+    // const handleAddressChange = (event) => {
+    //     setRecipientAddress(event.target.value);
+    // };
 
-    const handleAmountChange = (event) => {
-        setAmountToTransfer(event.target.value);
-    };
+    // const handleAmountChange = (event) => {
+    //     setAmountToTransfer(event.target.value);
+    // };
 
-    const fetchBalance = async (walletAddress: string): Promise<void> => {
-        try {
-            setIsBalanceFetching(true);
+    // const fetchBalance = async (walletAddress: string): Promise<void> => {
+    //     try {
+    //         setIsBalanceFetching(true);
 
-            const balanceResult = await chainService.getASIBalance(
-                walletAddress
-            );
+    //         const balanceResult = await chainService.getASIBalance(
+    //             walletAddress
+    //         );
 
-            setBalance(balanceResult.toString());
-        } catch (error) {
-            console.error(error?.message);
-            setBalance(null);
-        } finally {
-            setIsBalanceFetching(false);
-        }
-    };
+    //         setBalance(balanceResult.toString());
+    //     } catch (error) {
+    //         console.error(error?.message);
+    //         setBalance(null);
+    //     } finally {
+    //         setIsBalanceFetching(false);
+    //     }
+    // };
 
-    const transfer = async () => {
-        try {
-            setIsTransferring(true);
+    // const transfer = async () => {
+    //     try {
+    //         setIsTransferring(true);
 
-            const result = await chainService.transfer(
-                account.address,
-                recipientAddress,
-                amountToTransfer.toString(),
-                account.privateKey
-            );
-            console.log(result);
-        } catch (error) {
-            console.error(error?.message);
-        } finally {
-            setIsTransferring(false);
-        }
-    };
+    //         const result = await chainService.transfer(
+    //             account.address,
+    //             recipientAddress,
+    //             amountToTransfer.toString(),
+    //             account.privateKey
+    //         );
+    //         console.log(result);
+    //     } catch (error) {
+    //         console.error(error?.message);
+    //     } finally {
+    //         setIsTransferring(false);
+    //     }
+    // };
 
-    useEffect(() => {
-        fetchBalance(account.address);
-    }, []);
+    // useEffect(() => {
+    //     fetchBalance(account.address);
+    // }, []);
 
     return (
         <div className="account">
@@ -101,7 +100,7 @@ const Account = ({ account }: IAccountProps): ReactElement => {
                     </p>
                     <p>{account.privateKey}</p>
                 </div>
-                {isBalanceFetching ? (
+                {/* {isBalanceFetching ? (
                     <p>
                         <b>Loading balance...</b>
                     </p>
@@ -120,7 +119,7 @@ const Account = ({ account }: IAccountProps): ReactElement => {
                     >
                         Update balance
                     </button>
-                </div>
+                </div> */}
             </div>
             <div className="account-actions">
                 <p>
@@ -162,54 +161,64 @@ const Account = ({ account }: IAccountProps): ReactElement => {
 };
 
 export default function App() {
-    const [wallet0, setWallet0] = useState<WalletData>();
-    const [wallet1, setWallet1] = useState<WalletData>();
+    const [wallet0, setWallet0] = useState<Wallet>();
+    const [wallet1, setWallet1] = useState<Wallet>();
 
-    const createAndSaveWallet = (walletId) => {
-        const account = accountManager.createWallet({
-            accountName: "TEST 1",
-            password: "",
-            network: "",
-        });
+    const createAndSaveWallet = async (walletId) => {
+        const mnemonic = MnemonicService.generateMnemonic(128);
 
-        storage.saveWallet(
-            walletId,
-            {
-                id: account.id,
-                address: account.address,
-                privateKey: account.privateKey,
-                derivationIndex: 0,
-            },
-            password
-        );
+        console.log(mnemonic);
+
+        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+        const privateKey = KeyDerivationService.derivePrivateKey(masterNode, KeyDerivationService.buildBip44Path(60));
+        const wallet = Wallet.fromPrivateKey(walletId, privateKey, password);
+
+        vault.addWallet(wallet);
+
+        const extractedWallet = vault.getWallet(wallet.getAddress());
+
+        console.log(extractedWallet);
+        
+        extractedWallet.unlock(password);
+
+        console.log(extractedWallet);
+
+        // vault.lock(password);
+
+        console.log(vault);
+
+        // vault.unlock(password);
+
+        // console.log(vault);
     };
 
     useEffect(() => {
-        if (!storage.hasWallet(accountId0)) {
-            console.log(accountId0, "was not found");
+        // if (!vault.hasWallet(accountId0)) {
+        //     console.log(accountId0, "was not found");
 
             createAndSaveWallet(accountId0);
 
-            console.log(accountId0, "created");
-        }
+        //     console.log(accountId0, "created");
+        // }
 
-        if (!storage.hasWallet(accountId1)) {
-            console.log(accountId1, "was not found");
+        // if (!storage.hasWallet(accountId1)) {
+        //     console.log(accountId1, "was not found");
 
-            createAndSaveWallet(accountId1);
+        //     createAndSaveWallet(accountId1);
 
-            console.log(accountId1, "created");
-        }
+        //     console.log(accountId1, "created");
+        // }
 
-        const loadedWallet0 = storage.loadWallet(accountId0, password);
-        const loadedWallet1 = storage.loadWallet(accountId1, password);
+        // const loadedWallet0 = storage.loadWallet(accountId0, password);
+        // const loadedWallet1 = storage.loadWallet(accountId1, password);
 
-        if (!loadedWallet0 || !loadedWallet1) {
-            throw new Error("Unable to get wallets from storage");
-        }
+        // if (!loadedWallet0 || !loadedWallet1) {
+        //     throw new Error("Unable to get wallets from storage");
+        // }
 
-        setWallet0(loadedWallet0);
-        setWallet1(loadedWallet1);
+        // setWallet0(loadedWallet0);
+        // setWallet1(loadedWallet1);
     }, []);
 
     return (
