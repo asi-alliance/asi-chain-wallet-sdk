@@ -6,7 +6,7 @@
 
 	background: #fff;
 	border-radius: 10px;
-	box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 
 	padding: 1rem 1.25rem;
 	margin-bottom: 1rem;
@@ -76,14 +76,18 @@
 
 	width: fit-content;
 
-	background: #e57373; 
+	background: #e57373;
 }
 
 .wallet-card-state.unlocked {
 	background: #81c784;
 }
 
-.wallet-card-send {
+.buttons {
+	display: flex;
+}
+
+.wallet-card-button {
 	background: #0078d4;
 	color: #fff;
 
@@ -94,18 +98,18 @@
 	font-size: 0.85rem;
 	font-weight: 500;
 
-	width:60px;
+	min-width: 60px;
 
 	cursor: pointer;
 	transition: background 0.2s, opacity 0.2s;
 	margin-left: 0.25rem;
 }
 
-.wallet-card-send:hover:not(:disabled) {
+.wallet-card-button:hover:not(:disabled) {
 	background: #005fa3;
 }
 
-.wallet-card-send:disabled {
+.wallet-card-button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }

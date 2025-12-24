@@ -4,6 +4,7 @@ import {
     MnemonicService,
     KeyDerivationService,
     KeysService,
+    ChainService,
 } from "asi-wallet-sdk";
 import { type ReactElement, useEffect, useState } from "react";
 import ModalsMeta, { ApplicationContext, ModalProps, Modals } from "./meta";
@@ -15,13 +16,42 @@ import { BIP32Interface } from "bip32";
 import { IWalletCreateModalProps, TWalletCreatePayload } from "@components/CreateWalletModal";
 import "./style.css";
 
-const VAULT_STORAGE_KEY = "test_vault";
+const configs = import.meta.env.VITE_NETWORKS;
+const config = JSON.parse(configs)["DevNet"];
 
-const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_STORAGE_KEY);
+const chainService = new ChainService({
+    validatorURL: config.ValidatorURL,
+    readOnlyURL: config.ReadOnlyURL,
+});
+
+console.log("Initialized Chain service", chainService);
+
+
+console.log("keys", Vault.getSavedVaultKeys());
+
+const VAULT_STORAGE_KEY = "test_vault";
+const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
+
+const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
+
+console.log("Read LS data", encryptedVaultData);
 
 const vault = new Vault(encryptedVaultData);
 
+console.log("Vault instance", vault);
+
+
+const wordsCountToMnemonicStrength = (words: 12 | 24) => {
+    const valuesRecord: Record<number, MnemonicStrength> = {
+        12: MnemonicStrength.TWELVE_WORDS,
+        24: MnemonicStrength.TWENTY_FOUR_WORDS,
+    }
+
+    return valuesRecord[words];
+}
+
 const Application = (): ReactElement => {
+    const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
     const [currentModal, setCurrentModal] = useState<Modals>();
     const [currentModalProps, setCurrentModalProps] = useState<ModalProps>();
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -33,8 +63,11 @@ const Application = (): ReactElement => {
     const unlockVault = (password) => {
         try {
             vault.unlock(password);
+
+            console.log("Unlocked Vault", vault);
+
             setIsModalOpen(false);
-            alert(vault.isVaultLocked());
+            setIsUnlocked(true);
         } catch (error) {
             alert("Unlock failed " + error?.message || "");
             setCurrentModal(Modals.UNLOCK_VAULT);
@@ -48,8 +81,51 @@ const Application = (): ReactElement => {
         };
     };
 
-    const createWalletWithPayload = (data: TWalletCreatePayload): void => {
+    const createWalletWithPrivateKeyPayload = (data: TWalletCreatePayload): void => {
+        if (!("privateKey" in data)) {
+            throw new Error("Wrong data object type for privateKey in TWalletCreatePayload");
+        };
         
+        const walletData = createKeyPairWallet(data.name, data.privateKey, data.password);
+
+        console.log("Wallet data: ", walletData);
+
+        vault.addWallet(walletData.wallet);
+
+        console.log("Vault after the wallet was added", vault);
+
+        vault.lock(data.password);
+
+        console.log("Locked vault", vault);
+
+        vault.save(VAULT_STORAGE_KEY);
+        vault.unlock(data.password);
+    }
+
+    const createWalletWitMnemonicPayload = (data: TWalletCreatePayload): void => {
+        if (!("mnemonicWords" in data)) {
+            throw new Error("Wrong data object type for mnemonicWords in TWalletCreatePayload");
+        }
+                
+        let walletData;
+
+        if (data.mnemonicWords.length == 12) {
+            walletData = createMnemonic12Wallet(data.name, data.mnemonicWords, data.password);
+        } else {
+             walletData = createMnemonic24Wallet(data.name, data.mnemonicWords, data.password);
+        }
+
+        console.log("Wallet data: ", walletData);
+
+        vault.addWallet(walletData.wallet);
+    }
+
+    const createInitialMnemonic = (variant) => {
+        return MnemonicService.mnemonicToWordArray(MnemonicService.generateMnemonic( wordsCountToMnemonicStrength(variant)));
+    }
+
+    const createInitialPrivateKey = () => {
+        return KeysService.generateKeyPair().privateKey;
     }
 
     const createCreateWalletProps = (mode: "privateKey" | "mnemonic", variant?): IWalletCreateModalProps => {
@@ -58,7 +134,9 @@ const Application = (): ReactElement => {
             variant,
             title: "Create Wallet",
             isInputMode: false,
-            onSubmit: createWalletWithPayload,
+            onSubmit: mode === "mnemonic" ? createWalletWitMnemonicPayload : createWalletWithPrivateKeyPayload,
+            initialMnemonic: mode === "mnemonic" ? createInitialMnemonic(variant) : [],
+            initialPrivateKey: mode === "privateKey" ? createInitialPrivateKey() : "",
             onClose: () => {
                 setCurrentModalProps(createWalletCreateOptions());
                 setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
@@ -72,9 +150,11 @@ const Application = (): ReactElement => {
             variant,
             title: "Create Wallet",
             isInputMode: true,
-            onSubmit: createWalletWithPayload,
+            onSubmit: mode === "mnemonic" ? createWalletWitMnemonicPayload : createWalletWithPrivateKeyPayload,
+            initialMnemonic: [],
+            initialPrivateKey: "",
             onClose: () => {
-                setCurrentModalProps(createWalletCreateOptions());
+                setCurrentModalProps(createWalletRestoreOptions());
                 setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
             }
         }
@@ -174,6 +254,7 @@ const Application = (): ReactElement => {
     };
 
     useEffect(() => {
+        
         if (vault.isVaultLocked()) {
             setCurrentModalProps(createUnlockVaultModalProps());
             setCurrentModal(Modals.UNLOCK_VAULT);
@@ -191,9 +272,9 @@ const Application = (): ReactElement => {
         }
     }, []);
 
-    const createKeyPairWallet = (name: string, password: string) => {
-        const { privateKey, publicKey } = KeysService.generateKeyPair();
-
+    const createKeyPairWallet = (name: string, privateKey: string, password: string) => {
+        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+        
         return {
             privateKey,
             publicKey,
@@ -201,10 +282,8 @@ const Application = (): ReactElement => {
         };
     };
 
-    const createMnemonic12Wallet = (name: string, password: string) => {
-        const mnemonic = MnemonicService.generateMnemonic(
-            MnemonicStrength.TWELVE_WORDS
-        );
+    const createMnemonic12Wallet = (name: string, mnemonicArray: string[], password: string) => {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
         const masterNode = masterNodeFromMnemonic(mnemonic);
 
         setCurrentMnemonic(mnemonic);
@@ -213,10 +292,9 @@ const Application = (): ReactElement => {
         return deriveNextWallet(masterNode, name, password, 0);
     };
 
-    const createMnemonic24Wallet = (name: string, password: string) => {
-        const mnemonic = MnemonicService.generateMnemonic(
-            MnemonicStrength.TWENTY_FOUR_WORDS
-        );
+    const createMnemonic24Wallet = (name: string, mnemonicArray: string[], password: string) => {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
+
         const masterNode = masterNodeFromMnemonic(mnemonic);
 
         setCurrentMnemonic(mnemonic);
@@ -275,10 +353,9 @@ const Application = (): ReactElement => {
                 setIsModalOpen,
             }}
         >
-            <h1>Playground</h1>
-            <main>
-                <WalletsPage />
-            </main>
+            {isUnlocked && <main>
+                <WalletsPage vault={vault} chainService={chainService}/>
+            </main>}
             {isModalOpen && (
                 <div className="modal-wrapper">
                     {ModalsMeta[currentModal].modal(currentModalProps)}

@@ -1,27 +1,42 @@
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { Wallet, ChainService } from "asi-wallet-sdk";
 import "./style.css";
 
 export interface IWalletCardProps {
-    index: number | null;
-    address: string;
-    balance: string | number;
-    isLocked: boolean;
-    onSend: (index: number) => void;
+    wallet: Wallet;
+    chainService: ChainService;
 }
 
-const WalletCard = ({
-    index,
-    address,
-    balance,
-    isLocked,
-    onSend,
-}: IWalletCardProps): ReactElement => {
-    const canSend = index !== null && !isLocked;
+const chainService = window["chainService"];
 
-    const handleSend = () => {
-        if (index === null) return;
-        onSend(index);
+const WalletCard = ({ wallet, chainService }: IWalletCardProps): ReactElement => {
+    const [isSending, setIsSending] = useState<boolean>(false);
+    const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
+    const [balance, setBalance] = useState<BigInt>(BigInt(0));
+
+    const index = wallet.getIndex();
+    const address = wallet.getAddress();
+    const isLocked = wallet.isWalletLocked();
+    // const canSend = balance > BigInt(0);
+
+    const fetchBalance = async () => {
+        try {
+            setIsBalanceFetching(true);
+            const balance = await chainService.getASIBalance(address);            
+
+            setBalance(balance);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsBalanceFetching(false);
+        }
     };
+
+    const handleSend = async () => {};
+
+    useEffect(() => {
+        fetchBalance();
+    }, []);
 
     return (
         <div className="wallet-card">
@@ -32,15 +47,27 @@ const WalletCard = ({
                 <div className="wallet-card-state">
                     {isLocked ? "Encrypted" : "Decrypted"}
                 </div>
-                <div className="wallet-card-address">address: {address}</div>
-                <div className="wallet-card-balance">balance: {balance}</div>
-                <button
-                    className="wallet-card-send"
-                    onClick={handleSend}
-                    disabled={!canSend}
-                >
-                    Send
-                </button>
+                <div className="wallet-card-address">{address}</div>
+                <div className="wallet-card-balance">
+                    balance:{" "}
+                    {isBalanceFetching ? "loading balance ..." : balance.toString()}
+                </div>
+                <div className="buttons">
+                    <button
+                        className="wallet-card-button"
+                        onClick={handleSend}
+                        disabled={false}
+                    >
+                        Send
+                    </button>
+                    <button
+                        className="wallet-card-button"
+                        onClick={fetchBalance}
+                        disabled={isBalanceFetching}
+                    >
+                        Reload balance
+                    </button>
+                </div>
             </div>
         </div>
     );
