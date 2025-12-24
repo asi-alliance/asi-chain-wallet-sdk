@@ -278,7 +278,7 @@ const Application = (): ReactElement => {
         return {
             privateKey,
             publicKey,
-            wallet: Wallet.fromPrivateKey(name, privateKey, password, null),
+            wallet: Wallet.fromPrivateKey(name, privateKey, password),
         };
     };
 
@@ -333,7 +333,8 @@ const Application = (): ReactElement => {
                 name,
                 privateKey,
                 password,
-                nextIndex
+                masterNodeId,
+                nextIndex,
             ),
         };
     };
