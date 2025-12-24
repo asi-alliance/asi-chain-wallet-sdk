@@ -1,0 +1,115 @@
+.wallet-card {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+
+	background: #fff;
+	border-radius: 10px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+
+	padding: 1rem 1.25rem;
+	margin-bottom: 1rem;
+
+	width: 100%;
+
+	font-family: inherit;
+}
+
+.wallet-card-index {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+
+	font-weight: 600;
+	font-size: 0.75rem;
+	line-height: 1;
+
+	color: #0078d4;
+	background: rgba(0, 120, 212, 0.12);
+
+	border-radius: 999px;
+	padding: 0.2rem 0.45rem;
+
+	pointer-events: none;
+}
+
+.wallet-card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	width: 100%;
+
+	flex: 1 1 auto;
+}
+
+.wallet-card-address {
+	font-family: 'Fira Mono', 'Consolas', monospace;
+	color: #444;
+
+	background: #f5f5f5;
+	border-radius: 5px;
+
+	padding: 0.25rem 0.5rem;
+	font-size: 0.85rem;
+
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+
+	min-width: 0;
+}
+
+.wallet-card-balance {
+	font-weight: 500;
+	color: #222;
+
+	font-size: 0.85rem;
+}
+
+.wallet-card-state {
+	font-size: 0.75rem;
+	color: #fff;
+
+	border-radius: 999px;
+	padding: 0.2rem 0.6rem;
+
+	width: fit-content;
+
+	background: #e57373;
+}
+
+.wallet-card-state.unlocked {
+	background: #81c784;
+}
+
+.buttons {
+	display: flex;
+}
+
+.wallet-card-button {
+	background: #0078d4;
+	color: #fff;
+
+	border: none;
+	border-radius: 6px;
+
+	padding: 0.35rem 0.8rem;
+	font-size: 0.85rem;
+	font-weight: 500;
+
+	min-width: 60px;
+
+	cursor: pointer;
+	transition: background 0.2s, opacity 0.2s;
+	margin-left: 0.25rem;
+}
+
+.wallet-card-button:hover:not(:disabled) {
+	background: #005fa3;
+}
+
+.wallet-card-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}

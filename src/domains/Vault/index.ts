@@ -21,6 +21,8 @@ export default class Vault {
     private encryptedVaultData: EncryptedData | null;
 
     constructor(VaultData?: VaultRawData) {
+        console.log("Vault constructor got", VaultData);
+
         if (typeof window === "undefined") {
             throw new Error(
                 "getVault can only be called in a browser environment"
@@ -35,7 +37,11 @@ export default class Vault {
             return;
         }
 
-        this.encryptedVaultData = JSON.parse(VaultData);
+        const parsedData = JSON.parse(VaultData)
+
+        console.log("Vault constructor parsed", parsedData)
+
+        this.encryptedVaultData = parsedData;
         this.isLocked = true;
     }
 
@@ -61,6 +67,10 @@ export default class Vault {
         this.ensureBrowserEnvironment();
 
         return localStorage.getItem(vaultKey);
+    }
+
+    public isVaultLocked(): boolean {
+        return this.isLocked;
     }
 
     public save(vaultKey: string = DEFAULT_STORAGE_KEY): void {
@@ -108,7 +118,11 @@ export default class Vault {
             password
         );
 
+        console.log("Wallet unlocked. Output data:", decryptedData);
+
         const parsedWalletsRawData = JSON.parse(decryptedData);
+
+        console.log("Parsed unlocked data", parsedWalletsRawData);
 
         this.metaToWallets(parsedWalletsRawData);
     }
@@ -159,7 +173,7 @@ export default class Vault {
         return this.wallets.has(address);
     }
 
-    private metaToWallets(meta: StoredWalletsMetaRecords): Wallets {
+    private metaToWallets(meta: StoredWalletsMetaRecords): void {
         const wallets: Wallets = new Map();
         const addresses: Address[] = Object.keys(meta) as Address[];
 
@@ -181,7 +195,7 @@ export default class Vault {
             wallets.set(address, wallet);
         });
 
-        return wallets;
+        this.wallets = wallets;
     }
 
     private toString(): string {

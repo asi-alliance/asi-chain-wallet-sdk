@@ -1,236 +1,368 @@
-import { type ReactElement, useEffect, useState } from "react";
-import { Networks } from "../../config";
 import {
-     Wallet, Vault, MnemonicService,
-     KeyDerivationService
+    Wallet,
+    Vault,
+    MnemonicService,
+    KeyDerivationService,
+    KeysService,
+    ChainService,
 } from "asi-wallet-sdk";
+import { type ReactElement, useEffect, useState } from "react";
+import ModalsMeta, { ApplicationContext, ModalProps, Modals } from "./meta";
+import WalletsPage from "@pages/WalletsPage";
+import { IPasswordModalProps } from "@components/PasswordModal";
+import { ISelectModalProps, TSelectModalOption } from "@components/SelectModal";
+import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+import { BIP32Interface } from "bip32";
+import { IWalletCreateModalProps, TWalletCreatePayload } from "@components/CreateWalletModal";
 import "./style.css";
 
-const DevnetConfig = Networks["Dev"];
+const configs = import.meta.env.VITE_NETWORKS;
+const config = JSON.parse(configs)["DevNet"];
 
-console.log("DevnetConfig", DevnetConfig);
+const chainService = new ChainService({
+    validatorURL: config.ValidatorURL,
+    readOnlyURL: config.ReadOnlyURL,
+});
 
-const vault = new Vault();
-console.log(vault);
+console.log("Initialized Chain service", chainService);
 
-// const chainService = new RChainService({
-//     readOnlyURL: DevnetConfig.ReadOnlyURL,
-//     validatorURL: DevnetConfig.ValidatorURL,
-//     // nodeURL: "",
-//     // graphqlURL: "",
-// });
 
-const accountId0 = "account0";
-const accountId1 = "account1";
+console.log("keys", Vault.getSavedVaultKeys());
 
-const password = "somePassword";
+const VAULT_STORAGE_KEY = "test_vault";
+const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
 
-interface IAccountProps {
-    account?: any;
+const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
+
+console.log("Read LS data", encryptedVaultData);
+
+const vault = new Vault(encryptedVaultData);
+
+console.log("Vault instance", vault);
+
+
+const wordsCountToMnemonicStrength = (words: 12 | 24) => {
+    const valuesRecord: Record<number, MnemonicStrength> = {
+        12: MnemonicStrength.TWELVE_WORDS,
+        24: MnemonicStrength.TWENTY_FOUR_WORDS,
+    }
+
+    return valuesRecord[words];
 }
 
-const Account = ({ account }: IAccountProps): ReactElement => {
-    // const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
-    // const [balance, setBalance] = useState<string | null>(null);
+const Application = (): ReactElement => {
+    const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+    const [currentModal, setCurrentModal] = useState<Modals>();
+    const [currentModalProps, setCurrentModalProps] = useState<ModalProps>();
+    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    // const [recipientAddress, setRecipientAddress] = useState<string>("");
-    // const [amountToTransfer, setAmountToTransfer] = useState<number>();
+    const [masterNode, setMasterNode] = useState<BIP32Interface>();
+    const [currentMnemonic, setCurrentMnemonic] = useState<string>();
+    const [currentPassword, setCurrentPassword] = useState<string>();
 
-    // const [isTransferring, setIsTransferring] = useState<boolean>(false);
+    const unlockVault = (password) => {
+        try {
+            vault.unlock(password);
 
-    // const handleAddressChange = (event) => {
-    //     setRecipientAddress(event.target.value);
-    // };
+            console.log("Unlocked Vault", vault);
 
-    // const handleAmountChange = (event) => {
-    //     setAmountToTransfer(event.target.value);
-    // };
+            setIsModalOpen(false);
+            setIsUnlocked(true);
+        } catch (error) {
+            alert("Unlock failed " + error?.message || "");
+            setCurrentModal(Modals.UNLOCK_VAULT);
+        }
+    };
 
-    // const fetchBalance = async (walletAddress: string): Promise<void> => {
-    //     try {
-    //         setIsBalanceFetching(true);
+    const createUnlockVaultModalProps = (): IPasswordModalProps => {
+        return {
+            title: "Unlock wallet",
+            onSubmit: unlockVault,
+        };
+    };
 
-    //         const balanceResult = await chainService.getASIBalance(
-    //             walletAddress
-    //         );
-
-    //         setBalance(balanceResult.toString());
-    //     } catch (error) {
-    //         console.error(error?.message);
-    //         setBalance(null);
-    //     } finally {
-    //         setIsBalanceFetching(false);
-    //     }
-    // };
-
-    // const transfer = async () => {
-    //     try {
-    //         setIsTransferring(true);
-
-    //         const result = await chainService.transfer(
-    //             account.address,
-    //             recipientAddress,
-    //             amountToTransfer.toString(),
-    //             account.privateKey
-    //         );
-    //         console.log(result);
-    //     } catch (error) {
-    //         console.error(error?.message);
-    //     } finally {
-    //         setIsTransferring(false);
-    //     }
-    // };
-
-    // useEffect(() => {
-    //     fetchBalance(account.address);
-    // }, []);
-
-    return (
-        <div className="account">
-            <div className="account-details">
-                <div className="address">
-                    <p>
-                        <b>Address</b>
-                    </p>
-                    <p>{account.address}</p>
-                </div>
-                <div className="privateKey">
-                    <p>
-                        <b>Private key</b>
-                    </p>
-                    <p>{account.privateKey}</p>
-                </div>
-                {/* {isBalanceFetching ? (
-                    <p>
-                        <b>Loading balance...</b>
-                    </p>
-                ) : (
-                    <div className="balance">
-                        <p>
-                            <b>Balance</b>
-                        </p>
-                        <p>{Number.parseInt(balance) ?? 0} ASI</p>
-                    </div>
-                )}
-                <div className="update-balance">
-                    <button
-                        onClick={() => fetchBalance(account.address)}
-                        disabled={isBalanceFetching}
-                    >
-                        Update balance
-                    </button>
-                </div> */}
-            </div>
-            <div className="account-actions">
-                <p>
-                    <b>Transfer</b>
-                </p>
-                <div className="transfer- to-address">
-                    <label htmlFor="">To Address</label>
-                    <input
-                        type="text"
-                        placeholder="to Address"
-                        onChange={handleAddressChange}
-                        value={recipientAddress}
-                    />
-                </div>
-                <div className="transfer- amount">
-                    <label htmlFor="">ASI Amount</label>
-                    <input
-                        type="number"
-                        placeholder="ASI amount"
-                        onChange={handleAmountChange}
-                        value={amountToTransfer}
-                    />
-                </div>
-                <div className="transfer- transfer">
-                    <button
-                        disabled={
-                            !recipientAddress ||
-                            !amountToTransfer ||
-                            isTransferring
-                        }
-                        onClick={transfer}
-                    >
-                        Transfer
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default function App() {
-    const [wallet0, setWallet0] = useState<Wallet>();
-    const [wallet1, setWallet1] = useState<Wallet>();
-
-    const createAndSaveWallet = async (walletId) => {
-        const mnemonic = MnemonicService.generateMnemonic(128);
-
-        console.log(mnemonic);
-
-        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-        const masterNode = KeyDerivationService.seedToMasterNode(seed);
-        const privateKey = KeyDerivationService.derivePrivateKey(masterNode, KeyDerivationService.buildBip44Path(60));
-        const wallet = Wallet.fromPrivateKey(walletId, privateKey, password);
-
-        vault.addWallet(wallet);
-
-        const extractedWallet = vault.getWallet(wallet.getAddress());
-
-        console.log(extractedWallet);
+    const createWalletWithPrivateKeyPayload = (data: TWalletCreatePayload): void => {
+        if (!("privateKey" in data)) {
+            throw new Error("Wrong data object type for privateKey in TWalletCreatePayload");
+        };
         
-        extractedWallet.unlock(password);
+        const walletData = createKeyPairWallet(data.name, data.privateKey, data.password);
 
-        console.log(extractedWallet);
+        console.log("Wallet data: ", walletData);
 
-        // vault.lock(password);
+        vault.addWallet(walletData.wallet);
 
-        console.log(vault);
+        console.log("Vault after the wallet was added", vault);
 
-        // vault.unlock(password);
+        vault.lock(data.password);
 
-        // console.log(vault);
+        console.log("Locked vault", vault);
+
+        vault.save(VAULT_STORAGE_KEY);
+        vault.unlock(data.password);
+    }
+
+    const createWalletWitMnemonicPayload = (data: TWalletCreatePayload): void => {
+        if (!("mnemonicWords" in data)) {
+            throw new Error("Wrong data object type for mnemonicWords in TWalletCreatePayload");
+        }
+                
+        let walletData;
+
+        if (data.mnemonicWords.length == 12) {
+            walletData = createMnemonic12Wallet(data.name, data.mnemonicWords, data.password);
+        } else {
+             walletData = createMnemonic24Wallet(data.name, data.mnemonicWords, data.password);
+        }
+
+        console.log("Wallet data: ", walletData);
+
+        vault.addWallet(walletData.wallet);
+    }
+
+    const createInitialMnemonic = (variant) => {
+        return MnemonicService.mnemonicToWordArray(MnemonicService.generateMnemonic( wordsCountToMnemonicStrength(variant)));
+    }
+
+    const createInitialPrivateKey = () => {
+        return KeysService.generateKeyPair().privateKey;
+    }
+
+    const createCreateWalletProps = (mode: "privateKey" | "mnemonic", variant?): IWalletCreateModalProps => {
+        return {
+            mode,
+            variant,
+            title: "Create Wallet",
+            isInputMode: false,
+            onSubmit: mode === "mnemonic" ? createWalletWitMnemonicPayload : createWalletWithPrivateKeyPayload,
+            initialMnemonic: mode === "mnemonic" ? createInitialMnemonic(variant) : [],
+            initialPrivateKey: mode === "privateKey" ? createInitialPrivateKey() : "",
+            onClose: () => {
+                setCurrentModalProps(createWalletCreateOptions());
+                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            }
+        }
+    }
+
+    const createWalletRestoreProps = (mode: "privateKey" | "mnemonic", variant?): IWalletCreateModalProps => {
+        return {
+            mode,
+            variant,
+            title: "Create Wallet",
+            isInputMode: true,
+            onSubmit: mode === "mnemonic" ? createWalletWitMnemonicPayload : createWalletWithPrivateKeyPayload,
+            initialMnemonic: [],
+            initialPrivateKey: "",
+            onClose: () => {
+                setCurrentModalProps(createWalletRestoreOptions());
+                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            }
+        }
+    }
+
+    const createWalletCreateOptions = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
+            {
+                title: "Mnemonic 12",
+                onClick: () => {
+                    setCurrentModalProps(createCreateWalletProps("mnemonic", 12));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Mnemonic 24",
+                onClick: () => {
+                    setCurrentModalProps(createCreateWalletProps("mnemonic", 24));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Private Key",
+                onClick: () => {
+                    setCurrentModalProps(createCreateWalletProps("privateKey"));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+        ];
+
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+            onClose: () => {
+                setCurrentModalProps(createSelectWalletCreateModalProps());
+                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
+            },
+        };
+    };
+
+    const createWalletRestoreOptions = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
+            {
+                title: "Mnemonic 12",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("mnemonic", 12));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Mnemonic 24",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("mnemonic", 24));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+            {
+                title: "Private Key",
+                onClick: () => {
+                    setCurrentModalProps(createWalletRestoreProps("privateKey"));
+                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
+                },
+            },
+        ];
+
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+            onClose: () => {
+                setCurrentModalProps(createSelectWalletCreateModalProps());
+                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
+            },
+        };
+    };
+
+    const createSelectWalletCreateModalProps = (): ISelectModalProps => {
+        const selectOptions: TSelectModalOption[] = [
+            {
+                title: "Create",
+                onClick: () => {
+                    setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+                    setCurrentModalProps(createWalletCreateOptions());
+                },
+            },
+            {
+                title: "Restore",
+                onClick: () => {
+                    setCurrentModal(Modals.SELECT_WALLET_RESTORE_OPTIONS);
+                    setCurrentModalProps(createWalletRestoreOptions());
+                },
+            },
+        ];
+        return {
+            title: "Select Wallet Source",
+            options: selectOptions,
+        };
     };
 
     useEffect(() => {
-        // if (!vault.hasWallet(accountId0)) {
-        //     console.log(accountId0, "was not found");
+        
+        if (vault.isVaultLocked()) {
+            setCurrentModalProps(createUnlockVaultModalProps());
+            setCurrentModal(Modals.UNLOCK_VAULT);
+            setIsModalOpen(true);
 
-            createAndSaveWallet(accountId0);
+            return;
+        }
 
-        //     console.log(accountId0, "created");
-        // }
+        if ((vault.isEmpty())) {
+            setCurrentModalProps(createSelectWalletCreateModalProps());
+            setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
+            setIsModalOpen(true);
 
-        // if (!storage.hasWallet(accountId1)) {
-        //     console.log(accountId1, "was not found");
-
-        //     createAndSaveWallet(accountId1);
-
-        //     console.log(accountId1, "created");
-        // }
-
-        // const loadedWallet0 = storage.loadWallet(accountId0, password);
-        // const loadedWallet1 = storage.loadWallet(accountId1, password);
-
-        // if (!loadedWallet0 || !loadedWallet1) {
-        //     throw new Error("Unable to get wallets from storage");
-        // }
-
-        // setWallet0(loadedWallet0);
-        // setWallet1(loadedWallet1);
+            return;
+        }
     }, []);
 
+    const createKeyPairWallet = (name: string, privateKey: string, password: string) => {
+        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+        
+        return {
+            privateKey,
+            publicKey,
+            wallet: Wallet.fromPrivateKey(name, privateKey, password, null),
+        };
+    };
+
+    const createMnemonic12Wallet = (name: string, mnemonicArray: string[], password: string) => {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
+        const masterNode = masterNodeFromMnemonic(mnemonic);
+
+        setCurrentMnemonic(mnemonic);
+        setMasterNode(masterNode);
+
+        return deriveNextWallet(masterNode, name, password, 0);
+    };
+
+    const createMnemonic24Wallet = (name: string, mnemonicArray: string[], password: string) => {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
+
+        const masterNode = masterNodeFromMnemonic(mnemonic);
+
+        setCurrentMnemonic(mnemonic);
+        setMasterNode(masterNode);
+
+        return deriveNextWallet(masterNode, name, password, 0);
+    };
+
+    const masterNodeFromMnemonic = (mnemonic: string) => {
+        const seed = KeyDerivationService.mnemonicToSeed(mnemonic);
+
+        return KeyDerivationService.seedToMasterNode(seed);
+    };
+
+    const deriveNextWallet = (masterNode, name, password, lastIndex) => {
+        const nextIndex: number = lastIndex++;
+
+        const path: string = KeyDerivationService.buildBip44Path(
+            60,
+            0,
+            0,
+            nextIndex
+        );
+
+        const privateKey = KeyDerivationService.derivePrivateKey(
+            masterNode,
+            path
+        );
+
+        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+
+        return {
+            privateKey,
+            publicKey,
+            wallet: Wallet.fromPrivateKey(
+                name,
+                privateKey,
+                password,
+                nextIndex
+            ),
+        };
+    };
+
     return (
-        <div style={{ padding: 20 }}>
-            <h2>SDK playground</h2>
-
-            <div className="accounts">
-                {wallet0 ? <Account account={wallet0} /> : "Loading wallet 0"}
-                {wallet1 ? <Account account={wallet1} /> : "Loading wallet 1"}
-            </div>
-        </div>
+        <ApplicationContext.Provider
+            value={{
+                masterNode,
+                setMasterNode,
+                currentMnemonic,
+                setCurrentMnemonic,
+                currentModalProps,
+                setCurrentModalProps,
+                currentModal,
+                setCurrentModal,
+                isModalOpen,
+                setIsModalOpen,
+            }}
+        >
+            {isUnlocked && <main>
+                <WalletsPage vault={vault} chainService={chainService}/>
+            </main>}
+            {isModalOpen && (
+                <div className="modal-wrapper">
+                    {ModalsMeta[currentModal].modal(currentModalProps)}
+                </div>
+            )}
+        </ApplicationContext.Provider>
     );
-}
+};
 
-// todo replace vite-plugin-wasm;
+export default Application;
