@@ -1,8 +1,4 @@
-import { wordlists } from "bip39";
-
 import { MIN_WORDS_COUNT, MAX_WORDS_COUNT } from "../constants";
-
-const bip39EnglishSet = new Set<string>(wordlists.english);
 
 export const sanitizeWord = (raw: string): string => {
     if (!raw) {
@@ -22,14 +18,6 @@ export const sanitizeWord = (raw: string): string => {
     const joined = lettersOnly.join("");
 
     return joined.trim();
-};
-
-export const isBip39Word = (word: string): boolean => {
-    if (!word) {
-        return false;
-    }
-
-    return bip39EnglishSet.has(word);
 };
 
 export const clippedWordCount = (value: number): number => {

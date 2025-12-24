@@ -58,6 +58,7 @@ const Input = ({
                 {index + 1}.
             </label>
             <input
+                readOnly={!onChange}
                 id={`${index}`}
                 ref={inputRef}
                 className={`input ${hasError ? "input-error" : ""}`}

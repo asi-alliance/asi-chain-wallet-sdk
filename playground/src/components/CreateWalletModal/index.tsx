@@ -17,17 +17,21 @@ export type TWalletCreatePayload =
       };
 
 export interface IWalletCreateModalProps {
+    variant?: 12 | 24;
     mode: "privateKey" | "mnemonic";
+    isInputMode: boolean;
     title?: string;
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose: () => void;
 }
 
 const CreateWalletModal = ({
+    variant = 12,
     mode,
     title,
     onSubmit,
     onClose,
+    isInputMode,
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
@@ -130,7 +134,8 @@ const CreateWalletModal = ({
                                 id="privateKey"
                                 name="privateKey"
                                 type="text"
-                                placeholder="0x..."
+                                placeholder=""
+                                autoComplete="off"
                                 required
                             />
                         </div>
@@ -160,6 +165,7 @@ const CreateWalletModal = ({
                             id="password"
                             name="password"
                             type="password"
+                            autoComplete="off"
                             required
                         />
                     </div>
@@ -167,6 +173,7 @@ const CreateWalletModal = ({
                     <div className="wallet-create-modal__row">
                         <label htmlFor="repassword">Re-password</label>
                         <input
+                            autoComplete="off"
                             id="repassword"
                             name="repassword"
                             type="password"
@@ -215,7 +222,12 @@ const CreateWalletModal = ({
                             </button>
                         </div>
 
-                        <InputsForm onValidSubmit={handleMnemonicSubmit} />
+                        <InputsForm
+                            variant={variant}
+                            onValidSubmit={handleMnemonicSubmit}
+                            formMode={isInputMode ? "input" : "output"}
+                            onClose={() => setIsMnemonicModalOpen(false)}
+                        />
                     </div>
                 </div>
             )}

@@ -12,6 +12,7 @@ interface IInputsGridProps {
     inputRefs: RefObject<HTMLInputElement | null>[];
     onWordChange: (index: number, value: string) => void;
     onPasteWords: (index: number, pasted: string) => void;
+    mode: "input" | "output";
 }
 
 const InputsGrid = ({
@@ -20,6 +21,7 @@ const InputsGrid = ({
     inputRefs,
     onWordChange,
     onPasteWords,
+    mode,
 }: IInputsGridProps): ReactElement => {
     const inputs = useMemo(
         () =>
@@ -29,8 +31,8 @@ const InputsGrid = ({
                     index={idx}
                     value={words[idx]}
                     hasError={errors[idx]}
-                    onChange={onWordChange}
-                    onPaste={onPasteWords}
+                    onChange={mode === "input" ? onWordChange : undefined}
+                    onPaste={mode === "input" ? onPasteWords : undefined}
                     inputRef={inputRefs[idx]}
                 />
             )),

@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
-interface ITransferModalProps {
+export interface ITransferModalProps {
     toAddress: string;
     amount: number;
     commission: number;

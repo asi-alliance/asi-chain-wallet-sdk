@@ -63,6 +63,10 @@ export default class Vault {
         return localStorage.getItem(vaultKey);
     }
 
+    public isVaultLocked(): boolean {
+        return this.isLocked;
+    }
+
     public save(vaultKey: string = DEFAULT_STORAGE_KEY): void {
         Vault.ensureBrowserEnvironment();
 

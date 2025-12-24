@@ -1,12 +1,9 @@
 import InputsGrid from "../InputsGrid";
 import { DEFAULT_WORDS_COUNT, WordsCountVariants } from "../../utils/constants";
-import {
-    clippedWordCount,
-    sanitizeWord,
-    isBip39Word,
-} from "../../utils/functions";
+import { clippedWordCount, sanitizeWord } from "../../utils/functions";
 import {
     createRef,
+    Fragment,
     useEffect,
     useMemo,
     useState,
@@ -17,9 +14,12 @@ import {
 } from "react";
 import "./style.css";
 
-interface IInputsFormProps {
+export interface IInputsFormProps {
+    variant: 12 | 24;
+    formMode: "input" | "output";
     validateWords?: (words: string[]) => string | null;
     onValidSubmit?: (normalizedWords: string[]) => void;
+    onClose: () => void;
 }
 
 const createEmptyWords = (count: number): string[] =>
@@ -47,10 +47,13 @@ const updateArrayLength = <T,>(
 };
 
 const InputsForm = ({
+    variant,
+    formMode,
     validateWords,
     onValidSubmit,
+    onClose,
 }: IInputsFormProps): ReactElement => {
-    const [wordCount, setWordCount] = useState<number>(DEFAULT_WORDS_COUNT);
+    const [wordCount, setWordCount] = useState<number>(variant);
     const [words, setWords] = useState<string[]>(() =>
         createEmptyWords(DEFAULT_WORDS_COUNT)
     );
@@ -106,7 +109,7 @@ const InputsForm = ({
             return;
         }
 
-        nextErrors[index] = !isBip39Word(word);
+        // nextErrors[index] = !isBip39Word(word);
 
         setErrors(nextErrors);
     };
@@ -139,7 +142,7 @@ const InputsForm = ({
         }
 
         const sanitized = values.map(sanitizeWord).filter(Boolean);
-        
+
         if (!sanitized.length) {
             return;
         }
@@ -163,7 +166,7 @@ const InputsForm = ({
                 return;
             }
 
-            nextErrors[index] = !isBip39Word(word);
+            // nextErrors[index] = !isBip39Word(word);
         });
 
         setErrors(nextErrors);
@@ -195,13 +198,13 @@ const InputsForm = ({
         trimmed.forEach((word, index) => {
             if (!word) {
                 emptyIndexes.push(index);
-        
+
                 return;
             }
 
-            if (!isBip39Word(word)) {
-                invalidIndexes.push(index);
-            }
+            // if (!isBip39Word(word)) {
+            //     invalidIndexes.push(index);
+            // }
         });
 
         let errorMessage: string | null = null;
@@ -221,11 +224,11 @@ const InputsForm = ({
         trimmed.forEach((word, index) => {
             if (!word) {
                 nextErrors[index] = false;
-        
+
                 return;
             }
 
-            nextErrors[index] = !isBip39Word(word);
+            // nextErrors[index] = !isBip39Word(word);
         });
 
         setErrors(nextErrors);
@@ -242,7 +245,7 @@ const InputsForm = ({
 
         if (customError) {
             setSubmitError(customError);
-        
+
             return false;
         }
 
@@ -269,7 +272,7 @@ const InputsForm = ({
 
     return (
         <form className="form" onSubmit={handleSubmit}>
-            <div className="form-row">
+            {/* <div className="form-row">
                 <label className="label">
                     Words count:
                     <select
@@ -284,8 +287,9 @@ const InputsForm = ({
                         ))}
                     </select>
                 </label>
-            </div>
+            </div> */}
             <InputsGrid
+                mode={formMode}
                 words={words}
                 errors={errors}
                 inputRefs={inputRefs}
@@ -294,16 +298,21 @@ const InputsForm = ({
             />
             {submitError && <div className="error-message">{submitError}</div>}
             <div className="form-row form-row-actions">
-                <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={resetAllWords}
-                >
-                    Clear
-                </button>
-                <button type="submit" className="button button-primary">
-                    Submit
-                </button>
+                {formMode === "input" && (
+                    <Fragment>
+                        <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={resetAllWords}
+                        >
+                            Clear
+                        </button>
+                        <button type="submit" className="button button-primary">
+                            Submit
+                        </button>
+                    </Fragment>
+                )}
+                <button className="button button-secondary" onClick={onClose}>Close</button>
             </div>
         </form>
     );
