@@ -13,7 +13,8 @@ export interface StoredWalletMeta {
     cryptoIV: string;
     cryptoSalt: string;
     cryptoVersion: string;
-    index: string;
+    masterNodeId: string | null;
+    index: string | null;
 }
 
 export type StringifiedWalletMeta = string;
@@ -34,17 +35,20 @@ export default class Wallet {
     private isLocked: boolean;
     private assets: Assets;
     private memory: WalletMemory;
+    private masterNodeId: string | null;
     private index: number | null;
 
     private constructor(
         name: string,
-        index: number | null,
         address: Address,
         encryptedPrivateKey: string,
-        memory: Map<string, string>
+        memory: Map<string, string>,
+        masterNodeId: string | null,
+        index: number | null
     ) {
         this.name = name;
         this.index = index;
+        this.masterNodeId = masterNodeId;
         this.address = address;
         this.privateKey = encryptedPrivateKey;
         this.memory = memory;
@@ -56,6 +60,7 @@ export default class Wallet {
         name: string,
         privateKey: string,
         password: string,
+        masterNodeId: string | null = null,
         index: number | null = null
     ): Wallet {
         const address: Address =
@@ -73,21 +78,29 @@ export default class Wallet {
             [WalletMemoryKeys.CRYPTO_VERSION, String(encrypted.version)],
         ]);
 
-        return new Wallet(name, index, address, encrypted.data, memory);
+        return new Wallet(
+            name,
+            address,
+            encrypted.data,
+            memory,
+            masterNodeId,
+            index
+        );
     }
 
     public static fromEncryptedData(
         name: string,
+        address: Address,
         options: {
-            address: string;
             encryptedPrivateKey: string;
             iv: string;
             salt: string;
             version: number;
         },
+        masterNodeId: string | null,
         index: number | null
     ): Wallet {
-        if (!isAddress(options.address)) {
+        if (!isAddress(address)) {
             throw new Error("Invalid address format");
         }
 
@@ -100,10 +113,11 @@ export default class Wallet {
 
         return new Wallet(
             name,
-            index,
-            options.address,
+            address,
             options.encryptedPrivateKey,
-            memory
+            memory,
+            masterNodeId,
+            index
         );
     }
 
@@ -150,13 +164,9 @@ export default class Wallet {
             throw new Error("Unlock Failed: " + error?.message);
         }
     }
-    
+
     public registerAsset(asset: Asset): void {
         this.assets.set(asset.getId(), asset);
-    }
-
-    public transfer(): void {
-        this.ensureUnlocked();
     }
 
     public getAddress(): Address {
@@ -193,6 +203,7 @@ export default class Wallet {
             cryptoSalt: this.memory.get(WalletMemoryKeys.CRYPTO_SALT) ?? "",
             cryptoVersion:
                 this.memory.get(WalletMemoryKeys.CRYPTO_VERSION) ?? "",
+            masterNodeId: this.masterNodeId ?? "",
             index: this.index?.toString() ?? "",
         };
 
