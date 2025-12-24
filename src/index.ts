@@ -1,5 +1,6 @@
 import Wallet from "./domains/Wallet";
 import Vault from "./domains/Vault";
+import EncryptedSeedRecord from "./domains/SeedRecord";
 import ChainService from "./services/chainService";
 import MnemonicService from "./services/mnemonic";
 import KeyDerivationService from "./services/keyDerivation";
@@ -11,5 +12,6 @@ export {
     MnemonicService,
     KeysService,
     KeyDerivationService,
+    EncryptedSeedRecord,
     ChainService,
 };
