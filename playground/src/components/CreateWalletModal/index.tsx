@@ -22,7 +22,7 @@ export interface IWalletCreateModalProps {
     isInputMode: boolean;
     title?: string;
     onSubmit: (payload: TWalletCreatePayload) => void;
-    onClose: () => void;
+    onClose?: () => void;
     initialMnemonic?: string[];
     initialPrivateKey?: string;
 }

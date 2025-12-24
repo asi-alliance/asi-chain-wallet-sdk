@@ -1,61 +1,98 @@
-import SelectModal, {  type ISelectModalProps } from "@components/SelectModal";
-import PasswordModal, { type IPasswordModalProps } from "@components/PasswordModal";
-import { createContext, type ReactElement, useContext } from "react";
+import {
+    Vault,
+    MnemonicService,
+    KeysService,
+    ChainService,
+} from "asi-wallet-sdk";
+import PasswordModal, {
+    type IPasswordModalProps,
+} from "@components/PasswordModal";
+import { type ReactElement } from "react";
 import TransferModal, { ITransferModalProps } from "@components/TransferModal";
-import CreateWalletModal, { IWalletCreateModalProps } from "@components/CreateWalletModal";
+import CreateWalletModal, {
+    IWalletCreateModalProps,
+} from "@components/CreateWalletModal";
+import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+
+const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
 
 export enum Modals {
-    UNLOCK_VAULT = "unlockVault",
-    SELECT_WALLET_SOURCE = "selectWalletSource",
-    SELECT_WALLET_CREATE_OPTIONS = "selectWalletCreateOptions",
-    SELECT_WALLET_RESTORE_OPTIONS = "selectWalletRestoreOptions",
+    PASSWORD_MODAL = "unlockVault",
     CREATE_WALLET_MODAL = "createWalletModal",
-    RESTORE_WALLET_MODAL = "restoreWalletModal",
     TRANSFER_MODAL = "transferModal",
-    UNLOCKED_WALLED = "unlockedWalled",
 }
 
 export type ModalProps =
     | IPasswordModalProps
-    | ISelectModalProps
     | ITransferModalProps
     | IWalletCreateModalProps
+    | undefined;
 
 interface IModalsMetaProps {
     modal: (props: ModalProps) => ReactElement;
 }
 
 const ModalsMeta: Record<string, IModalsMetaProps> = {
-    [Modals.UNLOCK_VAULT]: {
+    [Modals.PASSWORD_MODAL]: {
         modal: (props: IPasswordModalProps) => <PasswordModal {...props} />,
-    },
-    [Modals.UNLOCKED_WALLED]:{
-        modal: (props: IPasswordModalProps) => <PasswordModal {...props} />,
-    },
-    [Modals.SELECT_WALLET_SOURCE]: {
-        modal: (props: ISelectModalProps) => <SelectModal {...props} />,
-    },
-    [Modals.SELECT_WALLET_RESTORE_OPTIONS]: {
-        modal: (props: ISelectModalProps) => <SelectModal {...props} />,
-    },
-    [Modals.SELECT_WALLET_CREATE_OPTIONS]: {
-        modal: (props: ISelectModalProps) => <SelectModal {...props} />,
     },
     [Modals.CREATE_WALLET_MODAL]: {
-        modal:(props: IWalletCreateModalProps)=> <CreateWalletModal {...props} />
-    },
-    [Modals.RESTORE_WALLET_MODAL]: {
-        modal:(props: IWalletCreateModalProps)=> <CreateWalletModal {...props} />
+        modal: (props: IWalletCreateModalProps) => (
+            <CreateWalletModal {...props} />
+        ),
     },
     [Modals.TRANSFER_MODAL]: {
-        modal: (props: ITransferModalProps) => <TransferModal {...props}/>
+        modal: (props: ITransferModalProps) => <TransferModal {...props} />,
+    },
+};
+
+export const init = (config, setIsLoading, setVault, setChainService) => {
+    try {
+        setIsLoading(true);
+
+        const chainService = new ChainService({
+            validatorURL: config.ValidatorURL,
+            readOnlyURL: config.ReadOnlyURL,
+        });
+
+        console.log("Initialized Chain service", chainService);
+
+        console.log("Found keys", Vault.getSavedVaultKeys());
+
+        const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
+
+        console.log("Read LS data", encryptedVaultData);
+
+        const vault = new Vault(encryptedVaultData);
+
+        console.log("Vault instance", vault);
+
+        setVault(vault);
+        setChainService(chainService);
+    } catch (error) {
+        alert(error?.message || "Error during initialization");
+    } finally {
+        setIsLoading(false);
     }
 };
 
-const ApplicationContext = createContext({});
+const wordsCountToMnemonicStrength = (words: 12 | 24) => {
+    const valuesRecord: Record<number, MnemonicStrength> = {
+        12: MnemonicStrength.TWELVE_WORDS,
+        24: MnemonicStrength.TWENTY_FOUR_WORDS,
+    };
 
-const useApplicationContext = () => useContext(ApplicationContext);
+    return valuesRecord[words];
+};
 
-export { ApplicationContext, useApplicationContext };
+export const createInitialMnemonic = (variant) => {
+    return MnemonicService.mnemonicToWordArray(
+        MnemonicService.generateMnemonic(wordsCountToMnemonicStrength(variant))
+    );
+};
+
+export const createInitialPrivateKey = () => {
+    return KeysService.generateKeyPair().privateKey;
+};
 
 export default ModalsMeta;

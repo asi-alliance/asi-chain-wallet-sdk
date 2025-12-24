@@ -7,514 +7,195 @@ import {
     ChainService,
     EncryptedSeedRecord,
 } from "asi-wallet-sdk";
-import { type ReactElement, useEffect, useRef, useState } from "react";
-import ModalsMeta, { ApplicationContext, ModalProps, Modals } from "./meta";
-import WalletsPage from "@pages/WalletsPage";
-import { IPasswordModalProps } from "@components/PasswordModal";
-import { ISelectModalProps, TSelectModalOption } from "@components/SelectModal";
-import { MnemonicStrength } from "../../../../dist/services/mnemonic";
-import { BIP32Interface } from "bip32";
-import {
-    IWalletCreateModalProps,
-    TWalletCreatePayload,
-} from "@components/CreateWalletModal";
+import ModalManager from "./ModalManager";
 import FullscreenLoader from "@components/FullScreenLoader";
+import { ReactElement, useEffect, useState } from "react";
+import { createInitialPrivateKey, init, ModalProps, Modals } from "./meta";
+import WalletsPage from "@pages/WalletsPage";
 import "./style.css";
+import { TWalletCreatePayload } from "@components/CreateWalletModal";
+
+// 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
+// 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
+
+type ModalState = {
+    type: Modals | null;
+    props?: ModalProps;
+};
+
+const VAULT_STORAGE_KEY = "test_vault";
 
 const configs = import.meta.env.VITE_NETWORKS;
 const config = JSON.parse(configs)["DevNet"];
 
-const chainService = new ChainService({
-    validatorURL: config.ValidatorURL,
-    readOnlyURL: config.ReadOnlyURL,
-});
-
-console.log("Initialized Chain service", chainService);
-
-console.log("keys", Vault.getSavedVaultKeys());
-
-const VAULT_STORAGE_KEY = "test_vault";
-const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
-
-const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
-
-console.log("Read LS data", encryptedVaultData);
-
-const vault = new Vault(encryptedVaultData);
-
-console.log("Vault instance", vault);
-
-const wordsCountToMnemonicStrength = (words: 12 | 24) => {
-    const valuesRecord: Record<number, MnemonicStrength> = {
-        12: MnemonicStrength.TWELVE_WORDS,
-        24: MnemonicStrength.TWENTY_FOUR_WORDS,
-    };
-
-    return valuesRecord[words];
-};
+if (!config) {
+    throw new Error("Network configuration (env) not found");
+}
 
 const Application = (): ReactElement => {
-    const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
-    const [currentModal, setCurrentModal] = useState<Modals>();
-    const [currentModalProps, setCurrentModalProps] = useState<ModalProps>();
-    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [modalState, setModalState] = useState<ModalState>({ type: null });
 
-    const [masterNode, setMasterNode] = useState<BIP32Interface>();
-    const [currentMnemonic, setCurrentMnemonic] = useState<string>();
+    const [vault, setVault] = useState<Vault | null>(null);
+    const [isVaultConfigured, setIsVaultConfigured] = useState<boolean>(false);
+    const [chainService, setChainService] = useState<ChainService | null>(null);
 
-    const currentPassword = useRef<string>("");
-    const isLoading = useRef<boolean>(false);
+    const [currentPassword, setCurrentPassword] = useState<string>("");
+
+    const updateVault = (vault) => {
+        setVault(Object.assign(Object.create(Object.getPrototypeOf(vault)), vault));
+    }
+
+    const openUnlockModal = () => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Unlock Vault",
+                onSubmit: unlockVault,
+            },
+        });
+    };
+
+    const openCreatePasswordForVaultModal = () => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Create Password for Vault",
+                onSubmit: createPassword,
+            }
+        })
+    }
 
     const unlockVault = (password: string) => {
         try {
-            isLoading.current = true;
+            setIsLoading(true);
 
+            vault?.unlock(password);
+            setCurrentPassword(password);
+            updateVault(vault);
+
+            setModalState({ type: null });
+        } catch {
+            alert(
+                "Failed to unlock vault. Please check your password and try again."
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const createPassword = (password) => {
+        saveVault(password);
+        setIsVaultConfigured(true);
+        setModalState({ type: null });
+    }
+
+    const addWalletToVault = (wallet: Wallet) => {
+        if (!vault) return;
+
+        vault.addWallet(wallet);
+
+        saveVault(currentPassword);
+    }
+
+    const saveVault = (password: string) => {
+        if (!vault) return;
+        
+        try {
+            setIsLoading(true);
+
+            vault.lock(password)
+            vault.save(VAULT_STORAGE_KEY);
             vault.unlock(password);
 
-            currentPassword.current = password;
+            updateVault(vault);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const createKeyPairWallet = (payload: TWalletCreatePayload) => {
+        if (!vault) return;
+        
+        try {
+            setIsLoading(true);
+
+            if (payload.mode !== "privateKey") {
+                throw new Error("Invalid payload mode for key pair wallet creation");
+            }
+
+            const newWallet = Wallet.fromPrivateKey(payload.name, payload.privateKey, payload.password);
+
+            addWalletToVault(newWallet);
             
-            console.log("Unlocked Vault", vault);
-
-            setIsModalOpen(false);
-            setIsUnlocked(true);
-        } catch (error) {
-            alert("Unlock failed " + error?.message || "");
-            setCurrentModal(Modals.UNLOCK_VAULT);
+            setModalState({ type: null });
         } finally {
-            isLoading.current = false;
+            setIsLoading(false);
         }
-    };
+    }
 
-    const createUnlockVaultModalProps = (): IPasswordModalProps => {
-        return {
-            title: "Unlock Vault",
-            onSubmit: unlockVault,
-        };
-    };
-
-    const createWalletWithPrivateKeyPayload = (
-        data: TWalletCreatePayload
-    ): void => {
-        try {
-            isLoading.current = true;
-
-            if (!("privateKey" in data)) {
-                throw new Error(
-                    "Wrong data object type for privateKey in TWalletCreatePayload"
-                );
+    const openCreateKeyPairWalletModal = () => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "privateKey",
+                onSubmit: createKeyPairWallet,
+                isInputMode: false,
+                title: "Create KeyPair Wallet",
+                initialPrivateKey: createInitialPrivateKey()
             }
+        });
+    }
 
-            const walletData = createKeyPairWallet(
-                data.name,
-                data.privateKey,
-                data.password
-            );
-
-            console.log("Wallet data: ", walletData);
-            console.log("Is locked", vault.isVaultLocked(), currentPassword.current);
-
-            if (vault.isVaultLocked()) {
-                vault.unlock(currentPassword.current);
-                console.log("Is locked", vault.isVaultLocked(), currentPassword.current);
+    const openImportKeyPairWalletModal = () => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "privateKey",
+                onSubmit: createKeyPairWallet,
+                isInputMode: true,
+                title: "Create KeyPair Wallet",
             }
-
-            vault.addWallet(walletData.wallet);
-
-            console.log("Vault after the wallet was added", vault);
-
-            vault.lock(currentPassword.current);
-
-            console.log("Locked vault", vault);
-
-            vault.save(VAULT_STORAGE_KEY);
-            vault.unlock(currentPassword.current);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            isLoading.current = false;
-        }
-    };
-
-    const createWalletWitMnemonicPayload = (
-        data: TWalletCreatePayload
-    ): void => {
-        try {
-            isLoading.current = true;
-
-            if (!("mnemonicWords" in data)) {
-                throw new Error(
-                    "Wrong data object type for mnemonicWords in TWalletCreatePayload"
-                );
-            }
-
-            let walletData;
-
-            if (data.mnemonicWords.length === 12) {
-                walletData = createMnemonic12Wallet(
-                    data.name,
-                    data.mnemonicWords,
-                    data.password
-                );
-            } else {
-                walletData = createMnemonic24Wallet(
-                    data.name,
-                    data.mnemonicWords,
-                    data.password
-                );
-            }
-
-            console.log("Wallet data: ", walletData);
-
-            vault.addWallet(walletData.wallet);
-
-            vault.lock(currentPassword.current);
-
-            console.log("Vault after the wallet was added", vault);
-
-            console.log("Locked vault", vault);
-
-            vault.save(VAULT_STORAGE_KEY);
-            vault.unlock(currentPassword.current);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            isLoading.current = false;
-        }
-    };
-
-    const createInitialMnemonic = (variant) => {
-        return MnemonicService.mnemonicToWordArray(
-            MnemonicService.generateMnemonic(
-                wordsCountToMnemonicStrength(variant)
-            )
-        );
-    };
-
-    const createInitialPrivateKey = () => {
-        return KeysService.generateKeyPair().privateKey;
-    };
-
-    const createCreateWalletProps = (
-        mode: "privateKey" | "mnemonic",
-        variant?
-    ): IWalletCreateModalProps => {
-        return {
-            mode,
-            variant,
-            title: "Create Wallet",
-            isInputMode: false,
-            onSubmit:
-                mode === "mnemonic"
-                    ? createWalletWitMnemonicPayload
-                    : createWalletWithPrivateKeyPayload,
-            initialMnemonic:
-                mode === "mnemonic" ? createInitialMnemonic(variant) : [],
-            initialPrivateKey:
-                mode === "privateKey" ? createInitialPrivateKey() : "",
-            onClose: () => {
-                setCurrentModalProps(createWalletCreateOptions());
-                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
-            },
-        };
-    };
-
-    const createWalletRestoreProps = (
-        mode: "privateKey" | "mnemonic",
-        variant?
-    ): IWalletCreateModalProps => {
-        return {
-            mode,
-            variant,
-            title: "Create Wallet",
-            isInputMode: true,
-            onSubmit:
-                mode === "mnemonic"
-                    ? createWalletWitMnemonicPayload
-                    : createWalletWithPrivateKeyPayload,
-            initialMnemonic: [],
-            initialPrivateKey: "",
-            onClose: () => {
-                setCurrentModalProps(createWalletRestoreOptions());
-                setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
-            },
-        };
-    };
-
-    const createWalletCreateOptions = (): ISelectModalProps => {
-        const selectOptions: TSelectModalOption[] = [
-            {
-                title: "Mnemonic 12",
-                onClick: () => {
-                    setCurrentModalProps(
-                        createCreateWalletProps("mnemonic", 12)
-                    );
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-            {
-                title: "Mnemonic 24",
-                onClick: () => {
-                    setCurrentModalProps(
-                        createCreateWalletProps("mnemonic", 24)
-                    );
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-            {
-                title: "Private Key",
-                onClick: () => {
-                    setCurrentModalProps(createCreateWalletProps("privateKey"));
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-        ];
-
-        return {
-            title: "Select Wallet Source",
-            options: selectOptions,
-            onClose: () => {
-                setCurrentModalProps(createSelectWalletCreateModalProps());
-                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
-            },
-        };
-    };
-
-    const createWalletRestoreOptions = (): ISelectModalProps => {
-        const selectOptions: TSelectModalOption[] = [
-            {
-                title: "Mnemonic 12",
-                onClick: () => {
-                    setCurrentModalProps(
-                        createWalletRestoreProps("mnemonic", 12)
-                    );
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-            {
-                title: "Mnemonic 24",
-                onClick: () => {
-                    setCurrentModalProps(
-                        createWalletRestoreProps("mnemonic", 24)
-                    );
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-            {
-                title: "Private Key",
-                onClick: () => {
-                    setCurrentModalProps(
-                        createWalletRestoreProps("privateKey")
-                    );
-                    setCurrentModal(Modals.CREATE_WALLET_MODAL);
-                },
-            },
-        ];
-
-        return {
-            title: "Select Wallet Source",
-            options: selectOptions,
-            onClose: () => {
-                setCurrentModalProps(createSelectWalletCreateModalProps());
-                setCurrentModal(Modals.SELECT_WALLET_SOURCE);
-            },
-        };
-    };
-
-    const createSetupStorageModalProps = (): IPasswordModalProps => {
-        return {
-            title: "Create storage password",
-            onSubmit: (localPassword) => {
-                try {
-                    console.log("Setting local password", localPassword)
-                    isLoading.current = true;
-                    currentPassword.current = localPassword;
-
-                    vault.lock(localPassword);
-
-                    vault.save(VAULT_STORAGE_KEY);
-
-                    vault.unlock(localPassword);
-
-                    setIsUnlocked(true);
-
-                    setCurrentModalProps(createSelectWalletCreateModalProps());
-                    setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
-                    setIsModalOpen(true);
-                } catch (error) {
-                    console.error(error);
-                } finally {
-                    isLoading.current = false;
-                }
-            },
-        };
-    };
-
-    const createSelectWalletCreateModalProps = (): ISelectModalProps => {
-        const selectOptions: TSelectModalOption[] = [
-            {
-                title: "Create",
-                onClick: () => {
-                    setCurrentModal(Modals.SELECT_WALLET_CREATE_OPTIONS);
-                    setCurrentModalProps(createWalletCreateOptions());
-                },
-            },
-            {
-                title: "Restore",
-                onClick: () => {
-                    setCurrentModal(Modals.SELECT_WALLET_RESTORE_OPTIONS);
-                    setCurrentModalProps(createWalletRestoreOptions());
-                },
-            },
-        ];
-        return {
-            title: "Select Wallet Source",
-            options: selectOptions,
-        };
-    };
-
-    const createKeyPairWallet = (
-        name: string,
-        privateKey: string,
-        password: string
-    ) => {
-        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
-
-        return {
-            privateKey,
-            publicKey,
-            wallet: Wallet.fromPrivateKey(name, privateKey, password),
-        };
-    };
-
-    const createMnemonic12Wallet = async (
-        name: string,
-        mnemonicArray: string[],
-        password: string
-    ) => {
-        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
-
-        setCurrentMnemonic(mnemonic);
-        setMasterNode(masterNode);
-
-        return deriveNextWallet(mnemonic, name, password, 0);
-    };
-
-    const createMnemonic24Wallet = (
-        name: string,
-        mnemonicArray: string[],
-        password: string
-    ) => {
-        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
-
-        setCurrentMnemonic(mnemonic);
-        setMasterNode(masterNode);
-
-        return deriveNextWallet(mnemonic, name, password, 0);
-    };
-
-    const deriveNextWallet = (
-        mnemonic: string,
-        name: string,
-        password: string,
-        lastIndex: number
-    ) => {
-        const nextIndex: number = lastIndex++;
-
-        const path: string = KeyDerivationService.buildBip44Path(
-            60,
-            0,
-            0,
-            nextIndex
-        );
-
-        const seed = KeyDerivationService.mnemonicToSeed(mnemonic);
-        const masterNode = KeyDerivationService.seedToMasterNode(seed);
-
-        const privateKey = KeyDerivationService.derivePrivateKey(
-            masterNode,
-            path
-        );
-
-        const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
-        const seedRecord = EncryptedSeedRecord.fromRawSeed(mnemonic);
-
-        vault.addSeed(seedRecord);
-
-        return {
-            privateKey,
-            publicKey,
-            wallet: Wallet.fromPrivateKey(
-                name,
-                privateKey,
-                password,
-                seedRecord.transformToId(),
-                nextIndex
-            ),
-        };
-    };
-
-    const createNewPKWallet = () => {
-        setCurrentModalProps(createCreateWalletProps("privateKey"));
-        setCurrentModal(Modals.CREATE_WALLET_MODAL);
-    };
-
-    const setupCreateNewDerivationWallet = () => {};
-
-    const createNextWallet = () => {};
+        });
+    }
 
     useEffect(() => {
-        if (vault.isVaultLocked()) {
-            setCurrentModalProps(createUnlockVaultModalProps());
-            setCurrentModal(Modals.UNLOCK_VAULT);
-            setIsModalOpen(true);
-
-            return;
-        }
-
-        if (vault.isEmpty()) {
-            setCurrentModalProps(createSetupStorageModalProps());
-            setCurrentModal(Modals.UNLOCK_VAULT);
-            setIsModalOpen(true);
-
-            return;
-        }
+        init(config, setIsLoading, setVault, setChainService);
     }, []);
 
+    useEffect(() => {
+        if (vault && vault.isVaultLocked()) {
+            setIsVaultConfigured(true);
+            openUnlockModal();
+            return;
+        }
+
+        if (vault && vault.isEmpty() && !isVaultConfigured) {
+            openCreatePasswordForVaultModal();
+            return;
+        } 
+    }, [vault, isVaultConfigured])
+
     return (
-        <ApplicationContext.Provider
-            value={{
-                masterNode,
-                setMasterNode,
-                currentMnemonic,
-                setCurrentMnemonic,
-                currentModalProps,
-                setCurrentModalProps,
-                currentModal,
-                setCurrentModal,
-                isModalOpen,
-                setIsModalOpen,
-            }}
-        >
-            {isUnlocked && (
-                <main>
-                    <WalletsPage
-                        vault={vault}
-                        createPk={createNewPKWallet}
-                        createDk={setupCreateNewDerivationWallet}
-                        deriveK={createNextWallet}
-                        chainService={chainService}
-                    />
-                </main>
-            )}
+        <main>
+            <WalletsPage
+                vault={vault}
+                createPk={openCreateKeyPairWalletModal}
+                importPk={openImportKeyPairWalletModal}
+                importDk={() => {}}
+                createDk={() => {}}
+                deriveK={() => {}}
+                chainService={chainService}
+            />
 
-            {isModalOpen && (
-                <div className="modal-wrapper">
-                    {ModalsMeta[currentModal].modal(currentModalProps)}
-                </div>
-            )}
+            <ModalManager
+                currentModal={modalState.type}
+                modalProps={modalState.props}
+                onClose={() => setModalState({ type: null })}
+            />
 
-            {isLoading.current && <FullscreenLoader />}
-        </ApplicationContext.Provider>
+            {isLoading && <FullscreenLoader />}
+        </main>
     );
 };
 

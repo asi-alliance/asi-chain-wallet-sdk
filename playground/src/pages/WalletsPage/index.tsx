@@ -1,11 +1,13 @@
 import WalletCard from "../../components/WalletCard";
-import { useMemo, type ReactElement } from "react";
+import { Fragment, useMemo, type ReactElement } from "react";
 import { Vault, ChainService } from "asi-wallet-sdk";
 import "./style.css";
 
 interface WalletsPageProps {
     vault: Vault;
     chainService: ChainService;
+    importPk: () => void;
+    importDk: () => void;
     createPk: () => void;
     createDk: () => void;
     deriveK: () => void;
@@ -14,22 +16,40 @@ interface WalletsPageProps {
 const WalletsPage = ({
     vault,
     chainService,
+    importPk,
+    importDk,
     createPk,
     createDk,
     deriveK,
 }: WalletsPageProps): ReactElement => {
     const wallets = useMemo(() => {
+        if (!vault) {
+            return { privateKeyWallets: [], mnemonicWallets: [] };
+        }
 
-        const privateKeyWallets = vault.getWallets().filter(wallet => !wallet.getIndex())
+        console.log(vault.getWallets());
 
-        return {privateKeyWallets, mnemonicWallets: []}
-    }, [vault])
+        const privateKeyWallets = vault
+            .getWallets()
+            .filter((wallet) => !wallet.getIndex());
+
+        return { privateKeyWallets, mnemonicWallets: [] };
+    }, [vault]);
+
+    if (!vault) {
+        return <div>Loading vault...</div>;
+    }
 
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
                 <h2 className="wallets-page__title">Wallets</h2>
-                <button onClick={() => localStorage.clear()}>CLEAR LS</button>
+                <button
+                    className="wallets-page__action"
+                    onClick={() => localStorage.clear()}
+                >
+                    CLEAR LS
+                </button>
             </div>
 
             <div className="wallets-page__grid">
@@ -44,6 +64,13 @@ const WalletsPage = ({
                             onClick={createPk}
                         >
                             Create
+                        </button>
+                        <button
+                            className="wallets-page__action"
+                            type="button"
+                            onClick={importPk}
+                        >
+                            Import
                         </button>
                     </div>
 
@@ -70,21 +97,30 @@ const WalletsPage = ({
                             Mnemonic wallets
                         </h3>
                         {!wallets.mnemonicWallets?.length ? (
-                            <button
-                            className="wallets-page__action"
-                            type="button"
-                            onClick={createDk}
-                        >
-                            Create
-                        </button>
+                            <Fragment>
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={createDk}
+                                >
+                                    Create
+                                </button>
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={importDk}
+                                >
+                                    Import
+                                </button>
+                            </Fragment>
                         ) : (
                             <button
-                            className="wallets-page__action"
-                            type="button"
-                            onClick={deriveK}
-                        >
-                            Derive
-                        </button>
+                                className="wallets-page__action"
+                                type="button"
+                                onClick={deriveK}
+                            >
+                                Derive
+                            </button>
                         )}
                     </div>
 

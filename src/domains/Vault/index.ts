@@ -132,7 +132,9 @@ export default class Vault {
         console.log("Parsed unlocked data", wallets, seeds);
 
         this.metaToWallets(wallets);
-        this.metaToSeeds(seeds)
+        this.metaToSeeds(seeds);
+
+        this.isLocked = false;
     }
 
     public isEmpty(): boolean {
