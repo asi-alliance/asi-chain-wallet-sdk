@@ -165,6 +165,11 @@ export default class Wallet {
         }
     }
 
+    public getPrivateKey(): string {
+        this.ensureUnlocked();
+        return this.privateKey;
+    }
+
     public registerAsset(asset: Asset): void {
         this.assets.set(asset.getId(), asset);
     }

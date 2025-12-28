@@ -47,7 +47,7 @@
 .wallets-page__column-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 1rem;
   padding: 1.5rem 1.5rem 1rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -56,7 +56,7 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: #333;
-  margin: 0;
+  margin-right: auto;
 }
 
 .wallets-page__action {

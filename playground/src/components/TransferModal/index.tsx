@@ -2,6 +2,7 @@ import { type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
 export interface ITransferModalProps {
+    currentBalance: number;
     toAddress: string;
     amount: number;
     commission: number;
@@ -10,6 +11,7 @@ export interface ITransferModalProps {
 }
 
 const TransferModal = ({
+    currentBalance,
     toAddress,
     amount,
     commission,
@@ -23,6 +25,11 @@ const TransferModal = ({
         const toAddress = (formData.get("toAddress") as string) ?? "";
         const amountValueRaw = formData.get("amount") as string;
         const amountValue = Number(amountValueRaw);
+
+        if (currentBalance < amountValue + commission) {
+            alert("Insufficient balance for this transfer including commission.");
+            return;
+        }
 
         onConfirm(toAddress, amountValue);
     };

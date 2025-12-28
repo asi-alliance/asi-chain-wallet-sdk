@@ -43,7 +43,7 @@ const WalletsPage = ({
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
-                <h2 className="wallets-page__title">Wallets</h2>
+                <h2 className="wallets-page__title">ASI WALLETS SDK</h2>
                 <button
                     className="wallets-page__action"
                     onClick={() => localStorage.clear()}

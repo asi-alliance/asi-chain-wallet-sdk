@@ -1,19 +1,16 @@
+import ModalManager from "./ModalManager";
+import ApplicationContext from "./context";
+import WalletsPage from "@pages/WalletsPage";
+import FullscreenLoader from "@components/FullScreenLoader";
+import { createInitialPrivateKey, init, ModalProps, Modals } from "./meta";
+import { TWalletCreatePayload } from "@components/CreateWalletModal";
+import { ReactElement, useEffect, useState } from "react";
 import {
+    ChainService,
     Wallet,
     Vault,
-    MnemonicService,
-    KeyDerivationService,
-    KeysService,
-    ChainService,
-    EncryptedSeedRecord,
 } from "asi-wallet-sdk";
-import ModalManager from "./ModalManager";
-import FullscreenLoader from "@components/FullScreenLoader";
-import { ReactElement, useEffect, useState } from "react";
-import { createInitialPrivateKey, init, ModalProps, Modals } from "./meta";
-import WalletsPage from "@pages/WalletsPage";
 import "./style.css";
-import { TWalletCreatePayload } from "@components/CreateWalletModal";
 
 // 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
 // 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
@@ -43,8 +40,10 @@ const Application = (): ReactElement => {
     const [currentPassword, setCurrentPassword] = useState<string>("");
 
     const updateVault = (vault) => {
-        setVault(Object.assign(Object.create(Object.getPrototypeOf(vault)), vault));
-    }
+        setVault(
+            Object.assign(Object.create(Object.getPrototypeOf(vault)), vault)
+        );
+    };
 
     const openUnlockModal = () => {
         setModalState({
@@ -62,9 +61,9 @@ const Application = (): ReactElement => {
             props: {
                 title: "Create Password for Vault",
                 onSubmit: createPassword,
-            }
-        })
-    }
+            },
+        });
+    };
 
     const unlockVault = (password: string) => {
         try {
@@ -88,7 +87,7 @@ const Application = (): ReactElement => {
         saveVault(password);
         setIsVaultConfigured(true);
         setModalState({ type: null });
-    }
+    };
 
     const addWalletToVault = (wallet: Wallet) => {
         if (!vault) return;
@@ -96,15 +95,15 @@ const Application = (): ReactElement => {
         vault.addWallet(wallet);
 
         saveVault(currentPassword);
-    }
+    };
 
     const saveVault = (password: string) => {
         if (!vault) return;
-        
+
         try {
             setIsLoading(true);
 
-            vault.lock(password)
+            vault.lock(password);
             vault.save(VAULT_STORAGE_KEY);
             vault.unlock(password);
 
@@ -116,23 +115,29 @@ const Application = (): ReactElement => {
 
     const createKeyPairWallet = (payload: TWalletCreatePayload) => {
         if (!vault) return;
-        
+
         try {
             setIsLoading(true);
 
             if (payload.mode !== "privateKey") {
-                throw new Error("Invalid payload mode for key pair wallet creation");
+                throw new Error(
+                    "Invalid payload mode for key pair wallet creation"
+                );
             }
 
-            const newWallet = Wallet.fromPrivateKey(payload.name, payload.privateKey, payload.password);
+            const newWallet = Wallet.fromPrivateKey(
+                payload.name,
+                payload.privateKey,
+                payload.password
+            );
 
             addWalletToVault(newWallet);
-            
+
             setModalState({ type: null });
         } finally {
             setIsLoading(false);
         }
-    }
+    };
 
     const openCreateKeyPairWalletModal = () => {
         setModalState({
@@ -142,10 +147,10 @@ const Application = (): ReactElement => {
                 onSubmit: createKeyPairWallet,
                 isInputMode: false,
                 title: "Create KeyPair Wallet",
-                initialPrivateKey: createInitialPrivateKey()
-            }
+                initialPrivateKey: createInitialPrivateKey(),
+            },
         });
-    }
+    };
 
     const openImportKeyPairWalletModal = () => {
         setModalState({
@@ -155,9 +160,9 @@ const Application = (): ReactElement => {
                 onSubmit: createKeyPairWallet,
                 isInputMode: true,
                 title: "Create KeyPair Wallet",
-            }
+            },
         });
-    }
+    };
 
     useEffect(() => {
         init(config, setIsLoading, setVault, setChainService);
@@ -173,28 +178,30 @@ const Application = (): ReactElement => {
         if (vault && vault.isEmpty() && !isVaultConfigured) {
             openCreatePasswordForVaultModal();
             return;
-        } 
-    }, [vault, isVaultConfigured])
+        }
+    }, [vault, isVaultConfigured]);
 
     return (
         <main>
-            <WalletsPage
-                vault={vault}
-                createPk={openCreateKeyPairWalletModal}
-                importPk={openImportKeyPairWalletModal}
-                importDk={() => {}}
-                createDk={() => {}}
-                deriveK={() => {}}
-                chainService={chainService}
-            />
+            <ApplicationContext.Provider value={{modalState, setModalState}}>
+                <WalletsPage
+                    vault={vault}
+                    createPk={openCreateKeyPairWalletModal}
+                    importPk={openImportKeyPairWalletModal}
+                    importDk={() => {}}
+                    createDk={() => {}}
+                    deriveK={() => {}}
+                    chainService={chainService}
+                />
 
-            <ModalManager
-                currentModal={modalState.type}
-                modalProps={modalState.props}
-                onClose={() => setModalState({ type: null })}
-            />
+                <ModalManager
+                    currentModal={modalState.type}
+                    modalProps={modalState.props}
+                    onClose={() => setModalState({ type: null })}
+                />
 
-            {isLoading && <FullscreenLoader />}
+                {isLoading && <FullscreenLoader />}
+            </ApplicationContext.Provider>
         </main>
     );
 };
