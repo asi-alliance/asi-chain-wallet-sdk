@@ -219,9 +219,11 @@ export default class Vault {
         const seeds: Seeds = new Map();
         const ids: string[] = Object.keys(meta);
 
-        ids.forEach((id: string) => {
-            const seedMeta: SeedRecordRawData = JSON.parse(meta[id]);
+        console.log("META", meta);
 
+        ids.forEach((id: string) => {
+            const seedMeta: EncryptedData = JSON.parse(meta[id]);
+            
             const seed = EncryptedSeedRecord.fromEncryptedData(seedMeta);
 
             seeds.set(id, seed);
@@ -230,10 +232,10 @@ export default class Vault {
         this.seeds = seeds;
     }
 
-    public getSeeds(): Seeds {
+    public getSeeds(): EncryptedSeedRecord[] {
         this.ensureUnlocked();
 
-        return this.seeds;
+        return Array.from(this.seeds.values());
     }
 
     public getSeed(id: string): EncryptedSeedRecord | undefined {

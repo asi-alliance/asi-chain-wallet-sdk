@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import InputsForm from "../InputsForm";
 import "./style.css";
+import { MnemonicService } from "../../../../dist";
 
 export type TWalletCreatePayload =
     | {
@@ -23,7 +24,7 @@ export interface IWalletCreateModalProps {
     title?: string;
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
-    initialMnemonic?: string[];
+    initialMnemonic?: string;
     initialPrivateKey?: string;
 }
 
@@ -34,12 +35,12 @@ const CreateWalletModal = ({
     onSubmit,
     onClose,
     isInputMode,
-    initialMnemonic = [],
+    initialMnemonic,
     initialPrivateKey = "",
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
-    const [mnemonicWords, setMnemonicWords] = useState<string[]>(initialMnemonic);
+    const [mnemonicWords, setMnemonicWords] = useState<string[]>(MnemonicService.mnemonicToWordArray(initialMnemonic || ""));
 
     const computedTitle = useMemo(() => {
         if (title) return title;

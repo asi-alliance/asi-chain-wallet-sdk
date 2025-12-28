@@ -20,12 +20,12 @@ export default class EncryptedSeedRecord {
         return record;
     }
 
-    static fromEncryptedData(seedData: SeedRecordRawData): EncryptedSeedRecord {
+    static fromEncryptedData(seedData: EncryptedData): EncryptedSeedRecord {
         const record = new EncryptedSeedRecord();
 
         record.isLocked = true;
         record.seed = null;
-        record.encryptedSeedData = JSON.parse(seedData);
+        record.encryptedSeedData = seedData;
 
         return record;
     }

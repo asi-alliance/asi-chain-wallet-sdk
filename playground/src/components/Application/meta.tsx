@@ -3,6 +3,9 @@ import {
     MnemonicService,
     KeysService,
     ChainService,
+    KeyDerivationService,
+    EncryptedSeedRecord,
+    Wallet,
 } from "asi-wallet-sdk";
 import PasswordModal, {
     type IPasswordModalProps,
@@ -85,10 +88,55 @@ const wordsCountToMnemonicStrength = (words: 12 | 24) => {
     return valuesRecord[words];
 };
 
-export const createInitialMnemonic = (variant) => {
-    return MnemonicService.mnemonicToWordArray(
-        MnemonicService.generateMnemonic(wordsCountToMnemonicStrength(variant))
+export const createMnemonicWallet = async (
+    name: string,
+    mnemonicArray: string[],
+    password: string
+) => {
+    const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
+
+    return await deriveNextWallet(mnemonic, name, password, 0);
+};
+
+export const deriveNextWallet = async (
+    mnemonic: string,
+    name: string,
+    password: string,
+    lastIndex: number
+) => {
+    const nextIndex: number = lastIndex++;
+
+    const path: string = KeyDerivationService.buildBip44Path(
+        60,
+        0,
+        0,
+        nextIndex
     );
+
+    const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+    const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+    const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
+
+    const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+    const seedRecord = EncryptedSeedRecord.fromRawSeed(mnemonic);
+
+    return {
+        privateKey,
+        publicKey,
+        seedRecord,
+        wallet: Wallet.fromPrivateKey(
+            name,
+            privateKey,
+            password,
+            seedRecord.transformToId(),
+            nextIndex
+        ),
+    };
+};
+
+export const createInitialMnemonic = (variant) => {
+    return MnemonicService.generateMnemonic(wordsCountToMnemonicStrength(variant));
 };
 
 export const createInitialPrivateKey = () => {

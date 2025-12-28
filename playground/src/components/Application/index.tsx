@@ -2,14 +2,18 @@ import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
 import FullscreenLoader from "@components/FullScreenLoader";
-import { createInitialPrivateKey, init, ModalProps, Modals } from "./meta";
+import {
+    createInitialMnemonic,
+    createInitialPrivateKey,
+    createMnemonicWallet,
+    deriveNextWallet,
+    init,
+    ModalProps,
+    Modals,
+} from "./meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { ReactElement, useEffect, useState } from "react";
-import {
-    ChainService,
-    Wallet,
-    Vault,
-} from "asi-wallet-sdk";
+import { ChainService, Wallet, Vault } from "asi-wallet-sdk";
 import "./style.css";
 
 // 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
@@ -100,6 +104,8 @@ const Application = (): ReactElement => {
     const saveVault = (password: string) => {
         if (!vault) return;
 
+        console.log("Saving vault with password", password);
+
         try {
             setIsLoading(true);
 
@@ -139,6 +145,77 @@ const Application = (): ReactElement => {
         }
     };
 
+    const handleCreateMnemonicWallet = async (
+        payload: TWalletCreatePayload
+    ) => {
+        if (!vault) return;
+        setIsLoading(true);
+
+        if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
+            throw new Error("Mnemonic words are required for mnemonic wallet");
+        }
+
+        try {
+            const { wallet, seedRecord } = await createMnemonicWallet(
+                payload.name,
+                payload.mnemonicWords,
+                payload.password
+            );
+
+            seedRecord.lock(currentPassword);
+            seedRecord.unlock(currentPassword);
+
+            vault.addWallet(wallet);
+            vault.addSeed(seedRecord);
+
+            saveVault(currentPassword);
+
+            setModalState({ type: null });
+        } catch (error) {
+            console.error("Error creating mnemonic wallet:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeriveWallet = async (index: number) => {
+        if (!vault) return;
+        setIsLoading(true);
+
+        try {
+            const seeds = vault.getSeeds();
+            if (seeds.length === 0) {
+                throw new Error("No seeds available in the vault");
+            }
+            const seedRecord = seeds[0];
+            seedRecord.unlock(currentPassword);
+
+            const currentSeed = seedRecord.getSeed();
+
+            if (!currentSeed) {
+                throw new Error("SeedRecord is empty");
+            }
+
+            console.log("Using seed", currentSeed);
+
+            const { wallet } = await deriveNextWallet(
+                currentSeed,
+                `Derived Wallet ${index}`,
+                currentPassword,
+                index
+            );
+
+            vault.addWallet(wallet);
+            vault.addSeed(seedRecord);
+
+            saveVault(currentPassword);
+        } catch (error) {
+            console.error("Error deriving wallet:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const openCreateKeyPairWalletModal = () => {
         setModalState({
             type: Modals.CREATE_WALLET_MODAL,
@@ -164,6 +241,36 @@ const Application = (): ReactElement => {
         });
     };
 
+    const openCreateMnemonicWalletModal = (words: 12 | 24) => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "mnemonic",
+                onSubmit: handleCreateMnemonicWallet,
+                isInputMode: false,
+                title: "Create Mnemonic Wallet",
+                initialMnemonic:
+                    words === 12
+                        ? createInitialMnemonic(12)
+                        : createInitialMnemonic(24),
+                variant: words,
+            },
+        });
+    };
+
+    const openRestoreMnemonicWalletModal = (words: 12 | 24) => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "mnemonic",
+                onSubmit: handleCreateMnemonicWallet,
+                variant: words,
+                isInputMode: true,
+                title: "Create Mnemonic Wallet",
+            },
+        });
+    };
+
     useEffect(() => {
         init(config, setIsLoading, setVault, setChainService);
     }, []);
@@ -183,14 +290,14 @@ const Application = (): ReactElement => {
 
     return (
         <main>
-            <ApplicationContext.Provider value={{modalState, setModalState}}>
+            <ApplicationContext.Provider value={{ modalState, setModalState }}>
                 <WalletsPage
                     vault={vault}
                     createPk={openCreateKeyPairWalletModal}
                     importPk={openImportKeyPairWalletModal}
-                    importDk={() => {}}
-                    createDk={() => {}}
-                    deriveK={() => {}}
+                    importDk={openRestoreMnemonicWalletModal}
+                    createDk={openCreateMnemonicWalletModal}
+                    deriveK={handleDeriveWallet}
                     chainService={chainService}
                 />
 

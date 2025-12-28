@@ -1,5 +1,5 @@
 import WalletCard from "../../components/WalletCard";
-import { Fragment, useMemo, type ReactElement } from "react";
+import { Fragment, use, useMemo, useState, type ReactElement } from "react";
 import { Vault, ChainService } from "asi-wallet-sdk";
 import "./style.css";
 
@@ -7,10 +7,10 @@ interface WalletsPageProps {
     vault: Vault;
     chainService: ChainService;
     importPk: () => void;
-    importDk: () => void;
+    importDk: (words: 12 | 24) => void;
     createPk: () => void;
-    createDk: () => void;
-    deriveK: () => void;
+    createDk: (words: 12 | 24) => void;
+    deriveK: (index: number) => void;
 }
 
 const WalletsPage = ({
@@ -22,23 +22,55 @@ const WalletsPage = ({
     createDk,
     deriveK,
 }: WalletsPageProps): ReactElement => {
+    const [isChoosingMethod, setIsChoosingMethod] = useState(false);
+    const [selectedMode, setSelectedMode] = useState<
+        "create" | "import" | null
+    >(null);
+    const [lastIndex, setLastIndex] = useState<number | null>(null);
+
     const wallets = useMemo(() => {
+        let lastIndexLocal: number | null = null;
+
         if (!vault) {
             return { privateKeyWallets: [], mnemonicWallets: [] };
         }
 
-        console.log(vault.getWallets());
+        const wallets = vault.getWallets();
 
-        const privateKeyWallets = vault
-            .getWallets()
-            .filter((wallet) => !wallet.getIndex());
+        console.log("Wallets to render", wallets);
 
-        return { privateKeyWallets, mnemonicWallets: [] };
+        const privateKeyWallets = wallets.filter((wallet) => wallet.getIndex() === null);
+        const mnemonicWallets = wallets.filter((wallet) => {
+            if (typeof wallet.getIndex() === "number") {
+                lastIndexLocal = Math.max(
+                    lastIndexLocal === null ? -1 : lastIndexLocal,
+                    wallet.getIndex() as number
+                );
+            } else {
+                return false;
+            }
+            return true;
+        });
+
+        setLastIndex(lastIndexLocal);
+
+        return { privateKeyWallets, mnemonicWallets };
     }, [vault]);
 
     if (!vault) {
         return <div>Loading vault...</div>;
     }
+
+    const handleCreateMnemonicWallet = ( words: 12 | 24) => {
+        if (selectedMode === "create") {
+            createDk(words);
+        }
+        if (selectedMode === "import") {
+            importDk(words);
+        }
+        setIsChoosingMethod(false);
+        setSelectedMode(null);
+    };
 
     return (
         <div className="wallets-page">
@@ -96,31 +128,58 @@ const WalletsPage = ({
                         <h3 className="wallets-page__column-title">
                             Mnemonic wallets
                         </h3>
-                        {!wallets.mnemonicWallets?.length ? (
+                        {isChoosingMethod && (
                             <Fragment>
                                 <button
                                     className="wallets-page__action"
                                     type="button"
-                                    onClick={createDk}
+                                    onClick={() => handleCreateMnemonicWallet(12)}
+                                >
+                                    M12
+                                </button>
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={() => handleCreateMnemonicWallet(24)}
+                                >
+                                    M24
+                                </button>
+                            </Fragment> 
+                        )}
+                        {!isChoosingMethod &&
+                        !wallets.mnemonicWallets?.length ? (
+                            <Fragment>
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={() => {
+                                        setIsChoosingMethod(true);
+                                        setSelectedMode("create");
+                                    }}
                                 >
                                     Create
                                 </button>
                                 <button
                                     className="wallets-page__action"
                                     type="button"
-                                    onClick={importDk}
+                                    onClick={() => {
+                                        setIsChoosingMethod(true);
+                                        setSelectedMode("import");
+                                    }}
                                 >
                                     Import
                                 </button>
                             </Fragment>
                         ) : (
-                            <button
-                                className="wallets-page__action"
-                                type="button"
-                                onClick={deriveK}
-                            >
-                                Derive
-                            </button>
+                            !isChoosingMethod && (
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={() => deriveK(lastIndex + 1)}
+                                >
+                                    Derive
+                                </button>
+                            )
                         )}
                     </div>
 

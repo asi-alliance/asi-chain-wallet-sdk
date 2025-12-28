@@ -1,11 +1,11 @@
+import MnemonicService from "../mnemonic";
 import KeyDerivationService from "../keyDerivation";
 import KeysService, { type KeyPair } from "../keysService";
 import { decodeBase16, encodeBase58 } from "../../utils/codec";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "../../utils/constants";
+import { Address } from "../../domains/Wallet";
 import { blake2bHex } from "blakejs";
 import { keccak256 } from "js-sha3";
-import MnemonicService from "../mnemonic";
-import { Address } from "../../domains/Wallet";
 
 export interface CreateWalletOptions {
     name?: string;
@@ -41,11 +41,11 @@ export class WalletsService {
         };
     }
 
-    public static createWalletFromMnemonic(
+    public static async createWalletFromMnemonic(
         mnemonic?: string,
         index?: number
-    ): WalletMeta {
-        const seed = KeyDerivationService.mnemonicToSeed(
+    ): Promise<WalletMeta> {
+        const seed = await KeyDerivationService.mnemonicToSeed(
             mnemonic ?? MnemonicService.generateMnemonic()
         );
 
