@@ -1,43 +1,63 @@
+const DATA_TYPE_SHIFT: number = 3;
+const WIRE_TYPE_LENGTH_DELIMITED: number = 2;
+const WIRE_TYPE_VARINT: number = 0;
+const BITS_SHIFT: number = 7;
+const MARK_NEXT_BYTE_AS_CONTINUATION: number = 0x80;
+const MAX_BYTE_VALUE: number = 0x7f;
+const SEVEN_BITS_MULTIPLIER: number = 128;
+
 export default class BinaryWriter {
     private buffer: number[] = [];
 
     writeString(fieldNumber: number, value: string): void {
-        if (value === "") return;
+        if (!value) {
+            return;
+        }
 
-        const key = (fieldNumber << 3) | 2; // field number with wire type 2 (length-delimited)
-        this.writeVarint(key);
+        const key: number =
+            (fieldNumber << DATA_TYPE_SHIFT) | WIRE_TYPE_LENGTH_DELIMITED;
 
-        const bytes = new TextEncoder().encode(value);
-        this.writeVarint(bytes.length);
+        this.writeInteger(key);
+
+        const bytes: Uint8Array = new TextEncoder().encode(value);
+
+        this.writeInteger(bytes.length);
+
         this.buffer.push(...Array.from(bytes));
     }
 
     writeInt64(fieldNumber: number, value: number): void {
-        if (value === 0) return;
+        if (!value) {
+            return;
+        }
 
-        const key = (fieldNumber << 3) | 0; // field number with wire type 0 (varint)
-        this.writeVarint(key);
-        this.writeVarint64(value);
+        const key: number = (fieldNumber << DATA_TYPE_SHIFT) | WIRE_TYPE_VARINT;
+
+        this.writeInteger(key);
+        this.writeInteger64(value);
     }
 
-    private writeVarint(value: number): void {
-        while (value > 0x7f) {
-            this.buffer.push((value & 0x7f) | 0x80);
-            value >>>= 7;
+    private writeInteger(value: number): void {
+        while (value > MAX_BYTE_VALUE) {
+            this.buffer.push(
+                (value & MAX_BYTE_VALUE) | MARK_NEXT_BYTE_AS_CONTINUATION
+            );
+
+            value >>>= BITS_SHIFT;
         }
+
         this.buffer.push(value);
     }
 
-    private writeVarint64(value: number): void {
-        // For numbers larger than 32 bits, we need to handle them properly
-        // JavaScript bitwise operations only work on 32-bit integers
-        // This is critical for timestamp values which are often > 2^32
-        // Using division instead of >>> ensures correct encoding for 64-bit values
-        while (value > 0x7f) {
-            this.buffer.push((value & 0x7f) | 0x80);
-            // Use division instead of bitwise shift for large numbers
-            value = Math.floor(value / 128);
+    private writeInteger64(value: number): void {
+        while (value > MAX_BYTE_VALUE) {
+            this.buffer.push(
+                (value & MAX_BYTE_VALUE) | MARK_NEXT_BYTE_AS_CONTINUATION
+            );
+
+            value = Math.floor(value / SEVEN_BITS_MULTIPLIER);
         }
+
         this.buffer.push(value);
     }
 

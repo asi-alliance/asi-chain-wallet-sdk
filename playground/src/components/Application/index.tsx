@@ -1,227 +1,321 @@
-import { type ReactElement, useEffect, useState } from "react";
-import { Networks } from "../../config";
+import ModalManager from "./ModalManager";
+import ApplicationContext from "./context";
+import WalletsPage from "@pages/WalletsPage";
+import FullscreenLoader from "@components/FullScreenLoader";
 import {
-    SecureWebWalletsStorage,
-    AccountManager,
-    RChainService,
-    type WalletData,
-} from "asi-wallet-sdk";
+    createInitialMnemonic,
+    createInitialPrivateKey,
+    createMnemonicWallet,
+    deriveNextWallet,
+    init,
+    ModalProps,
+    Modals,
+} from "./meta";
+import { TWalletCreatePayload } from "@components/CreateWalletModal";
+import { ReactElement, useEffect, useState } from "react";
+import { ChainService, Wallet, Vault } from "asi-wallet-sdk";
 import "./style.css";
 
-const DevnetConfig = Networks["Dev"];
+// 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
+// 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
 
-console.log("DevnetConfig", DevnetConfig);
-
-const storage = new SecureWebWalletsStorage();
-const accountManager = new AccountManager();
-const chainService = new RChainService({
-    readOnlyURL: DevnetConfig.ReadOnlyURL,
-    validatorURL: DevnetConfig.ValidatorURL,
-    // nodeURL: "",
-    // graphqlURL: "",
-});
-
-const accountId0 = "account0";
-const accountId1 = "account1";
-
-const password = "somePassword";
-
-interface IAccountProps {
-    account: WalletData;
-}
-
-const Account = ({ account }: IAccountProps): ReactElement => {
-    const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
-    const [balance, setBalance] = useState<string | null>(null);
-
-    const [recipientAddress, setRecipientAddress] = useState<string>("");
-    const [amountToTransfer, setAmountToTransfer] = useState<number>();
-
-    const [isTransferring, setIsTransferring] = useState<boolean>(false);
-
-    const handleAddressChange = (event) => {
-        setRecipientAddress(event.target.value);
-    };
-
-    const handleAmountChange = (event) => {
-        setAmountToTransfer(event.target.value);
-    };
-
-    const fetchBalance = async (walletAddress: string): Promise<void> => {
-        try {
-            setIsBalanceFetching(true);
-
-            const balanceResult = await chainService.getASIBalance(
-                walletAddress
-            );
-
-            setBalance(balanceResult.toString());
-        } catch (error) {
-            console.error(error?.message);
-            setBalance(null);
-        } finally {
-            setIsBalanceFetching(false);
-        }
-    };
-
-    const transfer = async () => {
-        try {
-            setIsTransferring(true);
-
-            const result = await chainService.transfer(
-                account.address,
-                recipientAddress,
-                amountToTransfer.toString(),
-                account.privateKey
-            );
-            console.log(result);
-        } catch (error) {
-            console.error(error?.message);
-        } finally {
-            setIsTransferring(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchBalance(account.address);
-    }, []);
-
-    return (
-        <div className="account">
-            <div className="account-details">
-                <div className="address">
-                    <p>
-                        <b>Address</b>
-                    </p>
-                    <p>{account.address}</p>
-                </div>
-                <div className="privateKey">
-                    <p>
-                        <b>Private key</b>
-                    </p>
-                    <p>{account.privateKey}</p>
-                </div>
-                {isBalanceFetching ? (
-                    <p>
-                        <b>Loading balance...</b>
-                    </p>
-                ) : (
-                    <div className="balance">
-                        <p>
-                            <b>Balance</b>
-                        </p>
-                        <p>{Number.parseInt(balance) ?? 0} ASI</p>
-                    </div>
-                )}
-                <div className="update-balance">
-                    <button
-                        onClick={() => fetchBalance(account.address)}
-                        disabled={isBalanceFetching}
-                    >
-                        Update balance
-                    </button>
-                </div>
-            </div>
-            <div className="account-actions">
-                <p>
-                    <b>Transfer</b>
-                </p>
-                <div className="transfer- to-address">
-                    <label htmlFor="">To Address</label>
-                    <input
-                        type="text"
-                        placeholder="to Address"
-                        onChange={handleAddressChange}
-                        value={recipientAddress}
-                    />
-                </div>
-                <div className="transfer- amount">
-                    <label htmlFor="">ASI Amount</label>
-                    <input
-                        type="number"
-                        placeholder="ASI amount"
-                        onChange={handleAmountChange}
-                        value={amountToTransfer}
-                    />
-                </div>
-                <div className="transfer- transfer">
-                    <button
-                        disabled={
-                            !recipientAddress ||
-                            !amountToTransfer ||
-                            isTransferring
-                        }
-                        onClick={transfer}
-                    >
-                        Transfer
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+type ModalState = {
+    type: Modals | null;
+    props?: ModalProps;
 };
 
-export default function App() {
-    const [wallet0, setWallet0] = useState<WalletData>();
-    const [wallet1, setWallet1] = useState<WalletData>();
+const VAULT_STORAGE_KEY = "test_vault";
 
-    const createAndSaveWallet = (walletId) => {
-        const account = accountManager.createWallet({
-            accountName: "TEST 1",
-            password: "",
-            network: "",
-        });
+const configs = import.meta.env.VITE_NETWORKS;
+const config = JSON.parse(configs)["DevNet"];
 
-        storage.saveWallet(
-            walletId,
-            {
-                id: account.id,
-                address: account.address,
-                privateKey: account.privateKey,
-                derivationIndex: 0,
-            },
-            password
+if (!config) {
+    throw new Error("Network configuration (env) not found");
+}
+
+const Application = (): ReactElement => {
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [modalState, setModalState] = useState<ModalState>({ type: null });
+
+    const [vault, setVault] = useState<Vault | null>(null);
+    const [isVaultConfigured, setIsVaultConfigured] = useState<boolean>(false);
+    const [chainService, setChainService] = useState<ChainService | null>(null);
+
+    const [currentPassword, setCurrentPassword] = useState<string>("");
+
+    const updateVault = (vault) => {
+        setVault(
+            Object.assign(Object.create(Object.getPrototypeOf(vault)), vault)
         );
     };
 
+    const openUnlockModal = () => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Unlock Vault",
+                onSubmit: unlockVault,
+            },
+        });
+    };
+
+    const openCreatePasswordForVaultModal = () => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Create Password for Vault",
+                onSubmit: createPassword,
+            },
+        });
+    };
+
+    const unlockVault = (password: string) => {
+        try {
+            setIsLoading(true);
+
+            vault?.unlock(password);
+            setCurrentPassword(password);
+            updateVault(vault);
+
+            setModalState({ type: null });
+        } catch {
+            alert(
+                "Failed to unlock vault. Please check your password and try again."
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const createPassword = (password) => {
+        saveVault(password);
+        setCurrentPassword(password);
+        setIsVaultConfigured(true);
+        setModalState({ type: null });
+    };
+
+    const addWalletToVault = (wallet: Wallet) => {
+        if (!vault) return;
+
+        vault.addWallet(wallet);
+
+        saveVault(currentPassword);
+    };
+
+    const saveVault = (password: string) => {
+        if (!vault) return;
+
+        console.log("Saving vault with password", password);
+
+        try {
+            setIsLoading(true);
+
+            vault.lock(password);
+            vault.save(VAULT_STORAGE_KEY);
+            vault.unlock(password);
+
+            updateVault(vault);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        if (!storage.hasWallet(accountId0)) {
-            console.log(accountId0, "was not found");
+        console.log(currentPassword)
+    }, [currentPassword]);
 
-            createAndSaveWallet(accountId0);
+    const createKeyPairWallet = (payload: TWalletCreatePayload) => {
+        if (!vault) return;
 
-            console.log(accountId0, "created");
+        try {
+            setIsLoading(true);
+
+            if (payload.mode !== "privateKey") {
+                throw new Error(
+                    "Invalid payload mode for key pair wallet creation"
+                );
+            }
+
+            const newWallet = Wallet.fromPrivateKey(
+                payload.name,
+                payload.privateKey,
+                payload.password
+            );
+
+            addWalletToVault(newWallet);
+
+            setModalState({ type: null });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCreateMnemonicWallet = async (
+        payload: TWalletCreatePayload
+    ) => {
+        if (!vault) return;
+        setIsLoading(true);
+
+        if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
+            throw new Error("Mnemonic words are required for mnemonic wallet");
         }
 
-        if (!storage.hasWallet(accountId1)) {
-            console.log(accountId1, "was not found");
+        try {
+            const { wallet, seedRecord } = await createMnemonicWallet(
+                payload.name,
+                payload.mnemonicWords,
+                payload.password
+            );
 
-            createAndSaveWallet(accountId1);
+            seedRecord.lock(currentPassword);
+            seedRecord.unlock(currentPassword);
 
-            console.log(accountId1, "created");
+            vault.addWallet(wallet);
+            vault.addSeed(seedRecord);
+
+            saveVault(currentPassword);
+
+            setModalState({ type: null });
+        } catch (error) {
+            console.error("Error creating mnemonic wallet:", error);
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        const loadedWallet0 = storage.loadWallet(accountId0, password);
-        const loadedWallet1 = storage.loadWallet(accountId1, password);
+    const handleDeriveWallet = async (index: number) => {
+        if (!vault) return;
+        setIsLoading(true);
 
-        if (!loadedWallet0 || !loadedWallet1) {
-            throw new Error("Unable to get wallets from storage");
+        try {
+            const seeds = vault.getSeeds();
+            if (seeds.length === 0) {
+                throw new Error("No seeds available in the vault");
+            }
+            const seedRecord = seeds[0];
+            seedRecord.unlock(currentPassword);
+
+            const currentSeed = seedRecord.getSeed();
+
+            if (!currentSeed) {
+                throw new Error("SeedRecord is empty");
+            }
+
+            console.log("Using seed", currentSeed);
+
+            const { wallet } = await deriveNextWallet(
+                currentSeed,
+                `Derived Wallet ${index}`,
+                currentPassword,
+                index
+            );
+
+            vault.addWallet(wallet);
+            vault.addSeed(seedRecord);
+
+            saveVault(currentPassword);
+        } catch (error) {
+            console.error("Error deriving wallet:", error);
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        setWallet0(loadedWallet0);
-        setWallet1(loadedWallet1);
+    const openCreateKeyPairWalletModal = () => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "privateKey",
+                onSubmit: createKeyPairWallet,
+                isInputMode: false,
+                title: "Create KeyPair Wallet",
+                initialPrivateKey: createInitialPrivateKey(),
+            },
+        });
+    };
+
+    const openImportKeyPairWalletModal = () => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "privateKey",
+                onSubmit: createKeyPairWallet,
+                isInputMode: true,
+                title: "Create KeyPair Wallet",
+            },
+        });
+    };
+
+    const openCreateMnemonicWalletModal = (words: 12 | 24) => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "mnemonic",
+                onSubmit: handleCreateMnemonicWallet,
+                isInputMode: false,
+                title: "Create Mnemonic Wallet",
+                initialMnemonic:
+                    words === 12
+                        ? createInitialMnemonic(12)
+                        : createInitialMnemonic(24),
+                variant: words,
+            },
+        });
+    };
+
+    const openRestoreMnemonicWalletModal = (words: 12 | 24) => {
+        setModalState({
+            type: Modals.CREATE_WALLET_MODAL,
+            props: {
+                mode: "mnemonic",
+                onSubmit: handleCreateMnemonicWallet,
+                variant: words,
+                isInputMode: true,
+                title: "Create Mnemonic Wallet",
+            },
+        });
+    };
+
+    useEffect(() => {
+        init(config, setIsLoading, setVault, setChainService);
     }, []);
 
+    useEffect(() => {
+        if (vault && vault.isVaultLocked()) {
+            setIsVaultConfigured(true);
+            openUnlockModal();
+            return;
+        }
+
+        if (vault && vault.isEmpty() && !isVaultConfigured) {
+            openCreatePasswordForVaultModal();
+            return;
+        }
+    }, [vault, isVaultConfigured]);
+
     return (
-        <div style={{ padding: 20 }}>
-            <h2>SDK playground</h2>
+        <main>
+            <ApplicationContext.Provider value={{ modalState, setModalState }}>
+                <WalletsPage
+                    vault={vault}
+                    createPk={openCreateKeyPairWalletModal}
+                    importPk={openImportKeyPairWalletModal}
+                    importDk={openRestoreMnemonicWalletModal}
+                    createDk={openCreateMnemonicWalletModal}
+                    deriveK={handleDeriveWallet}
+                    chainService={chainService}
+                />
 
-            <div className="accounts">
-                {wallet0 ? <Account account={wallet0} /> : "Loading wallet 0"}
-                {wallet1 ? <Account account={wallet1} /> : "Loading wallet 1"}
-            </div>
-        </div>
+                <ModalManager
+                    currentModal={modalState.type}
+                    modalProps={modalState.props}
+                    onClose={() => setModalState({ type: null })}
+                />
+
+                {isLoading && <FullscreenLoader />}
+            </ApplicationContext.Provider>
+        </main>
     );
-}
+};
 
-// todo replace vite-plugin-wasm;
+export default Application;

@@ -4,8 +4,8 @@ import { DEFAULT_AXIOS_TIMEOUT_MS } from "../../config";
 import { Address } from "../../domains/Wallet";
 import { ec as EC } from "elliptic";
 import { blake2bHex } from "blakejs";
-import { decodeBase16 } from "../accountsManager";
 import BinaryWriter from "../../domains/BinaryWriter";
+import { decodeBase16 } from "../../utils/codec";
 
 const secp256k1 = new EC("secp256k1");
 
