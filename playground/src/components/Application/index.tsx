@@ -89,6 +89,7 @@ const Application = (): ReactElement => {
 
     const createPassword = (password) => {
         saveVault(password);
+        setCurrentPassword(password);
         setIsVaultConfigured(true);
         setModalState({ type: null });
     };
@@ -118,6 +119,10 @@ const Application = (): ReactElement => {
             setIsLoading(false);
         }
     };
+
+    useEffect(() => {
+        console.log(currentPassword)
+    }, [currentPassword]);
 
     const createKeyPairWallet = (payload: TWalletCreatePayload) => {
         if (!vault) return;
