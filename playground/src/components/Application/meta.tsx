@@ -49,9 +49,8 @@ const ModalsMeta: Record<string, IModalsMetaProps> = {
     },
 };
 
-export const init = (config, setIsLoading, setVault, setChainService) => {
+export const init = (config, setVault, setChainService) => {
     try {
-        setIsLoading(true);
 
         const chainService = new ChainService({
             validatorURL: config.ValidatorURL,
@@ -74,8 +73,6 @@ export const init = (config, setIsLoading, setVault, setChainService) => {
         setChainService(chainService);
     } catch (error) {
         alert(error?.message || "Error during initialization");
-    } finally {
-        setIsLoading(false);
     }
 };
 
