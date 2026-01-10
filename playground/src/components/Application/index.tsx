@@ -1,3 +1,4 @@
+import useLoader from "@hooks/useLoader";
 import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
@@ -34,7 +35,7 @@ if (!config) {
 }
 
 const Application = (): ReactElement => {
-    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const { isLoading, withLoader } = useLoader();
     const [modalState, setModalState] = useState<ModalState>({ type: null });
 
     const [vault, setVault] = useState<Vault | null>(null);
@@ -69,9 +70,8 @@ const Application = (): ReactElement => {
         });
     };
 
-    const unlockVault = (password: string) => {
+    const unlockVault = (password: string) => withLoader(() => {
         try {
-            setIsLoading(true);
 
             vault?.unlock(password);
             setCurrentPassword(password);
@@ -82,25 +82,23 @@ const Application = (): ReactElement => {
             alert(
                 "Failed to unlock vault. Please check your password and try again."
             );
-        } finally {
-            setIsLoading(false);
         }
-    };
+    });
 
-    const createPassword = (password) => {
+    const createPassword = (password: string) => withLoader(() => {
         saveVault(password);
         setCurrentPassword(password);
         setIsVaultConfigured(true);
         setModalState({ type: null });
-    };
+    });
 
-    const addWalletToVault = (wallet: Wallet) => {
+    const addWalletToVault = (wallet: Wallet) => withLoader(() => {
         if (!vault) return;
 
         vault.addWallet(wallet);
 
         saveVault(currentPassword);
-    };
+    });
 
     const saveVault = (password: string) => {
         if (!vault) return;
@@ -108,15 +106,21 @@ const Application = (): ReactElement => {
         console.log("Saving vault with password", password);
 
         try {
-            setIsLoading(true);
-
+            console.time("lock");
             vault.lock(password);
+            console.timeEnd("lock");
+
+            console.time("save");
             vault.save(VAULT_STORAGE_KEY);
+            console.timeEnd("save");
+
+            console.time("unlock");
             vault.unlock(password);
+            console.time("unlock");
 
             updateVault(vault);
-        } finally {
-            setIsLoading(false);
+        } catch(error) {
+            console.log(error);
         }
     };
 
@@ -128,8 +132,6 @@ const Application = (): ReactElement => {
         if (!vault) return;
 
         try {
-            setIsLoading(true);
-
             if (payload.mode !== "privateKey") {
                 throw new Error(
                     "Invalid payload mode for key pair wallet creation"
@@ -145,8 +147,8 @@ const Application = (): ReactElement => {
             addWalletToVault(newWallet);
 
             setModalState({ type: null });
-        } finally {
-            setIsLoading(false);
+        } catch(error) {
+            console.log(error);
         }
     };
 
@@ -154,7 +156,6 @@ const Application = (): ReactElement => {
         payload: TWalletCreatePayload
     ) => {
         if (!vault) return;
-        setIsLoading(true);
 
         if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
             throw new Error("Mnemonic words are required for mnemonic wallet");
@@ -178,14 +179,11 @@ const Application = (): ReactElement => {
             setModalState({ type: null });
         } catch (error) {
             console.error("Error creating mnemonic wallet:", error);
-        } finally {
-            setIsLoading(false);
         }
     };
 
-    const handleDeriveWallet = async (index: number) => {
+    const handleDeriveWallet = async (index: number) => withLoader(async () => {
         if (!vault) return;
-        setIsLoading(true);
 
         try {
             const seeds = vault.getSeeds();
@@ -216,10 +214,8 @@ const Application = (): ReactElement => {
             saveVault(currentPassword);
         } catch (error) {
             console.error("Error deriving wallet:", error);
-        } finally {
-            setIsLoading(false);
         }
-    };
+    });
 
     const openCreateKeyPairWalletModal = () => {
         setModalState({
@@ -277,7 +273,7 @@ const Application = (): ReactElement => {
     };
 
     useEffect(() => {
-        init(config, setIsLoading, setVault, setChainService);
+        init(config, setVault, setChainService);
     }, []);
 
     useEffect(() => {
