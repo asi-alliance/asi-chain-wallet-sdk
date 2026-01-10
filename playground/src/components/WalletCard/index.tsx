@@ -3,17 +3,20 @@ import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
 import { Wallet, ChainService } from "asi-wallet-sdk";
 import "./style.css";
+import { Address } from "../../../../dist/domains/Wallet";
 
 export interface IWalletCardProps {
     wallet: Wallet;
+    removeWallet: (id: Address) => void;
     chainService: ChainService;
 }
 
 const WalletCard = ({
     wallet,
+    removeWallet,
     chainService,
 }: IWalletCardProps): ReactElement => {
-    const { setModalState} = useAppContext();
+    const { setModalState } = useAppContext();
 
     const [isSending, setIsSending] = useState<boolean>(false);
     const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
@@ -46,9 +49,9 @@ const WalletCard = ({
                 onConfirm: handleSend,
                 onCancel: () => {
                     setModalState({ type: null });
-                }
-            }
-        })
+                },
+            },
+        });
     };
 
     const handleSend = (toAddress, amount) => {
@@ -56,13 +59,14 @@ const WalletCard = ({
             type: Modals.PASSWORD_MODAL,
             props: {
                 title: "Unlock your wallet to send ASI",
-                onSubmit: (password: string) => transfer(toAddress, amount, password),
+                onSubmit: (password: string) =>
+                    transfer(toAddress, amount, password),
                 onCancel: () => {
                     setModalState({ type: null });
-                }
-            }
+                },
+            },
         });
-    }
+    };
 
     const transfer = async (toAddress, amount, password) => {
         try {
@@ -72,7 +76,12 @@ const WalletCard = ({
 
             setIsSending(true);
 
-            const data = await chainService.transfer(address, toAddress, amount, wallet.getPrivateKey());
+            const data = await chainService.transfer(
+                address,
+                toAddress,
+                amount,
+                wallet.getPrivateKey()
+            );
 
             console.log("Transfer successful", data);
             alert("Transfer successful!");
@@ -85,7 +94,7 @@ const WalletCard = ({
         } finally {
             setIsSending(false);
         }
-    }
+    };
 
     useEffect(() => {
         fetchBalance();
@@ -95,6 +104,28 @@ const WalletCard = ({
         <div className="wallet-card">
             <div className="wallet-card-index">
                 {index === null ? "null" : index}
+            </div>
+            <div className="remove-block">
+                <button onClick={() => removeWallet(wallet.getAddress())}>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="red"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="lucide lucide-trash2-icon lucide-trash-2"
+                    >
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                </button>
             </div>
             <div className="wallet-card-body">
                 <div className="wallet-card-head">

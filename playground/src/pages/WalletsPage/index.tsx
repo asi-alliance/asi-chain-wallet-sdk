@@ -1,11 +1,13 @@
 import WalletCard from "../../components/WalletCard";
-import { Fragment, use, useMemo, useState, type ReactElement } from "react";
+import { Fragment,useMemo, useState, type ReactElement } from "react";
+import { Address } from "../../../../dist/domains/Wallet";
 import { Vault, ChainService } from "asi-wallet-sdk";
 import "./style.css";
 
 interface WalletsPageProps {
     vault: Vault;
     chainService: ChainService;
+    removeWallet: (id: Address) => void;
     importPk: () => void;
     importDk: (words: 12 | 24) => void;
     createPk: () => void;
@@ -16,6 +18,7 @@ interface WalletsPageProps {
 const WalletsPage = ({
     vault,
     chainService,
+    removeWallet,
     importPk,
     importDk,
     createPk,
@@ -116,6 +119,7 @@ const WalletsPage = ({
                             >
                                 <WalletCard
                                     wallet={w}
+                                    removeWallet={removeWallet}
                                     chainService={chainService}
                                 />
                             </div>
@@ -183,7 +187,7 @@ const WalletsPage = ({
                         )}
                     </div>
 
-                    <div className="wallets-page__list">
+                    <div className="wallets-page__list mnemonics">
                         {wallets.mnemonicWallets.map((w) => (
                             <div
                                 key={w.getAddress()}
@@ -193,6 +197,7 @@ const WalletsPage = ({
                             >
                                 <WalletCard
                                     wallet={w}
+                                    removeWallet={removeWallet}
                                     chainService={chainService}
                                 />
                             </div>

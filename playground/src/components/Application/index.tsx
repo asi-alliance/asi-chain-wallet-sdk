@@ -16,6 +16,7 @@ import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { ReactElement, useEffect, useState } from "react";
 import { ChainService, Wallet, Vault } from "asi-wallet-sdk";
 import "./style.css";
+import { Address } from "../../../../dist/domains/Wallet";
 
 // 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
 // 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
@@ -100,6 +101,14 @@ const Application = (): ReactElement => {
         saveVault(currentPassword);
     });
 
+    const removeWalletFromVault = (id: string) => withLoader(() => {
+        if (!vault) return;
+
+        vault.removeWallet(id as Address);
+
+        saveVault(currentPassword);
+    })
+
     const saveVault = (password: string) => {
         if (!vault) return;
 
@@ -123,10 +132,6 @@ const Application = (): ReactElement => {
             console.log(error);
         }
     };
-
-    useEffect(() => {
-        console.log(currentPassword)
-    }, [currentPassword]);
 
     const createKeyPairWallet = (payload: TWalletCreatePayload) => {
         if (!vault) return;
@@ -152,7 +157,7 @@ const Application = (): ReactElement => {
         }
     };
 
-    const handleCreateMnemonicWallet = async (
+    const handleCreateMnemonicWallet = withLoader(() => async (
         payload: TWalletCreatePayload
     ) => {
         if (!vault) return;
@@ -180,7 +185,7 @@ const Application = (): ReactElement => {
         } catch (error) {
             console.error("Error creating mnemonic wallet:", error);
         }
-    };
+    });
 
     const handleDeriveWallet = async (index: number) => withLoader(async () => {
         if (!vault) return;
@@ -273,7 +278,7 @@ const Application = (): ReactElement => {
     };
 
     useEffect(() => {
-        init(config, setVault, setChainService);
+        withLoader(() => init(config, setVault, setChainService));
     }, []);
 
     useEffect(() => {
@@ -294,6 +299,7 @@ const Application = (): ReactElement => {
             <ApplicationContext.Provider value={{ modalState, setModalState }}>
                 <WalletsPage
                     vault={vault}
+                    removeWallet={removeWalletFromVault}
                     createPk={openCreateKeyPairWalletModal}
                     importPk={openImportKeyPairWalletModal}
                     importDk={openRestoreMnemonicWalletModal}

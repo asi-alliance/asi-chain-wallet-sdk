@@ -1,6 +1,8 @@
 .wallet-card {
 	position: relative;
 
+	display: flex;
+	align-items: center;
 	background: #fff;
 	border-radius: 10px;
 	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -11,6 +13,21 @@
 	width: 100%;
 
 	font-family: inherit;
+}
+
+.remove-block {
+	transition: .2s;
+	margin: 10px;
+	margin-right: 20px;
+}
+
+.remove-block button {
+	background: none;
+	border: none;
+}
+
+.remove-block:hover {
+	transform: scale(1.1);
 }
 
 .wallet-card-index {
