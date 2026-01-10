@@ -1,0 +1,7 @@
+.mnemonics .wallets-page__card-wrap .remove-block {
+	display: none;
+}
+
+.mnemonics .wallets-page__card-wrap:last-child .remove-block {
+	display: block;
+}
