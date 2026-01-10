@@ -1,6 +1,6 @@
 # ASI Wallet SDK
 
-A TypeScript-based wallet SDK for the ASI Chain ecosystem, providing secure key management, RPC client integration, and wallet functionality for blockchain applications.
+A TypeScript-based wallet SDK for the ASI Chain ecosystem, providing secure key management, RChain client integration, and wallet functionality for blockchain applications.
 
 ## Overview
 
@@ -8,27 +8,32 @@ The ASI Wallet SDK is a lightweight, modular library designed to simplify wallet
 
 ## Project Structure
 
+High-level layout of the repository:
+
 ```
 asi-chain-wallet-sdk/
-├── src/                          # Main SDK source code
-│   ├── components/              # Core wallet components
-│   │   ├── client/             # Client component
-│   │   ├── keyManager/         # Key management interface
-│   │   └── localKeyManager/    # Local key implementation
-│   ├── errors/                 # Custom error definitions
-│   ├── types/                  # TypeScript type definitions
-│   └── index.ts                # SDK entry point
-├── playground/                  # React development environment
-│   ├── src/                    # Playground React components
-│   │   └── components/         # React UI components
-│   ├── package.json            # Playground dependencies
-│   ├── vite.config.ts          # Vite configuration
-│   └── index.html              # HTML entry point
-├── dist/                        # Compiled output (generated)
-├── package.json                 # SDK dependencies and scripts
-├── tsconfig.build.json         # TypeScript build configuration
-└── README.md                   # This file
+├── src/                # SDK source code (domains, services, utils)
+├── playground/         # React playground for UI components and demos
+│   ├── src/            # Playground React source
+│   └── package.json
+├── dist/               # Compiled output (generated)
+├── package.json        # Root scripts and dependencies
+└── README.md           # This file
 ```
+
+Key folders inside `src`:
+
+- `domains/` — domain models (Wallet, Vault, Asset, etc.)
+- `services/` — business services (Key Derivation, RChainService, WalletsService)
+- `utils/` — codec, constants, polyfills, validators
+
+## Components and Modules
+
+- Client: core client component for wallet operations
+- Key Manager: abstract interface for key management
+- Local Key Manager: reference implementation of local key storage
+- RPC Client: utilities for interacting with ASI Chain RPC endpoints
+
 
 ## Installation
 
@@ -54,21 +59,6 @@ Install dependencies for SDK:
 npm install
 ```
 
-Install dependencies for Playground:
-```
-cd playground
-```
-```
-npm install
-```
-### Build
-
-Build the SDK:
-
-```bash
-npm run build
-```
-
 ### Development Mode
 
 Watch mode for SDK changes:
@@ -77,50 +67,29 @@ Watch mode for SDK changes:
 npm run dev
 ```
 
+### Build
+
+Build the SDK:
+
+```bash
+npm run build
+```
 ### Playground
+
+Install dependencies for Playground:
+```
+cd playground
+```
+```
+npm install
+```
 
 Start the development playground (React + Vite):
 
 ```bash
-cd playground
 npm run dev
 ```
-
-The playground provides a local testing environment for developing and testing wallet functionality.
-
-Build the playground:
-
-```bash
-cd playground
-npm run build
-```
-
-## Project Details
-
-- **Language**: TypeScript
-- **Module System**: ESM (ES Modules)
-- **Build Target**: ES2020
-- **Main Entry**: `src/index.ts`
-- **Distribution**: `dist/` (JavaScript + Type Definitions)
-
-## Components
-
-### Client
-Core client component for wallet operations.
-
-### Key Manager
-Interface for key management operations.
-
-### Local Key Manager
-Reference implementation for local key storage and management.
-
-### RPC Client
-Client for interacting with ASI Chain RPC endpoints.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please ensure all code is properly typed and follows the project's TypeScript configuration.
