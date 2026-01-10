@@ -58,7 +58,7 @@ const TransferModal = ({
                             required
                         />
                     </div>
-                    <div className="form-row">
+                    {/* <div className="form-row">
                         <label htmlFor="commission">Commission:</label>
                         <input
                             type="number"
@@ -68,7 +68,7 @@ const TransferModal = ({
                             step="any"
                             required
                         />
-                    </div>
+                    </div> */}
                     <div className="form-actions">
                         <button className="submit-button" type="submit">
                             Send

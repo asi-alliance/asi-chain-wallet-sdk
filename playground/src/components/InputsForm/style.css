@@ -1,3 +1,8 @@
+button:disabled,
+button.disabled {
+  filter: grayscale(.6);
+}
+
 .form {
   display: flex;
   flex-direction: column;

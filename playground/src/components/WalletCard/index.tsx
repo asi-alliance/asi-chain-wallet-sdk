@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
+import { useEffect, useState, type ReactElement } from "react";
+import { Address } from "../../../../dist/domains/Wallet";
+import { isAddress } from "../../../../dist/utils/validators";
 import { Modals } from "@components/Application/meta";
 import { Wallet, ChainService } from "asi-wallet-sdk";
 import "./style.css";
-import { Address } from "../../../../dist/domains/Wallet";
 
 export interface IWalletCardProps {
     wallet: Wallet;
@@ -16,7 +17,7 @@ const WalletCard = ({
     removeWallet,
     chainService,
 }: IWalletCardProps): ReactElement => {
-    const { setModalState } = useAppContext();
+    const { setModalState, withLoader } = useAppContext();
 
     const [isSending, setIsSending] = useState<boolean>(false);
     const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
@@ -40,10 +41,12 @@ const WalletCard = ({
         }
     };
 
-    const handlePrepareSend = () => {
+    const handlePrepareSend = (toAddress?, amount?) => {
         setModalState({
             type: Modals.TRANSFER_MODAL,
             props: {
+                toAddress: toAddress ?? "",
+                amount: amount ?? 0,
                 currentBalance: Number(balance),
                 commission: 0,
                 onConfirm: handleSend,
@@ -68,8 +71,12 @@ const WalletCard = ({
         });
     };
 
-    const transfer = async (toAddress, amount, password) => {
+    const transfer = (toAddress, amount, password) => withLoader(async () => {
         try {
+            if (!isAddress(toAddress)) {
+                throw new Error("Invalid 'toAddress' provided.");
+            }
+
             console.log("Starting transfer...", { toAddress, amount });
 
             wallet.unlock(password);
@@ -85,16 +92,27 @@ const WalletCard = ({
 
             console.log("Transfer successful", data);
             alert("Transfer successful!");
-            await fetchBalance();
 
-            setModalState({ type: null });
+            setModalState({
+                modal: Modals.TRANSFER_COMPLETED_MODAL,
+                props: {
+                    deployId: data,
+                    fromAddress: address,
+                    toAddress,
+                    amount,
+                    onClose: () => setModalState({ type: null }),
+                },
+            })
+
+            await fetchBalance();
         } catch (error) {
             console.error(error);
-            handlePrepareSend();
+            alert(`${error?.message || "Transfer failed"}, aborting transfer.`);
+            handlePrepareSend(toAddress, amount);
         } finally {
             setIsSending(false);
         }
-    };
+    });
 
     useEffect(() => {
         fetchBalance();
@@ -144,7 +162,7 @@ const WalletCard = ({
                 <div className="buttons">
                     <button
                         className="wallet-card-button"
-                        onClick={handlePrepareSend}
+                        onClick={() => handlePrepareSend()}
                         disabled={isSending || isBalanceFetching || !canSend}
                     >
                         Send

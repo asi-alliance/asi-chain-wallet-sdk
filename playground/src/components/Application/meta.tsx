@@ -1,3 +1,13 @@
+import PasswordModal, {
+    type IPasswordModalProps,
+} from "@components/PasswordModal";
+import CreateWalletModal, {
+    IWalletCreateModalProps,
+} from "@components/CreateWalletModal";
+import TransferModal, { ITransferModalProps } from "@components/TransferModal";
+import DeriveWalletModal, { IDeriveWalletModalProps } from "@components/DeriveWalletModal";
+import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+import { type ReactElement } from "react";
 import {
     Vault,
     MnemonicService,
@@ -7,15 +17,7 @@ import {
     EncryptedSeedRecord,
     Wallet,
 } from "asi-wallet-sdk";
-import PasswordModal, {
-    type IPasswordModalProps,
-} from "@components/PasswordModal";
-import { type ReactElement } from "react";
-import TransferModal, { ITransferModalProps } from "@components/TransferModal";
-import CreateWalletModal, {
-    IWalletCreateModalProps,
-} from "@components/CreateWalletModal";
-import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+import TransferCompletedModal, { ITransferCompletedModalProps } from "@components/TransferCompletedModal";
 
 const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
 
@@ -23,12 +25,16 @@ export enum Modals {
     PASSWORD_MODAL = "unlockVault",
     CREATE_WALLET_MODAL = "createWalletModal",
     TRANSFER_MODAL = "transferModal",
+    DERIVE_WALLET_MODAL = "deriveWalletModal",
+    TRANSFER_COMPLETED_MODAL = "transferCompletedModal",
 }
 
 export type ModalProps =
     | IPasswordModalProps
     | ITransferModalProps
     | IWalletCreateModalProps
+    | IDeriveWalletModalProps
+    | ITransferCompletedModalProps
     | undefined;
 
 interface IModalsMetaProps {
@@ -46,6 +52,14 @@ const ModalsMeta: Record<string, IModalsMetaProps> = {
     },
     [Modals.TRANSFER_MODAL]: {
         modal: (props: ITransferModalProps) => <TransferModal {...props} />,
+    },
+    [Modals.DERIVE_WALLET_MODAL]: {
+        modal: (props: IDeriveWalletModalProps) => <DeriveWalletModal {...props} />,
+    },
+    [Modals.TRANSFER_COMPLETED_MODAL]: {
+        modal: (props: ITransferCompletedModalProps) => (
+            <TransferCompletedModal {...props} />
+        ),
     },
 };
 
