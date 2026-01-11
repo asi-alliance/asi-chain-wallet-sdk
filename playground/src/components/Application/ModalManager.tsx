@@ -17,17 +17,15 @@ import DeriveWalletModal, {
 interface ModalManagerProps {
     currentModal: Modals | null;
     modalProps?: ModalProps;
-    onClose: () => void;
 }
 
 const ModalManager = ({
     currentModal,
     modalProps,
-    onClose,
 }: ModalManagerProps): ReactElement | null => {
     if (!currentModal) return null;
 
-    const commonProps = { ...modalProps, onClose };
+    const commonProps = { ...modalProps };
 
     switch (currentModal) {
         case Modals.PASSWORD_MODAL:
