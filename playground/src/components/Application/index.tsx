@@ -51,6 +51,10 @@ const Application = (): ReactElement => {
         );
     };
 
+    useEffect(() => {
+        console.log(modalState);
+    }, [modalState])
+
     const openUnlockModal = () => {
         setModalState({
             type: Modals.PASSWORD_MODAL,

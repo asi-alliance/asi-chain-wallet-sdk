@@ -1,4 +1,4 @@
-import { type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import "./style.css";
 
 export interface ITransferCompletedModalProps {
@@ -16,6 +16,22 @@ const TransferCompletedModal = ({
     deployId,
     onClose,
 }: ITransferCompletedModalProps): ReactElement => {
+    const [isDeployIdCopied, setIsDeployIdCopied] = useState<boolean>(false);
+
+    const copyDeployId = async () => {
+        try {
+            await navigator.clipboard.writeText(deployId);
+
+            setIsDeployIdCopied(true);
+
+            setTimeout(() => {
+                setIsDeployIdCopied(false);
+            }, 3000);
+        } catch (error) {
+            console.error("Error copying text: ", error);
+        }
+    }
+
     return (
         <div className="wallet-create-modal__overlay">
             <div className="wallet-create-modal__content">
@@ -76,10 +92,15 @@ const TransferCompletedModal = ({
                         readOnly
                         value={deployId}
                     />
+
                 </div>
 
                 <p>
-                    Tokens have been successfully transferred! You can track the
+                    Tokens have been successfully transferred!
+                    <br></br>
+                    It takes some time for them to arrive!
+                    <br></br>
+                    You can track the
                     transaction using the Deploy ID above.
                 </p>
 
@@ -90,6 +111,13 @@ const TransferCompletedModal = ({
                         onClick={onClose}
                     >
                         CLOSE
+                    </button>
+                    <button
+                        className="wallet-create-modal__button wallet-create-modal__button--primary"
+                        onClick={copyDeployId}
+                        disabled={isDeployIdCopied}
+                    >
+                        {isDeployIdCopied ? "Copied" : "Copy deployId"}
                     </button>
                 </div>
             </div>

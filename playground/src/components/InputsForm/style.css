@@ -23,9 +23,14 @@ button.disabled {
 
 .form-row-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
+  flex-direction: row;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.form-row-actions button {
+  display: block;
 }
 
 .label {

@@ -19,6 +19,7 @@ const WalletCard = ({
 }: IWalletCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
 
+    const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
     const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
     const [balance, setBalance] = useState<BigInt>(BigInt(0));
@@ -91,10 +92,10 @@ const WalletCard = ({
             );
 
             console.log("Transfer successful", data);
-            alert("Transfer successful!");
+            // alert("Transfer successful!");
 
             setModalState({
-                modal: Modals.TRANSFER_COMPLETED_MODAL,
+                type: Modals.TRANSFER_COMPLETED_MODAL,
                 props: {
                     deployId: data,
                     fromAddress: address,
@@ -113,6 +114,20 @@ const WalletCard = ({
             setIsSending(false);
         }
     });
+
+    const copyAddress = async () => {
+        try {
+            await navigator.clipboard.writeText(wallet.getAddress());
+
+            setIsCopied(true);
+
+            setTimeout(() => {
+                setIsCopied(false);
+            }, 3000);
+        } catch (error) {
+            console.error("Error copying text: ", error);
+        }
+    }
 
     useEffect(() => {
         fetchBalance();
@@ -173,6 +188,13 @@ const WalletCard = ({
                         disabled={isBalanceFetching || isSending}
                     >
                         Reload balance
+                    </button>
+                    <button
+                        className="wallet-card-button"
+                        onClick={copyAddress}
+                        disabled={isCopied}
+                    >
+                        {isCopied ? "Copied" : "Copy address"}
                     </button>
                 </div>
             </div>
