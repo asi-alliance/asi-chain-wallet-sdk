@@ -2,15 +2,21 @@ import PasswordModal, {
     type IPasswordModalProps,
 } from "@components/PasswordModal";
 import TransferModal, { ITransferModalProps } from "@components/TransferModal";
+import TransferCompletedModal, {
+    ITransferCompletedModalProps,
+} from "@components/TransferCompletedModal";
 import CreateWalletModal, {
     IWalletCreateModalProps,
 } from "@components/CreateWalletModal";
 import { ModalProps, Modals } from "./meta";
 import { ReactElement } from "react";
+import DeriveWalletModal, {
+    IDeriveWalletModalProps,
+} from "@components/DeriveWalletModal";
 
 interface ModalManagerProps {
     currentModal: Modals | null;
-    modalProps?: ModalProps
+    modalProps?: ModalProps;
     onClose: () => void;
 }
 
@@ -32,6 +38,18 @@ const ModalManager = ({
             return (
                 <CreateWalletModal
                     {...(commonProps as IWalletCreateModalProps)}
+                />
+            );
+        case Modals.DERIVE_WALLET_MODAL:
+            return (
+                <DeriveWalletModal
+                    {...(commonProps as IDeriveWalletModalProps)}
+                />
+            );
+        case Modals.TRANSFER_COMPLETED_MODAL:
+            return (
+                <TransferCompletedModal
+                    {...(commonProps as ITransferCompletedModalProps)}
                 />
             );
         default:

@@ -17,6 +17,7 @@ import "./style.css";
 export interface IInputsFormProps {
     variant: 12 | 24;
     formMode: "input" | "output";
+    initialMnemonic: string[],
     validateWords?: (words: string[]) => string | null;
     onValidSubmit?: (normalizedWords: string[]) => void;
     onClose: () => void;
@@ -49,13 +50,14 @@ const updateArrayLength = <T,>(
 const InputsForm = ({
     variant,
     formMode,
+    initialMnemonic,
     validateWords,
     onValidSubmit,
     onClose,
 }: IInputsFormProps): ReactElement => {
     const [wordCount, setWordCount] = useState<number>(variant);
     const [words, setWords] = useState<string[]>(() =>
-        createEmptyWords(DEFAULT_WORDS_COUNT)
+        initialMnemonic ?? createEmptyWords(DEFAULT_WORDS_COUNT)
     );
     const [errors, setErrors] = useState<boolean[]>(() =>
         createErrors(DEFAULT_WORDS_COUNT)
@@ -90,13 +92,6 @@ const InputsForm = ({
         );
     }, [wordCount]);
 
-    const handleSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
-        const value = Number(event.target.value);
-
-        const clipped = clippedWordCount(value);
-
-        setWordCount(clipped);
-    };
 
     const updateErrorsForWord = (index: number, word: string) => {
         const nextErrors = [...errors];

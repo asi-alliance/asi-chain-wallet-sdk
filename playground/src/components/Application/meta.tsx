@@ -1,3 +1,9 @@
+import { ITransferCompletedModalProps } from "@components/TransferCompletedModal";
+import { IDeriveWalletModalProps } from "@components/DeriveWalletModal";
+import { IWalletCreateModalProps } from "@components/CreateWalletModal";
+import { MnemonicStrength } from "../../../../dist/services/mnemonic";
+import { IPasswordModalProps } from "@components/PasswordModal";
+import { ITransferModalProps } from "@components/TransferModal";
 import {
     Vault,
     MnemonicService,
@@ -7,15 +13,6 @@ import {
     EncryptedSeedRecord,
     Wallet,
 } from "asi-wallet-sdk";
-import PasswordModal, {
-    type IPasswordModalProps,
-} from "@components/PasswordModal";
-import { type ReactElement } from "react";
-import TransferModal, { ITransferModalProps } from "@components/TransferModal";
-import CreateWalletModal, {
-    IWalletCreateModalProps,
-} from "@components/CreateWalletModal";
-import { MnemonicStrength } from "../../../../dist/services/mnemonic";
 
 const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
 
@@ -23,35 +20,20 @@ export enum Modals {
     PASSWORD_MODAL = "unlockVault",
     CREATE_WALLET_MODAL = "createWalletModal",
     TRANSFER_MODAL = "transferModal",
+    DERIVE_WALLET_MODAL = "deriveWalletModal",
+    TRANSFER_COMPLETED_MODAL = "transferCompletedModal",
 }
 
 export type ModalProps =
     | IPasswordModalProps
     | ITransferModalProps
     | IWalletCreateModalProps
+    | IDeriveWalletModalProps
+    | ITransferCompletedModalProps
     | undefined;
-
-interface IModalsMetaProps {
-    modal: (props: ModalProps) => ReactElement;
-}
-
-const ModalsMeta: Record<string, IModalsMetaProps> = {
-    [Modals.PASSWORD_MODAL]: {
-        modal: (props: IPasswordModalProps) => <PasswordModal {...props} />,
-    },
-    [Modals.CREATE_WALLET_MODAL]: {
-        modal: (props: IWalletCreateModalProps) => (
-            <CreateWalletModal {...props} />
-        ),
-    },
-    [Modals.TRANSFER_MODAL]: {
-        modal: (props: ITransferModalProps) => <TransferModal {...props} />,
-    },
-};
 
 export const init = (config, setVault, setChainService) => {
     try {
-
         const chainService = new ChainService({
             validatorURL: config.ValidatorURL,
             readOnlyURL: config.ReadOnlyURL,
@@ -133,11 +115,11 @@ export const deriveNextWallet = async (
 };
 
 export const createInitialMnemonic = (variant) => {
-    return MnemonicService.generateMnemonic(wordsCountToMnemonicStrength(variant));
+    return MnemonicService.generateMnemonic(
+        wordsCountToMnemonicStrength(variant)
+    );
 };
 
 export const createInitialPrivateKey = () => {
     return KeysService.generateKeyPair().privateKey;
 };
-
-export default ModalsMeta;

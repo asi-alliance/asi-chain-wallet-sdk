@@ -6,10 +6,15 @@ const useLoader = () => {
     const withLoader = (method: (...params: unknown[]) => void) => {
         setIsLoading(true);
         
-        requestIdleCallback(() => {
+        // requestIdleCallback(() => {
+        //     method();
+        //     setIsLoading(false);
+        // });
+
+        setTimeout(() => { // add timeout to postpone operation to the next render
             method();
             setIsLoading(false);
-        });
+        }, 10)
     };
 
     return {
