@@ -1,5 +1,5 @@
 .grid {
-  --mnemonic-columns: 2;
+  --mnemonic-columns: 3;
   display: grid;
   grid-template-columns: repeat(var(--mnemonic-columns), minmax(0, 1fr));
   gap: 16px;

@@ -40,7 +40,13 @@ const CreateWalletModal = ({
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
-    const [mnemonicWords, setMnemonicWords] = useState<string[]>(MnemonicService.mnemonicToWordArray(initialMnemonic || ""));
+    const [mnemonicWords, setMnemonicWords] = useState<string[]>(
+        !initialMnemonic
+            ? []
+            : MnemonicService.mnemonicToWordArray(initialMnemonic)
+    );
+
+    console.log(initialMnemonic, mnemonicWords);
 
     const computedTitle = useMemo(() => {
         if (title) return title;
@@ -230,6 +236,7 @@ const CreateWalletModal = ({
                         </div>
 
                         <InputsForm
+                            initialMnemonic={mnemonicWords}
                             variant={variant}
                             onValidSubmit={handleMnemonicSubmit}
                             formMode={isInputMode ? "input" : "output"}

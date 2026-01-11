@@ -7,7 +7,7 @@ export interface ITransferModalProps {
     amount: number;
     commission: number;
     onConfirm: (toAddress: string, amount: number) => void;
-    onCancel: () => void;
+    onClose: () => void;
 }
 
 const TransferModal = ({
@@ -16,7 +16,7 @@ const TransferModal = ({
     amount,
     commission,
     onConfirm,
-    onCancel,
+    onClose,
 }: ITransferModalProps): ReactElement => {
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -58,7 +58,7 @@ const TransferModal = ({
                             required
                         />
                     </div>
-                    <div className="form-row">
+                    {/* <div className="form-row">
                         <label htmlFor="commission">Commission:</label>
                         <input
                             type="number"
@@ -68,7 +68,7 @@ const TransferModal = ({
                             step="any"
                             required
                         />
-                    </div>
+                    </div> */}
                     <div className="form-actions">
                         <button className="submit-button" type="submit">
                             Send
@@ -76,7 +76,7 @@ const TransferModal = ({
                         <button
                             className="cancel-button"
                             type="button"
-                            onClick={onCancel}
+                            onClick={onClose}
                         >
                             Cancel
                         </button>

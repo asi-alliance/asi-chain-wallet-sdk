@@ -1,11 +1,13 @@
 import WalletCard from "../../components/WalletCard";
-import { Fragment, use, useMemo, useState, type ReactElement } from "react";
+import { Fragment, useMemo, useState, type ReactElement } from "react";
+import { Address } from "../../../../dist/domains/Wallet";
 import { Vault, ChainService } from "asi-wallet-sdk";
 import "./style.css";
 
 interface WalletsPageProps {
     vault: Vault;
     chainService: ChainService;
+    removeWallet: (id: Address) => void;
     importPk: () => void;
     importDk: (words: 12 | 24) => void;
     createPk: () => void;
@@ -16,6 +18,7 @@ interface WalletsPageProps {
 const WalletsPage = ({
     vault,
     chainService,
+    removeWallet,
     importPk,
     importDk,
     createPk,
@@ -39,7 +42,9 @@ const WalletsPage = ({
 
         console.log("Wallets to render", wallets);
 
-        const privateKeyWallets = wallets.filter((wallet) => wallet.getIndex() === null);
+        const privateKeyWallets = wallets.filter(
+            (wallet) => wallet.getIndex() === null
+        );
         const mnemonicWallets = wallets.filter((wallet) => {
             if (typeof wallet.getIndex() === "number") {
                 lastIndexLocal = Math.max(
@@ -61,7 +66,7 @@ const WalletsPage = ({
         return <div>Loading vault...</div>;
     }
 
-    const handleCreateMnemonicWallet = ( words: 12 | 24) => {
+    const handleCreateMnemonicWallet = (words: 12 | 24) => {
         if (selectedMode === "create") {
             createDk(words);
         }
@@ -72,14 +77,19 @@ const WalletsPage = ({
         setSelectedMode(null);
     };
 
+    const resetApp = () => {
+        if (window.confirm("Are you sure? This action will wipe App's data")) {
+            localStorage.clear();
+            window.location.reload();
+            return;
+        }
+    };
+
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
                 <h2 className="wallets-page__title">ASI WALLETS SDK</h2>
-                <button
-                    className="wallets-page__action"
-                    onClick={() => localStorage.clear()}
-                >
+                <button className="wallets-page__action" onClick={resetApp}>
                     CLEAR LS
                 </button>
             </div>
@@ -116,6 +126,7 @@ const WalletsPage = ({
                             >
                                 <WalletCard
                                     wallet={w}
+                                    removeWallet={removeWallet}
                                     chainService={chainService}
                                 />
                             </div>
@@ -133,18 +144,22 @@ const WalletsPage = ({
                                 <button
                                     className="wallets-page__action"
                                     type="button"
-                                    onClick={() => handleCreateMnemonicWallet(12)}
+                                    onClick={() =>
+                                        handleCreateMnemonicWallet(12)
+                                    }
                                 >
                                     M12
                                 </button>
                                 <button
                                     className="wallets-page__action"
                                     type="button"
-                                    onClick={() => handleCreateMnemonicWallet(24)}
+                                    onClick={() =>
+                                        handleCreateMnemonicWallet(24)
+                                    }
                                 >
                                     M24
                                 </button>
-                            </Fragment> 
+                            </Fragment>
                         )}
                         {!isChoosingMethod &&
                         !wallets.mnemonicWallets?.length ? (
@@ -183,7 +198,7 @@ const WalletsPage = ({
                         )}
                     </div>
 
-                    <div className="wallets-page__list">
+                    <div className="wallets-page__list mnemonics">
                         {wallets.mnemonicWallets.map((w) => (
                             <div
                                 key={w.getAddress()}
@@ -193,6 +208,7 @@ const WalletsPage = ({
                             >
                                 <WalletCard
                                     wallet={w}
+                                    removeWallet={removeWallet}
                                     chainService={chainService}
                                 />
                             </div>
