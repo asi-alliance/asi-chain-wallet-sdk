@@ -12,6 +12,8 @@ const PasswordModal = ({
     onSubmit,
     onClose,
 }: IPasswordModalProps): ReactElement => {
+    console.log(onClose);
+
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
@@ -39,7 +41,7 @@ const PasswordModal = ({
                         <button className="submit-button" type="submit">
                             Submit
                         </button>
-                        {onClose && (
+                        {!!onClose && (
                             <button
                                 className="cancel-button"
                                 type="button"

@@ -238,7 +238,7 @@ const Application = (): ReactElement => {
             props: {
                 index,
                 onSubmit: handleDeriveWallet,
-                onCancel: () => setModalState({ type: null })
+                onClose: () => setModalState({ type: null })
             },
         });
     }
@@ -252,6 +252,7 @@ const Application = (): ReactElement => {
                 isInputMode: false,
                 title: "Create KeyPair Wallet",
                 initialPrivateKey: createInitialPrivateKey(),
+                onClose: () => setModalState({ type: null })
             },
         });
     };
@@ -262,8 +263,9 @@ const Application = (): ReactElement => {
             props: {
                 mode: "privateKey",
                 onSubmit: createKeyPairWallet,
+                onClose: () => setModalState({ type: null }),
                 isInputMode: true,
-                title: "Create KeyPair Wallet",
+                title: "Restore KeyPair Wallet",
             },
         });
     };
@@ -274,6 +276,7 @@ const Application = (): ReactElement => {
             props: {
                 mode: "mnemonic",
                 onSubmit: handleCreateMnemonicWallet,
+                onClose: () => setModalState({ type: null }),
                 isInputMode: false,
                 title: "Create Mnemonic Wallet",
                 initialMnemonic:
@@ -291,9 +294,10 @@ const Application = (): ReactElement => {
             props: {
                 mode: "mnemonic",
                 onSubmit: handleCreateMnemonicWallet,
+                onClose: () => setModalState({ type: null }),
                 variant: words,
                 isInputMode: true,
-                title: "Create Mnemonic Wallet",
+                title: "Restore Mnemonic Wallet",
             },
         });
     };
@@ -332,7 +336,6 @@ const Application = (): ReactElement => {
                 <ModalManager
                     currentModal={modalState.type}
                     modalProps={modalState.props}
-                    onClose={() => setModalState({ type: null })}
                 />
 
                 {isLoading && <FullscreenLoader />}

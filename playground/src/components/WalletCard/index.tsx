@@ -51,7 +51,7 @@ const WalletCard = ({
                 currentBalance: Number(balance),
                 commission: 0,
                 onConfirm: handleSend,
-                onCancel: () => {
+                onClose: () => {
                     setModalState({ type: null });
                 },
             },
@@ -65,7 +65,7 @@ const WalletCard = ({
                 title: "Unlock your wallet to send ASI",
                 onSubmit: (password: string) =>
                     transfer(toAddress, amount, password),
-                onCancel: () => {
+                onClose: () => {
                     setModalState({ type: null });
                 },
             },
