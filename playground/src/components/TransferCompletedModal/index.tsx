@@ -1,10 +1,11 @@
+import { fromAtomicAmount } from "../../../../dist/utils/functions";
 import { useState, type ReactElement } from "react";
 import "./style.css";
 
 export interface ITransferCompletedModalProps {
     fromAddress: string;
     toAddress: string;
-    amount: string;
+    amount: bigint;
     deployId: string;
     onClose: () => void;
 }
@@ -78,7 +79,7 @@ const TransferCompletedModal = ({
                         name="amount"
                         type="text"
                         readOnly
-                        value={amount}
+                        value={fromAtomicAmount(amount)}
                     />
                 </div>
 
@@ -92,7 +93,6 @@ const TransferCompletedModal = ({
                         readOnly
                         value={deployId}
                     />
-
                 </div>
 
                 <p>

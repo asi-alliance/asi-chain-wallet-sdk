@@ -28,7 +28,7 @@ const WalletCard = ({
     const index = wallet.getIndex();
     const address = wallet.getAddress();
     const isLocked = wallet.isWalletLocked();
-    const canSend = Number(balance) > 0;
+    const canSend = balance > 0n;
 
     const fetchBalance = async () => {
         try {
@@ -48,8 +48,8 @@ const WalletCard = ({
             type: Modals.TRANSFER_MODAL,
             props: {
                 toAddress: toAddress ?? "",
-                amount: amount ?? 0,
-                currentBalance: Number(balance),
+                amount: amount ?? 0n,
+                currentBalance: balance,
                 commission: 0,
                 onConfirm: handleSend,
                 onClose: () => {
@@ -93,6 +93,7 @@ const WalletCard = ({
             );
 
             console.log("Transfer successful", data);
+            wallet.lock();
             // alert("Transfer successful!");
 
             setModalState({
