@@ -1,7 +1,8 @@
+import { fromAtomicAmount } from "../../../../dist/utils/functions";
 import { useAppContext } from "@components/Application/context";
 import { useEffect, useState, type ReactElement } from "react";
-import { Address } from "../../../../dist/domains/Wallet";
 import { isAddress } from "../../../../dist/utils/validators";
+import { Address } from "../../../../dist/domains/Wallet";
 import { Modals } from "@components/Application/meta";
 import { Wallet, ChainService } from "asi-wallet-sdk";
 import "./style.css";
@@ -22,12 +23,12 @@ const WalletCard = ({
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
     const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
-    const [balance, setBalance] = useState<BigInt>(BigInt(0));
+    const [balance, setBalance] = useState<bigint>(BigInt(0));
 
     const index = wallet.getIndex();
     const address = wallet.getAddress();
     const isLocked = wallet.isWalletLocked();
-    const canSend = Number(balance) > 0;
+    const canSend = balance > 0n;
 
     const fetchBalance = async () => {
         try {
@@ -47,8 +48,8 @@ const WalletCard = ({
             type: Modals.TRANSFER_MODAL,
             props: {
                 toAddress: toAddress ?? "",
-                amount: amount ?? 0,
-                currentBalance: Number(balance),
+                amount: amount ?? 0n,
+                currentBalance: balance,
                 commission: 0,
                 onConfirm: handleSend,
                 onClose: () => {
@@ -92,6 +93,7 @@ const WalletCard = ({
             );
 
             console.log("Transfer successful", data);
+            wallet.lock();
             // alert("Transfer successful!");
 
             setModalState({
@@ -136,7 +138,7 @@ const WalletCard = ({
     return (
         <div className="wallet-card">
             <div className="wallet-card-index">
-                {index === null ? "null" : index}
+                {!index ? "null" : index}
             </div>
             <div className="remove-block">
                 <button onClick={() => removeWallet(wallet.getAddress())}>
@@ -172,7 +174,7 @@ const WalletCard = ({
                     balance:{" "}
                     {isBalanceFetching
                         ? "loading balance ..."
-                        : balance.toString()}
+                        : fromAtomicAmount(balance)}
                 </div>
                 <div className="buttons">
                     <button

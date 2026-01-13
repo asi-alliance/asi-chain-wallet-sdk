@@ -1,12 +1,16 @@
+import {
+    fromAtomicAmount,
+    toAtomicAmount,
+} from "../../../../dist/utils/functions";
 import { type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
 export interface ITransferModalProps {
-    currentBalance: number;
+    currentBalance: bigint;
     toAddress: string;
-    amount: number;
+    amount: bigint;
     commission: number;
-    onConfirm: (toAddress: string, amount: number) => void;
+    onConfirm: (toAddress: string, amount: bigint) => void;
     onClose: () => void;
 }
 
@@ -21,17 +25,23 @@ const TransferModal = ({
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
-        const formData = new FormData(event.currentTarget);
-        const toAddress = (formData.get("toAddress") as string) ?? "";
-        const amountValueRaw = formData.get("amount") as string;
-        const amountValue = Number(amountValueRaw);
+        try {
+            const formData = new FormData(event.currentTarget);
+            const toAddress = (formData.get("toAddress") as string) ?? "";
+            const amountValueRaw = formData.get("amount") as string;
 
-        if (currentBalance < amountValue + commission) {
-            alert("Insufficient balance for this transfer including commission.");
-            return;
+            if (currentBalance < BigInt(amountValueRaw)) {
+                alert("Insufficient balance for this transfer.");
+            }
+            // if (currentBalance < amountValue + commission) {
+            //     alert("Insufficient balance for this transfer including commission.");
+            //     return;
+            // }
+
+            onConfirm(toAddress, toAtomicAmount(amountValueRaw));
+        } catch (error) {
+            alert(error?.message);
         }
-
-        onConfirm(toAddress, amountValue);
     };
 
     return (
@@ -51,10 +61,10 @@ const TransferModal = ({
                     <div className="form-row">
                         <label htmlFor="amount">Amount:</label>
                         <input
-                            type="number"
+                            type="text"
                             id="amount"
                             name="amount"
-                            defaultValue={amount}
+                            defaultValue={fromAtomicAmount(amount)}
                             required
                         />
                     </div>
