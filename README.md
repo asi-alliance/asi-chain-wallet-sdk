@@ -21,6 +21,16 @@ asi-chain-wallet-sdk/
 └── README.md           # This file
 ```
 
+## Documentation
+
+The repository includes generated reference docs for the main code areas. See:
+
+- Domains: [src/docs/DOMAINS.md](src/docs/DOMAINS.md)
+- Services: [src/docs/SERVICES.md](src/docs/SERVICES.md)
+- Utils: [src/docs/UTILS.md](src/docs/UTILS.md)
+
+Use those documents for quick API lookups and examples.
+
 Key folders inside `src`:
 
 - `domains/` — domain models (Wallet, Vault, Asset, etc.)
