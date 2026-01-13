@@ -1,11 +1,11 @@
 import axios, { AxiosInstance } from "axios";
-import { AssetId } from "../../domains/Asset";
-import { DEFAULT_AXIOS_TIMEOUT_MS } from "../../config";
-import { Address } from "../../domains/Wallet";
-import { ec as EC } from "elliptic";
-import { blake2bHex } from "blakejs";
 import BinaryWriter from "../../domains/BinaryWriter";
+import { DEFAULT_AXIOS_TIMEOUT_MS } from "../../config";
 import { decodeBase16 } from "../../utils/codec";
+import { Address } from "../../domains/Wallet";
+import { AssetId } from "../../domains/Asset";
+import { blake2bHex } from "blakejs";
+import { ec as EC } from "elliptic";
 
 const secp256k1 = new EC("secp256k1");
 
@@ -33,18 +33,14 @@ export interface RChainServiceConfigOptions {
 export const signDeploy = (deployData: any, privateKey: string): any => {
     const keyPair = secp256k1.keyFromPrivate(privateKey, "hex");
 
-    // Serialize deploy data using protobuf format
     const deploySerialized = deployDataProtobufSerialize(deployData);
 
-    // Hash with Blake2b-256 (32 bytes)
     const hashed = blake2bHex(deploySerialized, undefined, 32);
     const hashBytes = decodeBase16(hashed);
 
-    // Sign with canonical DER format
     const sig = keyPair.sign(Array.from(hashBytes), { canonical: true });
     const sigDER = sig.toDER();
 
-    // Get public key as array (uncompressed format)
     const publicKeyArray = keyPair.getPublic("array");
     const publicKeyBytes = new Uint8Array(publicKeyArray);
 
@@ -68,10 +64,6 @@ const deployDataProtobufSerialize = (deployData: any): Uint8Array => {
 
     const writer = new BinaryWriter();
 
-    // Write fields according to RChain protobuf schema
-    // Field numbers from CasperMessage.proto:
-    // term = 2, timestamp = 3, phloPrice = 7, phloLimit = 8,
-    // validAfterBlockNumber = 10, shardId = 11
     writer.writeString(2, term);
     writer.writeInt64(3, timestamp);
     writer.writeInt64(7, phloPrice);
@@ -166,7 +158,7 @@ export default class RChainService {
         );
     }
 
-    public async getASIBalance(address: Address): Promise<BigInt> {
+    public async getASIBalance(address: Address): Promise<bigint> {
         const checkBalanceRho = `
             new return, rl(\`rho:registry:lookup\`), ASIVaultCh, vaultCh in {
                 rl!(\`rho:rchain:asiVault\`, *ASIVaultCh) |
@@ -190,7 +182,7 @@ export default class RChainService {
                 const firstExpr = result[0];
 
                 if (firstExpr?.ExprInt?.data) {
-                    return firstExpr.ExprInt.data.toString();
+                    return BigInt(firstExpr.ExprInt.data);
                 }
 
                 if (firstExpr?.ExprString?.data) {
@@ -208,9 +200,10 @@ export default class RChainService {
     public async transfer(
         fromAddress: string,
         toAddress: string,
-        amount: string,
+        amount: bigint,
         privateKey: string
     ) {
+        const amountString = amount.toString();
         const transferRho = `
       new 
         deployerId(\`rho:rchain:deployerId\`),
@@ -228,11 +221,11 @@ export default class RChainService {
           @ASIVault!("findOrCreate", "${toAddress}", *toVaultCh) |
           @ASIVault!("deployerAuthKey", *deployerId, *asiVaultkeyCh) |
           for (@(true, vault) <- vaultCh; key <- asiVaultkeyCh; @(true, toVault) <- toVaultCh) {
-            @vault!("transfer", "${toAddress}", ${amount}, *key, *resultCh) |
+            @vault!("transfer", "${toAddress}", ${amountString}, *key, *resultCh) |
             for (@result <- resultCh) {
               match result {
                 (true, Nil) => {
-                  stdout!(("Transfer successful:", ${amount}, "ASI"))
+                  stdout!(("Transfer successful:", ${amountString}, "ASI"))
                 }
                 (false, reason) => {
                   stdout!(("Transfer failed:", reason))
@@ -259,12 +252,10 @@ export default class RChainService {
         phloLimit: number = 500000
     ): Promise<string> {
         try {
-            // Get latest block number
             const blocks = await this.callRNodeAPI("blocks/1");
             const blockNumber =
                 blocks && blocks.length > 0 ? blocks[0].blockNumber : 0;
 
-            // Create deploy data
             const deployData: Deploy = {
                 term: rholangCode,
                 phloLimit,
@@ -274,10 +265,8 @@ export default class RChainService {
                 shardId: 'root',
             };
 
-            // Sign the deploy
             const signedDeploy = signDeploy(deployData, privateKey);
 
-            // Format for Web API (like f1r3wallet)
             const webDeploy = {
                 data: {
                     term: deployData.term,
@@ -292,27 +281,21 @@ export default class RChainService {
                 deployer: signedDeploy.deployer,
             };
 
-            // Debug logging
             console.log("Deploy data:", deployData);
             console.log("Signed deploy:", signedDeploy);
             console.log("Web deploy:", JSON.stringify(webDeploy, null, 2));
 
-            // Send to RNode
             const result = await this.callRNodeAPI("deploy", webDeploy);
 
             console.log("Deploy result:", result);
 
-            // The deploy result should contain a signature which is the deploy ID
-            // The Web API returns the signature string, sometimes with a prefix
             if (typeof result === "string") {
-                // Extract just the deploy ID if it has the "Success! DeployId is: " prefix
                 const deployIdMatch = result.match(
                     /DeployId is:\s*([a-fA-F0-9]+)/
                 );
                 if (deployIdMatch) {
                     return deployIdMatch[1];
                 }
-                // If no prefix, assume the whole string is the deploy ID
                 return result;
             }
 
