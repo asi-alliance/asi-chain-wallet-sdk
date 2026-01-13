@@ -166,7 +166,7 @@ export default class RChainService {
         );
     }
 
-    public async getASIBalance(address: Address): Promise<BigInt> {
+    public async getASIBalance(address: Address): Promise<bigint> {
         const checkBalanceRho = `
             new return, rl(\`rho:registry:lookup\`), ASIVaultCh, vaultCh in {
                 rl!(\`rho:rchain:asiVault\`, *ASIVaultCh) |

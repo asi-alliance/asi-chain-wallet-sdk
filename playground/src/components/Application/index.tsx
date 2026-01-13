@@ -164,9 +164,10 @@ const Application = (): ReactElement => {
         }
     };
 
-    const handleCreateMnemonicWallet = (payload: TWalletCreatePayload) =>
-        withLoader(async () => {
-            if (!vault) return;
+    const handleCreateMnemonicWallet = () => withLoader(() => async (
+        payload: TWalletCreatePayload
+    ) => {
+        if (!vault) return;
 
             if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
                 throw new Error(
