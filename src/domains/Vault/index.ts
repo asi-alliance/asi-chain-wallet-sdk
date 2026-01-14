@@ -1,5 +1,8 @@
-import CryptoService, { type EncryptedData } from "../../services/crypto";
-import EncryptedSeedRecord, { SeedRecordRawData, StringifiedSeedsMeta } from "../SeedRecord";
+import CryptoService, { type EncryptedData } from "../../services/Crypto";
+import EncryptedSeedRecord, {
+    SeedRecordRawData,
+    StringifiedSeedsMeta,
+} from "../SeedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
@@ -8,7 +11,7 @@ import Wallet, {
 
 export type Wallets = Map<Address, Wallet>;
 
-export type Seeds = Map<string, EncryptedSeedRecord>
+export type Seeds = Map<string, EncryptedSeedRecord>;
 
 export type VaultRawData = string;
 
@@ -27,8 +30,6 @@ export default class Vault {
     private encryptedVaultData: EncryptedData | null;
 
     constructor(VaultData?: VaultRawData) {
-        console.log("Vault constructor got", VaultData);
-
         if (typeof window === "undefined") {
             throw new Error(
                 "getVault can only be called in a browser environment"
@@ -44,9 +45,7 @@ export default class Vault {
             return;
         }
 
-        const parsedData = JSON.parse(VaultData)
-
-        console.log("Vault constructor parsed", parsedData)
+        const parsedData = JSON.parse(VaultData);
 
         this.encryptedVaultData = parsedData;
         this.isLocked = true;
@@ -125,9 +124,7 @@ export default class Vault {
             password
         );
 
-        console.log("Wallet unlocked. Output data:", decryptedData);
-
-        const {wallets, seeds} = JSON.parse(decryptedData);
+        const { wallets, seeds } = JSON.parse(decryptedData);
 
         console.log("Parsed unlocked data", wallets, seeds);
 
@@ -219,11 +216,9 @@ export default class Vault {
         const seeds: Seeds = new Map();
         const ids: string[] = Object.keys(meta);
 
-        console.log("META", meta);
-
         ids.forEach((id: string) => {
             const seedMeta: EncryptedData = JSON.parse(meta[id]);
-            
+
             const seed = EncryptedSeedRecord.fromEncryptedData(seedMeta);
 
             seeds.set(id, seed);
@@ -265,7 +260,7 @@ export default class Vault {
     }
 
     public toString(): string {
-        const seedsMeta: StoredSeedsMetaRecords = {}
+        const seedsMeta: StoredSeedsMetaRecords = {};
         const walletsMeta: StoredWalletsMetaRecords = {};
 
         this.ensureUnlocked();

@@ -1,5 +1,5 @@
-import { fromAtomicAmount } from "../../../../dist/utils/functions";
 import { useState, type ReactElement } from "react";
+import { fromAtomicAmount } from "asi-wallet-sdk";
 import "./style.css";
 
 export interface ITransferCompletedModalProps {
@@ -31,7 +31,7 @@ const TransferCompletedModal = ({
         } catch (error) {
             console.error("Error copying text: ", error);
         }
-    }
+    };
 
     return (
         <div className="wallet-create-modal__overlay">
@@ -100,8 +100,7 @@ const TransferCompletedModal = ({
                     <br></br>
                     It takes some time for them to arrive!
                     <br></br>
-                    You can track the
-                    transaction using the Deploy ID above.
+                    You can track the transaction using the Deploy ID above.
                 </p>
 
                 <div className="wallet-create-modal__actions">

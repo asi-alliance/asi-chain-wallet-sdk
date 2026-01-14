@@ -1,17 +1,17 @@
 import { ITransferCompletedModalProps } from "@components/TransferCompletedModal";
 import { IDeriveWalletModalProps } from "@components/DeriveWalletModal";
 import { IWalletCreateModalProps } from "@components/CreateWalletModal";
-import { MnemonicStrength } from "../../../../dist/services/mnemonic";
 import { IPasswordModalProps } from "@components/PasswordModal";
 import { ITransferModalProps } from "@components/TransferModal";
 import {
-    Vault,
-    MnemonicService,
-    KeysService,
-    ChainService,
     KeyDerivationService,
-    EncryptedSeedRecord,
+    MnemonicService,
+    MnemonicStrength,
+    ChainService,
+    KeysService,
+    SeedRecord,
     Wallet,
+    Vault,
 } from "asi-wallet-sdk";
 
 const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
@@ -44,8 +44,6 @@ export const init = (config, setVault, setChainService) => {
         console.log("Found keys", Vault.getSavedVaultKeys());
 
         const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
-
-        console.log("Read LS data", encryptedVaultData);
 
         const vault = new Vault(encryptedVaultData);
 
@@ -98,7 +96,7 @@ export const deriveNextWallet = async (
     const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
 
     const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
-    const seedRecord = EncryptedSeedRecord.fromRawSeed(mnemonic);
+    const seedRecord = SeedRecord.fromRawSeed(mnemonic);
 
     return {
         privateKey,

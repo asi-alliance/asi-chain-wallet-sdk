@@ -24,7 +24,7 @@
 	background: #fff;
 	padding: 2rem 2.5rem;
 	border-radius: 10px;
-	box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 	min-width: 320px;
 }
 
@@ -84,10 +84,10 @@
 }
 
 .form-actions .cancel-button {
-    background: #e53935;
-    color: #fff;
+	background: #e53935;
+	color: #fff;
 }
 
 .form-actions .cancel-button:hover {
-    background: #c62828;
+	background: #c62828;
 }

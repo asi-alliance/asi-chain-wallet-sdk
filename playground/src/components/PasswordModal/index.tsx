@@ -12,8 +12,6 @@ const PasswordModal = ({
     onSubmit,
     onClose,
 }: IPasswordModalProps): ReactElement => {
-    console.log(onClose);
-
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 

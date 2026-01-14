@@ -1,10 +1,13 @@
-import { fromAtomicAmount } from "../../../../dist/utils/functions";
-import { useAppContext } from "@components/Application/context";
 import { useEffect, useState, type ReactElement } from "react";
-import { isAddress } from "../../../../dist/utils/validators";
-import { Address } from "../../../../dist/domains/Wallet";
+import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Wallet, ChainService } from "asi-wallet-sdk";
+import {
+    fromAtomicAmount,
+    ChainService,
+    isAddress,
+    Address,
+    Wallet,
+} from "asi-wallet-sdk";
 import "./style.css";
 
 export interface IWalletCardProps {
@@ -73,49 +76,52 @@ const WalletCard = ({
         });
     };
 
-    const transfer = (toAddress, amount, password) => withLoader(async () => {
-        try {
-            if (!isAddress(toAddress)) {
-                throw new Error("Invalid 'toAddress' provided.");
-            }
+    const transfer = (toAddress, amount, password) =>
+        withLoader(async () => {
+            try {
+                if (!isAddress(toAddress)) {
+                    throw new Error("Invalid 'toAddress' provided.");
+                }
 
-            console.log("Starting transfer...", { toAddress, amount });
+                console.log("Starting transfer...", { toAddress, amount });
 
-            wallet.unlock(password);
+                wallet.unlock(password);
 
-            setIsSending(true);
+                setIsSending(true);
 
-            const data = await chainService.transfer(
-                address,
-                toAddress,
-                amount,
-                wallet.getPrivateKey()
-            );
-
-            console.log("Transfer successful", data);
-            wallet.lock();
-            // alert("Transfer successful!");
-
-            setModalState({
-                type: Modals.TRANSFER_COMPLETED_MODAL,
-                props: {
-                    deployId: data,
-                    fromAddress: address,
+                const data = await chainService.transfer(
+                    address,
                     toAddress,
                     amount,
-                    onClose: () => setModalState({ type: null }),
-                },
-            })
+                    wallet.getPrivateKey()
+                );
 
-            await fetchBalance();
-        } catch (error) {
-            console.error(error);
-            alert(`${error?.message || "Transfer failed"}, aborting transfer.`);
-            handlePrepareSend(toAddress, amount);
-        } finally {
-            setIsSending(false);
-        }
-    });
+                console.log("Transfer successful", data);
+                // alert("Transfer successful!");
+
+                setModalState({
+                    type: Modals.TRANSFER_COMPLETED_MODAL,
+                    props: {
+                        deployId: data,
+                        fromAddress: address,
+                        toAddress,
+                        amount,
+                        onClose: () => setModalState({ type: null }),
+                    },
+                });
+
+                await fetchBalance();
+            } catch (error) {
+                console.error(error);
+                alert(
+                    `${error?.message || "Transfer failed"}, aborting transfer.`
+                );
+                handlePrepareSend(toAddress, amount);
+            } finally {
+                wallet.lock();
+                setIsSending(false);
+            }
+        });
 
     const copyAddress = async () => {
         try {
@@ -129,7 +135,7 @@ const WalletCard = ({
         } catch (error) {
             console.error("Error copying text: ", error);
         }
-    }
+    };
 
     useEffect(() => {
         fetchBalance();
@@ -138,7 +144,7 @@ const WalletCard = ({
     return (
         <div className="wallet-card">
             <div className="wallet-card-index">
-                {!index ? "null" : index}
+                {index === null ? "null" : index}
             </div>
             <div className="remove-block">
                 <button onClick={() => removeWallet(wallet.getAddress())}>
@@ -174,7 +180,7 @@ const WalletCard = ({
                     balance:{" "}
                     {isBalanceFetching
                         ? "loading balance ..."
-                        : fromAtomicAmount(balance)}
+                        : `${fromAtomicAmount(balance)} ASI`}
                 </div>
                 <div className="buttons">
                     <button

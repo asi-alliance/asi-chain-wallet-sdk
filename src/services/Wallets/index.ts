@@ -1,6 +1,6 @@
-import MnemonicService from "../mnemonic";
-import KeyDerivationService from "../keyDerivation";
-import KeysService, { type KeyPair } from "../keysService";
+import MnemonicService from "../Mnemonic";
+import KeyDerivationService from "../KeyDerivation";
+import KeysService, { type KeyPair } from "../KeysService";
 import { decodeBase16, encodeBase58 } from "../../utils/codec";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "../../utils/constants";
 import { Address } from "../../domains/Wallet";
@@ -17,7 +17,7 @@ export interface WalletMeta {
     mnemonic?: string;
 }
 
-export class WalletsService {
+export default class WalletsService {
     public static createWallet(
         privateKey?: string,
         options?: CreateWalletOptions

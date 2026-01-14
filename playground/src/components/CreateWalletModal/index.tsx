@@ -1,7 +1,7 @@
-import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import InputsForm from "../InputsForm";
+import { useMemo, useState, type FormEvent, type ReactElement } from "react";
+import { MnemonicService } from "asi-wallet-sdk";
 import "./style.css";
-import { MnemonicService } from "../../../../dist";
 
 export type TWalletCreatePayload =
     | {
@@ -45,8 +45,6 @@ const CreateWalletModal = ({
             ? []
             : MnemonicService.mnemonicToWordArray(initialMnemonic)
     );
-
-    console.log(initialMnemonic, mnemonicWords);
 
     const computedTitle = useMemo(() => {
         if (title) return title;

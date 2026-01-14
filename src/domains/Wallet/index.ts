@@ -1,6 +1,6 @@
 import Asset, { Assets } from "../Asset";
-import CryptoService, { EncryptedData } from "../../services/crypto";
-import { WalletsService } from "../../services/WalletsService";
+import WalletsService from "../../services/Wallets";
+import CryptoService, { EncryptedData } from "../../services/Crypto";
 import { isAddress } from "../../utils/validators";
 
 type AddressBrand = { readonly __brand: unique symbol };

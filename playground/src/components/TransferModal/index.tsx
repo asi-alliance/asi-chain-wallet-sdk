@@ -1,7 +1,4 @@
-import {
-    fromAtomicAmount,
-    toAtomicAmount,
-} from "../../../../dist/utils/functions";
+import { fromAtomicAmount, toAtomicAmount } from "asi-wallet-sdk";
 import { type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
@@ -30,15 +27,24 @@ const TransferModal = ({
             const toAddress = (formData.get("toAddress") as string) ?? "";
             const amountValueRaw = formData.get("amount") as string;
 
-            if (currentBalance < BigInt(amountValueRaw)) {
+            const atomicValueToTransfer = toAtomicAmount(amountValueRaw);
+
+            // alert(`${currentBalance}, ${atomicValueToTransfer}`)
+            if (atomicValueToTransfer <= 0n) {
+                alert("Invalid amount");
+                return;
+            }
+
+            if (currentBalance < atomicValueToTransfer) {
                 alert("Insufficient balance for this transfer.");
+                return;
             }
             // if (currentBalance < amountValue + commission) {
             //     alert("Insufficient balance for this transfer including commission.");
             //     return;
             // }
 
-            onConfirm(toAddress, toAtomicAmount(amountValueRaw));
+            onConfirm(toAddress, atomicValueToTransfer);
         } catch (error) {
             alert(error?.message);
         }

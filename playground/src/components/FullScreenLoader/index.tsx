@@ -6,6 +6,6 @@ const FullscreenLoader = () => {
             <div className="spinner"></div>
         </div>
     );
-}
+};
 
 export default FullscreenLoader;

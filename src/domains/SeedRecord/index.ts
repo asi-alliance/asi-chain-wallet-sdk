@@ -1,5 +1,5 @@
 import { keccak256 } from "js-sha3";
-import CryptoService, { type EncryptedData } from "../../services/crypto";
+import CryptoService, { type EncryptedData } from "../../services/Crypto";
 
 export type Seed = string;
 export type SeedRecordRawData = string;
@@ -35,7 +35,7 @@ export default class EncryptedSeedRecord {
         this.seed = null;
         this.encryptedSeedData = null;
     }
-    
+
     public isSeedRecordLocked(): boolean {
         return this.isLocked;
     }
@@ -46,8 +46,11 @@ export default class EncryptedSeedRecord {
         if (!this.seed) {
             throw new Error("No seed to lock");
         }
-        
-        this.encryptedSeedData = CryptoService.encryptWithPassword(this.seed, password);
+
+        this.encryptedSeedData = CryptoService.encryptWithPassword(
+            this.seed,
+            password
+        );
 
         this.seed = null;
         this.isLocked = true;
@@ -56,13 +59,18 @@ export default class EncryptedSeedRecord {
     public unlock(password: string): void {
         if (!this.isLocked) {
             return;
-        };
-
-        if (!this.encryptedSeedData) {
-            throw new Error("SeedRecord was unlocked on undefined encryptedSeedData");
         }
 
-        const decryptedSeed: string = CryptoService.decryptWithPassword(this.encryptedSeedData, password);
+        if (!this.encryptedSeedData) {
+            throw new Error(
+                "SeedRecord was unlocked on undefined encryptedSeedData"
+            );
+        }
+
+        const decryptedSeed: string = CryptoService.decryptWithPassword(
+            this.encryptedSeedData,
+            password
+        );
 
         this.seed = decryptedSeed;
         this.isLocked = false;

@@ -1,18 +1,23 @@
 import PasswordModal, {
     type IPasswordModalProps,
 } from "@components/PasswordModal";
-import TransferModal, { ITransferModalProps } from "@components/TransferModal";
+
 import TransferCompletedModal, {
     ITransferCompletedModalProps,
 } from "@components/TransferCompletedModal";
+
 import CreateWalletModal, {
     IWalletCreateModalProps,
 } from "@components/CreateWalletModal";
-import { ModalProps, Modals } from "./meta";
-import { ReactElement } from "react";
+
 import DeriveWalletModal, {
     IDeriveWalletModalProps,
 } from "@components/DeriveWalletModal";
+
+import TransferModal, { ITransferModalProps } from "@components/TransferModal";
+
+import { ModalProps, Modals } from "./meta";
+import { type ReactElement } from "react";
 
 interface ModalManagerProps {
     currentModal: Modals | null;

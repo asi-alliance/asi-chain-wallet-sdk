@@ -1,3 +1,9 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 .wallets-page {
   display: flex;
   flex-direction: column;
@@ -29,7 +35,7 @@
 .wallets-page__column {
   background: #fff;
   border-radius: 1rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -70,6 +76,7 @@
   cursor: pointer;
   transition: background 0.2s;
 }
+
 .wallets-page__action:hover {
   background: #4338ca;
 }
@@ -84,12 +91,13 @@
 .wallets-page__card-wrap {
   background: #f3f4f6;
   border-radius: 0.75rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   padding: 1rem;
   cursor: pointer;
   transition: box-shadow 0.2s, background 0.2s;
 }
+
 .wallets-page__card-wrap:hover {
   background: #e0e7ff;
-  box-shadow: 0 2px 8px rgba(99,102,241,0.08);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
 }
