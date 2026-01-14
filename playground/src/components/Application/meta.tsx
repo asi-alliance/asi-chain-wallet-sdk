@@ -45,8 +45,6 @@ export const init = (config, setVault, setChainService) => {
 
         const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
 
-        console.log("Read LS data", encryptedVaultData);
-
         const vault = new Vault(encryptedVaultData);
 
         console.log("Vault instance", vault);

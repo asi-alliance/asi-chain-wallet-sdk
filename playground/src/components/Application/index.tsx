@@ -21,6 +21,9 @@ import "./style.css";
 // 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
 // 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
 
+// 67b89a30347d7352a1d2385de7610e9aa1a74ae82f9402dda48f4f70f44b613f
+// 1111RpAubAtDCJicMTEXXecYNVNwKtS1saNTmwRzhcg7K6rKx1Zea
+
 type ModalState = {
     type: Modals | null;
     props?: ModalProps;
@@ -50,10 +53,6 @@ const Application = (): ReactElement => {
             Object.assign(Object.create(Object.getPrototypeOf(vault)), vault)
         );
     };
-
-    useEffect(() => {
-        console.log(modalState);
-    }, [modalState])
 
     const openUnlockModal = () => {
         setModalState({
@@ -119,8 +118,6 @@ const Application = (): ReactElement => {
     const saveVault = (password: string) => {
         if (!vault) return;
 
-        console.log("Saving vault with password", password);
-
         try {
             console.time("lock");
             vault.lock(password);
@@ -160,14 +157,13 @@ const Application = (): ReactElement => {
 
             setModalState({ type: null });
         } catch (error) {
-            console.log(error);
+            console.error(error);
         }
     };
 
-    const handleCreateMnemonicWallet = () => withLoader(() => async (
-        payload: TWalletCreatePayload
-    ) => {
-        if (!vault) return;
+    const handleCreateMnemonicWallet = (payload: TWalletCreatePayload) =>
+        withLoader(async () => {
+            if (!vault) return;
 
             if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
                 throw new Error(
@@ -196,16 +192,23 @@ const Application = (): ReactElement => {
             }
         });
 
-    const handleDeriveWallet = (name: string, password: string, index: number) =>
+    const handleDeriveWallet = (
+        name: string,
+        password: string,
+        index: number
+    ) =>
         withLoader(async () => {
             if (!vault) return;
 
             try {
                 const seeds = vault.getSeeds();
+
                 if (seeds.length === 0) {
                     throw new Error("No seeds available in the vault");
                 }
+
                 const seedRecord = seeds[0];
+                
                 seedRecord.unlock(currentPassword);
 
                 const currentSeed = seedRecord.getSeed();
@@ -239,10 +242,10 @@ const Application = (): ReactElement => {
             props: {
                 index,
                 onSubmit: handleDeriveWallet,
-                onClose: () => setModalState({ type: null })
+                onClose: () => setModalState({ type: null }),
             },
         });
-    }
+    };
 
     const openCreateKeyPairWalletModal = () => {
         setModalState({
@@ -253,7 +256,7 @@ const Application = (): ReactElement => {
                 isInputMode: false,
                 title: "Create KeyPair Wallet",
                 initialPrivateKey: createInitialPrivateKey(),
-                onClose: () => setModalState({ type: null })
+                onClose: () => setModalState({ type: null }),
             },
         });
     };
@@ -322,7 +325,9 @@ const Application = (): ReactElement => {
 
     return (
         <main>
-            <ApplicationContext.Provider value={{ modalState, setModalState, withLoader }}>
+            <ApplicationContext.Provider
+                value={{ modalState, setModalState, withLoader }}
+            >
                 <WalletsPage
                     vault={vault}
                     removeWallet={removeWalletFromVault}
