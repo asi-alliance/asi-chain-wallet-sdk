@@ -262,7 +262,7 @@ export default class RChainService {
                 phloPrice: 1,
                 validAfterBlockNumber: blockNumber,
                 timestamp: Date.now(),
-                shardId: 'root',
+                shardId: "root",
             };
 
             const signedDeploy = signDeploy(deployData, privateKey);

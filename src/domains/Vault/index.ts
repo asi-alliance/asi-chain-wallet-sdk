@@ -1,5 +1,8 @@
-import CryptoService, { type EncryptedData } from "../../services/crypto";
-import EncryptedSeedRecord, { SeedRecordRawData, StringifiedSeedsMeta } from "../SeedRecord";
+import CryptoService, { type EncryptedData } from "../../services/Crypto";
+import EncryptedSeedRecord, {
+    SeedRecordRawData,
+    StringifiedSeedsMeta,
+} from "../SeedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
@@ -8,7 +11,7 @@ import Wallet, {
 
 export type Wallets = Map<Address, Wallet>;
 
-export type Seeds = Map<string, EncryptedSeedRecord>
+export type Seeds = Map<string, EncryptedSeedRecord>;
 
 export type VaultRawData = string;
 
@@ -42,7 +45,7 @@ export default class Vault {
             return;
         }
 
-        const parsedData = JSON.parse(VaultData)
+        const parsedData = JSON.parse(VaultData);
 
         this.encryptedVaultData = parsedData;
         this.isLocked = true;
@@ -121,7 +124,7 @@ export default class Vault {
             password
         );
 
-        const {wallets, seeds} = JSON.parse(decryptedData);
+        const { wallets, seeds } = JSON.parse(decryptedData);
 
         console.log("Parsed unlocked data", wallets, seeds);
 
@@ -215,7 +218,7 @@ export default class Vault {
 
         ids.forEach((id: string) => {
             const seedMeta: EncryptedData = JSON.parse(meta[id]);
-            
+
             const seed = EncryptedSeedRecord.fromEncryptedData(seedMeta);
 
             seeds.set(id, seed);
@@ -257,7 +260,7 @@ export default class Vault {
     }
 
     public toString(): string {
-        const seedsMeta: StoredSeedsMetaRecords = {}
+        const seedsMeta: StoredSeedsMetaRecords = {};
         const walletsMeta: StoredWalletsMetaRecords = {};
 
         this.ensureUnlocked();

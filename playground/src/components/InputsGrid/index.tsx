@@ -1,9 +1,5 @@
 import Input from "../Input";
-import {
-    type RefObject,
-    type ReactElement,
-    useMemo,
-} from "react";
+import { type RefObject, type ReactElement, useMemo } from "react";
 import "./style.css";
 
 interface IInputsGridProps {

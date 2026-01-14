@@ -3,10 +3,9 @@ import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
 import FullscreenLoader from "@components/FullScreenLoader";
+import { Address, ChainService, Vault, Wallet } from "asi-wallet-sdk";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
-import { ChainService, Wallet, Vault } from "asi-wallet-sdk";
 import { ReactElement, useEffect, useState } from "react";
-import { Address } from "../../../../dist/domains/Wallet";
 import {
     createInitialPrivateKey,
     createInitialMnemonic,
@@ -208,7 +207,7 @@ const Application = (): ReactElement => {
                 }
 
                 const seedRecord = seeds[0];
-                
+
                 seedRecord.unlock(currentPassword);
 
                 const currentSeed = seedRecord.getSeed();

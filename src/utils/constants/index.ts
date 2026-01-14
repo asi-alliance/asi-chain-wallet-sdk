@@ -10,9 +10,8 @@ export const GasFee = {
     LABEL: "ASI",
     TRANSFER: "0.0025",
     DEPLOY: "0.0025",
-}; 
+};
 
 export const POWER_BASE: number = 10;
 
 export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
-

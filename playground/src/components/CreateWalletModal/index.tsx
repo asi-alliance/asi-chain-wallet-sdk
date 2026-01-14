@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-import { MnemonicService } from "../../../../dist";
 import InputsForm from "../InputsForm";
+import { useMemo, useState, type FormEvent, type ReactElement } from "react";
+import { MnemonicService } from "asi-wallet-sdk";
 import "./style.css";
 
 export type TWalletCreatePayload =

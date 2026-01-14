@@ -1,5 +1,5 @@
 import * as bip39 from "bip39";
-import { setupBufferPolyfill } from "../..//utils/polyfills/";
+import { setupBufferPolyfill } from "../../utils/polyfills";
 
 setupBufferPolyfill();
 
@@ -14,7 +14,7 @@ export default class MnemonicService {
     ): string {
         return bip39.generateMnemonic(strength);
     }
-    
+
     public static isMnemonicValid(mnemonic: string): boolean {
         return bip39.validateMnemonic(mnemonic);
     }
@@ -27,4 +27,3 @@ export default class MnemonicService {
         return words.join(" ");
     }
 }
-

@@ -29,11 +29,7 @@ const DeriveWalletModal = ({
             return;
         }
 
-        onSubmit(
-            name.trim(),
-            password,
-            index,
-        );
+        onSubmit(name.trim(), password, index);
     };
 
     return (

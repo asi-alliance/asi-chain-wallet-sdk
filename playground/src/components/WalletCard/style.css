@@ -54,7 +54,7 @@
 	overflow: hidden;
 }
 
-.wallet-card-body > .buttons {
+.wallet-card-body>.buttons {
 	display: flex;
 	flex-wrap: wrap;
 }
