@@ -1,7 +1,6 @@
 import WalletCard from "../../components/WalletCard";
 import { Fragment, useMemo, useState, type ReactElement } from "react";
-import { Address } from "../../../../dist/domains/Wallet";
-import { Vault, ChainService } from "asi-wallet-sdk";
+import { Address, ChainService, Vault } from "asi-wallet-sdk";
 import "./style.css";
 
 interface WalletsPageProps {

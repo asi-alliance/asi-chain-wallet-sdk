@@ -1,7 +1,4 @@
-import {
-    fromAtomicAmount,
-    toAtomicAmount,
-} from "../../../../dist/utils/functions";
+import { fromAtomicAmount, toAtomicAmount } from "asi-wallet-sdk";
 import { type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
@@ -33,6 +30,10 @@ const TransferModal = ({
             const atomicValueToTransfer = toAtomicAmount(amountValueRaw);
 
             // alert(`${currentBalance}, ${atomicValueToTransfer}`)
+            if (atomicValueToTransfer <= 0n) {
+                alert("Invalid amount");
+                return;
+            }
 
             if (currentBalance < atomicValueToTransfer) {
                 alert("Insufficient balance for this transfer.");

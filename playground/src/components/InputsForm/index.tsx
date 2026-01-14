@@ -3,13 +3,13 @@ import { DEFAULT_WORDS_COUNT, WordsCountVariants } from "../../utils/constants";
 import { clippedWordCount, sanitizeWord } from "../../utils/functions";
 import {
     createRef,
-    Fragment,
     useEffect,
-    useMemo,
+    Fragment,
     useState,
+    useMemo,
+    type ReactElement,
     type ChangeEvent,
     type FormEvent,
-    type ReactElement,
     type RefObject,
 } from "react";
 import "./style.css";
@@ -17,7 +17,7 @@ import "./style.css";
 export interface IInputsFormProps {
     variant: 12 | 24;
     formMode: "input" | "output";
-    initialMnemonic: string[],
+    initialMnemonic: string[];
     validateWords?: (words: string[]) => string | null;
     onValidSubmit?: (normalizedWords: string[]) => void;
     onClose: () => void;
@@ -56,8 +56,8 @@ const InputsForm = ({
     onClose,
 }: IInputsFormProps): ReactElement => {
     const [wordCount, setWordCount] = useState<number>(variant);
-    const [words, setWords] = useState<string[]>(() =>
-        initialMnemonic ?? createEmptyWords(DEFAULT_WORDS_COUNT)
+    const [words, setWords] = useState<string[]>(
+        () => initialMnemonic ?? createEmptyWords(DEFAULT_WORDS_COUNT)
     );
     const [errors, setErrors] = useState<boolean[]>(() =>
         createErrors(DEFAULT_WORDS_COUNT)
@@ -91,7 +91,6 @@ const InputsForm = ({
                 updateArrayLength(prev, clipped, createErrors) as boolean[]
         );
     }, [wordCount]);
-
 
     const updateErrorsForWord = (index: number, word: string) => {
         const nextErrors = [...errors];
@@ -307,7 +306,9 @@ const InputsForm = ({
                         </button>
                     </Fragment>
                 )}
-                <button className="button button-secondary" onClick={onClose}>Close</button>
+                <button className="button button-secondary" onClick={onClose}>
+                    Close
+                </button>
             </div>
         </form>
     );

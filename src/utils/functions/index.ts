@@ -10,7 +10,7 @@ export const toAtomicAmount = (amount: number | string): bigint => {
 
     if (typeof amount === "number") {
         if (!Number.isFinite(amount)) {
-            throw new Error("Invalid number")
+            throw new Error("Invalid number");
         }
         amount = String(amount);
     }
@@ -19,7 +19,7 @@ export const toAtomicAmount = (amount: number | string): bigint => {
 
     if (!amountString.length) {
         throw new Error("Cannot process empty amount");
-    } 
+    }
 
     let isNegative: boolean = false;
 
@@ -31,23 +31,27 @@ export const toAtomicAmount = (amount: number | string): bigint => {
     amountString = amountString.replace(REGEX_THOUSANDS, "");
 
     if (!REGEX_AMOUNT_FORMAT.test(amountString)) {
-        throw new Error("Invalid amount format")
-    };
+        throw new Error("Invalid amount format");
+    }
 
-    const [integerPartRaw, fractionRaw = ""]: string[] = amountString.split(".");
+    const [integerPartRaw, fractionRaw = ""]: string[] =
+        amountString.split(".");
     const integerPart: string = integerPartRaw || "0";
 
     let fraction: string = fractionRaw;
 
     if (fraction.length > decimals) {
-        console.warn(`Fraction ${fraction} has more than allowed decimals; truncating`);
+        console.warn(
+            `Fraction ${fraction} has more than allowed decimals; truncating`
+        );
 
         fraction = fraction.slice(0, decimals);
     }
 
     fraction = fraction.padEnd(decimals, "0");
 
-    const result: bigint = BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
+    const result: bigint =
+        BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
 };
@@ -62,7 +66,9 @@ export const fromAtomicAmountToString = (atomicAmount: bigint): string => {
     const fraction: string = remainder.toString().padStart(decimals, "0");
     const resultSting: string = `${integerPart.toString()}.${fraction}`;
 
-    return resultSting.replace(REGEX_TRIM_TRAILING_ZEROS, "$1").replace(REGEX_DOT_ZERO, "");
+    return resultSting
+        .replace(REGEX_TRIM_TRAILING_ZEROS, "$1")
+        .replace(REGEX_DOT_ZERO, "");
 };
 
 export const fromAtomicAmountToNumber = (atomicAmount: bigint): number => {

@@ -1,8 +1,5 @@
 import CryptoJS from "crypto-js";
-
-export type Base64 = string;
-export type Ciphertext = string;
-export type WordArray = CryptoJS.lib.WordArray;
+import { Ciphertext, EncryptedData, WordArray } from "../../services/Crypto";
 
 export interface SecureWebWalletsStorageConfig {
     readonly VERSION: number;
@@ -16,7 +13,7 @@ export interface SecureWebWalletsStorageConfig {
 }
 
 const SecureWebWalletsStorageConfig: SecureWebWalletsStorageConfig = {
-    VERSION: 1,// change this when making incompatible changes
+    VERSION: 1, // change this when making incompatible changes
     STORAGE_PREFIX: "asi_web_secure_wallet_storage_",
     KEY_SIZE_WORDS: 8, // 256 bits = 32 bytes = 8 words
     SALT_LENGTH: 16,
@@ -31,13 +28,6 @@ export interface WalletData {
     address: string;
     privateKey: string;
     derivationIndex: number;
-}
-
-export interface EncryptedData {
-    salt: Base64;
-    iv: Base64;
-    data: Ciphertext;
-    version: number;
 }
 
 export default class SecureWebWalletsStorage {

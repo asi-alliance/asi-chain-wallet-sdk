@@ -1,4 +1,3 @@
-
 export interface WalletClientConfig {
     mode: string;
     // network: string;

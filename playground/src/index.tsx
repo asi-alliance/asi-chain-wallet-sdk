@@ -1,6 +1,5 @@
 import App from "@components/Application";
-// import { StrictMode } from "react";
-import { createRoot, Root } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 
 const rootElement: HTMLElement | null = document.getElementById("root");
 
@@ -10,8 +9,4 @@ if (!rootElement) {
 
 const reactRoot: Root = createRoot(rootElement);
 
-reactRoot.render(
-    // <StrictMode>
-        <App />
-    // </StrictMode>
-);
+reactRoot.render(<App />);
