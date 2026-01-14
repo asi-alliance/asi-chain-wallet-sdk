@@ -26,7 +26,7 @@ asi-chain-wallet-sdk/
 The repository includes generated reference docs for the main code areas. See:
 
 - Domains: [docs/DOMAINS.md](docs/DOMAINS.md)
-- Services: [docs/SERVICES.md](src/docs/SERVICES.md)
+- Services: [docs/SERVICES.md](docs/SERVICES.md)
 - Utils: [docs/UTILS.md](docs/UTILS.md)
 - Utils: [docs/PLAYGROUND.md](docs/PLAYGROUND.md)
 
