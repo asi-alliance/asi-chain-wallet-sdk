@@ -88,7 +88,10 @@ const WalletsPage = ({
     return (
         <div className="wallets-page">
             <div className="wallets-page__header">
-                <h2 className="wallets-page__title">ASI WALLETS SDK</h2>
+                <div>
+                    <h2 className="wallets-page__title">ASI Wallets SDK</h2>
+                    <h3>PLAYGROUND</h3>
+                </div>
                 <button className="wallets-page__action" onClick={resetApp}>
                     CLEAR LS
                 </button>
@@ -158,6 +161,13 @@ const WalletsPage = ({
                                     }
                                 >
                                     M24
+                                </button>
+                                <button
+                                    className="wallets-page__action"
+                                    type="button"
+                                    onClick={() => setIsChoosingMethod(false)}
+                                >
+                                    BACK
                                 </button>
                             </Fragment>
                         )}

@@ -6,7 +6,7 @@ const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
 export const toAtomicAmount = (amount: number | string): bigint => {
-    const decimals: number = ASI_BASE_UNIT.toString().length - 1;;
+    const decimals: number = ASI_BASE_UNIT.toString().length - 1;
 
     if (typeof amount === "number") {
         if (!Number.isFinite(amount)) {

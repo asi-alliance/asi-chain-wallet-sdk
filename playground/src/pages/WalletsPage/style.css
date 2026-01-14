@@ -1,7 +1,22 @@
 .mnemonics .wallets-page__card-wrap .remove-block {
+	width: 24px;
+}
+
+.mnemonics .wallets-page__card-wrap .remove-block button {
 	display: none;
 }
 
-.mnemonics .wallets-page__card-wrap:last-child .remove-block {
+.mnemonics .wallets-page__card-wrap:last-child .remove-block button {
 	display: block;
+}
+
+.wallets-page__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.wallets-page__header h2,
+.wallets-page__header h3 {
+	font-family: 'Roboto', monospace;
 }
