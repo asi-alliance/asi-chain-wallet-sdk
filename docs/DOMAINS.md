@@ -89,10 +89,19 @@ Client-side encrypted storage for wallets and a master key. Uses PBKDF2 for key 
 Types used:
 
 ```ts
-type Base64 = string;
-type Ciphertext = string;
-interface WalletData { id: string; address: string; privateKey: string; derivationIndex: number; }
-interface EncryptedData { salt: Base64; iv: Base64; data: Ciphertext; version: number; }
+interface WalletData { 
+    id: string;
+    address: string;
+    privateKey: string;
+    derivationIndex: number;
+}
+
+interface EncryptedData { 
+    salt: Base64;
+    iv: Base64;
+    data: Ciphertext;
+    version: number;
+}
 ```
 
 Private helpers:
