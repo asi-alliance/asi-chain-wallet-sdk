@@ -93,7 +93,6 @@ const WalletCard = ({
             );
 
             console.log("Transfer successful", data);
-            wallet.lock();
             // alert("Transfer successful!");
 
             setModalState({
@@ -113,6 +112,7 @@ const WalletCard = ({
             alert(`${error?.message || "Transfer failed"}, aborting transfer.`);
             handlePrepareSend(toAddress, amount);
         } finally {
+            wallet.lock();
             setIsSending(false);
         }
     });
@@ -138,7 +138,7 @@ const WalletCard = ({
     return (
         <div className="wallet-card">
             <div className="wallet-card-index">
-                {!index ? "null" : index}
+                {index === null ? "null" : index}
             </div>
             <div className="remove-block">
                 <button onClick={() => removeWallet(wallet.getAddress())}>
@@ -174,7 +174,7 @@ const WalletCard = ({
                     balance:{" "}
                     {isBalanceFetching
                         ? "loading balance ..."
-                        : fromAtomicAmount(balance)}
+                        : `${fromAtomicAmount(balance)} ASI`}
                 </div>
                 <div className="buttons">
                     <button

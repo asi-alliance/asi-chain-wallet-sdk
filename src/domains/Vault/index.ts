@@ -27,8 +27,6 @@ export default class Vault {
     private encryptedVaultData: EncryptedData | null;
 
     constructor(VaultData?: VaultRawData) {
-        console.log("Vault constructor got", VaultData);
-
         if (typeof window === "undefined") {
             throw new Error(
                 "getVault can only be called in a browser environment"
@@ -45,8 +43,6 @@ export default class Vault {
         }
 
         const parsedData = JSON.parse(VaultData)
-
-        console.log("Vault constructor parsed", parsedData)
 
         this.encryptedVaultData = parsedData;
         this.isLocked = true;
@@ -124,8 +120,6 @@ export default class Vault {
             this.encryptedVaultData,
             password
         );
-
-        console.log("Wallet unlocked. Output data:", decryptedData);
 
         const {wallets, seeds} = JSON.parse(decryptedData);
 
@@ -218,8 +212,6 @@ export default class Vault {
     private metaToSeeds(meta: StoredSeedsMetaRecords): void {
         const seeds: Seeds = new Map();
         const ids: string[] = Object.keys(meta);
-
-        console.log("META", meta);
 
         ids.forEach((id: string) => {
             const seedMeta: EncryptedData = JSON.parse(meta[id]);
