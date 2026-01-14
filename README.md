@@ -28,7 +28,7 @@ The repository includes generated reference docs for the main code areas. See:
 - Domains: [docs/DOMAINS.md](docs/DOMAINS.md)
 - Services: [docs/SERVICES.md](docs/SERVICES.md)
 - Utils: [docs/UTILS.md](docs/UTILS.md)
-- Utils: [docs/PLAYGROUND.md](docs/PLAYGROUND.md)
+- Playground: [docs/PLAYGROUND.md](docs/PLAYGROUND.md)
 
 Use those documents for quick API lookups and examples.
 
