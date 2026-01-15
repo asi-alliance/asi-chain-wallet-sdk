@@ -131,55 +131,55 @@ See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindext
 ### SDK Components
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │                        Application                               │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     ASI Wallet SDK                               │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                   Services (docs/SERVICES.md)                ││
-│  │  • WalletsService      - Wallet creation & address derivation││
-│  │  • CryptoService       - Password-based encryption (AES)     ││
-│  │  • KeysService         - secp256k1 key generation            ││
-│  │  • KeyDerivationService - BIP-32/BIP-44 derivation           ││
-│  │  • MnemonicService     - BIP-39 mnemonic handling            ││
-│  │  • RChainService       - Blockchain node interaction         ││
-│  │  • FeeService          - Gas fee calculations                ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                   Domains (docs/DOMAINS.md)                  ││
-│  │  • Wallet              - Encrypted wallet with lock/unlock   ││
-│  │  • Vault               - Multi-wallet container              ││
-│  │  • Asset               - Token representation                ││
-│  │  • SeedRecord          - Encrypted seed phrase storage       ││
-│  │  • SecureStorage       - localStorage encryption layer       ││
-│  │  • BinaryWriter        - Protobuf-like serialization         ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    Utils (docs/UTILS.md)                     ││
-│  │  • codec      - Base16/Base58 encoding                       ││
-│  │  • constants  - Chain prefix, decimals, gas fees             ││
-│  │  • validators - Address and account name validation          ││
-│  │  • functions  - Atomic amount conversions                    ││
-│  │  • polyfills  - Browser Buffer compatibility                 ││
-│  └─────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     ASI Wallet SDK                                  │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                      Services                                 │  │
+│  │  • WalletsService       - Wallet creation & address derivation│  │
+│  │  • CryptoService        - Password-based encryption (AES)     │  │
+│  │  • KeysService          - secp256k1 key generation            │  │
+│  │  • KeyDerivationService - BIP-32/BIP-44 derivation            │  │
+│  │  • MnemonicService      - BIP-39 mnemonic handling            │  │
+│  │  • RChainService        - Blockchain node interaction         │  │
+│  │  • FeeService           - Gas fee calculations                │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                      Domains                                  │  │
+│  │  • Wallet              - Encrypted wallet with lock/unlock    │  │
+│  │  • Vault               - Multi-wallet container               │  │
+│  │  • Asset               - Token representation                 │  │
+│  │  • SeedRecord          - Encrypted seed phrase storage        │  │
+│  │  • SecureStorage       - localStorage encryption layer        │  │
+│  │  • BinaryWriter        - Protobuf-like serialization          │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                       Utils                                   │  │
+│  │  • codec      - Base16/Base58 encoding                        │  │
+│  │  • constants  - Chain prefix, decimals, gas fees              │  │
+│  │  • validators - Address and account name validation           │  │
+│  │  • functions  - Atomic amount conversions                     │  │
+│  │  • polyfills  - Browser Buffer compatibility                  │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    ASI Chain Network                             │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │  Validator   │  │  Validator   │  │  Observer    │           │
-│  │    Nodes     │  │    Nodes     │  │    Node      │           │
-│  │  (Deploys)   │  │  (Deploys)   │  │  (Queries)   │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    ASI Chain Network                                │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
+│  │  Validator   │  │  Validator   │  │  Observer    │               │
+│  │    Nodes     │  │    Nodes     │  │    Node      │               │
+│  │  (Deploys)   │  │  (Deploys)   │  │  (Queries)   │               │
+│  └──────────────┘  └──────────────┘  └──────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Cryptographic Flow
