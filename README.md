@@ -4,7 +4,7 @@
 
 [![Status](https://img.shields.io/badge/Status-BETA-FFA500?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk)
 [![Version](https://img.shields.io/badge/Version-0.1.0-A8E6A3?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk/releases)
-[![License](https://img.shields.io/badge/License-Apache%202.0-1A1A1A?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-1A1A1A?style=for-the-badge)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Available-C4F0C1?style=for-the-badge)](https://docs.asichain.io)
 
 <h3>TypeScript SDK for wallet management and blockchain interaction on ASI Chain</h3>
@@ -33,20 +33,20 @@ Part of the [**Artificial Superintelligence Alliance**](https://superintelligenc
 
 ## Overview
 
-ASI Chain Wallet SDK is a lightweight, modular TypeScript library designed to simplify wallet integration and key management for ASI Chain applications. It provides secure cryptographic operations, BIP-39/BIP-44 key derivation, encrypted storage mechanisms, and direct interaction with ASI Chain nodes.
+ASI Chain Wallet SDK is a lightweight, modular TypeScript library designed to simplify wallet integration and key management for [ASI Chain](https://github.com/asi-alliance/asi-chain) applications. It provides secure cryptographic operations, BIP-39/BIP-44 key derivation, encrypted storage mechanisms, and direct interaction with ASI Chain nodes.
 
-The SDK supports both browser and Node.js environments with built-in polyfills, making it suitable for web wallets, mobile applications, and backend services.
+The SDK supports both browser and Node.js environments with built-in [polyfills](src/utils/polyfills), making it suitable for web wallets, mobile applications, and backend services.
 
 ---
 
 ## Key Features
 
-- **Wallet Management** - Create, import, and derive wallets from private keys or mnemonic phrases
-- **Secure Storage** - Password-based encryption using PBKDF2 + AES for private keys and seed phrases
-- **Key Derivation** - BIP-39 mnemonic generation and BIP-44 hierarchical deterministic key derivation
-- **Vault System** - Encrypted container for managing multiple wallets and seeds with localStorage persistence
-- **Chain Interaction** - Direct communication with ASI Chain nodes for balance queries and token transfers
-- **Address Generation** - secp256k1 key generation with keccak256/blake2b address derivation
+- **Wallet Management** - Create, import, and derive wallets from private keys or mnemonic phrases via [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts)
+- **Secure Storage** - Password-based encryption using PBKDF2 + AES via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
+- **Key Derivation** - BIP-39 mnemonic generation and BIP-44 hierarchical deterministic key derivation via [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts)
+- **Vault System** - Encrypted container for managing multiple wallets and seeds via [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts)
+- **Chain Interaction** - Direct communication with ASI Chain nodes via [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts)
+- **Address Generation** - secp256k1 key generation with keccak256/blake2b address derivation via [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts)
 
 ---
 
@@ -76,6 +76,8 @@ const derivedWallet = await WalletsService.createWalletFromMnemonic(mnemonic, 0)
 console.log('Derived Address:', derivedWallet.address);
 ```
 
+See [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts) and [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts) for full API reference.
+
 ### Manage Wallets with Vault
 
 ```typescript
@@ -94,6 +96,8 @@ vault.addWallet(wallet);
 vault.lock('vault-password');
 vault.save();
 ```
+
+See [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts) and [Wallet](docs/DOMAINS.md#wallet-srcdomainswalletindexts) for full API reference.
 
 ### Check Balance and Transfer
 
@@ -118,6 +122,8 @@ const deployId = await chainService.transfer(
 );
 ```
 
+See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts) for full API reference. For amount conversions, see [functions utilities](docs/UTILS.md#functions-srcutilsfunctionsindexts).
+
 ---
 
 ## Architecture
@@ -125,64 +131,64 @@ const deployId = await chainService.transfer(
 ### SDK Components
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────────┐
 │                        Application                               │
-└──────────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     ASI Wallet SDK                                  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                      Services                                 │  │
-│  │  • WalletsService       - Wallet creation & address derivation│  │
-│  │  • CryptoService        - Password-based encryption (AES)     │  │
-│  │  • KeysService          - secp256k1 key generation            │  │
-│  │  • KeyDerivationService - BIP-32/BIP-44 derivation            │  │
-│  │  • MnemonicService      - BIP-39 mnemonic handling            │  │
-│  │  • RChainService        - Blockchain node interaction         │  │
-│  │  • FeeService           - Gas fee calculations                │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                      Domains                                  │  │
-│  │  • Wallet              - Encrypted wallet with lock/unlock    │  │
-│  │  • Vault               - Multi-wallet container               │  │
-│  │  • Asset               - Token representation                 │  │
-│  │  • SeedRecord          - Encrypted seed phrase storage        │  │
-│  │  • SecureStorage       - localStorage encryption layer        │  │
-│  │  • BinaryWriter        - Protobuf-like serialization          │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                       Utils                                   │  │
-│  │  • codec      - Base16/Base58 encoding                        │  │
-│  │  • constants  - Chain prefix, decimals, gas fees              │  │
-│  │  • validators - Address and account name validation           │  │
-│  │  • functions  - Atomic amount conversions                     │  │
-│  │  • polyfills  - Browser Buffer compatibility                  │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     ASI Wallet SDK                               │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                   Services (docs/SERVICES.md)                ││
+│  │  • WalletsService      - Wallet creation & address derivation││
+│  │  • CryptoService       - Password-based encryption (AES)     ││
+│  │  • KeysService         - secp256k1 key generation            ││
+│  │  • KeyDerivationService - BIP-32/BIP-44 derivation           ││
+│  │  • MnemonicService     - BIP-39 mnemonic handling            ││
+│  │  • RChainService       - Blockchain node interaction         ││
+│  │  • FeeService          - Gas fee calculations                ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                   Domains (docs/DOMAINS.md)                  ││
+│  │  • Wallet              - Encrypted wallet with lock/unlock   ││
+│  │  • Vault               - Multi-wallet container              ││
+│  │  • Asset               - Token representation                ││
+│  │  • SeedRecord          - Encrypted seed phrase storage       ││
+│  │  • SecureStorage       - localStorage encryption layer       ││
+│  │  • BinaryWriter        - Protobuf-like serialization         ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                    Utils (docs/UTILS.md)                     ││
+│  │  • codec      - Base16/Base58 encoding                       ││
+│  │  • constants  - Chain prefix, decimals, gas fees             ││
+│  │  • validators - Address and account name validation          ││
+│  │  • functions  - Atomic amount conversions                    ││
+│  │  • polyfills  - Browser Buffer compatibility                 ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    ASI Chain Network                                │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
-│  │  Validator   │  │  Validator   │  │  Observer    │               │
-│  │    Nodes     │  │    Nodes     │  │    Node      │               │
-│  │  (Deploys)   │  │  (Deploys)   │  │  (Queries)   │               │
-│  └──────────────┘  └──────────────┘  └──────────────┘               │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    ASI Chain Network                             │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │  Validator   │  │  Validator   │  │  Observer    │           │
+│  │    Nodes     │  │    Nodes     │  │    Node      │           │
+│  │  (Deploys)   │  │  (Deploys)   │  │  (Queries)   │           │
+│  └──────────────┘  └──────────────┘  └──────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Cryptographic Flow
 
-- **Key Generation**: secp256k1 elliptic curve keypairs
-- **Address Derivation**: keccak256 hash → blake2b checksum → Base58 encoding with chain prefix
-- **Encryption**: PBKDF2 (200,000 iterations) → AES-256 with random salt and IV
-- **Mnemonic**: BIP-39 standard with 12 or 24 word phrases
-- **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`)
+- **Key Generation**: secp256k1 elliptic curve keypairs via [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts)
+- **Address Derivation**: keccak256 hash → blake2b checksum → Base58 encoding with [chain prefix](src/utils/constants)
+- **Encryption**: PBKDF2 (200,000 iterations) → AES-256 via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
+- **Mnemonic**: BIP-39 standard (12/24 words) via [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts)
+- **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`) via [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts)
 
 ---
 
@@ -192,51 +198,26 @@ const deployId = await chainService.transfer(
 asi-chain-wallet-sdk/
 ├── src/                        # SDK source code
 │   ├── config/                # Configuration and constants
-│   │   └── index.ts          # Client config, timeouts, limits
-│   │
-│   ├── domains/               # Domain models
-│   │   ├── Asset/            # Token representation
-│   │   ├── BinaryWriter/     # Protobuf-like serialization
-│   │   ├── SecureStorage/    # localStorage encryption
-│   │   ├── SeedRecord/       # Encrypted seed phrase
-│   │   ├── Vault/            # Multi-wallet container
-│   │   └── Wallet/           # Wallet with lock/unlock
-│   │
-│   ├── services/              # Business logic services
-│   │   ├── Chain/            # RChain node interaction
-│   │   ├── Crypto/           # Password-based encryption
-│   │   ├── Fee/              # Gas fee calculations
-│   │   ├── KeyDerivation/    # BIP-32/BIP-44 derivation
-│   │   ├── KeysService/      # secp256k1 key generation
-│   │   ├── Mnemonic/         # BIP-39 mnemonic handling
-│   │   └── Wallets/          # Wallet creation & address derivation
-│   │
-│   ├── utils/                 # Utility functions
-│   │   ├── codec/            # Base16/Base58 encoding
-│   │   ├── constants/        # Chain prefix, decimals, gas fees
-│   │   ├── functions/        # Atomic amount conversions
-│   │   ├── polyfills/        # Browser Buffer compatibility
-│   │   └── validators/       # Address and name validation
-│   │
+│   ├── domains/               # Domain models (→ docs/DOMAINS.md)
+│   ├── services/              # Business logic (→ docs/SERVICES.md)
+│   ├── utils/                 # Utilities (→ docs/UTILS.md)
 │   └── index.ts              # Main export
 │
-├── playground/                # React demo application
+├── playground/                # React demo app (→ docs/PLAYGROUND.md)
 │   ├── src/
-│   │   ├── components/       # UI components (modals, cards, forms)
+│   │   ├── components/       # UI components
 │   │   ├── pages/            # WalletsPage demo
-│   │   ├── hooks/            # useLoader hook
 │   │   └── config/           # Network configuration
-│   ├── package.json          # Playground dependencies
-│   └── vite.config.ts        # Vite build configuration
+│   └── package.json
 │
-├── docs/                      # API reference documentation
-│   ├── DOMAINS.md            # Domain models reference
-│   ├── SERVICES.md           # Services reference
-│   ├── UTILS.md              # Utilities reference
-│   └── PLAYGROUND.md         # Playground components reference
+├── docs/                      # API reference
+│   ├── DOMAINS.md            # Domain models
+│   ├── SERVICES.md           # Services
+│   ├── UTILS.md              # Utilities
+│   └── PLAYGROUND.md         # Playground components
 │
 ├── package.json              # SDK dependencies
-├── tsconfig.build.json       # TypeScript build configuration
+├── tsconfig.build.json       # TypeScript config
 └── README.md                 # This file
 ```
 
@@ -246,17 +227,22 @@ asi-chain-wallet-sdk/
 
 ### SDK Reference
 
-- **[docs/DOMAINS.md](docs/DOMAINS.md)** - Domain models (Wallet, Vault, Asset, SeedRecord, SecureStorage, BinaryWriter)
-- **[docs/SERVICES.md](docs/SERVICES.md)** - Services (WalletsService, CryptoService, KeysService, KeyDerivationService, MnemonicService, RChainService, FeeService)
-- **[docs/UTILS.md](docs/UTILS.md)** - Utilities (codec, constants, validators, functions, polyfills)
-- **[docs/PLAYGROUND.md](docs/PLAYGROUND.md)** - Playground components and usage
+| Document | Description |
+|----------|-------------|
+| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain models: [Wallet](docs/DOMAINS.md#wallet-srcdomainswalletindexts), [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts), [Asset](docs/DOMAINS.md#asset-srcdomainsassetindexts), [SeedRecord](docs/DOMAINS.md#encryptedseedrecord-srcdomainsseedrecordindexts), [SecureStorage](docs/DOMAINS.md#securewebwalletsstorage-srcdomainssecurestorageindexts), [BinaryWriter](docs/DOMAINS.md#binarywriter-srcdomainsbinarywriterindexts) |
+| [docs/SERVICES.md](docs/SERVICES.md) | Services: [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts), [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts), [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts), [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts), [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts), [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts) |
+| [docs/UTILS.md](docs/UTILS.md) | Utilities: [codec](docs/UTILS.md#codec-srcutilscodecindexts), [constants](docs/UTILS.md#constants-srcutilsconstantsindexts), [validators](docs/UTILS.md#validators-srcutilsvalidatorsindexts), [functions](docs/UTILS.md#functions-srcutilsfunctionsindexts), [polyfills](docs/UTILS.md#polyfills-srcutilspolyfillsindexts) |
+| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components and usage examples |
 
 ### Related Resources
 
-- **ASI Chain Documentation**: https://docs.asichain.io
-- **ASI Chain Repository**: https://github.com/asi-alliance/asi-chain
-- **ASI Chain Wallet**: https://github.com/asi-alliance/asi-chain-wallet
-- **ASI Chain Explorer**: https://github.com/asi-alliance/asi-chain-explorer
+| Resource | Link |
+|----------|------|
+| ASI Chain Documentation | https://docs.asichain.io |
+| ASI Chain Node | [github.com/asi-alliance/asi-chain](https://github.com/asi-alliance/asi-chain) |
+| ASI Chain Wallet | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet) |
+| ASI Chain Explorer | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
+| ASI Chain Faucet | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet) |
 
 ---
 
@@ -282,65 +268,48 @@ npm run dev
 
 ### Playground
 
-The playground provides a React-based demo application for testing SDK functionality:
+The [playground](playground) provides a React-based demo application for testing SDK functionality:
 
 ```bash
-# Navigate to playground
 cd playground
-
-# Install dependencies
 npm install
 
 # Create .env file with network configuration
 # VITE_NETWORKS='[{"name":"DevNet","validatorURL":"...","readOnlyURL":"..."}]'
 
-# Start development server
 npm run dev
 ```
 
-Playground available at `http://localhost:5173`.
+Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
 
-### Technology Stack
+### Dependencies
 
-**SDK Dependencies:**
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| axios | 1.13.2 | HTTP client for node communication |
-| bip32 | 4.0.0 | BIP-32 hierarchical deterministic wallets |
-| bip39 | 3.1.0 | BIP-39 mnemonic generation |
-| blakejs | 1.2.1 | BLAKE2b hashing for addresses |
-| bs58 | 6.0.0 | Base58 encoding |
-| crypto-js | 4.2.0 | AES encryption and PBKDF2 |
-| elliptic | 6.6.1 | secp256k1 elliptic curve operations |
-| js-sha3 | 0.9.3 | keccak256 hashing |
-| tiny-secp256k1 | 2.2.4 | secp256k1 for BIP-32 derivation |
-
-**Playground Dependencies:**
+**SDK** ([package.json](package.json)):
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| react | 18.2.0 | UI framework |
-| vite | 7.2.6 | Build tool and dev server |
-| vite-plugin-node-polyfills | 0.24.0 | Node.js polyfills for browser |
+| [axios](https://github.com/axios/axios) | 1.13.2 | HTTP client for node communication |
+| [bip32](https://github.com/bitcoinjs/bip32) | 4.0.0 | BIP-32 hierarchical deterministic wallets |
+| [bip39](https://github.com/bitcoinjs/bip39) | 3.1.0 | BIP-39 mnemonic generation |
+| [blakejs](https://github.com/dcposch/blakejs) | 1.2.1 | BLAKE2b hashing for addresses |
+| [bs58](https://github.com/cryptocoinjs/bs58) | 6.0.0 | Base58 encoding |
+| [crypto-js](https://github.com/brix/crypto-js) | 4.2.0 | AES encryption and PBKDF2 |
+| [elliptic](https://github.com/indutny/elliptic) | 6.6.1 | secp256k1 elliptic curve operations |
+| [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
+| [tiny-secp256k1](https://github.com/nicknisi/tiny-secp256k1) | 2.2.4 | secp256k1 for BIP-32 derivation |
+
+**Playground** ([playground/package.json](playground/package.json)):
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| [react](https://react.dev) | 18.2.0 | UI framework |
+| [vite](https://vite.dev) | 7.2.6 | Build tool and dev server |
 
 ---
 
 ## License
 
-Copyright 2025 Artificial Superintelligence Alliance
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at:
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
 
 ---
 
