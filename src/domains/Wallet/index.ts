@@ -56,17 +56,17 @@ export default class Wallet {
         this.isLocked = true;
     }
 
-    public static fromPrivateKey(
+    public static async fromPrivateKey(
         name: string,
         privateKey: string,
         password: string,
         masterNodeId: string | null = null,
         index: number | null = null
-    ): Wallet {
+    ): Promise<Wallet> {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        const encrypted: EncryptedData = this.encryptPrivateKey(
+        const encrypted: EncryptedData = await this.encryptPrivateKey(
             privateKey,
             password
         );
@@ -134,7 +134,7 @@ export default class Wallet {
         this.isLocked = true;
     }
 
-    public unlock(password: string): void {
+    public async unlock(password: string): Promise<void> {
         try {
             const iv: string | undefined = this.memory.get(
                 WalletMemoryKeys.CRYPTO_IV
@@ -154,7 +154,7 @@ export default class Wallet {
                 );
             }
 
-            this.privateKey = CryptoService.decryptWithPassword(
+            this.privateKey = await CryptoService.decryptWithPassword(
                 { salt, iv, data: encryptedPrivateKey, version: +version },
                 password
             );
@@ -221,7 +221,7 @@ export default class Wallet {
         }
     }
 
-    private static encryptPrivateKey(privateKey: string, password: string) {
-        return CryptoService.encryptWithPassword(privateKey, password);
+    private static async encryptPrivateKey(privateKey: string, password: string) {
+        return await CryptoService.encryptWithPassword(privateKey, password);
     }
 }

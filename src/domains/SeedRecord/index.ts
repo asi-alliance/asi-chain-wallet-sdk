@@ -40,14 +40,14 @@ export default class EncryptedSeedRecord {
         return this.isLocked;
     }
 
-    public lock(password: string): void {
+    public async lock(password: string): Promise<void> {
         this.ensureUnlocked();
 
         if (!this.seed) {
             throw new Error("No seed to lock");
         }
 
-        this.encryptedSeedData = CryptoService.encryptWithPassword(
+        this.encryptedSeedData = await CryptoService.encryptWithPassword(
             this.seed,
             password
         );
@@ -56,7 +56,7 @@ export default class EncryptedSeedRecord {
         this.isLocked = true;
     }
 
-    public unlock(password: string): void {
+    public async unlock(password: string): Promise<void> {
         if (!this.isLocked) {
             return;
         }
@@ -67,7 +67,7 @@ export default class EncryptedSeedRecord {
             );
         }
 
-        const decryptedSeed: string = CryptoService.decryptWithPassword(
+        const decryptedSeed: string = await CryptoService.decryptWithPassword(
             this.encryptedSeedData,
             password
         );

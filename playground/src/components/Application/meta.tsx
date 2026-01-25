@@ -102,7 +102,7 @@ export const deriveNextWallet = async (
         privateKey,
         publicKey,
         seedRecord,
-        wallet: Wallet.fromPrivateKey(
+        wallet: await Wallet.fromPrivateKey(
             name,
             privateKey,
             password,

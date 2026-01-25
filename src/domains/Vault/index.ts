@@ -94,12 +94,12 @@ export default class Vault {
         );
     }
 
-    public lock(password: string): void {
+    public async lock(password: string): Promise<void> {
         this.ensureUnlocked();
 
         const rawVaultData: VaultRawData = this.toString();
 
-        this.encryptedVaultData = CryptoService.encryptWithPassword(
+        this.encryptedVaultData = await CryptoService.encryptWithPassword(
             rawVaultData,
             password
         );
@@ -108,7 +108,7 @@ export default class Vault {
         this.wallets = new Map();
     }
 
-    public unlock(password: string): void {
+    public async unlock(password: string): Promise<void> {
         if (!this.isLocked) {
             return;
         }
@@ -119,7 +119,7 @@ export default class Vault {
             );
         }
 
-        const decryptedData: string = CryptoService.decryptWithPassword(
+        const decryptedData: string = await CryptoService.decryptWithPassword(
             this.encryptedVaultData,
             password
         );
