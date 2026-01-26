@@ -1,8 +1,6 @@
 import CryptoService, { type EncryptedData } from "../../services/Crypto";
-import EncryptedSeedRecord, {
-    SeedRecordRawData,
-    StringifiedSeedsMeta,
-} from "../SeedRecord";
+import { genRandomHex } from "../../utils/functions";
+import EncryptedRecord from "../EncryptedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
@@ -11,15 +9,17 @@ import Wallet, {
 
 export type Wallets = Map<Address, Wallet>;
 
-export type Seeds = Map<string, EncryptedSeedRecord>;
+export type Seeds = Map<string, EncryptedRecord>;
 
 export type VaultRawData = string;
 
 export type StoredWalletsMetaRecords = Record<Address, StringifiedWalletMeta>;
 
-export type StoredSeedsMetaRecords = Record<string, StringifiedSeedsMeta>;
+export type StoredSeedsMetaRecords = Record<string, string>;
 
 export const DEFAULT_STORAGE_KEY = "0";
+
+const DEFAULT_SEED_ID_LENGTH: number = 16;
 
 export default class Vault {
     private static vaultPrefix: string = `ASI_WALLETS_VAULT`;
@@ -196,12 +196,7 @@ export default class Vault {
             const wallet = Wallet.fromEncryptedData(
                 walletMeta.name,
                 walletMeta.address,
-                {
-                    encryptedPrivateKey: walletMeta.encryptedPrivateKey,
-                    iv: walletMeta.cryptoIV,
-                    salt: walletMeta.cryptoSalt,
-                    version: +walletMeta.cryptoVersion,
-                },
+                JSON.parse(walletMeta.encryptedPrivateKey),
                 walletMeta.masterNodeId,
                 !walletMeta.index ? null : +walletMeta.index
             );
@@ -217,9 +212,9 @@ export default class Vault {
         const ids: string[] = Object.keys(meta);
 
         ids.forEach((id: string) => {
-            const seedMeta: EncryptedData = JSON.parse(meta[id]);
-
-            const seed = EncryptedSeedRecord.fromEncryptedData(seedMeta);
+            const seed = EncryptedRecord.createFromStringifiedEncryptedData(
+                meta[id],
+            );
 
             seeds.set(id, seed);
         });
@@ -227,22 +222,20 @@ export default class Vault {
         this.seeds = seeds;
     }
 
-    public getSeeds(): EncryptedSeedRecord[] {
+    public getSeeds(): EncryptedRecord[] {
         this.ensureUnlocked();
 
         return Array.from(this.seeds.values());
     }
 
-    public getSeed(id: string): EncryptedSeedRecord | undefined {
+    public getSeed(id: string): EncryptedRecord | undefined {
         this.ensureUnlocked();
 
         return this.seeds.get(id);
     }
 
-    public addSeed(seed: EncryptedSeedRecord): void {
+    public addSeed(id: string, seed: EncryptedRecord): void {
         this.ensureUnlocked();
-
-        const id: string = seed.transformToId();
 
         this.seeds.set(id, seed);
     }
@@ -279,7 +272,7 @@ export default class Vault {
         });
 
         seedsIds.forEach((seedId: string) => {
-            const seed: EncryptedSeedRecord | undefined = this.getSeed(seedId);
+            const seed: EncryptedRecord | undefined = this.getSeed(seedId);
 
             if (!seed) {
                 return;

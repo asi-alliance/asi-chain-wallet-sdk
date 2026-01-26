@@ -10,9 +10,6 @@ export interface StoredWalletMeta {
     name: string;
     address: Address;
     encryptedPrivateKey: string;
-    cryptoIV: string;
-    cryptoSalt: string;
-    cryptoVersion: string;
     masterNodeId: string | null;
     index: string | null;
 }
@@ -31,18 +28,16 @@ export enum WalletMemoryKeys {
 export default class Wallet {
     private name: string;
     private address: Address;
-    private privateKey: string;
+    private privateKey: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
-    private memory: WalletMemory;
     private masterNodeId: string | null;
     private index: number | null;
 
     private constructor(
         name: string,
         address: Address,
-        encryptedPrivateKey: string,
-        memory: Map<string, string>,
+        encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
         index: number | null
     ) {
@@ -51,7 +46,6 @@ export default class Wallet {
         this.masterNodeId = masterNodeId;
         this.address = address;
         this.privateKey = encryptedPrivateKey;
-        this.memory = memory;
         this.assets = new Map();
         this.isLocked = true;
     }
@@ -71,18 +65,10 @@ export default class Wallet {
             password
         );
 
-        const memory = new Map([
-            [WalletMemoryKeys.PRIVATE_KEY, encrypted.data],
-            [WalletMemoryKeys.CRYPTO_IV, encrypted.iv],
-            [WalletMemoryKeys.CRYPTO_SALT, encrypted.salt],
-            [WalletMemoryKeys.CRYPTO_VERSION, String(encrypted.version)],
-        ]);
-
         return new Wallet(
             name,
             address,
-            encrypted.data,
-            memory,
+            encrypted,
             masterNodeId,
             index
         );
@@ -91,12 +77,7 @@ export default class Wallet {
     public static fromEncryptedData(
         name: string,
         address: Address,
-        options: {
-            encryptedPrivateKey: string;
-            iv: string;
-            salt: string;
-            version: number;
-        },
+        encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
         index: number | null
     ): Wallet {
@@ -104,69 +85,27 @@ export default class Wallet {
             throw new Error("Invalid address format");
         }
 
-        const memory = new Map([
-            [WalletMemoryKeys.PRIVATE_KEY, options.encryptedPrivateKey],
-            [WalletMemoryKeys.CRYPTO_IV, options.iv],
-            [WalletMemoryKeys.CRYPTO_SALT, options.salt],
-            [WalletMemoryKeys.CRYPTO_VERSION, String(options.version)],
-        ]);
-
         return new Wallet(
             name,
             address,
-            options.encryptedPrivateKey,
-            memory,
+            encryptedPrivateKey,
             masterNodeId,
             index
         );
     }
 
-    public lock(): void {
-        const privateKey: string | undefined = this.memory.get(
-            WalletMemoryKeys.PRIVATE_KEY
-        );
-
-        if (!privateKey) {
-            throw new Error("Memory context lost, cannot lock the Wallet");
-        }
-
-        this.privateKey = privateKey;
-        this.isLocked = true;
-    }
-
-    public async unlock(password: string): Promise<void> {
+    public async decrypt(password: string): Promise<string> {
         try {
-            const iv: string | undefined = this.memory.get(
-                WalletMemoryKeys.CRYPTO_IV
-            );
-            const salt: string | undefined = this.memory.get(
-                WalletMemoryKeys.CRYPTO_SALT
-            );
-            const version: string | undefined = this.memory.get(
-                WalletMemoryKeys.CRYPTO_VERSION
-            );
-
-            const encryptedPrivateKey: string = this.privateKey;
-
-            if (!iv || !salt || !version) {
-                throw new Error(
-                    "Memory context lost, cannot unlock the Wallet"
-                );
-            }
-
-            this.privateKey = await CryptoService.decryptWithPassword(
-                { salt, iv, data: encryptedPrivateKey, version: +version },
+            return await CryptoService.decryptWithPassword(
+                this.privateKey,
                 password
             );
-
-            this.isLocked = false;
         } catch (error: any) {
             throw new Error("Unlock Failed: " + error?.message);
         }
     }
 
-    public getPrivateKey(): string {
-        this.ensureUnlocked();
+    public getEncryptedPrivateKey(): EncryptedData {
         return this.privateKey;
     }
 
@@ -186,10 +125,6 @@ export default class Wallet {
         return this.index;
     }
 
-    public getMemory(): WalletMemory {
-        return this.memory;
-    }
-
     public getAssets(): Assets {
         return this.assets;
     }
@@ -202,23 +137,12 @@ export default class Wallet {
         const meta: StoredWalletMeta = {
             name: this.name,
             address: this.address,
-            encryptedPrivateKey:
-                this.memory.get(WalletMemoryKeys.PRIVATE_KEY) ?? "",
-            cryptoIV: this.memory.get(WalletMemoryKeys.CRYPTO_IV) ?? "",
-            cryptoSalt: this.memory.get(WalletMemoryKeys.CRYPTO_SALT) ?? "",
-            cryptoVersion:
-                this.memory.get(WalletMemoryKeys.CRYPTO_VERSION) ?? "",
+            encryptedPrivateKey: JSON.stringify(this.privateKey),
             masterNodeId: this.masterNodeId ?? "",
             index: this.index?.toString() ?? "",
         };
 
         return JSON.stringify(meta);
-    }
-
-    private ensureUnlocked(): void {
-        if (this.isLocked) {
-            throw new Error("Wallet is locked");
-        }
     }
 
     private static async encryptPrivateKey(privateKey: string, password: string) {

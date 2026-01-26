@@ -9,10 +9,10 @@ import {
     MnemonicStrength,
     ChainService,
     KeysService,
-    SeedRecord,
     Wallet,
     Vault,
 } from "asi-wallet-sdk";
+import { keccak512 } from "js-sha3";
 
 const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
 
@@ -67,15 +67,14 @@ const wordsCountToMnemonicStrength = (words: 12 | 24) => {
 
 export const createMnemonicWallet = async (
     name: string,
-    mnemonicArray: string[],
+    mnemonic: string,
     password: string
 ) => {
-    const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicArray);
-
-    return await deriveNextWallet(mnemonic, name, password, 0);
+    return await deriveNextWallet(keccak512(mnemonic), mnemonic, name, password, 0);
 };
 
 export const deriveNextWallet = async (
+    seedId,
     mnemonic: string,
     name: string,
     password: string,
@@ -96,17 +95,16 @@ export const deriveNextWallet = async (
     const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
 
     const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
-    const seedRecord = SeedRecord.fromRawSeed(mnemonic);
 
     return {
+        seedId,
         privateKey,
         publicKey,
-        seedRecord,
         wallet: await Wallet.fromPrivateKey(
             name,
             privateKey,
             password,
-            seedRecord.transformToId(),
+            seedId,
             nextIndex
         ),
     };
