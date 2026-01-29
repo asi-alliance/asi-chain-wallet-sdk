@@ -1,241 +1,64 @@
-import CryptoJS from "crypto-js";
-import { Ciphertext, EncryptedData, WordArray } from "../../services/Crypto";
-
-export interface SecureWebWalletsStorageConfig {
-    readonly VERSION: number;
-    readonly STORAGE_PREFIX: string;
-    readonly KEY_SIZE_WORDS: number;
-    readonly SALT_LENGTH: number;
-    readonly IV_LENGTH: number;
-    readonly KEY_DERIVATION_ITERATIONS: number;
-    readonly CIPHER: string;
-    readonly KDF: string;
+interface Storage {
+    write: (id: string, data: string) => void;
+    read: (id: string) => string | null;
+    delete: (id: string) => void;
+    has: (id: string) => boolean;
+    isEmpty: () => boolean;
+    clear: () => void;
 }
 
-const SecureWebWalletsStorageConfig: SecureWebWalletsStorageConfig = {
-    VERSION: 1, // change this when making incompatible changes
-    STORAGE_PREFIX: "asi_web_secure_wallet_storage_",
-    KEY_SIZE_WORDS: 8, // 256 bits = 32 bytes = 8 words
-    SALT_LENGTH: 16,
-    IV_LENGTH: 12,
-    KEY_DERIVATION_ITERATIONS: 200000,
-    CIPHER: "AES", // change CryptoJS.AES occurrences if changing
-    KDF: "PBKDF2", // change CryptoJS.PBKDF2 occurrences if changing
-};
+class BrowserStorage implements Storage {
+    private prefix: string;
 
-export interface WalletData {
-    id: string;
-    address: string;
-    privateKey: string;
-    derivationIndex: number;
-}
-
-export default class SecureWebWalletsStorage {
-    private masterKeyStorageKey: string = `${SecureWebWalletsStorageConfig.STORAGE_PREFIX}master`;
-
-    private createWalletStorageKey(walletId: string): string {
-        return `${SecureWebWalletsStorageConfig.STORAGE_PREFIX}${walletId}`;
+    constructor(prefix: string = "storage_prefix") {
+        this.prefix = prefix;
     }
 
-    private generateSalt(): WordArray {
-        return CryptoJS.lib.WordArray.random(
-            SecureWebWalletsStorageConfig.SALT_LENGTH
-        );
+    public write(id: string, data: string): void {
+        localStorage.setItem(this.createKey(id), data);
     }
 
-    private generateIV(): WordArray {
-        return CryptoJS.lib.WordArray.random(
-            SecureWebWalletsStorageConfig.IV_LENGTH
-        );
+    public read(id: string): string | null {
+        return localStorage.getItem(this.createKey(id));
     }
 
-    private deriveKey(passphrase: string, salt: WordArray): WordArray {
-        return CryptoJS.PBKDF2(passphrase, salt, {
-            keySize: SecureWebWalletsStorageConfig.KEY_SIZE_WORDS,
-            iterations: SecureWebWalletsStorageConfig.KEY_DERIVATION_ITERATIONS,
-        });
+    public delete(id: string): void {
+        localStorage.removeItem(this.createKey(id));
     }
 
-    private encryptWithPass(data: string, passphrase: string): EncryptedData {
-        const salt: WordArray = this.generateSalt();
-        const key: WordArray = this.deriveKey(passphrase, salt);
-        const iv: WordArray = this.generateIV();
-        const encryptedData: Ciphertext = CryptoJS.AES.encrypt(data, key, {
-            iv,
-        }).toString();
-
-        return {
-            version: SecureWebWalletsStorageConfig.VERSION,
-            salt: CryptoJS.enc.Base64.stringify(salt),
-            iv: CryptoJS.enc.Base64.stringify(iv),
-            data: encryptedData,
-        };
+    public has(id: string): boolean {
+        return !!localStorage.getItem(this.createKey(id));
     }
 
-    private decryptWithPass(
-        payload: EncryptedData,
-        passphrase: string
-    ): string {
-        const salt: WordArray = CryptoJS.enc.Base64.parse(payload.salt);
-        const iv: WordArray = CryptoJS.enc.Base64.parse(payload.iv);
-        const key: WordArray = this.deriveKey(passphrase, salt);
-        const decrypted: string = CryptoJS.AES.decrypt(payload.data, key, {
-            iv,
-        }).toString(CryptoJS.enc.Utf8);
-
-        if (!decrypted) {
-            throw new Error("Decryption failed");
-        }
-
-        return decrypted;
-    }
-
-    public saveMasterKey(masterKey: string, passphrase: string): void {
-        const payload: EncryptedData = this.encryptWithPass(
-            masterKey,
-            passphrase
-        );
-
-        localStorage.setItem(this.masterKeyStorageKey, JSON.stringify(payload));
-    }
-
-    public loadMasterKey(passphrase: string): string | null {
-        const raw = localStorage.getItem(this.masterKeyStorageKey);
-
-        if (!raw) {
-            return null;
-        }
-
-        const payload: EncryptedData = JSON.parse(raw);
-
-        try {
-            return this.decryptWithPass(payload, passphrase);
-        } catch {
-            return null;
-        }
-    }
-
-    public deleteMasterKey(): void {
-        localStorage.removeItem(this.masterKeyStorageKey);
-    }
-
-    public hasMasterKey(): boolean {
-        return localStorage.getItem(this.masterKeyStorageKey) !== null;
-    }
-
-    public saveWallet(
-        walletId: string,
-        data: WalletData,
-        passphrase: string
-    ): void {
-        const payload: EncryptedData = this.encryptWithPass(
-            JSON.stringify(data),
-            passphrase
-        );
-
-        localStorage.setItem(
-            this.createWalletStorageKey(walletId),
-            JSON.stringify(payload)
-        );
-    }
-
-    public loadWallet(walletId: string, passphrase: string): WalletData | null {
-        const raw: string | null = localStorage.getItem(
-            this.createWalletStorageKey(walletId)
-        );
-
-        if (!raw) {
-            return null;
-        }
-
-        const payload: EncryptedData = JSON.parse(raw);
-
-        try {
-            const decrypted = this.decryptWithPass(payload, passphrase);
-            return JSON.parse(decrypted);
-        } catch {
-            return null;
-        }
-    }
-
-    public deleteWallet(walletId: string): void {
-        localStorage.removeItem(this.createWalletStorageKey(walletId));
-    }
-
-    public getAllWalletsIds(): string[] {
-        const output: string[] = [];
-
-        for (let i: number = 0; i < localStorage.length; i++) {
-            const localStorageKey: string | null = localStorage.key(i);
-
-            if (!localStorageKey) {
-                continue;
-            }
-
-            if (
-                !localStorageKey.startsWith(
-                    SecureWebWalletsStorageConfig.STORAGE_PREFIX
-                )
-            ) {
-                continue;
-            }
-
-            if (localStorageKey === this.masterKeyStorageKey) {
-                continue;
-            }
-
-            output.push(
-                localStorageKey.slice(
-                    SecureWebWalletsStorageConfig.STORAGE_PREFIX.length
-                )
-            );
-        }
-
-        return output;
-    }
-
-    public hasWallet(walletId: string): boolean {
-        return (
-            localStorage.getItem(this.createWalletStorageKey(walletId)) !== null
-        );
-    }
-
-    public hasWallets(): boolean {
-        for (let i: number = 0; i < localStorage.length; i++) {
-            const localStorageKey: string | null = localStorage.key(i);
-
-            if (!localStorageKey) {
-                continue;
-            }
-
-            if (
-                localStorageKey.startsWith(
-                    SecureWebWalletsStorageConfig.STORAGE_PREFIX
-                ) &&
-                localStorageKey !== this.masterKeyStorageKey
-            ) {
-                return true;
-            }
-        }
-
-        return false;
+    public isEmpty(): boolean {
+        return !this.getIds().length;
     }
 
     public clear(): void {
+        this.getIds().forEach((id: string) => localStorage.removeItem(id));
+    }
+
+    private getIds(): string[] {
+        const idsArray: string[] = [];
+
         for (let i: number = 0; i < localStorage.length; i++) {
             const localStorageKey: string | null = localStorage.key(i);
 
             if (!localStorageKey) {
-                continue;
+                break;
             }
 
-            if (
-                localStorageKey.startsWith(
-                    SecureWebWalletsStorageConfig.STORAGE_PREFIX
-                )
-            ) {
-                localStorage.removeItem(localStorageKey);
+            if (localStorageKey.startsWith(`${this.prefix}`)) {
+                idsArray.push(localStorageKey);
             }
         }
+
+        return idsArray;
+    }
+
+    private createKey(id: string): string {
+        return `${this.prefix}_${id}`;
     }
 }
+
+export default BrowserStorage;
