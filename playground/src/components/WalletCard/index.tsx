@@ -30,7 +30,6 @@ const WalletCard = ({
 
     const index = wallet.getIndex();
     const address = wallet.getAddress();
-    const isLocked = wallet.isWalletLocked();
     const canSend = balance > 0n;
 
     const fetchBalance = async () => {
@@ -85,7 +84,6 @@ const WalletCard = ({
 
                 console.log("Starting transfer...", { toAddress, amount });
 
-                wallet.unlock(password);
 
                 setIsSending(true);
 
@@ -93,7 +91,7 @@ const WalletCard = ({
                     address,
                     toAddress,
                     amount,
-                    wallet.getPrivateKey()
+                    await wallet.decrypt(password)
                 );
 
                 console.log("Transfer successful", data);
@@ -118,7 +116,6 @@ const WalletCard = ({
                 );
                 handlePrepareSend(toAddress, amount);
             } finally {
-                wallet.lock();
                 setIsSending(false);
             }
         });
@@ -171,9 +168,6 @@ const WalletCard = ({
             <div className="wallet-card-body">
                 <div className="wallet-card-head">
                     <div className="wallet-card-name">{wallet.getName()}</div>
-                    <div className="wallet-card-state">
-                        {isLocked ? "Locked" : "Unlocked"}
-                    </div>
                 </div>
                 <div className="wallet-card-address">{address}</div>
                 <div className="wallet-card-balance">

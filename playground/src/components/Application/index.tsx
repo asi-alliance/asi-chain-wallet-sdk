@@ -3,7 +3,7 @@ import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
 import FullscreenLoader from "@components/FullScreenLoader";
-import { Address, ChainService, Vault, Wallet } from "asi-wallet-sdk";
+import { Address, ChainService, EncryptedRecord, MnemonicService, Vault, Wallet } from "asi-wallet-sdk";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { ReactElement, useEffect, useState } from "react";
 import {
@@ -16,6 +16,7 @@ import {
     init,
 } from "./meta";
 import "./style.css";
+import { keccak512 } from "js-sha3";
 
 // 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
 // 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
@@ -74,9 +75,9 @@ const Application = (): ReactElement => {
     };
 
     const unlockVault = (password: string) =>
-        withLoader(() => {
+        withLoader(async () => {
             try {
-                vault?.unlock(password);
+                await vault?.unlock(password);
                 setCurrentPassword(password);
                 updateVault(vault);
 
@@ -89,37 +90,37 @@ const Application = (): ReactElement => {
         });
 
     const createPassword = (password: string) =>
-        withLoader(() => {
-            saveVault(password);
+        withLoader(async () => {
+            await saveVault(password);
             setCurrentPassword(password);
             setIsVaultConfigured(true);
             setModalState({ type: null });
         });
 
     const addWalletToVault = (wallet: Wallet) =>
-        withLoader(() => {
+        withLoader(async () => {
             if (!vault) return;
 
             vault.addWallet(wallet);
 
-            saveVault(currentPassword);
+            await saveVault(currentPassword);
         });
 
     const removeWalletFromVault = (id: string) =>
-        withLoader(() => {
+        withLoader(async () => {
             if (!vault) return;
 
             vault.removeWallet(id as Address);
 
-            saveVault(currentPassword);
+            await saveVault(currentPassword);
         });
 
-    const saveVault = (password: string) => {
+    const saveVault = async (password: string) => {
         if (!vault) return;
 
         try {
             console.time("lock");
-            vault.lock(password);
+            await vault.lock(password);
             console.timeEnd("lock");
 
             console.time("save");
@@ -127,7 +128,7 @@ const Application = (): ReactElement => {
             console.timeEnd("save");
 
             console.time("unlock");
-            vault.unlock(password);
+            await vault.unlock(password);
             console.time("unlock");
 
             updateVault(vault);
@@ -136,7 +137,7 @@ const Application = (): ReactElement => {
         }
     };
 
-    const createKeyPairWallet = (payload: TWalletCreatePayload) => {
+    const createKeyPairWallet = async (payload: TWalletCreatePayload) => {
         if (!vault) return;
 
         try {
@@ -146,7 +147,7 @@ const Application = (): ReactElement => {
                 );
             }
 
-            const newWallet = Wallet.fromPrivateKey(
+            const newWallet = await Wallet.fromPrivateKey(
                 payload.name,
                 payload.privateKey,
                 payload.password
@@ -171,19 +172,19 @@ const Application = (): ReactElement => {
             }
 
             try {
-                const { wallet, seedRecord } = await createMnemonicWallet(
+                const mnemonic = MnemonicService.wordArrayToMnemonic(payload.mnemonicWords);
+                const encryptedSeed = await EncryptedRecord.createAndEncrypt(mnemonic, currentPassword);
+
+                const { wallet, seedId } = await createMnemonicWallet(
                     payload.name,
-                    payload.mnemonicWords,
+                    mnemonic,
                     payload.password
                 );
 
-                seedRecord.lock(currentPassword);
-                seedRecord.unlock(currentPassword);
-
                 vault.addWallet(wallet);
-                vault.addSeed(seedRecord);
+                vault.addSeed(seedId, encryptedSeed);
 
-                saveVault(currentPassword);
+                await saveVault(currentPassword);
 
                 setModalState({ type: null });
             } catch (error) {
@@ -208,9 +209,7 @@ const Application = (): ReactElement => {
 
                 const seedRecord = seeds[0];
 
-                seedRecord.unlock(currentPassword);
-
-                const currentSeed = seedRecord.getSeed();
+                const currentSeed = await seedRecord.decrypt(currentPassword);
 
                 if (!currentSeed) {
                     throw new Error("SeedRecord is empty");
@@ -218,7 +217,10 @@ const Application = (): ReactElement => {
 
                 console.log("Using seed", currentSeed);
 
+                const seedId =  keccak512(currentSeed);
+
                 const { wallet } = await deriveNextWallet(
+                    seedId,
                     currentSeed,
                     name,
                     password,
@@ -226,9 +228,9 @@ const Application = (): ReactElement => {
                 );
 
                 vault.addWallet(wallet);
-                vault.addSeed(seedRecord);
+                // vault.addSeed(seedId, seedRecord);
 
-                saveVault(currentPassword);
+                await saveVault(currentPassword);
                 setModalState({ type: null });
             } catch (error) {
                 console.error("Error deriving wallet:", error);
