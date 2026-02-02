@@ -42,7 +42,7 @@ export const toAtomicAmount = (amount: number | string): bigint => {
 
     if (fraction.length > decimals) {
         console.warn(
-            `Fraction ${fraction} has more than allowed decimals; truncating`
+            `Fraction ${fraction} has more than allowed decimals; truncating`,
         );
 
         fraction = fraction.slice(0, decimals);
@@ -77,7 +77,7 @@ export const fromAtomicAmountToNumber = (atomicAmount: bigint): number => {
 
     if (integerPart > BigInt(Number.MAX_SAFE_INTEGER)) {
         console.warn(
-            "Integer part exceeds Number.MAX_SAFE_INTEGER; returning imprecise Number"
+            "Integer part exceeds Number.MAX_SAFE_INTEGER; returning imprecise Number",
         );
 
         return Number(fromAtomicAmountToString(atomicAmount));
@@ -87,3 +87,8 @@ export const fromAtomicAmountToNumber = (atomicAmount: bigint): number => {
 };
 
 export const fromAtomicAmount = fromAtomicAmountToString;
+
+export const genRandomHex = (size: number) =>
+    [...Array(size)]
+        .map(() => Math.floor(Math.random() * 16).toString(16))
+        .join("");
