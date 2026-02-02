@@ -13,6 +13,12 @@ export const decodeBase16 = (hex: string): Uint8Array => {
     return bytes;
 };
 
+export const encodeBase16 = (bytes: Uint8Array): string => {
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+        ""
+    );
+};
+
 export const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     const bytes = new Uint8Array(buffer);
     let binary: string = "";
