@@ -13,7 +13,7 @@ import {
 // to Signer
 const secp256k1 = new EC("secp256k1");
 
-export interface Deploy {
+export interface DeployData {
     term: string;
     phloLimit: number;
     phloPrice: number;
@@ -176,7 +176,7 @@ export default class RChainService {
         try {
             const latestBlock = await this.gateway.getLatestBlock();
 
-            const deployData: Deploy = {
+            const deployData: DeployData = {
                 term: rholangCode,
                 phloLimit,
                 phloPrice: 1,

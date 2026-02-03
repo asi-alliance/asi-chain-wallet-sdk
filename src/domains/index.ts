@@ -4,6 +4,7 @@ export * from "./Wallet";
 export * from "./BinaryWriter";
 export * from "./SecureStorage";
 export * from "./BlockchainGateway";
+export * from "./Error";
 
 export { default as BlockchainGateway } from "./BlockchainGateway";
 export { default as EncryptedRecord } from "./EncryptedRecord";
