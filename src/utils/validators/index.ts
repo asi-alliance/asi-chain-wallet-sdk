@@ -1,4 +1,4 @@
-import { Address } from "../../domains/Wallet";
+import { Address } from "@domains/Wallet";
 
 const INVALID_ACCOUNT_NAME_CHARS: RegExp = /[<>:"/\\|?*]/;
 

@@ -6,7 +6,7 @@ const MARK_NEXT_BYTE_AS_CONTINUATION: number = 0x80;
 const MAX_BYTE_VALUE: number = 0x7f;
 const SEVEN_BITS_MULTIPLIER: number = 128;
 
-export default class BinaryWriter {
+export default class BinaryWriterService {
     private buffer: number[] = [];
 
     writeString(fieldNumber: number, value: string): void {

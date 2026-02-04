@@ -7,6 +7,7 @@ export * from "./KeysService";
 export * from "./KeyDerivation";
 
 export { default as KeyDerivationService } from "./KeyDerivation";
+export { default as BinaryWriter } from "./BinaryWriter";
 export { default as MnemonicService } from "./Mnemonic";
 export { default as KeysService } from "./KeysService";
 export { default as WalletsService } from "./Wallets";
