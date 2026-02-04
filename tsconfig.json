@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "ESNext",
+        "moduleResolution": "Node",
+        "baseUrl": ".",
+        "paths": {
+            "asi-wallet-sdk": ["dist"],
+            "@config": ["src/config"],
+            "@config/*": ["src/config/*"],
+            "@domains/*": ["src/domains/*"],
+            "@services/*": ["src/services/*"],
+            "@utils/*": ["src/utils/*"],
+            "@utils": ["src/utils"],
+            "@src/*": ["src/*"]
+        }
+    }
+}

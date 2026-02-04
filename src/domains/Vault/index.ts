@@ -1,11 +1,10 @@
-import CryptoService, { type EncryptedData } from "../../services/Crypto";
-import { genRandomHex } from "../../utils/functions";
-import EncryptedRecord from "../EncryptedRecord";
+import CryptoService, { type EncryptedData } from "@services/Crypto";
+import EncryptedRecord from "@domains//EncryptedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
     StoredWalletMeta,
-} from "../Wallet";
+} from "@domains/Wallet";
 
 export type Wallets = Map<Address, Wallet>;
 
