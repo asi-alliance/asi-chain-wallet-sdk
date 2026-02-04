@@ -1,7 +1,7 @@
-import Asset, { Assets } from "../Asset";
-import WalletsService from "../../services/Wallets";
-import CryptoService, { EncryptedData } from "../../services/Crypto";
-import { isAddress } from "../../utils/validators";
+import WalletsService from "@services/Wallets";
+import Asset, { Assets } from "@domains/Asset";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import { isAddress } from "@utils/validators";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -39,7 +39,7 @@ export default class Wallet {
         address: Address,
         encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
-        index: number | null
+        index: number | null,
     ) {
         this.name = name;
         this.index = index;
@@ -55,23 +55,17 @@ export default class Wallet {
         privateKey: string,
         password: string,
         masterNodeId: string | null = null,
-        index: number | null = null
+        index: number | null = null,
     ): Promise<Wallet> {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
         const encrypted: EncryptedData = await this.encryptPrivateKey(
             privateKey,
-            password
+            password,
         );
 
-        return new Wallet(
-            name,
-            address,
-            encrypted,
-            masterNodeId,
-            index
-        );
+        return new Wallet(name, address, encrypted, masterNodeId, index);
     }
 
     public static fromEncryptedData(
@@ -79,7 +73,7 @@ export default class Wallet {
         address: Address,
         encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
-        index: number | null
+        index: number | null,
     ): Wallet {
         if (!isAddress(address)) {
             throw new Error("Invalid address format");
@@ -90,7 +84,7 @@ export default class Wallet {
             address,
             encryptedPrivateKey,
             masterNodeId,
-            index
+            index,
         );
     }
 
@@ -98,7 +92,7 @@ export default class Wallet {
         try {
             return await CryptoService.decryptWithPassword(
                 this.privateKey,
-                password
+                password,
             );
         } catch (error: any) {
             throw new Error("Unlock Failed: " + error?.message);
@@ -145,7 +139,10 @@ export default class Wallet {
         return JSON.stringify(meta);
     }
 
-    private static async encryptPrivateKey(privateKey: string, password: string) {
+    private static async encryptPrivateKey(
+        privateKey: string,
+        password: string,
+    ) {
         return await CryptoService.encryptWithPassword(privateKey, password);
     }
 }

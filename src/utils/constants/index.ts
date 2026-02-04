@@ -15,3 +15,5 @@ export const GasFee = {
 export const POWER_BASE: number = 10;
 
 export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
+
+export const FAULT_TOLERANCE_THRESHOLD: number = 0.99;
