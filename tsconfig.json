@@ -6,13 +6,17 @@
         "baseUrl": ".",
         "paths": {
             "asi-wallet-sdk": ["dist"],
+            "@/*": ["src/*"],
+
+            "@services/": ["src/services/"],
+            "@domains/": ["src/domains/"],
             "@config": ["src/config"],
-            "@config/*": ["src/config/*"],
-            "@domains/*": ["src/domains/*"],
-            "@services/*": ["src/services/*"],
-            "@utils/*": ["src/utils/*"],
             "@utils": ["src/utils"],
-            "@src/*": ["src/*"]
+
+            "@services/*": ["src/services/*"],
+            "@domains/*": ["src/domains/*"],
+            "@config/*": ["src/config/*"],
+            "@utils/*": ["src/utils/*"]
         }
     }
 }
