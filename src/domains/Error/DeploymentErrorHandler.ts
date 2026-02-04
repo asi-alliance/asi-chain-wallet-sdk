@@ -1,101 +1,94 @@
-export enum DeploymentErrorType {
-    INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
-    READ_ONLY_NODE = "READ_ONLY_NODE",
-    WRONG_NETWORK = "WRONG_NETWORK",
-    PARSING_ERROR = "PARSING_ERROR",
-    LOW_PHLO_PRICE = "LOW_PHLO_PRICE",
-    CASPER_INSTANCE_UNAVAILABLE = "CASPER_INSTANCE_UNAVAILABLE",
-    SIGNATURE_ERROR = "SIGNATURE_ERROR",
-    STORAGE_RETRIEVAL_ERROR = "STORAGE_RETRIEVAL_ERROR",
-    UNKNOWN_ERROR = "UNKNOWN_ERROR",
+import {
+    RecoverableDeployErrors,
+    deploymentErrorMessages,
+    DeploymentErrorType,
+    FatalDeployErrors,
+} from "./meta";
+
+function useLowerCaseMessage<T>(
+    value: Function,
+    context: ClassMethodDecoratorContext,
+) {
+    return function (this: T, ...methodArguments: any[]) {
+        if (typeof methodArguments[0] === "string") {
+            methodArguments[0] = methodArguments[0].toLowerCase();
+        }
+
+        return value.apply(this, methodArguments);
+    };
 }
 
 export default class DeploymentErrorHandler {
+    // private?
+    @useLowerCaseMessage
     public parseDeploymentError(errorMessage: string): DeploymentErrorType {
-        const lowerMessage = errorMessage.toLowerCase();
+        if (errorMessage.includes("read only")) {
+            return RecoverableDeployErrors.READ_ONLY_NODE;
+        }
 
-        if (lowerMessage.includes("insufficient balance")) {
-            return DeploymentErrorType.INSUFFICIENT_BALANCE;
+        if (errorMessage.includes("casper instance")) {
+            return RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE;
         }
-        if (lowerMessage.includes("read only")) {
-            return DeploymentErrorType.READ_ONLY_NODE;
+
+        if (errorMessage.includes("insufficient balance")) {
+            return FatalDeployErrors.INSUFFICIENT_BALANCE;
         }
-        if (lowerMessage.includes("wrong network")) {
-            return DeploymentErrorType.WRONG_NETWORK;
+
+        if (errorMessage.includes("wrong network")) {
+            return FatalDeployErrors.WRONG_NETWORK;
         }
-        if (lowerMessage.includes("parsing error")) {
-            return DeploymentErrorType.PARSING_ERROR;
+
+        if (errorMessage.includes("parsing error")) {
+            return FatalDeployErrors.PARSING_ERROR;
         }
-        if (lowerMessage.includes("low") && lowerMessage.includes("phlo")) {
-            return DeploymentErrorType.LOW_PHLO_PRICE;
+
+        if (errorMessage.includes("low") && errorMessage.includes("phlo")) {
+            return FatalDeployErrors.LOW_PHLO_PRICE;
         }
-        if (lowerMessage.includes("casper instance")) {
-            return DeploymentErrorType.CASPER_INSTANCE_UNAVAILABLE;
-        }
+
         if (
-            lowerMessage.includes("signature") ||
-            lowerMessage.includes("sign") ||
-            lowerMessage.includes("invalid signature")
+            errorMessage.includes("signature") ||
+            errorMessage.includes("sign") ||
+            errorMessage.includes("invalid signature")
         ) {
-            return DeploymentErrorType.SIGNATURE_ERROR;
+            return FatalDeployErrors.SIGNATURE_ERROR;
         }
+
         if (
-            lowerMessage.includes("storage") ||
-            lowerMessage.includes("retrieval")
+            errorMessage.includes("storage") ||
+            errorMessage.includes("retrieval")
         ) {
-            return DeploymentErrorType.STORAGE_RETRIEVAL_ERROR;
+            return FatalDeployErrors.STORAGE_RETRIEVAL_ERROR;
         }
 
-        return DeploymentErrorType.UNKNOWN_ERROR;
+        return FatalDeployErrors.UNKNOWN_ERROR;
     }
 
-    public isRetriableDeploymentError(errorType: DeploymentErrorType): boolean {
+    // private?
+    public isDeploymentErrorRecoverable(errorType: DeploymentErrorType): boolean {
+        return Object.values(RecoverableDeployErrors).includes(errorType as RecoverableDeployErrors);
+    }
+
+    // private?
+    public isDeploymentErrorFatal(errorType: DeploymentErrorType): boolean {
+        return Object.values(FatalDeployErrors).includes(errorType as FatalDeployErrors);
+    }
+
+    // private?
+    @useLowerCaseMessage
+    public isPollingErrorRecoverable(errorMessage: string): boolean {
         return (
-            errorType === DeploymentErrorType.READ_ONLY_NODE ||
-            errorType === DeploymentErrorType.CASPER_INSTANCE_UNAVAILABLE
+            errorMessage.includes("casper instance") ||
+            errorMessage.includes("storage") ||
+            errorMessage.includes("parsing")
         );
     }
 
-    public isFatalDeploymentError(errorType: DeploymentErrorType): boolean {
+    // private?
+    public getErrorMessageByErrorType(errorType: DeploymentErrorType): string {
         return (
-            errorType === DeploymentErrorType.INSUFFICIENT_BALANCE ||
-            errorType === DeploymentErrorType.WRONG_NETWORK ||
-            errorType === DeploymentErrorType.PARSING_ERROR ||
-            errorType === DeploymentErrorType.LOW_PHLO_PRICE ||
-            errorType === DeploymentErrorType.SIGNATURE_ERROR
+            deploymentErrorMessages[errorType] ??
+            deploymentErrorMessages[FatalDeployErrors.UNKNOWN_ERROR]
         );
-    }
-
-    public isRetriablePollingError(errorMessage: string): boolean {
-        const lowerMessage = errorMessage.toLowerCase();
-        return (
-            lowerMessage.includes("casper instance") ||
-            lowerMessage.includes("storage") ||
-            lowerMessage.includes("parsing")
-        );
-    }
-
-    public getErrorMessage(errorType: DeploymentErrorType): string {
-        switch (errorType) {
-            case DeploymentErrorType.INSUFFICIENT_BALANCE:
-                return "Insufficient balance. Please top up your account.";
-            case DeploymentErrorType.READ_ONLY_NODE:
-                return "Node is read-only. Trying another node...";
-            case DeploymentErrorType.WRONG_NETWORK:
-                return "Wrong network. Please contact technical support.";
-            case DeploymentErrorType.PARSING_ERROR:
-                return "Parsing error. Please contact technical support.";
-            case DeploymentErrorType.LOW_PHLO_PRICE:
-                return "Phlo price too low. Please rebuild the transaction with a higher phlo price.";
-            case DeploymentErrorType.CASPER_INSTANCE_UNAVAILABLE:
-                return "Casper instance not available. Trying another node...";
-            case DeploymentErrorType.SIGNATURE_ERROR:
-                return "Signature verification failed. Please try again.";
-            case DeploymentErrorType.STORAGE_RETRIEVAL_ERROR:
-                return "Storage retrieval error. Please try again later.";
-            case DeploymentErrorType.UNKNOWN_ERROR:
-            default:
-                return "An unknown error occurred. Please try again.";
-        }
     }
 }

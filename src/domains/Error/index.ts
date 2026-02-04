@@ -1,4 +1,3 @@
-export {
-    default as DeploymentErrorHandler,
-    DeploymentErrorType,
-} from "./DeploymentErrorHandler";
+export { default as DeploymentErrorHandler } from "./DeploymentErrorHandler";
+
+export * from "./meta";
