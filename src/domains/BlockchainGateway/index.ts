@@ -9,12 +9,18 @@ type Block = any;
 // just placeholders
 export type SignedDeployData = any;
 
-export type DeployStatus =
-    | "Deploying"
-    | "Finalizing"
-    | "Finalized"
-    | "DeployError"
-    | "FinalizationError";
+export enum DeployStatus {
+    DEPLOYING = "Deploying",
+    FINALIZING = "Finalizing",
+    FINALIZED = "Finalized",
+    DEPLOY_ERROR = "DeployError",
+   // FINALIZATION_ERROR = "FinalizationError",
+}
+
+export type DeployStatusResult = 
+    | { status: DeployStatus.DEPLOYING | DeployStatus.FINALIZING | DeployStatus.FINALIZED }
+    | { status: DeployStatus.DEPLOY_ERROR; error: Error };
+
 export type DeploySubmitResult = any;
 
 export interface BlockchainGatewayConfig {
@@ -79,14 +85,42 @@ export default class BlockchainGateway {
         });
     }
 
+    // For read-only operations
+    public async submitExploratoryDeploy(rholangCode: string): Promise<DeploySubmitResult> {
+        return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
+    }
+    
     public async getDeploy(deployHash: string): Promise<Deploy> {
         return await this.indexerClient.get(`/api/deploy/${deployHash}`);
     }
 
-    public async getDeployStatus(deployHash: string): Promise<DeployStatus> {
-        const deploy: Deploy = await this.getDeploy(deployHash);
-        // STACY TODO: Logic to determine status from deploy object
-        return deploy.status;
+    public async isDeployFinalized(deploy: Deploy): Promise<boolean> {
+        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
+    }
+
+    public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
+        let deploy: Deploy;
+        
+        try {
+            deploy = await this.getDeploy(deployHash);
+        } catch (error) {
+            const message = axios.isAxiosError(error) 
+                ? `Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`
+                : error instanceof Error ? error.message : String(error);
+            return { 
+                status: DeployStatus.DEPLOY_ERROR, 
+                error: new Error(message)
+            };
+        }
+
+        if (!deploy?.blockHash) {
+            return { status: DeployStatus.DEPLOYING };
+        }
+
+        const isFinalized = await this.isDeployFinalized(deploy);
+        return { 
+            status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.FINALIZING 
+        };
     }
 
     public async getBlock(blockHash: string): Promise<Block> {
@@ -99,28 +133,27 @@ export default class BlockchainGateway {
 
     public async getLatestBlock(): Promise<Block> {
         const blocksArray = await this.indexerClient.get(`/api/blocks/1`);
-
-        return blocksArray[0];
+        return blocksArray[0].blockNumber;
     }
-
-    public async getNodeStatus(): Promise<any> {
-        return await this.validatorClient.get(`/status`);
-    }
-
-    public async isDeployFinalized(deployHash: string): Promise<boolean> {
-        const deploy: Deploy = await this.getDeploy(deployHash);
-
-        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
+   
+    public async isNodeActive(): Promise<boolean> {
+        try {
+            await this.validatorClient.get(`/status`);
+            return true;
+        } catch (error) {
+            console.error('Node health check failed:', error);
+            return false;
+        }
     }
 
     // should not be here
-    public async buildDeploy(data: any): Promise<DeployData> {
+    public async buildDeploy(data: any): Promise<any> { // return DeployData
         // STACY TODO: Implement logic to build deploy data
         return {};
     }
 
     // should not be here
-    public async signDeploy(deployData: DeployData): Promise<SignedDeployData> {
+    public async signDeploy(deployData: DeployData): Promise<any> { // return SignedDeployData
         // STACY/Andrew TODO: Implement logic to build deploy data
         return {};
     }

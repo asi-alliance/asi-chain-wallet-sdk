@@ -1,9 +1,10 @@
 import axios, { AxiosInstance } from "axios";
 import BinaryWriter from "@services/BinaryWriter";
 import { DEFAULT_AXIOS_TIMEOUT_MS } from "@config";
-import { decodeBase16 } from "@utils/codec";
+import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
 import { AssetId } from "@domains/Asset";
+import BlockchainGateway from "@/domains/BlockchainGateway";
 import { blake2bHex } from "blakejs";
 import { ec as EC } from "elliptic";
 import {
@@ -107,7 +108,7 @@ export default class RChainService {
 
     public async exploreDeployData(rholangCode: string): Promise<any> {
         try {
-            const result = await this.gateway.submitDeploy(rholangCode);
+            const result = await this.gateway.submitExploratoryDeploy(rholangCode);
             return result.expr;
         } catch (error: any) {
             if (error.message.includes("Network Error")) {
