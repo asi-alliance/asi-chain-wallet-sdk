@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from "axios";
-import AxiosHttpClient, { HttpClient } from "../HttpClient";
-import { FAULT_TOLERANCE_THRESHOLD } from "../../utils/constants";
-import { DeployData } from "../../services/Chain";
+import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
+import { FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
+import { DeployData } from "@services/Chain";
 
 type Deploy = any;
 type Block = any;
