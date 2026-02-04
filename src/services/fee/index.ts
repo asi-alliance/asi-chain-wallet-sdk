@@ -1,4 +1,4 @@
-import { GasFee } from "../../utils/constants";
+import { GasFee } from "@utils/constants";
 
 export default class FeeService {
     public static generateRandomGasFee = (): string => {

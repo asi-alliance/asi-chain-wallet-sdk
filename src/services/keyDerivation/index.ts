@@ -1,7 +1,7 @@
 import * as bip39 from "bip39";
 import * as bip32 from "bip32";
 import * as tinysecp from "tiny-secp256k1";
-import { setupBufferPolyfill } from "../../utils/polyfills";
+import { setupBufferPolyfill } from "@utils/polyfills";
 
 setupBufferPolyfill();
 
