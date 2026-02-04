@@ -1,4 +1,4 @@
-import { arrayBufferToBase64, base64ToArrayBuffer } from "../../utils/codec";
+import { arrayBufferToBase64, base64ToArrayBuffer } from "@utils/codec";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",

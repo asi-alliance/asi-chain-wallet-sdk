@@ -1,8 +1,9 @@
-import BinaryWriter from "../../domains/BinaryWriter";
-import BlockchainGateway from "../../domains/BlockchainGateway";
-import { decodeBase16, encodeBase16 } from "../../utils/codec";
-import { Address } from "../../domains/Wallet";
-import { AssetId } from "../../domains/Asset";
+import axios, { AxiosInstance } from "axios";
+import BinaryWriter from "@services/BinaryWriter";
+import { DEFAULT_AXIOS_TIMEOUT_MS } from "@config";
+import { decodeBase16 } from "@utils/codec";
+import { Address } from "@domains/Wallet";
+import { AssetId } from "@domains/Asset";
 import { blake2bHex } from "blakejs";
 import { ec as EC } from "elliptic";
 import {
@@ -13,7 +14,7 @@ import {
 // to Signer
 const secp256k1 = new EC("secp256k1");
 
-export interface Deploy {
+export interface DeployData {
     term: string;
     phloLimit: number;
     phloPrice: number;
@@ -176,7 +177,7 @@ export default class RChainService {
         try {
             const latestBlock = await this.gateway.getLatestBlock();
 
-            const deployData: Deploy = {
+            const deployData: DeployData = {
                 term: rholangCode,
                 phloLimit,
                 phloPrice: 1,

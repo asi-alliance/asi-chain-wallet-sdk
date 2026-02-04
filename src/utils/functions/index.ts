@@ -1,4 +1,4 @@
-import { ASI_BASE_UNIT } from "../constants";
+import { ASI_BASE_UNIT } from "@utils/constants";
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
