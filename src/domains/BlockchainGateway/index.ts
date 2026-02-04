@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig } from "axios";
 import AxiosHttpClient, { HttpClient } from "../HttpClient";
+import { FAULT_TOLERANCE_THRESHOLD } from "../../utils/constants";
 import { DeployData } from "../../services/Chain";
 
 type Deploy = any;
@@ -8,8 +9,12 @@ type Block = any;
 // just placeholders
 export type SignedDeployData = any;
 
-
-export type DeployStatus = "Deploying" | "Finalizing" | "Finalized" | "DeployError" | "FinalizationError";
+export type DeployStatus =
+    | "Deploying"
+    | "Finalizing"
+    | "Finalized"
+    | "DeployError"
+    | "FinalizationError";
 export type DeploySubmitResult = any;
 
 export interface BlockchainGatewayConfig {
@@ -64,7 +69,9 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
 
-    public async submitDeploy(deployData: DeployData): Promise<DeploySubmitResult> {
+    public async submitDeploy(
+        deployData: DeployData,
+    ): Promise<DeploySubmitResult> {
         return await this.validatorClient.post("/deploy", deployData, {
             headers: {
                 "Content-Type": "text/plain",
@@ -97,23 +104,22 @@ export default class BlockchainGateway {
     }
 
     public async getNodeStatus(): Promise<any> {
-        const response = await this.validatorClient.get(`/status`);
-
-        return response;
+        return await this.validatorClient.get(`/status`);
     }
 
     public async isDeployFinalized(deployHash: string): Promise<boolean> {
         const deploy: Deploy = await this.getDeploy(deployHash);
-        if (deploy.faultTolerance >= 0.99) 
-            return true;     
-        return false;
+
+        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
     }
 
+    // should not be here
     public async buildDeploy(data: any): Promise<DeployData> {
         // STACY TODO: Implement logic to build deploy data
         return {};
     }
 
+    // should not be here
     public async signDeploy(deployData: DeployData): Promise<SignedDeployData> {
         // STACY/Andrew TODO: Implement logic to build deploy data
         return {};

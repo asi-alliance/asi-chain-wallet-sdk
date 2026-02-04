@@ -1,0 +1,32 @@
+export enum RecoverableDeployErrors {
+    READ_ONLY_NODE = "READ_ONLY_NODE",
+    CASPER_INSTANCE_UNAVAILABLE = "CASPER_INSTANCE_UNAVAILABLE",
+}
+
+export enum FatalDeployErrors {
+    INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
+    WRONG_NETWORK = "WRONG_NETWORK",
+    PARSING_ERROR = "PARSING_ERROR",
+    LOW_PHLO_PRICE = "LOW_PHLO_PRICE",
+    SIGNATURE_ERROR = "SIGNATURE_ERROR",
+    STORAGE_RETRIEVAL_ERROR = "STORAGE_RETRIEVAL_ERROR",
+    UNKNOWN_ERROR = "UNKNOWN_ERROR",
+}
+
+export type DeploymentErrorType = RecoverableDeployErrors | FatalDeployErrors;
+
+export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
+    [RecoverableDeployErrors.READ_ONLY_NODE]: "Node is read-only. Trying another node...",
+    [RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE]: "Casper instance not available. Trying another node...",
+    [FatalDeployErrors.INSUFFICIENT_BALANCE]: "Insufficient balance. Please top up your account.",
+    [FatalDeployErrors.WRONG_NETWORK]: "Wrong network. Please contact technical support.",
+    [FatalDeployErrors.PARSING_ERROR]: "Parsing error. Please contact technical support.",
+    [FatalDeployErrors.LOW_PHLO_PRICE]: "Phlo price too low. Please rebuild the transaction with a higher phlo price.",
+    [FatalDeployErrors.SIGNATURE_ERROR]: "Signature verification failed. Please try again.",
+    [FatalDeployErrors.STORAGE_RETRIEVAL_ERROR]: "Storage retrieval error. Please try again later.",
+    [FatalDeployErrors.UNKNOWN_ERROR]: "An unknown error occurred. Please try again.",
+};
+
+export function getDeploymentErrorMessage(errorType: DeploymentErrorType): string {
+    return deploymentErrorMessages[errorType] ?? "An unknown error occurred. Please try again.";
+}
