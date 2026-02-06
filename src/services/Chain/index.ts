@@ -87,7 +87,7 @@ export interface RChainServiceConfig {
 }
 
 export default class RChainService {
-    private gateway: BlockchainGateway;
+    private readonly gateway: BlockchainGateway;
 
     constructor(config: RChainServiceConfig) {
         if (!config.validatorURL || !config?.readOnlyURL) {
@@ -176,13 +176,13 @@ export default class RChainService {
         phloLimit: number = 500000,
     ): Promise<string | undefined> {
         try {
-            const latestBlock = await this.gateway.getLatestBlock();
+            const latestBlockNumber = await this.gateway.getLatestBlockNumber();
 
             const deployData: DeployData = {
                 term: rholangCode,
                 phloLimit,
                 phloPrice: 1,
-                validAfterBlockNumber: latestBlock.blockNumber,
+                validAfterBlockNumber: latestBlockNumber,
                 timestamp: Date.now(),
                 shardId: "root",
             };

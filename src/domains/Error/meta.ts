@@ -13,7 +13,13 @@ export enum FatalDeployErrors {
     UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
-export type DeploymentErrorType = RecoverableDeployErrors | FatalDeployErrors;
+export enum TimeExceededError {
+    DEPLOY_SUBMIT_TIMEOUT = "DEPLOY_SUBMIT_TIMEOUT",
+    BLOCK_INCLUSION_TIMEOUT = "BLOCK_INCLUSION_TIMEOUT",
+    FINALIZATION_TIMEOUT = "FINALIZATION_TIMEOUT",
+}
+
+export type DeploymentErrorType = RecoverableDeployErrors | FatalDeployErrors | TimeExceededError;
 
 export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
     [RecoverableDeployErrors.READ_ONLY_NODE]: "Node is read-only. Trying another node...",
@@ -25,6 +31,9 @@ export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
     [FatalDeployErrors.SIGNATURE_ERROR]: "Signature verification failed. Please try again.",
     [FatalDeployErrors.STORAGE_RETRIEVAL_ERROR]: "Storage retrieval error. Please try again later.",
     [FatalDeployErrors.UNKNOWN_ERROR]: "An unknown error occurred. Please try again.",
+    [TimeExceededError.DEPLOY_SUBMIT_TIMEOUT]: "Deploy submission timed out. Please try again.",
+    [TimeExceededError.BLOCK_INCLUSION_TIMEOUT]: "Deploy was not included in a block within the expected time.",
+    [TimeExceededError.FINALIZATION_TIMEOUT]: "Block finalization polling timed out.",
 };
 
 export function getDeploymentErrorMessage(errorType: DeploymentErrorType): string {

@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from "axios";
 import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
-import { FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
+import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
 import { DeployData } from "@services/Chain";
 
 type Deploy = any;
@@ -18,8 +18,8 @@ export enum DeployStatus {
 }
 
 export type DeployStatusResult = 
-    | { status: DeployStatus.DEPLOYING | DeployStatus.FINALIZING | DeployStatus.FINALIZED }
-    | { status: DeployStatus.DEPLOY_ERROR; error: Error };
+    | { status: Exclude<DeployStatus, DeployStatus.DEPLOY_ERROR>}
+    | { status: DeployStatus.DEPLOY_ERROR; errorMessage: string };
 
 export type DeploySubmitResult = any;
 
@@ -98,18 +98,29 @@ export default class BlockchainGateway {
         return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
     }
 
+    private getDeployErrorMessage(error: any): string {
+        if (axios.isAxiosError(error)) {
+            return `Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`;
+        }
+
+        if (error instanceof Error) {
+            return error.message;
+        }
+
+        return String(error);
+    }
+
     public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
         let deploy: Deploy;
         
         try {
             deploy = await this.getDeploy(deployHash);
         } catch (error) {
-            const message = axios.isAxiosError(error) 
-                ? `Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`
-                : error instanceof Error ? error.message : String(error);
+            const message = this.getDeployErrorMessage(error);
+            console.error(message);
             return { 
                 status: DeployStatus.DEPLOY_ERROR, 
-                error: new Error(message)
+                errorMessage: message,
             };
         }
 
@@ -131,9 +142,20 @@ export default class BlockchainGateway {
         return response.blockInfo;
     }
 
-    public async getLatestBlock(): Promise<Block> {
-        const blocksArray = await this.indexerClient.get(`/api/blocks/1`);
-        return blocksArray[0].blockNumber;
+    public async getLatestBlockNumber(): Promise<number> {
+        try {
+            const blocks = await this.indexerClient.get(`/api/blocks/1`);
+            
+            if (!blocks || blocks.length === 0) {
+                console.error('No blocks returned');
+                return INVALID_BLOCK_NUMBER;
+            }
+            return blocks[0].blockNumber;
+        } catch (error) {
+            const message = this.getDeployErrorMessage(error);
+            console.error(message);
+            return INVALID_BLOCK_NUMBER;
+        }
     }
    
     public async isNodeActive(): Promise<boolean> {
@@ -144,17 +166,5 @@ export default class BlockchainGateway {
             console.error('Node health check failed:', error);
             return false;
         }
-    }
-
-    // should not be here
-    public async buildDeploy(data: any): Promise<any> { // return DeployData
-        // STACY TODO: Implement logic to build deploy data
-        return {};
-    }
-
-    // should not be here
-    public async signDeploy(deployData: DeployData): Promise<any> { // return SignedDeployData
-        // STACY/Andrew TODO: Implement logic to build deploy data
-        return {};
     }
 }
