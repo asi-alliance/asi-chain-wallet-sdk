@@ -98,18 +98,6 @@ export default class BlockchainGateway {
         return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
     }
 
-    private getDeployErrorMessage(error: any): string {
-        if (axios.isAxiosError(error)) {
-            return `Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`;
-        }
-
-        if (error instanceof Error) {
-            return error.message;
-        }
-
-        return String(error);
-    }
-
     public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
         let deploy: Deploy;
         
@@ -139,18 +127,13 @@ export default class BlockchainGateway {
             `/api/block/${blockHash}`,
         );
 
-        return response.blockInfo;
+        return response?.blockInfo;
     }
 
     public async getLatestBlockNumber(): Promise<number> {
         try {
-            const blocks = await this.indexerClient.get(`/api/blocks/1`);
-            
-            if (!blocks || blocks.length === 0) {
-                console.error('No blocks returned');
-                return INVALID_BLOCK_NUMBER;
-            }
-            return blocks[0].blockNumber;
+            const block = await this.getLatestBlock();
+            return block?.blockNumber ?? INVALID_BLOCK_NUMBER;
         } catch (error) {
             const message = this.getDeployErrorMessage(error);
             console.error(message);
@@ -163,8 +146,35 @@ export default class BlockchainGateway {
             await this.validatorClient.get(`/status`);
             return true;
         } catch (error) {
-            console.error('Node health check failed:', error);
+            console.error('BlockchainGateway.isNodeActive: Node health check failed:', error);
             return false;
         }
+    }
+
+    private getDeployErrorMessage(error: any): string {
+        if (axios.isAxiosError(error)) {
+            return `BlockchainGateway.getDeployErrorMessage: Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`;
+        }
+
+        if (error instanceof Error) {
+            return error.message;
+        }
+
+        return String(error);
+    }
+
+    private validateBlocksResponse(blocks: any[]): void {
+        if (!blocks?.length) {
+            const errorMessage = 'BlockchainGateway.validateBlocksResponse: No blocks returned from /api/blocks endpoint';
+            console.error(errorMessage, { blocks });
+            throw new Error(errorMessage);
+        }
+    }
+
+    private async getLatestBlock(): Promise<Block> {
+        const blocks = await this.indexerClient.get(`/api/blocks/1`);
+        this.validateBlocksResponse(blocks);
+
+        return blocks[0];
     }
 }

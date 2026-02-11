@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import BinaryWriter from "@services/BinaryWriter";
-import { DEFAULT_AXIOS_TIMEOUT_MS } from "@config";
+import { DEFAULT_PHLO_LIMIT } from "@config";
 import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
 import { AssetId } from "@domains/Asset";
@@ -173,7 +173,7 @@ export default class RChainService {
     async sendDeploy(
         rholangCode: string,
         privateKey: string,
-        phloLimit: number = 500000,
+        phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
             const latestBlockNumber = await this.gateway.getLatestBlockNumber();
