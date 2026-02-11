@@ -1,12 +1,11 @@
 import BlockchainGateway from "@domains/BlockchainGateway";
-import { NodeUrl } from "./types";
-import { INVALID_BLOCK_NUMBER } from "@utils/constants";
+import { NodeUrl, NodeProvider } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
 
-export default class NodeManager {
+export default class NodeManager implements NodeProvider {
+    private static instance: NodeManager | null = null;
+
     private remainingAttempts: number;
-    private readonly observerUrl: NodeUrl;
-    private readonly pickRandomNode: boolean;
     private readonly availableNodesUrls: NodeUrl[];
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
@@ -15,79 +14,114 @@ export default class NodeManager {
     public currentNodeUrl: NodeUrl | null = null;
     private gateway: BlockchainGateway | null = null;
 
-    constructor(
+    private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number) {
+        this.availableNodesUrls = availableNodesUrls;
+        this.remainingAttempts = remainingAttempts;
+    }
+
+    public static async initialize(
         availableNodesUrls: NodeUrl[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
-        pickRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.randomNodePolling,
-        observerUrl: NodeUrl = "",
-    ) {
-        this.remainingAttempts = Math.max(0, nodeSelectionAttempts);
-        this.pickRandomNode = pickRandomNode;
+        pickRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.pickRandomNode,
+        observerUrl?: NodeUrl,
+    ): Promise<NodeManager> {
+        const instance = new NodeManager(availableNodesUrls, Math.max(0, nodeSelectionAttempts));
 
         if(!availableNodesUrls?.length) {
             throw new Error("At least one node URL must be provided");
         }
-        
-        this.availableNodesUrls = availableNodesUrls;
-        this.observerUrl = observerUrl;
+
+        if(!pickRandomNode) {
+            await instance.initGateway(availableNodesUrls[0], observerUrl);
+        } else {
+            await instance.connectRandomNodeUrl();
+        }
+
+        NodeManager.instance = instance;
+        return instance;
     }
 
-    private initGateway(nodeUrl: NodeUrl): void {
+    public isInitializedWithActiveNode(): boolean {
+        if (!this.gateway || !this.currentNodeUrl) {
+            console.error("NodeManager.isInitializedWithActiveNode: NodeManager is not initialized with an active node");
+            return false;
+        }
+        return true
+    }
+
+    private async initGateway(nodeUrl: NodeUrl, observerUrl: NodeUrl = ""): Promise<void> {
         this.gateway = BlockchainGateway.init({
             validator: { baseUrl: nodeUrl },
-            indexer: { baseUrl: this.observerUrl },
+            indexer: { baseUrl: observerUrl },
         });
+        this.currentNodeUrl = nodeUrl;
+
+        if (!await this.isGatewayNodeActive())
+            throw new Error(`NodeManager.initGateway: Node ${nodeUrl} is not active`);
+    }
+
+    private async isGatewayNodeActive(): Promise<boolean> {
+        try {
+            if(!await this.gateway.isNodeActive()) {
+                throw Error(`Node ${this.currentNodeUrl} is not active`);
+            }
+            return true;
+        } catch (error) {
+            console.error(`NodeManager.isGatewayNodeActive: `, error);
+            this.recordNodeFailure(this.currentNodeUrl);
+            return false;
+        }
     }
 
     private markNodeInactive(nodeUrl: NodeUrl): void {
         this.inactiveNodesUrls.add(nodeUrl);
     }
 
+    public recordCurrentNodeFailure(): void {
+        if(this.currentNodeUrl && this.gateway) {
+            this.recordNodeFailure(this.currentNodeUrl);
+        }
+    }
+
     private recordNodeFailure(nodeUrl: NodeUrl): void {
         this.remainingAttempts--;
         this.markNodeInactive(nodeUrl);
-        
-        if(this.currentNodeUrl === nodeUrl) {
-            this.currentNodeUrl = null;
-            this.gateway = null;
-        }
+        this.currentNodeUrl = null;
+        this.gateway = null;
     }
 
     private getAvailableNodesUrls(): NodeUrl[] {
         return this.availableNodesUrls.filter((nodeUrl) => !this.inactiveNodesUrls.has(nodeUrl));
     }
 
-    private getFirstOrRandomAvailableNodeUrl(availableNodeUrls: NodeUrl[]): NodeUrl {
+    private getRandomAvailableNodeUrl(availableNodeUrls: NodeUrl[]): NodeUrl {
         let nodesUrls = availableNodeUrls;
 
         if (!nodesUrls?.length) {
-            console.error("NodeManager.getFirstOrRandomAvailableNodeUrl: No available node URLs to select");
+            console.error("NodeManager.getRandomAvailableNodeUrl: No available node URLs to select");
             return "";
         }
 
-        if (this.pickRandomNode) {
-            const index = Math.floor(Math.random() * nodesUrls.length);
-            return nodesUrls[index];
-        }
-
-        return nodesUrls[0];
+        const index = Math.floor(Math.random() * nodesUrls.length);
+        return nodesUrls[index];
     }
 
+
     // TODO refactor when decision regarding blockchain gateway will be accepted
-    public async connectNewActiveNodeUrl(): Promise<void> {
+    public async connectRandomNodeUrl(): Promise<void> {
         while (this.remainingAttempts >= 0) {
             const availableNodeUrls = this.getAvailableNodesUrls();
-            const currentNodeUrl = this.getFirstOrRandomAvailableNodeUrl(availableNodeUrls);
+            const currentNodeUrl = this.getRandomAvailableNodeUrl(availableNodeUrls);
 
             if(!currentNodeUrl) 
                 continue;
 
-            this.initGateway(currentNodeUrl);
-
-            if (!(await this.gateway.isNodeActive())) {
-                this.recordNodeFailure(currentNodeUrl);
+            try { 
+                await this.initGateway(currentNodeUrl);
+            } catch (_) {
                 continue;
             }
+
             this.currentNodeUrl = currentNodeUrl;
             return;
         }
@@ -95,30 +129,4 @@ export default class NodeManager {
         throw new Error("NodeManager.connectActiveNodeUrl: No active node URL found after all attempts");
     }
 
-    // TODO refactor when decision regarding blockchain gateway will be accepted
-    public async getLatestBlockNumber(): Promise<number> {
-        if(!this.isInitializedWithActiveNode()) 
-            return INVALID_BLOCK_NUMBER;
-
-        try {
-            const latestBlockNumber = await this.gateway.getLatestBlockNumber();
-            // TODO: select another node if the latest block number is invalid, but for now just mark the current node as failed and return null
-            if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
-                this.recordNodeFailure(this.currentNodeUrl);
-                return INVALID_BLOCK_NUMBER;
-            }
-            return latestBlockNumber;
-        } catch {
-            this.recordNodeFailure(this.currentNodeUrl);
-            return INVALID_BLOCK_NUMBER;
-        }
-    }
-
-    private isInitializedWithActiveNode(): boolean {
-        if (!this.gateway || !this.currentNodeUrl) {
-            console.error("NodeManager.getLatestBlockNumber: NodeManager is not initialized with an active node");
-            return false;
-        }
-        return true
-    }
 }

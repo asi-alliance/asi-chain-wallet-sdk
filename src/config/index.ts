@@ -29,7 +29,7 @@ export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
     nodeSelectionAttempts: 3,
     deployLifeSpan: 50,
     phloPrice: 1,
-    randomNodePolling: true,
+    pickRandomNode: true,
     pollingInterval: 5,
 };
 
