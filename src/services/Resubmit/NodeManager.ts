@@ -11,12 +11,16 @@ export default class NodeManager implements NodeProvider {
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
     private readonly inactiveNodesUrls = new Set<NodeUrl>();
     // TODO refactor when decision regarding blockchain gateway will be accepted
-    public currentNodeUrl: NodeUrl | null = null;
+    private currentNodeUrl: NodeUrl | null = null;
     private gateway: BlockchainGateway | null = null;
 
     private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number) {
         this.availableNodesUrls = availableNodesUrls;
         this.remainingAttempts = remainingAttempts;
+    }
+
+    public getRemainingAttempts(): number {
+        return this.remainingAttempts;
     }
 
     public static async initialize(
@@ -128,5 +132,4 @@ export default class NodeManager implements NodeProvider {
 
         throw new Error("NodeManager.connectActiveNodeUrl: No active node URL found after all attempts");
     }
-
 }

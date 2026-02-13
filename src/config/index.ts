@@ -23,8 +23,7 @@ const DEFAULT_DECIMALS_AMOUNT: number = 8;
 const DEFAULT_PHLO_LIMIT: number = 500000;
 
 export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
-    transactionValidityTime: 300,
-    transactionCheckTime: 60,
+    deployValidityTime: 300,
     retries: 3,
     nodeSelectionAttempts: 3,
     deployLifeSpan: 50,

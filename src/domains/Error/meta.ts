@@ -1,6 +1,8 @@
 export enum RecoverableDeployErrors {
     READ_ONLY_NODE = "READ_ONLY_NODE",
     CASPER_INSTANCE_UNAVAILABLE = "CASPER_INSTANCE_UNAVAILABLE",
+    INVALID_DEPLOY_ID = "INVALID_DEPLOY_ID",
+    INVALID_BLOCK_NUMBER = "INVALID_BLOCK_NUMBER"
 }
 
 export enum FatalDeployErrors {
@@ -21,6 +23,8 @@ export type DeploymentErrorType = RecoverableDeployErrors | FatalDeployErrors;
 export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
     [RecoverableDeployErrors.READ_ONLY_NODE]: "Node is read-only. Trying another node...",
     [RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE]: "Casper instance not available. Trying another node...",
+    [RecoverableDeployErrors.INVALID_DEPLOY_ID]: "Invalid deploy ID. Please try again.",
+    [RecoverableDeployErrors.INVALID_BLOCK_NUMBER]: "Invalid block number. Please try again.",
     [FatalDeployErrors.INSUFFICIENT_BALANCE]: "Insufficient balance. Please top up your account.",
     [FatalDeployErrors.WRONG_NETWORK]: "Wrong network. Please contact technical support.",
     [FatalDeployErrors.PARSING_ERROR]: "Parsing error. Please contact technical support.",

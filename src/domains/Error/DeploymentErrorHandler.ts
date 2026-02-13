@@ -30,6 +30,14 @@ export default class DeploymentErrorHandler {
             return RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE;
         }
 
+        if(errorMessage.includes("invalid deploy ID")) {
+            return RecoverableDeployErrors.INVALID_DEPLOY_ID;
+        }
+
+        if (errorMessage.includes("invalid block number")) {
+            return RecoverableDeployErrors.INVALID_BLOCK_NUMBER;
+        }
+
         if (errorMessage.includes("insufficient balance")) {
             return FatalDeployErrors.INSUFFICIENT_BALANCE;
         }

@@ -1,4 +1,3 @@
-import axios, { AxiosInstance } from "axios";
 import BinaryWriter from "@services/BinaryWriter";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 import { decodeBase16, encodeBase16 } from "@utils/codec";
@@ -11,6 +10,7 @@ import {
     createCheckBalanceDeploy,
     createTransferDeploy,
 } from "../../domains/Deploy/factory";
+import { INVALID_BLOCK_NUMBER } from "@/utils";
 
 // to Signer
 const secp256k1 = new EC("secp256k1");
@@ -89,7 +89,12 @@ export interface RChainServiceConfig {
 export default class RChainService {
     private readonly gateway: BlockchainGateway;
 
-    constructor(config: RChainServiceConfig) {
+    constructor(config?: RChainServiceConfig) {
+        if(BlockchainGateway.isInitialized()) {
+            this.gateway = BlockchainGateway.getInstance();
+            return;
+        }
+
         if (!config.validatorURL || !config?.readOnlyURL) {
             throw new Error(
                 "'nodeURL', 'graphqlURL', 'readOnlyURL' must be provided",
@@ -113,7 +118,7 @@ export default class RChainService {
         } catch (error: any) {
             if (error.message.includes("Network Error")) {
                 console.error(
-                    "Make sure your local RChain node is running and accessible",
+                    "Make sure your Rchain node is running and accessible",
                 );
             }
         }
@@ -177,6 +182,10 @@ export default class RChainService {
     ): Promise<string | undefined> {
         try {
             const latestBlockNumber = await this.gateway.getLatestBlockNumber();
+
+            if(latestBlockNumber == INVALID_BLOCK_NUMBER) {
+                throw new Error("RChainService.sendDeploy: Invalid block number")
+            }
 
             const deployData: DeployData = {
                 term: rholangCode,
