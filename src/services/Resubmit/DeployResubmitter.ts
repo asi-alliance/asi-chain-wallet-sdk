@@ -85,7 +85,7 @@ export default class DeployResubmitter {
             this.startSubmissionTime = Date.now();
 
             while (!deployResult.success && !this.isDeployExpired() && this.nodeManager.getRemainingAttempts() >= 0) {       
-                await this.nodeManager.connectRandomNodeUrl();
+                await this.nodeManager.connectActiveRandomNode();
                 deployResult = await this.deployWithRetries(
                     rholangCode,
                     privateKey,

@@ -12,7 +12,7 @@ export { DeploymentErrorHandler, RecoverableDeployErrors, FatalDeployErrors};
 export type NodeUrl = string;
 
 export interface NodeProvider {
-    connectRandomNodeUrl(): Promise<void>;
+    connectActiveRandomNode(): Promise<void>;
     recordCurrentNodeFailure(nodeUrl: NodeUrl): void;
     isInitializedWithActiveNode(): boolean;
     getRemainingAttempts(): number;
@@ -24,7 +24,7 @@ export interface ResubmitConfig {
     nodeSelectionAttempts: number;
     deployLifeSpan: number;
     phloPrice: number;
-    pickRandomNode: boolean;
+    isRandomNodeUsed: boolean;
     pollingInterval: number;
     rchainServiceConfig?: RChainServiceConfig;
 }

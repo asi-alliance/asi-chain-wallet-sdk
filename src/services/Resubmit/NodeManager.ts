@@ -15,41 +15,49 @@ export default class NodeManager implements NodeProvider {
     private gateway: BlockchainGateway | null = null;
 
     private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number) {
+        if(!availableNodesUrls?.length) {
+            throw new Error("At least one node URL must be provided");
+        }
+
         this.availableNodesUrls = availableNodesUrls;
         this.remainingAttempts = remainingAttempts;
-    }
-
-    public getRemainingAttempts(): number {
-        return this.remainingAttempts;
     }
 
     public static async initialize(
         availableNodesUrls: NodeUrl[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
-        pickRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.pickRandomNode,
+        isRandomNodeUsed: boolean = DEFAULT_RESUBMIT_CONFIG.isRandomNodeUsed,
         observerUrl?: NodeUrl,
     ): Promise<NodeManager> {
         const instance = new NodeManager(availableNodesUrls, Math.max(0, nodeSelectionAttempts));
 
-        if(!availableNodesUrls?.length) {
-            throw new Error("At least one node URL must be provided");
-        }
-
-        if(!pickRandomNode) {
+        // TODO consider using flag + 1 method instead first and random node selection
+        if(!isRandomNodeUsed) {
             await instance.initGateway(availableNodesUrls[0], observerUrl);
         } else {
-            await instance.connectRandomNodeUrl();
+            await instance.connectActiveRandomNode();
         }
 
         NodeManager.instance = instance;
         return instance;
     }
 
+    public getRemainingAttempts(): number {
+        return this.remainingAttempts;
+    }
+
+    public static getInstance(): NodeManager {
+        if (!NodeManager.instance) 
+            throw new Error(
+                "NodeManager is not initialized. Call NodeManager.initialize() first.",
+            );
+        return NodeManager.instance;
+    }
+
+
     public isInitializedWithActiveNode(): boolean {
-        if (!this.gateway || !this.currentNodeUrl) {
-            console.error("NodeManager.isInitializedWithActiveNode: NodeManager is not initialized with an active node");
+        if (!this.gateway || !this.currentNodeUrl)
             return false;
-        }
         return true
     }
 
@@ -65,16 +73,12 @@ export default class NodeManager implements NodeProvider {
     }
 
     private async isGatewayNodeActive(): Promise<boolean> {
-        try {
-            if(!await this.gateway.isNodeActive()) {
-                throw Error(`Node ${this.currentNodeUrl} is not active`);
-            }
-            return true;
-        } catch (error) {
-            console.error(`NodeManager.isGatewayNodeActive: `, error);
+        if(!await this.gateway.isNodeActive()) {
+            console.error(`NodeManager.isGatewayNodeActive: Node is not active`);
             this.recordNodeFailure(this.currentNodeUrl);
             return false;
         }
+        return true;
     }
 
     private markNodeInactive(nodeUrl: NodeUrl): void {
@@ -98,24 +102,23 @@ export default class NodeManager implements NodeProvider {
         return this.availableNodesUrls.filter((nodeUrl) => !this.inactiveNodesUrls.has(nodeUrl));
     }
 
-    private getRandomAvailableNodeUrl(availableNodeUrls: NodeUrl[]): NodeUrl {
-        let nodesUrls = availableNodeUrls;
+    private getRandomAvailableNodeUrl(): NodeUrl {
+        const availableNodeUrls = this.getAvailableNodesUrls();
 
-        if (!nodesUrls?.length) {
+        if (!availableNodeUrls?.length) {
             console.error("NodeManager.getRandomAvailableNodeUrl: No available node URLs to select");
-            return "";
+            throw new Error("NodeManager: no available node URLs");
         }
 
-        const index = Math.floor(Math.random() * nodesUrls.length);
-        return nodesUrls[index];
+        const index = Math.floor(Math.random() * availableNodeUrls.length);
+        return availableNodeUrls[index];
     }
 
 
     // TODO refactor when decision regarding blockchain gateway will be accepted
-    public async connectRandomNodeUrl(): Promise<void> {
+    public async connectActiveRandomNode(): Promise<void> {
         while (this.remainingAttempts >= 0) {
-            const availableNodeUrls = this.getAvailableNodesUrls();
-            const currentNodeUrl = this.getRandomAvailableNodeUrl(availableNodeUrls);
+            const currentNodeUrl = this.getRandomAvailableNodeUrl();
 
             if(!currentNodeUrl) 
                 continue;
@@ -125,8 +128,6 @@ export default class NodeManager implements NodeProvider {
             } catch (_) {
                 continue;
             }
-
-            this.currentNodeUrl = currentNodeUrl;
             return;
         }
 

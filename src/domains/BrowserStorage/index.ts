@@ -11,6 +11,10 @@ class BrowserStorage implements Storage {
     private prefix: string;
 
     constructor(prefix: string = "storage_prefix") {
+        if (typeof localStorage === "undefined") {
+            throw new Error("localStorage is not supported in this environment.");
+        }
+
         this.prefix = prefix;
     }
 

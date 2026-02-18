@@ -99,10 +99,18 @@ export default class BlockchainGateway {
     }
 
     public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
-        let deploy: Deploy;
-        
         try {
+            let deploy: Deploy;
+
             deploy = await this.getDeploy(deployHash);
+            if (!deploy?.blockHash) {
+                return { status: DeployStatus.DEPLOYING };
+            }
+
+            const isFinalized = await this.isDeployFinalized(deploy);
+            return { 
+                status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.FINALIZING 
+            };
         } catch (error) {
             const message = this.getDeployErrorMessage(error);
             console.error(message);
@@ -111,15 +119,6 @@ export default class BlockchainGateway {
                 errorMessage: message,
             };
         }
-
-        if (!deploy?.blockHash) {
-            return { status: DeployStatus.DEPLOYING };
-        }
-
-        const isFinalized = await this.isDeployFinalized(deploy);
-        return { 
-            status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.FINALIZING 
-        };
     }
 
     public async getBlock(blockHash: string): Promise<Block> {
