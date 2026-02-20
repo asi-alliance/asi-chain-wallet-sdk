@@ -10,9 +10,7 @@ export default class NodeManager implements NodeProvider {
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
     private readonly inactiveNodesUrls = new Set<NodeUrl>();
-    // TODO refactor when decision regarding blockchain gateway will be accepted
     private currentNodeUrl: NodeUrl | null = null;
-    private gateway: BlockchainGateway | null = null;
 
     private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number) {
         if(!availableNodesUrls?.length) {
@@ -29,11 +27,10 @@ export default class NodeManager implements NodeProvider {
         isRandomNodeUsed: boolean = DEFAULT_RESUBMIT_CONFIG.isRandomNodeUsed,
         observerUrl?: NodeUrl,
     ): Promise<NodeManager> {
-        const instance = new NodeManager(availableNodesUrls, Math.max(0, nodeSelectionAttempts));
+        const instance = new NodeManager(availableNodesUrls, Math.max(1, nodeSelectionAttempts));
 
-        // TODO consider using flag + 1 method instead first and random node selection
         if(!isRandomNodeUsed) {
-            await instance.initGateway(availableNodesUrls[0], observerUrl);
+            await instance.connectNode(availableNodesUrls[0], observerUrl);
         } else {
             await instance.connectActiveRandomNode();
         }
@@ -42,8 +39,19 @@ export default class NodeManager implements NodeProvider {
         return instance;
     }
 
-    public getRemainingAttempts(): number {
-        return this.remainingAttempts;
+    private async connectNode(nodeUrl: NodeUrl, observerUrl: NodeUrl = ""): Promise<void> {
+        BlockchainGateway.initValidator({ baseUrl: nodeUrl });
+        const isNodeActive = await BlockchainGateway.getInstance().isNodeActive();
+
+        if(!isNodeActive) {
+            this.recordNodeFailure(nodeUrl);
+
+            const message = `NodeManager.connectNode: Node ${nodeUrl} is not active`
+            console.error(message);
+            throw new Error(message);
+        }
+
+        this.currentNodeUrl = nodeUrl;
     }
 
     public static getInstance(): NodeManager {
@@ -54,31 +62,10 @@ export default class NodeManager implements NodeProvider {
         return NodeManager.instance;
     }
 
-
-    public isInitializedWithActiveNode(): boolean {
-        if (!this.gateway || !this.currentNodeUrl)
-            return false;
-        return true
-    }
-
-    private async initGateway(nodeUrl: NodeUrl, observerUrl: NodeUrl = ""): Promise<void> {
-        this.gateway = BlockchainGateway.init({
-            validator: { baseUrl: nodeUrl },
-            indexer: { baseUrl: observerUrl },
-        });
-        this.currentNodeUrl = nodeUrl;
-
-        if (!await this.isGatewayNodeActive())
-            throw new Error(`NodeManager.initGateway: Node ${nodeUrl} is not active`);
-    }
-
-    private async isGatewayNodeActive(): Promise<boolean> {
-        if(!await this.gateway.isNodeActive()) {
-            console.error(`NodeManager.isGatewayNodeActive: Node is not active`);
-            this.recordNodeFailure(this.currentNodeUrl);
-            return false;
-        }
-        return true;
+    public isInitialized(): boolean {
+        if (this.currentNodeUrl)
+            return true;
+        return false;
     }
 
     private markNodeInactive(nodeUrl: NodeUrl): void {
@@ -86,7 +73,7 @@ export default class NodeManager implements NodeProvider {
     }
 
     public recordCurrentNodeFailure(): void {
-        if(this.currentNodeUrl && this.gateway) {
+        if(this.isInitialized()) {
             this.recordNodeFailure(this.currentNodeUrl);
         }
     }
@@ -95,11 +82,14 @@ export default class NodeManager implements NodeProvider {
         this.remainingAttempts--;
         this.markNodeInactive(nodeUrl);
         this.currentNodeUrl = null;
-        this.gateway = null;
     }
 
     private getAvailableNodesUrls(): NodeUrl[] {
         return this.availableNodesUrls.filter((nodeUrl) => !this.inactiveNodesUrls.has(nodeUrl));
+    }
+
+    public getRemainingAttempts(): number {
+        return this.remainingAttempts;
     }
 
     private getRandomAvailableNodeUrl(): NodeUrl {
@@ -114,23 +104,21 @@ export default class NodeManager implements NodeProvider {
         return availableNodeUrls[index];
     }
 
-
-    // TODO refactor when decision regarding blockchain gateway will be accepted
     public async connectActiveRandomNode(): Promise<void> {
-        while (this.remainingAttempts >= 0) {
-            const currentNodeUrl = this.getRandomAvailableNodeUrl();
+        while (this.remainingAttempts > 0) {
+            const nodeUrl = this.getRandomAvailableNodeUrl();
 
-            if(!currentNodeUrl) 
+            if(!nodeUrl) 
                 continue;
 
             try { 
-                await this.initGateway(currentNodeUrl);
+                await this.connectNode(nodeUrl);
             } catch (_) {
                 continue;
             }
             return;
         }
 
-        throw new Error("NodeManager.connectActiveNodeUrl: No active node URL found after all attempts");
+        throw new Error("NodeManager.connectActiveRandomNode: No active node URL found after all attempts");
     }
 }

@@ -56,7 +56,7 @@ export default class BlockchainGateway {
 
         return BlockchainGateway.instance;
     }
-
+    
     public static initIndexer(config: BlockchainGatewayConfig["indexer"]): BlockchainGateway {
         if (!this.isInitialized()) {
             BlockchainGateway.instance = new BlockchainGateway();
@@ -83,7 +83,8 @@ export default class BlockchainGateway {
         const instance = BlockchainGateway.instance;
         return (
             instance !== null && 
-            (instance.validatorClient !== null || instance.indexerClient !== null)
+            instance.validatorClient !== null && 
+            instance.indexerClient !== null
         );
     }
 
@@ -97,24 +98,10 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
 
-    private getValidatorClient(): HttpClient {
-        if (!this.validatorClient) {
-            throw new Error("BlockchainGateway: validatorClient is not initialized. Call BlockchainGateway.initValidator() first.");
-        }
-        return this.validatorClient;
-    }
-
-    private getIndexerClient(): HttpClient {
-        if (!this.indexerClient) {
-            throw new Error("BlockchainGateway: indexerClient is not initialized. Call BlockchainGateway.initIndexer() first.");
-        }
-        return this.indexerClient;
-    }
-
     public async submitDeploy(
         deployData: DeployData,
     ): Promise<DeploySubmitResult> {
-        return await this.getValidatorClient().post("/deploy", deployData, {
+        return await this.validatorClient.post("/deploy", deployData, {
             headers: {
                 "Content-Type": "text/plain",
             },
@@ -123,11 +110,11 @@ export default class BlockchainGateway {
 
     // For read-only operations
     public async submitExploratoryDeploy(rholangCode: string): Promise<DeploySubmitResult> {
-        return await this.getIndexerClient().post(`/api/explore-deploy`, rholangCode);
+        return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
     }
     
     public async getDeploy(deployHash: string): Promise<Deploy> {
-        return await this.getIndexerClient().get(`/api/deploy/${deployHash}`);
+        return await this.indexerClient.get(`/api/deploy/${deployHash}`);
     }
 
     public async isDeployFinalized(deploy: Deploy): Promise<boolean> {
@@ -158,7 +145,7 @@ export default class BlockchainGateway {
     }
 
     public async getBlock(blockHash: string): Promise<Block> {
-        const response = await this.getIndexerClient().get(
+        const response = await this.indexerClient.get(
             `/api/block/${blockHash}`,
         );
 
@@ -178,7 +165,7 @@ export default class BlockchainGateway {
    
     public async isNodeActive(): Promise<boolean> {
         try {
-            await this.getValidatorClient().get(`/status`);
+            await this.validatorClient.get(`/status`);
             return true;
         } catch (error) {
             console.error('BlockchainGateway.isNodeActive: Node health check failed:', error);
@@ -207,7 +194,7 @@ export default class BlockchainGateway {
     }
 
     private async getLatestBlock(): Promise<Block> {
-        const blocks = await this.getIndexerClient().get(`/api/blocks/1`);
+        const blocks = await this.indexerClient.get(`/api/blocks/1`);
         this.validateBlocksResponse(blocks);
 
         return blocks[0];

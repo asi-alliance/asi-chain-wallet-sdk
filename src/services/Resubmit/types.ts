@@ -13,8 +13,8 @@ export type NodeUrl = string;
 
 export interface NodeProvider {
     connectActiveRandomNode(): Promise<void>;
-    recordCurrentNodeFailure(nodeUrl: NodeUrl): void;
-    isInitializedWithActiveNode(): boolean;
+    recordCurrentNodeFailure(): void;
+    isInitialized(): boolean;
     getRemainingAttempts(): number;
 }
 
