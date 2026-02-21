@@ -6,8 +6,10 @@ import {
     FatalDeployErrors,
     DeployStatusResult,
     DeployStatus,
-    BlockchainGateway
+    BlockchainGateway,
+    NodeUrl
 } from "./types";
+import NodeManager from "./NodeManager";
 import RChainService from "@services/Chain";
 
 
@@ -19,10 +21,14 @@ export default class DeployResubmitter {
 
     constructor(
         config: ResubmitConfig,
-        nodeManager: NodeProvider,
+        availableNodesUrls: NodeUrl[]
     ) {
         this.config = config;
-        this.nodeManager = nodeManager;
+        this.nodeManager = NodeManager.initialize(
+            availableNodesUrls, 
+            config.nodeSelectionAttempts, 
+            config.isRandomNodeUsed
+        );
         this.errorHandler = new DeploymentErrorHandler();
     }
 
@@ -31,6 +37,10 @@ export default class DeployResubmitter {
         const elapsedSeconds = (currentTime - this.startSubmissionTime) / 1000;
 
         return elapsedSeconds >= this.config.deployValidityTime;
+    }
+
+    private sleep(sec: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, sec * 1000));
     }
 
     private async retryDeployToOneNode(
@@ -80,7 +90,48 @@ export default class DeployResubmitter {
 
             await this.sleep(this.config.deployInterval);
         }
+
+        if(this.isDeployExpired()) {
+            deployResult.error = deployResult?.error || {};
+            deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
+        }
+
         return { success: false, error: deployResult.error };
+    }
+
+    private async retryDeployToRandomNodes(
+        rholangCode: string,
+        privateKey: string,
+        phloLimit?: number
+    ): Promise<ResubmitResult> {
+        let deployResult: ResubmitResult = { success: false };
+        this.startSubmissionTime = Date.now();
+
+        while (
+            !deployResult.success &&
+            !this.isDeployExpired() &&
+            this.nodeManager.getRemainingAttempts() > 0
+        ) {
+            await this.nodeManager.connectActiveRandomNode();
+
+            deployResult = await this.retryDeployToOneNode(
+                rholangCode,
+                privateKey,
+                phloLimit
+            );
+
+            if (!deployResult.success)
+                this.nodeManager.recordCurrentNodeFailure();
+
+            if (
+                this.errorHandler.isDeploymentErrorFatal(
+                    deployResult.error?.blockchainError?.type!
+                )
+            ) 
+                return deployResult;
+            
+        }
+        return deployResult;
     }
 
     private async pollDeployStatus(deployId: string): Promise<ResubmitResult> {
@@ -116,12 +167,6 @@ export default class DeployResubmitter {
         };
     }
 
-    private sleep(sec: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, sec * 1000));
-    }
-
-    //async deployWithRetries
-
     /**
 
      * Main resubmit function
@@ -132,42 +177,34 @@ export default class DeployResubmitter {
         privateKey: string,
         phloLimit?: number
     ): Promise<ResubmitResult> {
-        let deployResult: ResubmitResult = {success: false};
-        this.startSubmissionTime = Date.now();
+        let deployResult: ResubmitResult = { success: false };
 
-        // 1: Deploy with retries
-        while (
-            !deployResult.success && 
-            !this.isDeployExpired() && 
-            this.nodeManager.getRemainingAttempts() > 0
-        ) {       
-            await this.nodeManager.connectActiveRandomNode();
-                
+        // 1.1: Try deploying with retries to first node if `isRandomNodeUsed` is false
+        if (!this.config.isRandomNodeUsed) {
+            await this.nodeManager.connectDefaultNode();
+            
             deployResult = await this.retryDeployToOneNode(
                 rholangCode,
                 privateKey,
                 phloLimit
             );
 
-            if (!deployResult.success) 
-                this.nodeManager.recordCurrentNodeFailure();
-
-            if(this.errorHandler.isDeploymentErrorFatal(deployResult.error.blockchainError?.type!)) {
-                return deployResult;
-            }
+        // 1.2: Try deploying with retries and random node switching
+        } else {
+            deployResult = await this.retryDeployToRandomNodes(
+                rholangCode,
+                privateKey,
+                phloLimit
+            );
         }
 
-        if(this.isDeployExpired()) {
-            deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
+        if (!deployResult.success) 
             return deployResult;
-        }
-
-        if (!deployResult.success)
-            return deployResult;
-    
+        
 
         // 2: Poll for deploy status
         const pollResult = await this.pollDeployStatus(deployResult.deployId!);   
+        
         return pollResult;
     }
 }

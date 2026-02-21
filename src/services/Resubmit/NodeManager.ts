@@ -2,43 +2,50 @@ import { NodeUrl, NodeProvider, BlockchainGateway } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
 
 export default class NodeManager implements NodeProvider {
-    private static instance: NodeManager | null = null;
+    private static instance: NodeManager;
 
     private remainingAttempts: number;
     private readonly availableNodesUrls: NodeUrl[];
+    private readonly isRandomNodeUsed: boolean;
+
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
     private readonly inactiveNodesUrls = new Set<NodeUrl>();
     private currentNodeUrl: NodeUrl | null = null;
 
-    private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number) {
+    private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number, isRandomNodeUsed: boolean) {
         if(!availableNodesUrls?.length) {
             throw new Error("At least one node URL must be provided");
         }
 
         this.availableNodesUrls = availableNodesUrls;
+        this.isRandomNodeUsed = isRandomNodeUsed;
         this.remainingAttempts = remainingAttempts;
     }
 
-    public static async initialize(
+    public static initialize(
         availableNodesUrls: NodeUrl[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
         isRandomNodeUsed: boolean = DEFAULT_RESUBMIT_CONFIG.isRandomNodeUsed,
-        observerUrl?: NodeUrl,
-    ): Promise<NodeManager> {
-        const instance = new NodeManager(availableNodesUrls, Math.max(1, nodeSelectionAttempts));
-
-        if(!isRandomNodeUsed) {
-            await instance.connectNode(availableNodesUrls[0], observerUrl);
-        } else {
-            await instance.connectActiveRandomNode();
-        }
+    ): NodeManager {
+        const attempts = isRandomNodeUsed ? Math.max(1, nodeSelectionAttempts) : 0;
+        const instance = new NodeManager(availableNodesUrls, attempts, isRandomNodeUsed);
 
         NodeManager.instance = instance;
         return instance;
     }
 
-    private async connectNode(nodeUrl: NodeUrl, observerUrl: NodeUrl = ""): Promise<void> {
+    public async connectDefaultNode(): Promise<void> {
+        if(this.isRandomNodeUsed) {
+            throw new Error(
+                "NodeManager.connectDefaultNode: Random node selection is enabled, cannot connect to default node"
+            );
+        }
+
+        await this.connectNode(this.availableNodesUrls[0]);
+    }
+
+    private async connectNode(nodeUrl: NodeUrl): Promise<void> {
         BlockchainGateway.initValidator({ baseUrl: nodeUrl });
         const isNodeActive = await BlockchainGateway.getInstance().isNodeActive();
 
@@ -104,6 +111,12 @@ export default class NodeManager implements NodeProvider {
     }
 
     public async connectActiveRandomNode(): Promise<void> {
+        if(!this.isRandomNodeUsed) {
+            throw new Error(
+                "NodeManager.connectActiveRandomNode: Random node selection is disabled, connect to default node"
+            );
+        }
+
         while (this.remainingAttempts > 0) {
             const nodeUrl = this.getRandomAvailableNodeUrl();
 
