@@ -4,7 +4,9 @@ import {
     DeploymentErrorHandler,
     NodeProvider,
     FatalDeployErrors,
-    DeployResult
+    DeployStatusResult,
+    DeployStatus,
+    BlockchainGateway
 } from "./types";
 import RChainService from "@services/Chain";
 
@@ -24,15 +26,22 @@ export default class DeployResubmitter {
         this.errorHandler = new DeploymentErrorHandler();
     }
 
-   
-    private async deployWithRetries(
+    private isDeployExpired(): boolean {
+        const currentTime = Date.now();
+        const elapsedSeconds = (currentTime - this.startSubmissionTime) / 1000;
+
+        return elapsedSeconds >= this.config.deployValidityTime;
+    }
+
+    private async retryDeployToOneNode(
         rholangCode: string,
         privateKey: string,
         phloLimit?: number,
-    ): Promise<DeployResult> {
-        let retries = this.config.retries;
+    ): Promise<ResubmitResult> {
+        let deployRetries = this.config.deployRetries;
+        let deployResult: ResubmitResult = { success: false };
 
-        while (retries >= 0) {
+        while (deployRetries > 0 && !this.isDeployExpired()) {
             try {
                 const chainService = new RChainService();
                 const deployId = await chainService.sendDeploy(
@@ -42,36 +51,79 @@ export default class DeployResubmitter {
                 );
 
                 if (typeof deployId !== "string") {
-                    const errorMessage = 'DeployResubmitter.deployWithRetries: Invalid deploy ID received: ' + deployId;
-                    console.error(errorMessage);
+                    const errorMessage = 'Invalid deploy ID received: ' + deployId;
                     throw new Error(errorMessage);
                 }   
-                return { success: true, deployId };
+
+                deployResult = { success: true, deployId };
+                return deployResult;
             } catch (error) {
-                const errorMessage = (error as Error).message;
+                const errorMessage = "DeployResubmitter.retryDeployToOneNode:" + (error as Error).message;
                 const errorType = this.errorHandler.parseDeploymentError(errorMessage);
+                console.error(errorMessage);
 
-                return {
-                    success: false, 
-                    error: 
-                        { 
-                            type: errorType, 
-                            message: errorMessage 
-                        }
+                if(this.errorHandler.isDeploymentErrorFatal(errorType)) {
+                    deployResult.error.blockchainError = {
+                        type: errorType,
+                        message: errorMessage,
+                    };
+                    break;
+                }
+
+                deployResult.error.blockchainError = {
+                    type: errorType,
+                    message: errorMessage,
                 };
-            }
+
+                deployRetries --;
+            } 
+
+            await this.sleep(this.config.deployInterval);
         }
+        return { success: false, error: deployResult.error };
     }
 
-    private isDeployExpired(): boolean {
-        const currentTime = Date.now();
-        const elapsedSeconds = (currentTime - this.startSubmissionTime) / 1000;
+    private async pollDeployStatus(deployId: string): Promise<ResubmitResult> {
+        while (!this.isDeployExpired()) {
+            const checkDeployResult: DeployStatusResult = await BlockchainGateway.getInstance().getDeployStatus(deployId);
+            const deployStatus: DeployStatus = checkDeployResult.status;
 
-        return elapsedSeconds >= this.config.deployValidityTime;
+            if (deployStatus === DeployStatus.CHECK_ERROR) {
+                const errorMessage = `DeployResubmitter.pollDeployStatus: ${
+                    'errorMessage' in checkDeployResult ? checkDeployResult.errorMessage : 'Unknown error'
+                }`;
+                const errorType = this.errorHandler.parseDeploymentError(errorMessage);
+                console.error(errorMessage);
+
+                const blockchainError = {
+                    type: errorType,
+                    message: errorMessage,
+                };
+
+                return { success: false, deployStatus, error: { blockchainError } }
+            }
+
+            // if included in block or finalized 
+            if (deployStatus !== DeployStatus.DEPLOYING) 
+                return { success: true, deployStatus: checkDeployResult.status };
+
+            await this.sleep(this.config.pollingInterval);
+        }
+        return { 
+            success: false, 
+            deployStatus: DeployStatus.DEPLOYING, 
+            error: { exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT } 
+        };
     }
 
+    private sleep(sec: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, sec * 1000));
+    }
+
+    //async deployWithRetries
 
     /**
+
      * Main resubmit function
      * Executes the complete transaction resubmit algorithm 
      */
@@ -80,31 +132,42 @@ export default class DeployResubmitter {
         privateKey: string,
         phloLimit?: number
     ): Promise<ResubmitResult> {
-        try {
-            let deployResult: DeployResult = {success: false};
-            this.startSubmissionTime = Date.now();
+        let deployResult: ResubmitResult = {success: false};
+        this.startSubmissionTime = Date.now();
 
-            while (!deployResult.success && !this.isDeployExpired() && this.nodeManager.getRemainingAttempts() >= 0) {       
-                await this.nodeManager.connectActiveRandomNode();
-                deployResult = await this.deployWithRetries(
-                    rholangCode,
-                    privateKey,
-                    phloLimit
-                );
+        // 1: Deploy with retries
+        while (
+            !deployResult.success && 
+            !this.isDeployExpired() && 
+            this.nodeManager.getRemainingAttempts() > 0
+        ) {       
+            await this.nodeManager.connectActiveRandomNode();
+                
+            deployResult = await this.retryDeployToOneNode(
+                rholangCode,
+                privateKey,
+                phloLimit
+            );
+
+            if (!deployResult.success) 
+                this.nodeManager.recordCurrentNodeFailure();
+
+            if(this.errorHandler.isDeploymentErrorFatal(deployResult.error.blockchainError?.type!)) {
+                return deployResult;
             }
-
-            if(!deployResult.success) 
-                throw new Error(deployResult.error.message);
-
-        } catch (error) {
-            return {
-                success: false,
-                // TODO: THINK about approp errror type
-                error: {
-                    type: FatalDeployErrors.UNKNOWN_ERROR,
-                    message: (error as Error).message,
-                },
-            };
         }
+
+        if(this.isDeployExpired()) {
+            deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
+            return deployResult;
+        }
+
+        if (!deployResult.success)
+            return deployResult;
+    
+
+        // 2: Poll for deploy status
+        const pollResult = await this.pollDeployStatus(deployResult.deployId!);   
+        return pollResult;
     }
 }

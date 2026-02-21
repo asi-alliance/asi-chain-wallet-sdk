@@ -1,5 +1,4 @@
-import BlockchainGateway from "@domains/BlockchainGateway";
-import { NodeUrl, NodeProvider } from "./types";
+import { NodeUrl, NodeProvider, BlockchainGateway } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
 
 export default class NodeManager implements NodeProvider {

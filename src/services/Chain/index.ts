@@ -203,6 +203,7 @@ export default class RChainService {
             console.log("Signed deploy:", signedDeploy);
             console.log("Web deploy:", JSON.stringify(signedDeploy, null, 2));
 
+            //TODO Error handling and result parsing?
             const result = await this.gateway.submitDeploy(signedDeploy);
 
             console.log("Deploy result:", result);

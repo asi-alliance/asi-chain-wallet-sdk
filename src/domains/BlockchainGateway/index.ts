@@ -3,25 +3,22 @@ import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
 import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
 import { DeployData } from "@services/Chain";
 
-type Deploy = any;
-type Block = any;
-
-// just placeholders
-export type SignedDeployData = any;
-
 export enum DeployStatus {
     DEPLOYING = "Deploying",
-    FINALIZING = "Finalizing",
+    INCLUDED_IN_BLOCK = "IncludedInBlock",
     FINALIZED = "Finalized",
-    DEPLOY_ERROR = "DeployError",
-   // FINALIZATION_ERROR = "FinalizationError",
+
+    CHECK_ERROR = "CheckingError",
 }
 
 export type DeployStatusResult = 
-    | { status: Exclude<DeployStatus, DeployStatus.DEPLOY_ERROR>}
-    | { status: DeployStatus.DEPLOY_ERROR; errorMessage: string };
+    | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR>}
+    | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
 
+//TODO specify types
 export type DeploySubmitResult = any;
+type Deploy = any;
+type Block = any;
 
 export interface BlockchainGatewayConfig {
     validator: {
@@ -98,6 +95,7 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
 
+    // TODO handling with parseDeploymentError
     public async submitDeploy(
         deployData: DeployData,
     ): Promise<DeploySubmitResult> {
@@ -132,13 +130,12 @@ export default class BlockchainGateway {
 
             const isFinalized = await this.isDeployFinalized(deploy);
             return { 
-                status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.FINALIZING 
+                status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.INCLUDED_IN_BLOCK 
             };
         } catch (error) {
-            const message = this.getDeployErrorMessage(error);
-            console.error(message);
+            const message = "BlockchainGateway.getDeployStatus: " + this.getGatewayErrorMessage(error);
             return { 
-                status: DeployStatus.DEPLOY_ERROR, 
+                status: DeployStatus.CHECK_ERROR, 
                 errorMessage: message,
             };
         }
@@ -157,7 +154,7 @@ export default class BlockchainGateway {
             const block = await this.getLatestBlock();
             return block?.blockNumber ?? INVALID_BLOCK_NUMBER;
         } catch (error) {
-            const message = this.getDeployErrorMessage(error);
+            const message = "BlockchainGateway.getLatestBlockNumber: " + this.getGatewayErrorMessage(error);
             console.error(message);
             return INVALID_BLOCK_NUMBER;
         }
@@ -173,22 +170,24 @@ export default class BlockchainGateway {
         }
     }
 
-    private getDeployErrorMessage(error: any): string {
+    private getGatewayErrorMessage(error: any): string {
         if (axios.isAxiosError(error)) {
-            return `BlockchainGateway.getDeployErrorMessage: Failed to get deploy: ${error.response?.status ?? error.code} ${error.response?.statusText ?? error.message}`;
+            const status = error.response?.status ?? error.code;
+            const statusText = error.response?.statusText ?? ""; 
+            const url = error.config?.url ?? "";
+            return `Axios error while requesting "${url}": [${status}] ${statusText} - ${error.message}`;
         }
 
         if (error instanceof Error) {
             return error.message;
         }
-
+        
         return String(error);
     }
 
     private validateBlocksResponse(blocks: any[]): void {
         if (!blocks?.length) {
             const errorMessage = 'BlockchainGateway.validateBlocksResponse: No blocks returned from /api/blocks endpoint';
-            console.error(errorMessage, { blocks });
             throw new Error(errorMessage);
         }
     }

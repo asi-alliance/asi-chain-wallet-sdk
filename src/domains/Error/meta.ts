@@ -25,6 +25,7 @@ export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
     [RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE]: "Casper instance not available. Trying another node...",
     [RecoverableDeployErrors.INVALID_DEPLOY_ID]: "Invalid deploy ID. Please try again.",
     [RecoverableDeployErrors.INVALID_BLOCK_NUMBER]: "Invalid block number. Please try again.",
+    
     [FatalDeployErrors.INSUFFICIENT_BALANCE]: "Insufficient balance. Please top up your account.",
     [FatalDeployErrors.WRONG_NETWORK]: "Wrong network. Please contact technical support.",
     [FatalDeployErrors.PARSING_ERROR]: "Parsing error. Please contact technical support.",
@@ -32,6 +33,7 @@ export const deploymentErrorMessages: Record<DeploymentErrorType, string> = {
     [FatalDeployErrors.SIGNATURE_ERROR]: "Signature verification failed. Please try again.",
     [FatalDeployErrors.STORAGE_RETRIEVAL_ERROR]: "Storage retrieval error. Please try again later.",
     [FatalDeployErrors.UNKNOWN_ERROR]: "An unknown error occurred. Please try again.",
+    
     [FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT]: "Deploy submission timed out. Please try again.",
     [FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT]: "Deploy was not included in a block within the expected time.",
     [FatalDeployErrors.FINALIZATION_TIMEOUT]: "Block finalization polling timed out.",

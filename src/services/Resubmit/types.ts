@@ -4,10 +4,16 @@ import {
     RecoverableDeployErrors,
     DeploymentErrorHandler,
 } from "@domains/Error";
-import { RChainServiceConfig } from "@services/Chain";
+import BlockchainGateway, { DeployStatusResult, DeployStatus }from "@domains/BlockchainGateway";
 
-
-export { DeploymentErrorHandler, RecoverableDeployErrors, FatalDeployErrors};
+export { 
+    DeployStatus,
+    DeployStatusResult,
+    DeploymentErrorHandler, 
+    RecoverableDeployErrors, 
+    FatalDeployErrors,
+    BlockchainGateway
+};
 
 export type NodeUrl = string;
 
@@ -19,30 +25,28 @@ export interface NodeProvider {
 }
 
 export interface ResubmitConfig {
-    deployValidityTime: number;
-    retries: number;
-    nodeSelectionAttempts: number;
-    deployLifeSpan: number;
     phloPrice: number;
+
     isRandomNodeUsed: boolean;
+    deployValidityTime: number;
+    nodeSelectionAttempts: number;
+    deployRetries: number;
+
+    deployInterval: number;
     pollingInterval: number;
-    rchainServiceConfig?: RChainServiceConfig;
+}
+
+export interface ErrorDetail {
+    blockchainError?: {
+        type: DeploymentErrorType;
+        message: string;
+    };
+    exceededTimeout?: FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT | FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT;
 }
 
 export interface ResubmitResult {
     success: boolean;
     deployId?: string;
-    error?: {
-        type: DeploymentErrorType;
-        message: string;
-    };
-}
-
-export interface DeployResult {
-    success: boolean;
-    deployId?: string;
-    error?: {
-        type: FatalDeployErrors | RecoverableDeployErrors;
-        message: string;
-    };
+    deployStatus?: DeployStatus;
+    error?: ErrorDetail;
 }

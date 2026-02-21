@@ -1,4 +1,4 @@
-import { ResubmitConfig, ResubmitNode } from "../services/Resubmit/types";
+import { ResubmitConfig } from "@services/Resubmit/types";
 
 export interface WalletClientConfig {
     mode: string;
@@ -23,13 +23,15 @@ const DEFAULT_DECIMALS_AMOUNT: number = 8;
 const DEFAULT_PHLO_LIMIT: number = 500000;
 
 export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
-    deployValidityTime: 300,
-    retries: 3,
-    nodeSelectionAttempts: 3,
-    deployLifeSpan: 50,
     phloPrice: 1,
+
     isRandomNodeUsed: true,
-    pollingInterval: 5,
+    deployValidityTime: 60,
+    nodeSelectionAttempts: 3,
+    deployRetries: 3,
+      
+    deployInterval: 5,
+    pollingInterval: 2,
 };
 
 
@@ -40,4 +42,4 @@ export {
     DEFAULT_PHLO_LIMIT,
 };
 
-export type { ResubmitConfig, ResubmitNode };
+export type { ResubmitConfig };
