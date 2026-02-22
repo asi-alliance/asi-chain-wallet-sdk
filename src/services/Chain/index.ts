@@ -95,7 +95,7 @@ export default class RChainService {
             return;
         }
 
-        if (!config.validatorURL || !config?.readOnlyURL) {
+        if (!config?.validatorURL || !config?.readOnlyURL) {
             throw new Error(
                 "'nodeURL', 'graphqlURL', 'readOnlyURL' must be provided",
             );

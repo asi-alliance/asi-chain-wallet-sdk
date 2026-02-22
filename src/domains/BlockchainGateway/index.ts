@@ -32,47 +32,54 @@ export interface BlockchainGatewayConfig {
 }
 
 export default class BlockchainGateway {
-    private static instance: BlockchainGateway | null = null;
+    private static instance: BlockchainGateway;
 
     private validatorClient: HttpClient;
     private indexerClient: HttpClient;
 
-    private constructor() {}
+    private constructor(validatorClient: HttpClient, indexerClient: HttpClient) {
+        this.validatorClient = validatorClient;
+        this.indexerClient = indexerClient;
+    }
 
-    public static initValidator(config: BlockchainGatewayConfig["validator"]): BlockchainGateway {
-        if (!this.isInitialized()) {
-            BlockchainGateway.instance = new BlockchainGateway();
-        }
-
-        const validatorAxios = axios.create({
+    private static createHttpClient(
+        config: BlockchainGatewayConfig["validator"] | BlockchainGatewayConfig["indexer"]
+    ): HttpClient {
+        const axiosInstance = axios.create({
             baseURL: config.baseUrl,
             ...config.axiosConfig,
         });
 
-        BlockchainGateway.instance.validatorClient = new AxiosHttpClient(validatorAxios);
+        return new AxiosHttpClient(axiosInstance);
+    }
 
+    public static initValidator(config: BlockchainGatewayConfig["validator"]): BlockchainGateway {
+        if (!BlockchainGateway.isInitialized()) {
+            throw new Error (
+                "BlockchainGateway.initValidator: Call BlockchainGateway.init() first to initialize the gateway instance"
+            );
+        }
+
+        BlockchainGateway.instance.validatorClient = this.createHttpClient(config);
         return BlockchainGateway.instance;
     }
     
     public static initIndexer(config: BlockchainGatewayConfig["indexer"]): BlockchainGateway {
-        if (!this.isInitialized()) {
-            BlockchainGateway.instance = new BlockchainGateway();
+        if (!BlockchainGateway.isInitialized()) {
+            throw new Error (
+                "BlockchainGateway.initIndexer: Call BlockchainGateway.init() first to initialize the gateway instance"
+            );
         }
 
-        const indexerAxios = axios.create({
-            baseURL: config.baseUrl,
-            ...config.axiosConfig,
-        });
-
-        BlockchainGateway.instance.indexerClient = new AxiosHttpClient(indexerAxios);
-
+        this.instance.indexerClient = this.createHttpClient(config);
         return BlockchainGateway.instance;
     }
 
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
-        BlockchainGateway.instance = new BlockchainGateway();
-        BlockchainGateway.initValidator(config.validator);
-        BlockchainGateway.initIndexer(config.indexer);
+        BlockchainGateway.instance = new BlockchainGateway(
+            this.createHttpClient(config.validator), 
+            this.createHttpClient(config.indexer)
+        );
         return BlockchainGateway.instance;
     }
 

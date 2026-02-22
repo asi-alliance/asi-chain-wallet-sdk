@@ -66,24 +66,22 @@ export default class DeployResubmitter {
                 }   
 
                 deployResult = { success: true, deployId };
+
                 return deployResult;
             } catch (error) {
                 const errorMessage = "DeployResubmitter.retryDeployToOneNode:" + (error as Error).message;
                 const errorType = this.errorHandler.parseDeploymentError(errorMessage);
                 console.error(errorMessage);
 
-                if(this.errorHandler.isDeploymentErrorFatal(errorType)) {
-                    deployResult.error.blockchainError = {
+                deployResult.error = {  
+                    blockchainError: {
                         type: errorType,
                         message: errorMessage,
-                    };
-                    break;
-                }
-
-                deployResult.error.blockchainError = {
-                    type: errorType,
-                    message: errorMessage,
+                    }
                 };
+
+                if(this.errorHandler.isDeploymentErrorFatal(errorType)) 
+                    break;
 
                 deployRetries --;
             } 
@@ -92,7 +90,9 @@ export default class DeployResubmitter {
         }
 
         if(this.isDeployExpired()) {
-            deployResult.error = deployResult?.error || {};
+            if (!deployResult?.error) 
+                deployResult.error = {};
+
             deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
         }
 
@@ -108,7 +108,6 @@ export default class DeployResubmitter {
         this.startSubmissionTime = Date.now();
 
         while (
-            !deployResult.success &&
             !this.isDeployExpired() &&
             this.nodeManager.getRemainingAttempts() > 0
         ) {
@@ -120,17 +119,19 @@ export default class DeployResubmitter {
                 phloLimit
             );
 
-            if (!deployResult.success)
-                this.nodeManager.recordCurrentNodeFailure();
+            if (deployResult.success)
+                break;
+                
+            this.nodeManager.recordCurrentNodeFailure();
 
             if (
                 this.errorHandler.isDeploymentErrorFatal(
                     deployResult.error?.blockchainError?.type!
                 )
             ) 
-                return deployResult;
-            
+                break;
         }
+        
         return deployResult;
     }
 
@@ -152,14 +153,13 @@ export default class DeployResubmitter {
                 };
 
                 return { success: false, deployStatus, error: { blockchainError } }
-            }
-
-            // if included in block or finalized 
-            if (deployStatus !== DeployStatus.DEPLOYING) 
+            } else if (deployStatus !== DeployStatus.DEPLOYING) {                  // if included in block or finalized 
                 return { success: true, deployStatus: checkDeployResult.status };
+            }
 
             await this.sleep(this.config.pollingInterval);
         }
+
         return { 
             success: false, 
             deployStatus: DeployStatus.DEPLOYING, 

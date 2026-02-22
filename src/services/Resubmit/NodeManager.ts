@@ -11,7 +11,7 @@ export default class NodeManager implements NodeProvider {
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
     private readonly inactiveNodesUrls = new Set<NodeUrl>();
-    private currentNodeUrl: NodeUrl | null = null;
+    private currentNodeUrl: NodeUrl = "";
 
     private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number, isRandomNodeUsed: boolean) {
         if(!availableNodesUrls?.length) {
@@ -87,7 +87,7 @@ export default class NodeManager implements NodeProvider {
     private recordNodeFailure(nodeUrl: NodeUrl): void {
         this.remainingAttempts--;
         this.markNodeInactive(nodeUrl);
-        this.currentNodeUrl = null;
+        this.currentNodeUrl = "";
     }
 
     private getAvailableNodesUrls(): NodeUrl[] {
