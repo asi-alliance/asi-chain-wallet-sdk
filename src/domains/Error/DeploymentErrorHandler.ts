@@ -19,7 +19,6 @@ function useLowerCaseMessage<T>(
 }
 
 export default class DeploymentErrorHandler {
-    // private?
     @useLowerCaseMessage
     public parseDeploymentError(errorMessage: string): DeploymentErrorType {
         if (errorMessage.includes("read only")) {
@@ -28,6 +27,14 @@ export default class DeploymentErrorHandler {
 
         if (errorMessage.includes("casper instance")) {
             return RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE;
+        }
+
+        if(errorMessage.includes("invalid deploy ID")) {
+            return RecoverableDeployErrors.INVALID_DEPLOY_ID;
+        }
+
+        if (errorMessage.includes("invalid block number")) {
+            return RecoverableDeployErrors.INVALID_BLOCK_NUMBER;
         }
 
         if (errorMessage.includes("insufficient balance")) {
@@ -64,17 +71,14 @@ export default class DeploymentErrorHandler {
         return FatalDeployErrors.UNKNOWN_ERROR;
     }
 
-    // private?
     public isDeploymentErrorRecoverable(errorType: DeploymentErrorType): boolean {
         return Object.values(RecoverableDeployErrors).includes(errorType as RecoverableDeployErrors);
     }
 
-    // private?
     public isDeploymentErrorFatal(errorType: DeploymentErrorType): boolean {
         return Object.values(FatalDeployErrors).includes(errorType as FatalDeployErrors);
     }
 
-    // private?
     @useLowerCaseMessage
     public isPollingErrorRecoverable(errorMessage: string): boolean {
         return (
@@ -84,7 +88,6 @@ export default class DeploymentErrorHandler {
         );
     }
 
-    // private?
     public getErrorMessageByErrorType(errorType: DeploymentErrorType): string {
         return (
             deploymentErrorMessages[errorType] ??

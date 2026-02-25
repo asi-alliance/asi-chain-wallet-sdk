@@ -1,15 +1,16 @@
-import axios, { AxiosInstance } from "axios";
 import BinaryWriter from "@services/BinaryWriter";
-import { DEFAULT_AXIOS_TIMEOUT_MS } from "@config";
-import { decodeBase16 } from "@utils/codec";
+import { DEFAULT_PHLO_LIMIT } from "@config";
+import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
 import { AssetId } from "@domains/Asset";
+import BlockchainGateway from "@/domains/BlockchainGateway";
 import { blake2bHex } from "blakejs";
 import { ec as EC } from "elliptic";
 import {
     createCheckBalanceDeploy,
     createTransferDeploy,
 } from "../../domains/Deploy/factory";
+import { INVALID_BLOCK_NUMBER } from "@/utils";
 
 // to Signer
 const secp256k1 = new EC("secp256k1");
@@ -86,10 +87,15 @@ export interface RChainServiceConfig {
 }
 
 export default class RChainService {
-    private gateway: BlockchainGateway;
+    private readonly gateway: BlockchainGateway;
 
-    constructor(config: RChainServiceConfig) {
-        if (!config.validatorURL || !config?.readOnlyURL) {
+    constructor(config?: RChainServiceConfig) {
+        if(BlockchainGateway.isInitialized()) {
+            this.gateway = BlockchainGateway.getInstance();
+            return;
+        }
+
+        if (!config?.validatorURL || !config?.readOnlyURL) {
             throw new Error(
                 "'nodeURL', 'graphqlURL', 'readOnlyURL' must be provided",
             );
@@ -107,12 +113,12 @@ export default class RChainService {
 
     public async exploreDeployData(rholangCode: string): Promise<any> {
         try {
-            const result = await this.gateway.submitDeploy(rholangCode);
+            const result = await this.gateway.submitExploratoryDeploy(rholangCode);
             return result.expr;
         } catch (error: any) {
             if (error.message.includes("Network Error")) {
                 console.error(
-                    "Make sure your local RChain node is running and accessible",
+                    "Make sure your Rchain node is running and accessible",
                 );
             }
         }
@@ -172,16 +178,20 @@ export default class RChainService {
     async sendDeploy(
         rholangCode: string,
         privateKey: string,
-        phloLimit: number = 500000,
+        phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
-            const latestBlock = await this.gateway.getLatestBlock();
+            const latestBlockNumber = await this.gateway.getLatestBlockNumber();
+
+            if(latestBlockNumber == INVALID_BLOCK_NUMBER) {
+                throw new Error("RChainService.sendDeploy: Invalid block number")
+            }
 
             const deployData: DeployData = {
                 term: rholangCode,
                 phloLimit,
                 phloPrice: 1,
-                validAfterBlockNumber: latestBlock.blockNumber,
+                validAfterBlockNumber: latestBlockNumber,
                 timestamp: Date.now(),
                 shardId: "root",
             };
@@ -193,6 +203,7 @@ export default class RChainService {
             console.log("Signed deploy:", signedDeploy);
             console.log("Web deploy:", JSON.stringify(signedDeploy, null, 2));
 
+            //TODO Error handling and result parsing?
             const result = await this.gateway.submitDeploy(signedDeploy);
 
             console.log("Deploy result:", result);

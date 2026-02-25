@@ -1,6 +1,6 @@
 import MnemonicService from "@services/Mnemonic";
 import KeyDerivationService from "@services/KeyDerivation";
-import KeysService, { type KeyPair } from "@services/KeysService";
+import KeysService, { type KeyPair } from "@services/KeysManager";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "@utils/constants";
 import { decodeBase16, encodeBase58 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
