@@ -20,12 +20,18 @@ export type DeploySubmitResult = any;
 type Deploy = any;
 type Block = any;
 
+
+export enum BlockchainGatewayConfigKeys {
+    VALIDATOR = "validator",
+    INDEXER = "indexer",
+}
+
 export interface BlockchainGatewayConfig {
-    validator: {
+    [BlockchainGatewayConfigKeys.VALIDATOR]: {
         baseUrl: string;
         axiosConfig?: AxiosRequestConfig;
     };
-    indexer: {
+    [BlockchainGatewayConfigKeys.INDEXER]: {
         baseUrl: string;
         axiosConfig?: AxiosRequestConfig;
     };
@@ -43,7 +49,7 @@ export default class BlockchainGateway {
     }
 
     private static createHttpClient(
-        config: BlockchainGatewayConfig["validator"] | BlockchainGatewayConfig["indexer"]
+        config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR] | BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]
     ): HttpClient {
         const axiosInstance = axios.create({
             baseURL: config.baseUrl,
@@ -53,7 +59,7 @@ export default class BlockchainGateway {
         return new AxiosHttpClient(axiosInstance);
     }
 
-    public static initValidator(config: BlockchainGatewayConfig["validator"]): BlockchainGateway {
+    public static initValidator(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR]): BlockchainGateway {
         if (!BlockchainGateway.isInitialized()) {
             throw new Error (
                 "BlockchainGateway.initValidator: Call BlockchainGateway.init() first to initialize the gateway instance"
@@ -64,7 +70,7 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
     
-    public static initIndexer(config: BlockchainGatewayConfig["indexer"]): BlockchainGateway {
+    public static initIndexer(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]): BlockchainGateway {
         if (!BlockchainGateway.isInitialized()) {
             throw new Error (
                 "BlockchainGateway.initIndexer: Call BlockchainGateway.init() first to initialize the gateway instance"
@@ -77,8 +83,8 @@ export default class BlockchainGateway {
 
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
-            this.createHttpClient(config.validator), 
-            this.createHttpClient(config.indexer)
+            this.createHttpClient(config[BlockchainGatewayConfigKeys.VALIDATOR]), 
+            this.createHttpClient(config[BlockchainGatewayConfigKeys.INDEXER])
         );
         return BlockchainGateway.instance;
     }
@@ -87,8 +93,8 @@ export default class BlockchainGateway {
         const instance = BlockchainGateway.instance;
         return (
             instance !== null && 
-            instance.validatorClient !== null && 
-            instance.indexerClient !== null
+            instance?.validatorClient !== null && 
+            instance?.indexerClient !== null
         );
     }
 

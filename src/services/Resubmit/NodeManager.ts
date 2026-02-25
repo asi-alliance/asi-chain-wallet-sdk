@@ -4,39 +4,39 @@ import { DEFAULT_RESUBMIT_CONFIG } from "@config";
 export default class NodeManager implements NodeProvider {
     private static instance: NodeManager;
 
-    private remainingAttempts: number;
+    private retriesLeft: number;
     private readonly availableNodesUrls: NodeUrl[];
-    private readonly isRandomNodeUsed: boolean;
+    private readonly useRandomNode: boolean;
 
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
     private readonly inactiveNodesUrls = new Set<NodeUrl>();
     private currentNodeUrl: NodeUrl = "";
 
-    private constructor(availableNodesUrls: NodeUrl[], remainingAttempts: number, isRandomNodeUsed: boolean) {
+    private constructor(availableNodesUrls: NodeUrl[], retriesLeft: number, useRandomNode: boolean) {
         if(!availableNodesUrls?.length) {
             throw new Error("At least one node URL must be provided");
         }
 
         this.availableNodesUrls = availableNodesUrls;
-        this.isRandomNodeUsed = isRandomNodeUsed;
-        this.remainingAttempts = remainingAttempts;
+        this.useRandomNode = useRandomNode;
+        this.retriesLeft = retriesLeft;
     }
 
     public static initialize(
         availableNodesUrls: NodeUrl[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
-        isRandomNodeUsed: boolean = DEFAULT_RESUBMIT_CONFIG.isRandomNodeUsed,
+        useRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.useRandomNode,
     ): NodeManager {
-        const attempts = isRandomNodeUsed ? Math.max(1, nodeSelectionAttempts) : 0;
-        const instance = new NodeManager(availableNodesUrls, attempts, isRandomNodeUsed);
+        const attempts = useRandomNode ? Math.max(1, nodeSelectionAttempts) : 0;
+        const instance = new NodeManager(availableNodesUrls, attempts, useRandomNode);
 
         NodeManager.instance = instance;
         return instance;
     }
 
     public async connectDefaultNode(): Promise<void> {
-        if(this.isRandomNodeUsed) {
+        if(this.useRandomNode) {
             throw new Error(
                 "NodeManager.connectDefaultNode: Random node selection is enabled, cannot connect to default node"
             );
@@ -50,7 +50,7 @@ export default class NodeManager implements NodeProvider {
         const isNodeActive = await BlockchainGateway.getInstance().isNodeActive();
 
         if(!isNodeActive) {
-            this.recordNodeFailure(nodeUrl);
+            this.deactivateNode(nodeUrl);
 
             const message = `NodeManager.connectNode: Node ${nodeUrl} is not active`
             console.error(message);
@@ -78,24 +78,26 @@ export default class NodeManager implements NodeProvider {
         this.inactiveNodesUrls.add(nodeUrl);
     }
 
-    public recordCurrentNodeFailure(): void {
+    public deactivateCurrentNode(): void {
         if(this.isInitialized()) {
-            this.recordNodeFailure(this.currentNodeUrl);
+            this.deactivateNode(this.currentNodeUrl);
         }
     }
 
-    private recordNodeFailure(nodeUrl: NodeUrl): void {
-        this.remainingAttempts--;
+    private deactivateNode(nodeUrl: NodeUrl): void {
+        this.retriesLeft--;
         this.markNodeInactive(nodeUrl);
-        this.currentNodeUrl = "";
+        
+        if(this.currentNodeUrl === nodeUrl) 
+            this.currentNodeUrl = "";
     }
 
     private getAvailableNodesUrls(): NodeUrl[] {
         return this.availableNodesUrls.filter((nodeUrl) => !this.inactiveNodesUrls.has(nodeUrl));
     }
 
-    public getRemainingAttempts(): number {
-        return this.remainingAttempts;
+    public getRetriesLeft(): number {
+        return this.retriesLeft;
     }
 
     private getRandomAvailableNodeUrl(): NodeUrl {
@@ -111,13 +113,13 @@ export default class NodeManager implements NodeProvider {
     }
 
     public async connectActiveRandomNode(): Promise<void> {
-        if(!this.isRandomNodeUsed) {
+        if(!this.useRandomNode) {
             throw new Error(
                 "NodeManager.connectActiveRandomNode: Random node selection is disabled, connect to default node"
             );
         }
 
-        while (this.remainingAttempts > 0) {
+        while (this.retriesLeft > 0) {
             const nodeUrl = this.getRandomAvailableNodeUrl();
 
             if(!nodeUrl) 

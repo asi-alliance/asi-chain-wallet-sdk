@@ -20,21 +20,21 @@ export type NodeUrl = string;
 export interface NodeProvider {
     connectDefaultNode(): Promise<void>;
     connectActiveRandomNode(): Promise<void>;
-    recordCurrentNodeFailure(): void;
+    deactivateCurrentNode(): void;
     isInitialized(): boolean;
-    getRemainingAttempts(): number;
+    getRetriesLeft(): number;
 }
 
 export interface ResubmitConfig {
     phloPrice: number;
 
-    isRandomNodeUsed: boolean;
-    deployValidityTime: number;
+    useRandomNode: boolean;
+    deployValiditySeconds: number;
     nodeSelectionAttempts: number;
     deployRetries: number;
 
-    deployInterval: number;
-    pollingInterval: number;
+    deployIntervalSeconds: number;
+    pollingIntervalSeconds: number;
 }
 
 export interface ErrorDetail {
