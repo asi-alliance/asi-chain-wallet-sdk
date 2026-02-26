@@ -7,7 +7,7 @@ export interface KeyPair {
     privateKey: string;
 }
 
-export default class KeysService {
+export default class KeysManager {
     public static generateKeyPair(): KeyPair {
         const keyPair: EC.KeyPair = secp256k1.genKeyPair();
 

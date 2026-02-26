@@ -8,7 +8,7 @@ import {
     MnemonicService,
     MnemonicStrength,
     ChainService,
-    KeysService,
+    KeysManager,
     Wallet,
     Vault,
 } from "asi-wallet-sdk";
@@ -94,7 +94,7 @@ export const deriveNextWallet = async (
 
     const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
 
-    const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+    const { publicKey } = KeysManager.getKeyPairFromPrivateKey(privateKey);
 
     return {
         seedId,
@@ -117,5 +117,5 @@ export const createInitialMnemonic = (variant) => {
 };
 
 export const createInitialPrivateKey = () => {
-    return KeysService.generateKeyPair().privateKey;
+    return KeysManager.generateKeyPair().privateKey;
 };

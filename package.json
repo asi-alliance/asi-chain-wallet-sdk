@@ -1,8 +1,8 @@
 {
-    "name": "asi-wallet-sdk",
     "version": "0.0.1",
+    "name": "asi-wallet-sdk",
     "description": "ASI Wallet SDK",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -12,13 +12,19 @@
         "README.md"
     ],
     "scripts": {
-        "dev": "tsc -p tsconfig.build.json --watch",
-        "build": "tsc -p tsconfig.build.json"
+        "dev": "vite",
+        "build": "vite build",
+        "typecheck": "tsc -p tsconfig.build.json --noEmit",
+        "watch:types": "tsc -p tsconfig.build.json --watch"
     },
     "devDependencies": {
         "@types/crypto-js": "^4.2.2",
         "@types/elliptic": "^6.4.18",
-        "typescript": "^5.9.3"
+        "tsc-alias": "^1.8.16",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.1",
+        "vite-plugin-node-polyfills": "^0.2.0",
+        "vite-tsconfig-paths": "^4.1.0"
     },
     "dependencies": {
         "axios": "^1.13.2",
@@ -26,6 +32,7 @@
         "bip39": "^3.1.0",
         "blakejs": "^1.2.1",
         "bs58": "^6.0.0",
+        "buffer": "^6.0.3",
         "crypto-js": "^4.2.0",
         "elliptic": "^6.6.1",
         "js-sha3": "^0.9.3",

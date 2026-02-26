@@ -90,10 +90,15 @@ export default class RChainService {
     private readonly gateway: BlockchainGateway;
 
     constructor(config?: RChainServiceConfig) {
+        console.log(config, BlockchainGateway.isInitialized());
+        
         if(BlockchainGateway.isInitialized()) {
             this.gateway = BlockchainGateway.getInstance();
             return;
         }
+
+        console.log("no Instance");
+
 
         if (!config?.validatorURL || !config?.readOnlyURL) {
             throw new Error(
@@ -109,6 +114,9 @@ export default class RChainService {
                 baseUrl: config.readOnlyURL,
             },
         });
+
+        console.log("gateway", this.gateway);
+
     }
 
     public async exploreDeployData(rholangCode: string): Promise<any> {
