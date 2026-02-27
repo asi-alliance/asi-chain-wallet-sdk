@@ -27,7 +27,7 @@ export default class DeployResubmitter {
         this.nodeManager = NodeManager.initialize(
             availableNodesUrls, 
             config.nodeSelectionAttempts, 
-            config.isRandomNodeUsed
+            config.useRandomNode
         );
         this.errorHandler = new DeploymentErrorHandler();
     }
@@ -36,7 +36,7 @@ export default class DeployResubmitter {
         const currentTime = Date.now();
         const elapsedSeconds = (currentTime - this.startSubmissionTime) / 1000;
 
-        return elapsedSeconds >= this.config.deployValidityTime;
+        return elapsedSeconds >= this.config.deployValiditySeconds;
     }
 
     private sleep(sec: number): Promise<void> {
@@ -82,17 +82,14 @@ export default class DeployResubmitter {
 
                 if(this.errorHandler.isDeploymentErrorFatal(errorType)) 
                     break;
-
                 deployRetries --;
             } 
 
-            await this.sleep(this.config.deployInterval);
+            await this.sleep(this.config.deployIntervalSeconds);
         }
-
+        
         if(this.isDeployExpired()) {
-            if (!deployResult?.error) 
-                deployResult.error = {};
-
+            deployResult.error = deployResult?.error || {};
             deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
         }
 
@@ -109,7 +106,7 @@ export default class DeployResubmitter {
 
         while (
             !this.isDeployExpired() &&
-            this.nodeManager.getRemainingAttempts() > 0
+            this.nodeManager.getRetriesLeft() > 0
         ) {
             await this.nodeManager.connectActiveRandomNode();
 
@@ -122,7 +119,7 @@ export default class DeployResubmitter {
             if (deployResult.success)
                 break;
                 
-            this.nodeManager.recordCurrentNodeFailure();
+            this.nodeManager.deactivateCurrentNode();
 
             if (
                 this.errorHandler.isDeploymentErrorFatal(
@@ -153,11 +150,12 @@ export default class DeployResubmitter {
                 };
 
                 return { success: false, deployStatus, error: { blockchainError } }
-            } else if (deployStatus !== DeployStatus.DEPLOYING) {                  // if included in block or finalized 
+            } 
+            
+            if (deployStatus !== DeployStatus.DEPLOYING)                  // if included in block or finalized 
                 return { success: true, deployStatus: checkDeployResult.status };
-            }
 
-            await this.sleep(this.config.pollingInterval);
+            await this.sleep(this.config.pollingIntervalSeconds);
         }
 
         return { 
@@ -172,15 +170,15 @@ export default class DeployResubmitter {
      * Main resubmit function
      * Executes the complete transaction resubmit algorithm 
      */
-    async resubmit(
+    public async resubmit(
         rholangCode: string,
         privateKey: string,
         phloLimit?: number
     ): Promise<ResubmitResult> {
         let deployResult: ResubmitResult = { success: false };
 
-        // 1.1: Try deploying with retries to first node if `isRandomNodeUsed` is false
-        if (!this.config.isRandomNodeUsed) {
+        // 1.1: Try deploying with retries to first node if `useRandomNode` is false
+        if (!this.config.useRandomNode) {
             await this.nodeManager.connectDefaultNode();
             
             deployResult = await this.retryDeployToOneNode(

@@ -25,13 +25,13 @@ const DEFAULT_PHLO_LIMIT: number = 500000;
 export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
     phloPrice: 1,
 
-    isRandomNodeUsed: true,
-    deployValidityTime: 60,
+    useRandomNode: true,
+    deployValiditySeconds: 60,
     nodeSelectionAttempts: 3,
     deployRetries: 3,
       
-    deployInterval: 5,
-    pollingInterval: 2,
+    deployIntervalSeconds: 5,
+    pollingIntervalSeconds: 2,
 };
 
 
