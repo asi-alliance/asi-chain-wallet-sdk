@@ -20,21 +20,14 @@ export type DeploySubmitResult = any;
 type Deploy = any;
 type Block = any;
 
-
-export enum BlockchainGatewayConfigKeys {
-    VALIDATOR = "validator",
-    INDEXER = "indexer",
-}
+type GatewayClientConfig = {
+    baseUrl: string;
+    axiosConfig?: AxiosRequestConfig;
+};
 
 export interface BlockchainGatewayConfig {
-    [BlockchainGatewayConfigKeys.VALIDATOR]: {
-        baseUrl: string;
-        axiosConfig?: AxiosRequestConfig;
-    };
-    [BlockchainGatewayConfigKeys.INDEXER]: {
-        baseUrl: string;
-        axiosConfig?: AxiosRequestConfig;
-    };
+    validator: GatewayClientConfig;
+    indexer: GatewayClientConfig;
 }
 
 export default class BlockchainGateway {
@@ -48,9 +41,7 @@ export default class BlockchainGateway {
         this.indexerClient = indexerClient;
     }
 
-    private static createHttpClient(
-        config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR] | BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]
-    ): HttpClient {
+    private static createHttpClient(config: GatewayClientConfig): HttpClient {
         const axiosInstance = axios.create({
             baseURL: config.baseUrl,
             ...config.axiosConfig,
@@ -59,7 +50,7 @@ export default class BlockchainGateway {
         return new AxiosHttpClient(axiosInstance);
     }
 
-    public static initValidator(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR]): BlockchainGateway {
+    public static initValidator(config: GatewayClientConfig): BlockchainGateway {
         if (!BlockchainGateway.isInitialized()) {
             throw new Error (
                 "BlockchainGateway.initValidator: Call BlockchainGateway.init() first to initialize the gateway instance"
@@ -70,7 +61,7 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
     
-    public static initIndexer(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]): BlockchainGateway {
+    public static initIndexer(config: GatewayClientConfig): BlockchainGateway {
         if (!BlockchainGateway.isInitialized()) {
             throw new Error (
                 "BlockchainGateway.initIndexer: Call BlockchainGateway.init() first to initialize the gateway instance"
@@ -83,19 +74,14 @@ export default class BlockchainGateway {
 
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
-            this.createHttpClient(config[BlockchainGatewayConfigKeys.VALIDATOR]), 
-            this.createHttpClient(config[BlockchainGatewayConfigKeys.INDEXER])
+            this.createHttpClient(config.validator), 
+            this.createHttpClient(config.indexer)
         );
         return BlockchainGateway.instance;
     }
 
     public static isInitialized(): boolean {
-        const instance = BlockchainGateway.instance;
-        return (
-            instance !== null && 
-            instance?.validatorClient !== null && 
-            instance?.indexerClient !== null
-        );
+        return BlockchainGateway?.instance !== undefined;
     }
 
     public static getInstance(): BlockchainGateway {
@@ -106,6 +92,10 @@ export default class BlockchainGateway {
         }
 
         return BlockchainGateway.instance;
+    }
+
+    public static getValidatorClientUrl(): string {
+        return BlockchainGateway.instance.validatorClient.getBaseUrl() ?? "";
     }
 
     // TODO handling with parseDeploymentError
@@ -173,12 +163,12 @@ export default class BlockchainGateway {
         }
     }
    
-    public async isNodeActive(): Promise<boolean> {
+    public static async isValidatorActive(): Promise<boolean> {
         try {
-            await this.validatorClient.get(`/status`);
+            await BlockchainGateway.instance.validatorClient.get(`/status`);
             return true;
         } catch (error) {
-            console.error('BlockchainGateway.isNodeActive: Node health check failed:', error);
+            console.error('BlockchainGateway.isValidatorActive: Node health check failed:', error);
             return false;
         }
     }

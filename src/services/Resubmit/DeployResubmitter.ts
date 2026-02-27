@@ -30,13 +30,15 @@ export default class DeployResubmitter {
             config.useRandomNode
         );
         this.errorHandler = new DeploymentErrorHandler();
+
+        if(!BlockchainGateway.isInitialized())
+            throw new Error("BlockchainGateway is not initialized");
     }
 
     private isDeployExpired(): boolean {
         const currentTime = Date.now();
-        const elapsedSeconds = (currentTime - this.startSubmissionTime) / 1000;
-
-        return elapsedSeconds >= this.config.deployValiditySeconds;
+        const elapsedSeconds = currentTime - this.startSubmissionTime;
+        return elapsedSeconds >= this.config.deployValiditySeconds * 1000;
     }
 
     private sleep(sec: number): Promise<void> {
@@ -102,7 +104,6 @@ export default class DeployResubmitter {
         phloLimit?: number
     ): Promise<ResubmitResult> {
         let deployResult: ResubmitResult = { success: false };
-        this.startSubmissionTime = Date.now();
 
         while (
             !this.isDeployExpired() &&
@@ -176,6 +177,8 @@ export default class DeployResubmitter {
         privateKey: string,
         phloLimit?: number
     ): Promise<ResubmitResult> {
+        console.log('DeployResubmitter: starting deploy submission with resubmission logic');
+        this.startSubmissionTime = Date.now();
         let deployResult: ResubmitResult = { success: false };
 
         // 1.1: Try deploying with retries to first node if `useRandomNode` is false
@@ -199,11 +202,13 @@ export default class DeployResubmitter {
 
         if (!deployResult.success) 
             return deployResult;
-        
+
+        console.log(`DeployResubmitter: deploy submitted successfully with ID: ${deployResult.deployId}. Starting to poll for status...`);
 
         // 2: Poll for deploy status
         const pollResult = await this.pollDeployStatus(deployResult.deployId!);   
-        
+
+        console.log(`DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`);
         return pollResult;
     }
 }
