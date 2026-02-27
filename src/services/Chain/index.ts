@@ -44,6 +44,7 @@ export const signDeploy = (deployData: any, privateKey: string): any => {
 
     return {
         data: {
+            term: deployData.term,
             timestamp: deployData.timestamp,
             phloPrice: deployData.phloPrice,
             phloLimit: deployData.phloLimit,
@@ -199,7 +200,7 @@ export default class RChainService {
                 term: rholangCode,
                 phloLimit,
                 phloPrice: 1,
-                validAfterBlockNumber: latestBlockNumber,
+                validAfterBlockNumber: latestBlockNumber - 1,
                 timestamp: Date.now(),
                 shardId: "root",
             };
@@ -211,7 +212,8 @@ export default class RChainService {
             console.log("Signed deploy:", signedDeploy);
             console.log("Web deploy:", JSON.stringify(signedDeploy, null, 2));
 
-            //TODO Error handling and result parsing?
+            // TODO Error handling and result parsing?
+            // NOTE: We can improve it via force pushing to the node (deploy+propose)
             const result = await this.gateway.submitDeploy(signedDeploy);
 
             console.log("Deploy result:", result);

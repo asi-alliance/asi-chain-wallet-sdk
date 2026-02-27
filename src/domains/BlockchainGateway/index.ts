@@ -102,10 +102,10 @@ export default class BlockchainGateway {
     public async submitDeploy(
         deployData: DeployData,
     ): Promise<DeploySubmitResult> {
-        return await this.validatorClient.post("/deploy", deployData, {
+        return await this.validatorClient.post("/api/deploy", deployData, {
             headers: {
-                "Content-Type": "text/plain",
-            },
+                'Content-Type': 'application/json'
+            }
         });
     }
 

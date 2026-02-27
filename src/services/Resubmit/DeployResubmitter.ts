@@ -134,6 +134,8 @@ export default class DeployResubmitter {
     }
 
     private async pollDeployStatus(deployId: string): Promise<ResubmitResult> {
+        let last_error: any;
+
         while (!this.isDeployExpired()) {
             const checkDeployResult: DeployStatusResult = await BlockchainGateway.getInstance().getDeployStatus(deployId);
             const deployStatus: DeployStatus = checkDeployResult.status;
@@ -150,10 +152,19 @@ export default class DeployResubmitter {
                     message: errorMessage,
                 };
 
-                return { success: false, deployStatus, error: { blockchainError } }
+                if(this.errorHandler.isDeploymentErrorFatal(errorType) && !errorMessage.includes("Bad Request")) 
+                    return { 
+                        success: false, 
+                        deployStatus: DeployStatus.CHECK_ERROR, 
+                        error: { blockchainError }
+                    };
+                    
+                last_error = blockchainError;  
             } 
+
+            console.log("DeployResubmitter.pollDeployStatus: current deploy status:", deployStatus);
             
-            if (deployStatus !== DeployStatus.DEPLOYING)                  // if included in block or finalized 
+            if (deployStatus == DeployStatus.INCLUDED_IN_BLOCK || deployStatus == DeployStatus.FINALIZED)  
                 return { success: true, deployStatus: checkDeployResult.status };
 
             await this.sleep(this.config.pollingIntervalSeconds);
@@ -161,8 +172,8 @@ export default class DeployResubmitter {
 
         return { 
             success: false, 
-            deployStatus: DeployStatus.DEPLOYING, 
-            error: { exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT } 
+            deployStatus: last_error ? DeployStatus.CHECK_ERROR : DeployStatus.DEPLOYING,
+            error: { ...last_error, exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT } 
         };
     }
 
