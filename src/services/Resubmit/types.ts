@@ -4,7 +4,7 @@ import {
     RecoverableDeployErrors,
     DeploymentErrorHandler,
 } from "@domains/Error";
-import BlockchainGateway, { DeployStatusResult, DeployStatus }from "@domains/BlockchainGateway";
+import BlockchainGateway, {type DeployStatusResult, DeployStatus } from '@domains/BlockchainGateway';
 
 export { 
     DeployStatus,

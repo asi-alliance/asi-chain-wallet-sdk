@@ -4,10 +4,10 @@ import {
     DeploymentErrorHandler,
     NodeProvider,
     FatalDeployErrors,
-    DeployStatusResult,
-    DeployStatus,
+    NodeUrl,
     BlockchainGateway,
-    NodeUrl
+    DeployStatusResult,
+    DeployStatus
 } from "./types";
 import NodeManager from "./NodeManager";
 import RChainService from "@services/Chain";
@@ -168,7 +168,8 @@ export default class DeployResubmitter {
     /**
 
      * Main resubmit function
-     * Executes the complete transaction resubmit algorithm 
+     * Executes the complete resubmit algorithm for deploy
+     * NOT FOR "READ-ONLY" DEPLOYS (exploratory deploys)
      */
     public async resubmit(
         rholangCode: string,

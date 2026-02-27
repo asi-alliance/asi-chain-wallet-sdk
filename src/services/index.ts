@@ -5,6 +5,7 @@ export * from "./Wallets";
 export * from "./Mnemonic";
 export * from "./KeysManager";
 export * from "./KeyDerivation";
+export * from "./Resubmit";    
 
 export { default as KeyDerivationService } from "./KeyDerivation";
 export { default as BinaryWriter } from "./BinaryWriter";
@@ -14,3 +15,4 @@ export { default as WalletsService } from "./Wallets";
 export { default as CryptoService } from "./Crypto";
 export { default as ChainService } from "./Chain";
 export { default as FeeService } from "./Fee";
+export { default as DeployResubmitter } from "./Resubmit";
