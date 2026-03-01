@@ -1,0 +1,16 @@
+name: Sonar Analysis Workflow
+
+on:
+  push:
+    branches:
+      - master
+      - development
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+  workflow_dispatch:
+
+jobs:
+  sonar:
+    uses: asi-alliance/security-workflows/.github/workflows/sonar.yml@main
+    secrets: inherit
