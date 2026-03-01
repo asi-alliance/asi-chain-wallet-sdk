@@ -3,7 +3,7 @@ name: Sonar Analysis Workflow
 on:
   push:
     branches:
-      - master
+      - main
       - development
   pull_request:
     types: [opened, synchronize, reopened]
