@@ -26,12 +26,12 @@ export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
     phloPrice: 1,
 
     useRandomNode: true,
-    deployValiditySeconds: 60,
+    deployValiditySeconds: 80,
     nodeSelectionAttempts: 3,
     deployRetries: 3,
       
     deployIntervalSeconds: 5,
-    pollingIntervalSeconds: 2,
+    pollingIntervalSeconds: 3,
 };
 
 

@@ -123,6 +123,7 @@ export default class NodeManager implements NodeProvider {
 
         while (this.retriesLeft > 0) {
             const nodeUrl = this.getRandomAvailableNodeUrl();
+            console.log(`NodeManager.connectActiveRandomNode: Attempting to connect to node ${nodeUrl}. Retries left: ${this.retriesLeft}`);
 
             if(!nodeUrl) 
                 continue;

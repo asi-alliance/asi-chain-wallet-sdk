@@ -91,8 +91,6 @@ export default class RChainService {
     private readonly gateway: BlockchainGateway;
 
     constructor(config?: RChainServiceConfig) {
-        console.log(config, BlockchainGateway.isInitialized());
-        
         if(BlockchainGateway.isInitialized()) {
             this.gateway = BlockchainGateway.getInstance();
             return;
@@ -208,15 +206,15 @@ export default class RChainService {
             // TODO to signer | refactor signing procedure
             const signedDeploy = signDeploy(deployData, privateKey);
 
-            console.log("Deploy data:", deployData);
-            console.log("Signed deploy:", signedDeploy);
-            console.log("Web deploy:", JSON.stringify(signedDeploy, null, 2));
+            //console.log("Deploy data:", deployData);
+            //console.log("Signed deploy:", signedDeploy);
+            console.log("RChainService.sendDeploy: Built deploy:", JSON.stringify(signedDeploy, null, 2));
 
             // TODO Error handling and result parsing?
             // NOTE: We can improve it via force pushing to the node (deploy+propose)
             const result = await this.gateway.submitDeploy(signedDeploy);
 
-            console.log("Deploy result:", result);
+            console.log("RChainService.sendDeploy: Deploy result:", result);
 
             if (typeof result === "string") {
                 const deployIdMatch = result.match(
@@ -230,7 +228,7 @@ export default class RChainService {
 
             return result.signature || result.deployId || result;
         } catch (error: any) {
-            console.error("Deploy failed:", error);
+            console.error("RChainService.sendDeploy: Deploy failed:", error);
             this.specifyRNodeError(error);
         }
     }
