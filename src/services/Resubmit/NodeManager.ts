@@ -46,10 +46,10 @@ export default class NodeManager implements NodeProvider {
     }
 
     private async connectNode(nodeUrl: NodeUrl): Promise<void> {
-        if(BlockchainGateway.getValidatorClientUrl() !== nodeUrl) 
-            BlockchainGateway.initValidator({ baseUrl: nodeUrl });
+        if(BlockchainGateway.getInstance().getValidatorClientUrl() !== nodeUrl) 
+            BlockchainGateway.getInstance().changeValidator({ baseUrl: nodeUrl });
 
-        const isValidatorActive = await BlockchainGateway.isValidatorActive();
+        const isValidatorActive = await BlockchainGateway.getInstance().isValidatorActive();
 
         if(!isValidatorActive) {
             this.deactivateNode(nodeUrl);

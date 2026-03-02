@@ -50,26 +50,14 @@ export default class BlockchainGateway {
         return new AxiosHttpClient(axiosInstance);
     }
 
-    public static initValidator(config: GatewayClientConfig): BlockchainGateway {
-        if (!BlockchainGateway.isInitialized()) {
-            throw new Error (
-                "BlockchainGateway.initValidator: Call BlockchainGateway.init() first to initialize the gateway instance"
-            );
-        }
-
-        BlockchainGateway.instance.validatorClient = this.createHttpClient(config);
-        return BlockchainGateway.instance;
+    public changeValidator(config: GatewayClientConfig): BlockchainGateway {
+        this.validatorClient = BlockchainGateway.createHttpClient(config);
+        return this;
     }
     
-    public static initIndexer(config: GatewayClientConfig): BlockchainGateway {
-        if (!BlockchainGateway.isInitialized()) {
-            throw new Error (
-                "BlockchainGateway.initIndexer: Call BlockchainGateway.init() first to initialize the gateway instance"
-            );
-        }
-
-        this.instance.indexerClient = this.createHttpClient(config);
-        return BlockchainGateway.instance;
+    public changeIndexer(config: GatewayClientConfig): BlockchainGateway {
+        this.indexerClient = BlockchainGateway.createHttpClient(config);
+        return this;
     }
 
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
@@ -94,8 +82,8 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
 
-    public static getValidatorClientUrl(): string {
-        return BlockchainGateway.instance.validatorClient.getBaseUrl() ?? "";
+    public getValidatorClientUrl(): string {
+        return this.validatorClient.getBaseUrl() ?? "";
     }
 
     // TODO handling with parseDeploymentError
@@ -163,9 +151,9 @@ export default class BlockchainGateway {
         }
     }
    
-    public static async isValidatorActive(): Promise<boolean> {
+    public async isValidatorActive(): Promise<boolean> {
         try {
-            await BlockchainGateway.instance.validatorClient.get(`/status`);
+            await this.validatorClient.get(`/status`);
             return true;
         } catch (error) {
             console.error('BlockchainGateway.isValidatorActive: Node health check failed:', error);

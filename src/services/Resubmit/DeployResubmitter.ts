@@ -152,6 +152,7 @@ export default class DeployResubmitter {
                     message: errorMessage,
                 };
 
+                // "Bad Request" isn't fatal for polling, deploy can be included in block later
                 if(this.errorHandler.isDeploymentErrorFatal(errorType) && !errorMessage.includes("Bad Request")) 
                     return { 
                         success: false, 
