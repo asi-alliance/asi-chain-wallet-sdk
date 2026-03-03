@@ -123,11 +123,9 @@ export default class RChainService {
             const result = await this.gateway.submitExploratoryDeploy(rholangCode);
             return result.expr;
         } catch (error: any) {
-            if (error.message.includes("Network Error")) {
-                console.error(
-                    "Make sure your Rchain node is running and accessible",
-                );
-            }
+            const errorMessage = "RChainService.exploreDeployData:" + (error as Error).message;
+            console.error(errorMessage);
+            throw new Error(errorMessage);
         }
     }
 
@@ -210,10 +208,7 @@ export default class RChainService {
             //console.log("Signed deploy:", signedDeploy);
             console.log("RChainService.sendDeploy: Built deploy:", JSON.stringify(signedDeploy, null, 2));
 
-            // TODO Error handling and result parsing?
-            // NOTE: We can improve it via force pushing to the node (deploy+propose)
             const result = await this.gateway.submitDeploy(signedDeploy);
-
             console.log("RChainService.sendDeploy: Deploy result:", result);
 
             if (typeof result === "string") {
@@ -228,24 +223,9 @@ export default class RChainService {
 
             return result.signature || result.deployId || result;
         } catch (error: any) {
-            console.error("RChainService.sendDeploy: Deploy failed:", error);
-            this.specifyRNodeError(error);
+            const errorMessage = "RChainService.sendDeploy:" + (error as Error).message;
+            console.error(errorMessage);
+            throw new Error(errorMessage);
         }
-    }
-
-    private specifyRNodeError(error: any) {
-        if (error.response) {
-            throw new Error(
-                `RNode API Error: ${
-                    error.response.status
-                } - ${JSON.stringify(error.response.data)}`,
-            );
-        }
-
-        if (error.request) {
-            throw new Error(`Network Error: Unable to connect to Node`);
-        }
-
-        throw new Error(`Request Error: ${error.message}`);
     }
 }
