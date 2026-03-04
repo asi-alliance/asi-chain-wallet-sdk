@@ -1,6 +1,6 @@
 import MnemonicService from "@services/Mnemonic";
 import KeyDerivationService from "@services/KeyDerivation";
-import KeysService, { type KeyPair } from "@services/KeysService";
+import KeysManager, { type KeyPair } from "@services/KeysManager";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "@utils/constants";
 import { decodeBase16, encodeBase58 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
@@ -25,9 +25,9 @@ export default class WalletsService {
         let keyPair: KeyPair;
 
         if (!privateKey) {
-            keyPair = KeysService.generateKeyPair();
+            keyPair = KeysManager.generateKeyPair();
         } else {
-            keyPair = KeysService.getKeyPairFromPrivateKey(privateKey);
+            keyPair = KeysManager.getKeyPairFromPrivateKey(privateKey);
         }
 
         const address: string = this.deriveAddressFromPublicKey(
@@ -68,7 +68,7 @@ export default class WalletsService {
 
     public static deriveAddressFromPrivateKey(privateKey: string): Address {
         const keyPair: KeyPair =
-            KeysService.getKeyPairFromPrivateKey(privateKey);
+            KeysManager.getKeyPairFromPrivateKey(privateKey);
 
         return this.deriveAddressFromPublicKey(keyPair.publicKey);
     }
