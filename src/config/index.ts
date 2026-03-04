@@ -41,5 +41,3 @@ export {
     MAX_WALLETS_PER_ACCOUNT,
     DEFAULT_PHLO_LIMIT,
 };
-
-export type { ResubmitConfig };

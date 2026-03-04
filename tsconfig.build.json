@@ -6,7 +6,6 @@
         "moduleResolution": "Node",
         "outDir": "./dist",
         "declaration": true,
-        "declarationDir": "./dist",
         "emitDeclarationOnly": false,
         "isolatedModules": false,
         "strict": true,

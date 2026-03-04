@@ -1,11 +1,11 @@
 import path from "path";
 import react from "@vitejs/plugin-react";
-// import wasm from "vite-plugin-wasm";
+import wasm from "vite-plugin-wasm";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-    plugins: [react(), nodePolyfills()],
+    plugins: [react(), nodePolyfills(), wasm()],
     resolve: {
         alias: {
             "@api": path.resolve(__dirname, "./src/api"),
@@ -20,7 +20,7 @@ export default defineConfig({
             "@utils": path.resolve(__dirname, "./src/utils"),
             "@data": path.resolve(__dirname, "./src/data"),
             "@store": path.resolve(__dirname, "./src/store"),
-            "asi-wallet-sdk": path.resolve(__dirname, "../dist"),
+            "asi-wallet-sdk": path.resolve(__dirname, "../dist/index.esm.js"),
         }
     },
 });
