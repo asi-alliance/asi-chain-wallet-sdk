@@ -12,14 +12,14 @@ export interface CreateWalletOptions {
 }
 export interface WalletMeta {
     address: string;
-    privateKey: string;
-    publicKey?: string;
+    privateKey: Uint8Array;
+    publicKey?: Uint8Array;
     mnemonic?: string;
 }
 
 export default class WalletsService {
     public static createWallet(
-        privateKey?: string,
+        privateKey?: Uint8Array,
         options?: CreateWalletOptions
     ): WalletMeta {
         let keyPair: KeyPair;
@@ -66,17 +66,16 @@ export default class WalletsService {
         return { ...this.createWallet(privateKey), mnemonic };
     }
 
-    public static deriveAddressFromPrivateKey(privateKey: string): Address {
+    public static deriveAddressFromPrivateKey(privateKey: Uint8Array): Address {
         const keyPair: KeyPair =
             KeysManager.getKeyPairFromPrivateKey(privateKey);
 
         return this.deriveAddressFromPublicKey(keyPair.publicKey);
     }
 
-    public static deriveAddressFromPublicKey(publicKey: string): Address {
-        const publicKeyBytes: Uint8Array = decodeBase16(publicKey);
+    public static deriveAddressFromPublicKey(publicKey: Uint8Array): Address {
 
-        const hash: string = keccak256(publicKeyBytes.slice(1));
+        const hash: string = keccak256(publicKey.slice(1));
 
         const addressBase: Uint8Array = decodeBase16(hash.slice(-40));
 

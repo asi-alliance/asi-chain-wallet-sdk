@@ -18,14 +18,14 @@ export default class KeyDerivationService {
     public static derivePrivateKey(
         masterNode: bip32.BIP32Interface,
         path: string
-    ): string {
+    ): Uint8Array {
         const node = masterNode.derivePath(path);
 
         if (!node.privateKey) {
             throw new Error("No private key at derived node");
         }
 
-        return node.privateKey.toString("hex");
+        return new Uint8Array(node.privateKey);
     }
 
     public static async mnemonicToSeed(

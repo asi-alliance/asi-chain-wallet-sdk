@@ -1,19 +1,18 @@
 import BinaryWriter from "@services/BinaryWriter";
+import KeysManager from "@services/KeysManager";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
 import { AssetId } from "@domains/Asset";
 import BlockchainGateway from "@/domains/BlockchainGateway";
 import { blake2bHex } from "blakejs";
-import { ec as EC } from "elliptic";
 import {
     createCheckBalanceDeploy,
     createTransferDeploy,
 } from "../../domains/Deploy/factory";
 import { INVALID_BLOCK_NUMBER } from "@/utils";
 
-// to Signer
-const secp256k1 = new EC("secp256k1");
+import { sign, verify, utils, getPublicKey } from "@noble/secp256k1";
 
 export interface DeployData {
     term: string;
@@ -28,19 +27,16 @@ export interface DeployData {
 // const AssetsCache: Map<Address, Assets> = new Map();
 
 // to Signer
-export const signDeploy = (deployData: any, privateKey: string): any => {
-    const keyPair = secp256k1.keyFromPrivate(privateKey, "hex");
+export const signDeploy = async (deployData: any, privateKey: Uint8Array): Promise<any> => {
+    const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
 
     const deploySerialized = deployDataProtobufSerialize(deployData);
 
     const hashed = blake2bHex(deploySerialized, undefined, 32);
     const hashBytes = decodeBase16(hashed);
+    const suitableBytes = Uint8Array.from(Buffer.from(hashed, "hex"));;
 
-    const sig = keyPair.sign(Array.from(hashBytes), { canonical: true });
-    const sigDER = sig.toDER();
-
-    const publicKeyArray = keyPair.getPublic("array");
-    const publicKeyBytes = new Uint8Array(publicKeyArray);
+    const signature = await sign(suitableBytes, privateKey);
 
     return {
         data: {
@@ -51,8 +47,8 @@ export const signDeploy = (deployData: any, privateKey: string): any => {
             validAfterBlockNumber: deployData.validAfterBlockNumber,
             shardId: deployData.shardId,
         },
-        deployer: encodeBase16(publicKeyBytes),
-        signature: encodeBase16(new Uint8Array(sigDER)),
+        deployer: encodeBase16(publicKey),
+        signature: encodeBase16(signature),
         sigAlgorithm: "secp256k1",
     };
 };
@@ -169,8 +165,10 @@ export default class RChainService {
         fromAddress: string,
         toAddress: string,
         amount: bigint,
-        privateKey: string,
+        privateKey: Uint8Array,
     ) {
+        console.log("privateKey", privateKey);
+
         const transferRho = createTransferDeploy(
             fromAddress,
             toAddress,
@@ -182,7 +180,7 @@ export default class RChainService {
 
     async sendDeploy(
         rholangCode: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
@@ -202,7 +200,7 @@ export default class RChainService {
             };
 
             // TODO to signer | refactor signing procedure
-            const signedDeploy = signDeploy(deployData, privateKey);
+            const signedDeploy = await signDeploy(deployData, privateKey);
 
             //console.log("Deploy data:", deployData);
             //console.log("Signed deploy:", signedDeploy);

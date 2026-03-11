@@ -47,7 +47,7 @@ export default class DeployResubmitter {
 
     private async retryDeployToOneNode(
         rholangCode: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         phloLimit?: number,
     ): Promise<ResubmitResult> {
         let deployRetries = this.config.deployRetries;
@@ -100,7 +100,7 @@ export default class DeployResubmitter {
 
     private async retryDeployToRandomNodes(
         rholangCode: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         phloLimit?: number
     ): Promise<ResubmitResult> {
         let deployResult: ResubmitResult = { success: false };
@@ -186,7 +186,7 @@ export default class DeployResubmitter {
      */
     public async resubmit(
         rholangCode: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         phloLimit?: number
     ): Promise<ResubmitResult> {
         console.log('DeployResubmitter: starting deploy submission with resubmission logic');

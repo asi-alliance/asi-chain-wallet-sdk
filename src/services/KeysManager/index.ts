@@ -1,33 +1,31 @@
-import { ec as EC } from "elliptic";
-
-const secp256k1 = new EC("secp256k1");
+import { utils, getPublicKey } from "@noble/secp256k1";
 
 export interface KeyPair {
-    publicKey: string;
-    privateKey: string;
+    privateKey: Uint8Array;
+    publicKey: Uint8Array;
 }
 
 export default class KeysManager {
     public static generateKeyPair(): KeyPair {
-        const keyPair: EC.KeyPair = secp256k1.genKeyPair();
+        const privateKey = utils.randomBytes(32);
+        const publicKey = getPublicKey(privateKey);
 
-        return this.extractKeys(keyPair);
+        return { privateKey, publicKey };
     }
 
-    public static getKeyPairFromPrivateKey(privateKey: string) {
-        const keyPair: EC.KeyPair = secp256k1.keyFromPrivate(privateKey);
+    public static getKeyPairFromPrivateKey(privateKey: Uint8Array): KeyPair {
+        const publicKey: Uint8Array = getPublicKey(privateKey);
 
-        return this.extractKeys(keyPair);
+        return { privateKey, publicKey };
+    }
+
+    public static getPublicKeyFromPrivateKey(
+        privateKey: Uint8Array,
+    ): Uint8Array {
+        return getPublicKey(privateKey);
     }
 
     public static generateMpcKeyPair() {
         throw new Error("MPC key generation is not implemented yet.");
-    }
-
-    private static extractKeys(keyPair: EC.KeyPair): KeyPair {
-        return {
-            publicKey: keyPair.getPublic("hex"),
-            privateKey: keyPair.getPrivate("hex"),
-        };
     }
 }
