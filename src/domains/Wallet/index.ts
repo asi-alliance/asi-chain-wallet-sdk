@@ -52,7 +52,7 @@ export default class Wallet {
 
     public static async fromPrivateKey(
         name: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         password: string,
         masterNodeId: string | null = null,
         index: number | null = null,
@@ -88,12 +88,29 @@ export default class Wallet {
         );
     }
 
-    public async decrypt(password: string): Promise<string> {
+    public async decrypt(password: string): Promise<Uint8Array> {
         try {
-            return await CryptoService.decryptWithPassword(
+            const decrypted = await CryptoService.decryptWithPassword(
                 this.privateKey,
                 password,
             );
+
+            console.log("decrypted", decrypted)
+
+            // JSON.parse may return an object with numeric string keys instead of an array
+            const parsed = JSON.parse(decrypted);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                // convert to sorted array of numbers
+                const values: number[] = Object.keys(parsed)
+                    .sort((a, b) => Number(a) - Number(b))
+                    .map((k) => {
+                        const v = parsed[k];
+                        const num = typeof v === "string" ? Number(v) : v;
+                        return typeof num === "number" && !isNaN(num) ? num : 0;
+                    });
+                return new Uint8Array(values);
+            }
+            return new Uint8Array(parsed);
         } catch (error: any) {
             throw new Error("Unlock Failed: " + error?.message);
         }
@@ -140,9 +157,9 @@ export default class Wallet {
     }
 
     private static async encryptPrivateKey(
-        privateKey: string,
+        privateKey: Uint8Array,
         password: string,
     ) {
-        return await CryptoService.encryptWithPassword(privateKey, password);
+        return await CryptoService.encryptWithPassword(JSON.stringify(privateKey), password);
     }
 }

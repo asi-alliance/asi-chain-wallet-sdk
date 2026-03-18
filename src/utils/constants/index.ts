@@ -1,3 +1,5 @@
+export const PRIVATE_KEY_LENGTH = 32; // bytes
+
 export const ASI_CHAIN_PREFIX = { coinId: "000000", version: "00" };
 
 export const ASI_COIN_TYPE = 60;
@@ -19,3 +21,10 @@ export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
 export const FAULT_TOLERANCE_THRESHOLD: number = 0.99;
 
 export const INVALID_BLOCK_NUMBER = -1;
+
+export const DEFAULT_BIP_44_PATH_OPTIONS = {
+    coinType: ASI_COIN_TYPE,
+    account: 0,
+    change: 0,
+    index: 0,
+}

@@ -2,6 +2,7 @@ import useLoader from "@hooks/useLoader";
 import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
+import SignerTestPage from "@pages/SignerTestPage";
 import FullscreenLoader from "@components/FullScreenLoader";
 import { Address, ChainService, EncryptedRecord, MnemonicService, Vault, Wallet } from "asi-wallet-sdk";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
@@ -41,6 +42,7 @@ if (!config) {
 const Application = (): ReactElement => {
     const { isLoading, withLoader } = useLoader();
     const [modalState, setModalState] = useState<ModalState>({ type: null });
+    const [currentPage, setCurrentPage] = useState<"wallets" | "signer">("wallets");
 
     const [vault, setVault] = useState<Vault | null>(null);
     const [isVaultConfigured, setIsVaultConfigured] = useState<boolean>(false);
@@ -329,16 +331,37 @@ const Application = (): ReactElement => {
             <ApplicationContext.Provider
                 value={{ modalState, setModalState, withLoader }}
             >
-                <WalletsPage
-                    vault={vault}
-                    removeWallet={removeWalletFromVault}
-                    createPk={openCreateKeyPairWalletModal}
-                    importPk={openImportKeyPairWalletModal}
-                    importDk={openRestoreMnemonicWalletModal}
-                    createDk={openCreateMnemonicWalletModal}
-                    deriveK={openDeriveWalletModal}
-                    chainService={chainService}
-                />
+                <nav className="app-navigation">
+                    <button
+                        className={`nav-button ${currentPage === "wallets" ? "active" : ""}`}
+                        onClick={() => setCurrentPage("wallets")}
+                    >
+                        Wallets
+                    </button>
+                    <button
+                        className={`nav-button ${currentPage === "signer" ? "active" : ""}`}
+                        onClick={() => setCurrentPage("signer")}
+                    >
+                        Signer Test
+                    </button>
+                </nav>
+
+                {currentPage === "wallets" && vault && (
+                    <WalletsPage
+                        vault={vault}
+                        removeWallet={removeWalletFromVault}
+                        createPk={openCreateKeyPairWalletModal}
+                        importPk={openImportKeyPairWalletModal}
+                        importDk={openRestoreMnemonicWalletModal}
+                        createDk={openCreateMnemonicWalletModal}
+                        deriveK={openDeriveWalletModal}
+                        chainService={chainService}
+                    />
+                )}
+
+                {currentPage === "signer" && vault && (
+                    <SignerTestPage vault={vault} />
+                )}
 
                 <ModalManager
                     currentModal={modalState.type}

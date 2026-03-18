@@ -46,10 +46,12 @@ export default class NodeManager implements NodeProvider {
     }
 
     private async connectNode(nodeUrl: NodeUrl): Promise<void> {
-        BlockchainGateway.initValidator({ baseUrl: nodeUrl });
-        const isNodeActive = await BlockchainGateway.getInstance().isNodeActive();
+        if(BlockchainGateway.getInstance().getValidatorClientUrl() !== nodeUrl) 
+            BlockchainGateway.getInstance().changeValidator({ baseUrl: nodeUrl });
 
-        if(!isNodeActive) {
+        const isValidatorActive = await BlockchainGateway.getInstance().isValidatorActive();
+
+        if(!isValidatorActive) {
             this.deactivateNode(nodeUrl);
 
             const message = `NodeManager.connectNode: Node ${nodeUrl} is not active`
@@ -121,6 +123,7 @@ export default class NodeManager implements NodeProvider {
 
         while (this.retriesLeft > 0) {
             const nodeUrl = this.getRandomAvailableNodeUrl();
+            console.log(`NodeManager.connectActiveRandomNode: Attempting to connect to node ${nodeUrl}. Retries left: ${this.retriesLeft}`);
 
             if(!nodeUrl) 
                 continue;

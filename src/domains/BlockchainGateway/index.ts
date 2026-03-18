@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from "axios";
 import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
 import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
-import { DeployData } from "@services/Chain";
+import { SignedResult } from "@domains/Signer";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",
@@ -15,26 +15,14 @@ export type DeployStatusResult =
     | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR>}
     | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
 
-//TODO specify types
-export type DeploySubmitResult = any;
-type Deploy = any;
-type Block = any;
-
-
-export enum BlockchainGatewayConfigKeys {
-    VALIDATOR = "validator",
-    INDEXER = "indexer",
-}
+type GatewayClientConfig = {
+    baseUrl: string;
+    axiosConfig?: AxiosRequestConfig;
+};
 
 export interface BlockchainGatewayConfig {
-    [BlockchainGatewayConfigKeys.VALIDATOR]: {
-        baseUrl: string;
-        axiosConfig?: AxiosRequestConfig;
-    };
-    [BlockchainGatewayConfigKeys.INDEXER]: {
-        baseUrl: string;
-        axiosConfig?: AxiosRequestConfig;
-    };
+    validator: GatewayClientConfig;
+    indexer: GatewayClientConfig;
 }
 
 export default class BlockchainGateway {
@@ -48,9 +36,7 @@ export default class BlockchainGateway {
         this.indexerClient = indexerClient;
     }
 
-    private static createHttpClient(
-        config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR] | BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]
-    ): HttpClient {
+    private static createHttpClient(config: GatewayClientConfig): HttpClient {
         const axiosInstance = axios.create({
             baseURL: config.baseUrl,
             ...config.axiosConfig,
@@ -59,43 +45,26 @@ export default class BlockchainGateway {
         return new AxiosHttpClient(axiosInstance);
     }
 
-    public static initValidator(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.VALIDATOR]): BlockchainGateway {
-        if (!BlockchainGateway.isInitialized()) {
-            throw new Error (
-                "BlockchainGateway.initValidator: Call BlockchainGateway.init() first to initialize the gateway instance"
-            );
-        }
-
-        BlockchainGateway.instance.validatorClient = this.createHttpClient(config);
-        return BlockchainGateway.instance;
+    public changeValidator(config: GatewayClientConfig): BlockchainGateway {
+        this.validatorClient = BlockchainGateway.createHttpClient(config);
+        return this;
     }
     
-    public static initIndexer(config: BlockchainGatewayConfig[BlockchainGatewayConfigKeys.INDEXER]): BlockchainGateway {
-        if (!BlockchainGateway.isInitialized()) {
-            throw new Error (
-                "BlockchainGateway.initIndexer: Call BlockchainGateway.init() first to initialize the gateway instance"
-            );
-        }
-
-        this.instance.indexerClient = this.createHttpClient(config);
-        return BlockchainGateway.instance;
+    public changeIndexer(config: GatewayClientConfig): BlockchainGateway {
+        this.indexerClient = BlockchainGateway.createHttpClient(config);
+        return this;
     }
 
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
-            this.createHttpClient(config[BlockchainGatewayConfigKeys.VALIDATOR]), 
-            this.createHttpClient(config[BlockchainGatewayConfigKeys.INDEXER])
+            this.createHttpClient(config.validator), 
+            this.createHttpClient(config.indexer)
         );
         return BlockchainGateway.instance;
     }
 
     public static isInitialized(): boolean {
-        const instance = BlockchainGateway.instance;
-        return (
-            instance !== null && 
-            instance?.validatorClient !== null && 
-            instance?.indexerClient !== null
-        );
+        return BlockchainGateway?.instance !== undefined;
     }
 
     public static getInstance(): BlockchainGateway {
@@ -108,33 +77,46 @@ export default class BlockchainGateway {
         return BlockchainGateway.instance;
     }
 
-    // TODO handling with parseDeploymentError
+    public getValidatorClientUrl(): string {
+        return this.validatorClient.getBaseUrl() ?? "";
+    }
+
     public async submitDeploy(
-        deployData: DeployData,
-    ): Promise<DeploySubmitResult> {
-        return await this.validatorClient.post("/deploy", deployData, {
-            headers: {
-                "Content-Type": "text/plain",
-            },
-        });
+        deployData: SignedResult,
+    ): Promise<any> {
+        try {           
+            return await this.validatorClient.post("/api/deploy", deployData, {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }); 
+        } catch (error) {
+            const message = "BlockchainGateway.submitDeploy: " + this.getGatewayErrorMessage(error);
+            throw new Error(message);
+        }
     }
 
     // For read-only operations
-    public async submitExploratoryDeploy(rholangCode: string): Promise<DeploySubmitResult> {
-        return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
+    public async submitExploratoryDeploy(rholangCode: string): Promise<any> {
+        try {
+            return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
+        } catch (error) {
+            const message = "BlockchainGateway.submitExploratoryDeploy: " + this.getGatewayErrorMessage(error);
+            throw new Error(message);
+        }
     }
     
-    public async getDeploy(deployHash: string): Promise<Deploy> {
+    public async getDeploy(deployHash: string): Promise<any> {
         return await this.indexerClient.get(`/api/deploy/${deployHash}`);
     }
 
-    public async isDeployFinalized(deploy: Deploy): Promise<boolean> {
+    public async isDeployFinalized(deploy: any): Promise<boolean> {
         return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
     }
 
     public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
         try {
-            let deploy: Deploy;
+            let deploy: any;
 
             deploy = await this.getDeploy(deployHash);
             if (!deploy?.blockHash) {
@@ -154,7 +136,7 @@ export default class BlockchainGateway {
         }
     }
 
-    public async getBlock(blockHash: string): Promise<Block> {
+    public async getBlock(blockHash: string): Promise<any> {
         const response = await this.indexerClient.get(
             `/api/block/${blockHash}`,
         );
@@ -173,12 +155,12 @@ export default class BlockchainGateway {
         }
     }
    
-    public async isNodeActive(): Promise<boolean> {
+    public async isValidatorActive(): Promise<boolean> {
         try {
             await this.validatorClient.get(`/status`);
             return true;
         } catch (error) {
-            console.error('BlockchainGateway.isNodeActive: Node health check failed:', error);
+            console.error('BlockchainGateway.isValidatorActive: Node health check failed:', error);
             return false;
         }
     }
@@ -205,7 +187,7 @@ export default class BlockchainGateway {
         }
     }
 
-    private async getLatestBlock(): Promise<Block> {
+    private async getLatestBlock(): Promise<any> {
         const blocks = await this.indexerClient.get(`/api/blocks/1`);
         this.validateBlocksResponse(blocks);
 

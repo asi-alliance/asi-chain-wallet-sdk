@@ -3,10 +3,10 @@
         "target": "ES2020",
         "module": "ESNext",
         "moduleResolution": "Node",
+        "allowSyntheticDefaultImports": true,
         "baseUrl": ".",
         "paths": {
             "asi-wallet-sdk": ["dist"],
-            "@/*": ["src/*"],
 
             "@services/": ["src/services/"],
             "@domains/": ["src/domains/"],
