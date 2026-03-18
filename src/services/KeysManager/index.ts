@@ -25,7 +25,7 @@ export default class KeysManager {
     public static generateKeyPair(
         keyLength: number = PRIVATE_KEY_LENGTH,
     ): KeyPair {
-        if (!length || length < 0 || !Number.isInteger(length)) {
+        if (!keyLength || keyLength < 0 || !Number.isInteger(keyLength)) {
             throw new Error("PrivateKeyLength must be a positive integer");
         }
 

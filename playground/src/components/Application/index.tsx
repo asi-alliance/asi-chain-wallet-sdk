@@ -3,7 +3,14 @@ import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
 import FullscreenLoader from "@components/FullScreenLoader";
-import { Address, AssetsService, EncryptedRecord, MnemonicService, Vault, Wallet } from "asi-wallet-sdk";
+import {
+    Address,
+    AssetsService,
+    EncryptedRecord,
+    MnemonicService,
+    Vault,
+    Wallet,
+} from "asi-wallet-sdk";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { ReactElement, useEffect, useState } from "react";
 import {
@@ -38,13 +45,15 @@ const Application = (): ReactElement => {
 
     const [vault, setVault] = useState<Vault | null>(null);
     const [isVaultConfigured, setIsVaultConfigured] = useState<boolean>(false);
-    const [assetsService, setAssetsService] = useState<AssetsService | null>(null);
+    const [assetsService, setAssetsService] = useState<AssetsService | null>(
+        null,
+    );
 
     const [currentPassword, setCurrentPassword] = useState<string>("");
 
     const updateVault = (vault: Vault) => {
         setVault(
-            Object.assign(Object.create(Object.getPrototypeOf(vault)), vault)
+            Object.assign(Object.create(Object.getPrototypeOf(vault)), vault),
         );
     };
 
@@ -68,6 +77,16 @@ const Application = (): ReactElement => {
         });
     };
 
+    const openCreateSeedModal = (action: (password: string, words: 12 | 24) => void, words: 12 | 24) => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Create Password for Seed",
+                onSubmit: (password: string) => action(password, words),
+            },
+        });
+    };
+
     const unlockVault = (password: string) =>
         withLoader(async () => {
             try {
@@ -78,7 +97,7 @@ const Application = (): ReactElement => {
                 setModalState({ type: null });
             } catch {
                 alert(
-                    "Failed to unlock vault. Please check your password and try again."
+                    "Failed to unlock vault. Please check your password and try again.",
                 );
             }
         });
@@ -97,7 +116,11 @@ const Application = (): ReactElement => {
 
             vault.addWallet(wallet);
 
+            console.info("Wallet added to vault", wallet);
+            console.info("vault", vault);
+
             await saveVault(currentPassword);
+            console.info("vault after save", vault);
         });
 
     const removeWalletFromVault = (id: string) =>
@@ -140,14 +163,14 @@ const Application = (): ReactElement => {
         try {
             if (payload.mode !== "privateKey") {
                 throw new Error(
-                    "Invalid payload mode for key pair wallet creation"
+                    "Invalid payload mode for key pair wallet creation",
                 );
             }
 
             const newWallet = await Wallet.fromPrivateKey(
                 payload.name,
                 payload.privateKey,
-                payload.password
+                payload.password,
             );
 
             addWalletToVault(newWallet);
@@ -164,18 +187,23 @@ const Application = (): ReactElement => {
 
             if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
                 throw new Error(
-                    "Mnemonic words are required for mnemonic wallet"
+                    "Mnemonic words are required for mnemonic wallet",
                 );
             }
 
             try {
-                const mnemonic = MnemonicService.wordArrayToMnemonic(payload.mnemonicWords);
-                const encryptedSeed = await EncryptedRecord.createAndEncrypt(mnemonic, currentPassword);
+                const mnemonic = MnemonicService.wordArrayToMnemonic(
+                    payload.mnemonicWords,
+                );
+                const encryptedSeed = await EncryptedRecord.createAndEncrypt(
+                    mnemonic,
+                    payload.seedPassword!,
+                );
 
                 const { wallet, seedId } = await createMnemonicWallet(
                     payload.name,
                     mnemonic,
-                    payload.password
+                    payload.seedPassword,
                 );
 
                 vault.addWallet(wallet);
@@ -192,40 +220,24 @@ const Application = (): ReactElement => {
     const handleDeriveWallet = (
         name: string,
         password: string,
-        index: number
+        index: number,
+        seed: string,
     ) =>
         withLoader(async () => {
             if (!vault) return;
 
             try {
-                const seeds = vault.getSeeds();
-
-                if (seeds.length === 0) {
-                    throw new Error("No seeds available in the vault");
-                }
-
-                const seedRecord = seeds[0];
-
-                const currentSeed = await seedRecord.decrypt(currentPassword);
-
-                if (!currentSeed) {
-                    throw new Error("SeedRecord is empty");
-                }
-
-                console.log("Using seed", currentSeed);
-
-                const seedId =  keccak512(currentSeed);
+                const seedId = keccak512(seed);
 
                 const { wallet } = await deriveNextWallet(
                     seedId,
-                    currentSeed,
+                    seed,
                     name,
                     password,
-                    index
+                    index,
                 );
 
                 vault.addWallet(wallet);
-                // vault.addSeed(seedId, seedRecord);
 
                 await saveVault(currentPassword);
                 setModalState({ type: null });
@@ -234,13 +246,39 @@ const Application = (): ReactElement => {
             }
         });
 
-    const openDeriveWalletModal = (index: number) => {
+    const openDeriveWalletModal = (index: number, seed: string) => {
         setModalState({
             type: Modals.DERIVE_WALLET_MODAL,
             props: {
                 index,
-                onSubmit: handleDeriveWallet,
+                onSubmit: (name, password, idx) => handleDeriveWallet(name, password, idx, seed),
                 onClose: () => setModalState({ type: null }),
+            },
+        });
+    };
+
+    const openSeedPasswordForDerive = (index: number) => {
+        setModalState({
+            type: Modals.PASSWORD_MODAL,
+            props: {
+                title: "Enter Seed Password",
+                onSubmit: async (password: string) => {
+                    try {
+                        const seeds = vault!.getSeeds();
+                        if (seeds.length === 0) {
+                            throw new Error("No seeds available in the vault");
+                        }
+                        const seedRecord = seeds[0];
+                        const decryptedSeed = await seedRecord.decrypt(password);
+                        if (!decryptedSeed) {
+                            throw new Error("Failed to decrypt seed");
+                        }
+                        openDeriveWalletModal(index, decryptedSeed);
+                    } catch (error) {
+                        console.error("Error decrypting seed:", error);
+                        alert("Failed to decrypt seed. Please check your password.");
+                    }
+                },
             },
         });
     };
@@ -272,12 +310,12 @@ const Application = (): ReactElement => {
         });
     };
 
-    const openCreateMnemonicWalletModal = (words: 12 | 24) => {
+    const openCreateMnemonicWalletModal = (password: string, words: 12 | 24) => {
         setModalState({
             type: Modals.CREATE_WALLET_MODAL,
             props: {
                 mode: "mnemonic",
-                onSubmit: handleCreateMnemonicWallet,
+                onSubmit: (payload) => handleCreateMnemonicWallet({ ...payload, seedPassword: password }),
                 onClose: () => setModalState({ type: null }),
                 isInputMode: false,
                 title: "Create Mnemonic Wallet",
@@ -290,12 +328,12 @@ const Application = (): ReactElement => {
         });
     };
 
-    const openRestoreMnemonicWalletModal = (words: 12 | 24) => {
+    const openRestoreMnemonicWalletModal = (password: string, words: 12 | 24) => {
         setModalState({
             type: Modals.CREATE_WALLET_MODAL,
             props: {
                 mode: "mnemonic",
-                onSubmit: handleCreateMnemonicWallet,
+                onSubmit: (payload) => handleCreateMnemonicWallet({ ...payload, seedPassword: password }),
                 onClose: () => setModalState({ type: null }),
                 variant: words,
                 isInputMode: true,
@@ -327,15 +365,23 @@ const Application = (): ReactElement => {
                 value={{ modalState, setModalState, withLoader }}
             >
                 <WalletsPage
-                        vault={vault}
-                        removeWallet={removeWalletFromVault}
-                        createPk={openCreateKeyPairWalletModal}
-                        importPk={openImportKeyPairWalletModal}
-                        importDk={openRestoreMnemonicWalletModal}
-                        createDk={openCreateMnemonicWalletModal}
-                        deriveK={openDeriveWalletModal}
-                        assetsService={assetsService}
-                    />
+                    vault={vault}
+                    removeWallet={removeWalletFromVault}
+                    createPk={openCreateKeyPairWalletModal}
+                    importPk={openImportKeyPairWalletModal}
+                    importDk={(words) =>
+                        openCreateSeedModal(
+                            openRestoreMnemonicWalletModal, words
+                        )
+                    }
+                    createDk={(words) =>
+                        openCreateSeedModal(
+                            openCreateMnemonicWalletModal, words
+                        )
+                    }
+                    deriveK={openSeedPasswordForDerive}
+                    assetsService={assetsService}
+                />
 
                 <ModalManager
                     currentModal={modalState.type}

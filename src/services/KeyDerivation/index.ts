@@ -38,9 +38,13 @@ export default class KeyDerivationService {
     }
 
     public static async mnemonicToSeed(
-        mnemonicWords: string[],
+        mnemonicWords: string[] | string,
         passphrase = "",
     ): Promise<Uint8Array> {
+        if (typeof mnemonicWords === "string") {
+            return await mnemonicToSeed(mnemonicWords, passphrase);
+        }
+
         return await mnemonicToSeed(
             MnemonicService.wordArrayToMnemonic(mnemonicWords),
             passphrase,
