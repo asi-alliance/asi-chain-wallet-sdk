@@ -13,7 +13,3 @@ export interface SignedResult {
 }
 
 export type PasswordProvider = () => Promise<string>;
-
-export interface ISigner {
-    sign(request: SigningRequest, passwordProvider: PasswordProvider): Promise<SignedResult>;
-}

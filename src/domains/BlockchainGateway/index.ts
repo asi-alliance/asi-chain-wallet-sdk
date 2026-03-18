@@ -83,25 +83,50 @@ export default class BlockchainGateway {
 
     public async submitDeploy(
         deployData: SignedResult,
-    ): Promise<any> {
+    ): Promise<string | undefined> {
         try {           
-            return await this.validatorClient.post("/api/deploy", deployData, {
+            const result = await this.validatorClient.post("/api/deploy", deployData, {
                 headers: {
                     'Content-Type': 'application/json'
                 }
-            }); 
+            });
+
+            console.log("BlockchainGateway.submitDeploy: Deploy result:", result);
+
+            // Parse deploy ID from response
+            if (typeof result === "string") {
+
+                const deployIdMatch = /DeployId is:\s*([a-fA-F0-9]+)/.exec(result);
+
+                if (deployIdMatch) {
+                    return deployIdMatch[1];
+                }
+                return result;
+            }
+
+            return result.signature || result.deployId || result;
         } catch (error) {
             const message = "BlockchainGateway.submitDeploy: " + this.getGatewayErrorMessage(error);
             throw new Error(message);
         }
     }
 
-    // For read-only operations
     public async submitExploratoryDeploy(rholangCode: string): Promise<any> {
         try {
             return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
         } catch (error) {
             const message = "BlockchainGateway.submitExploratoryDeploy: " + this.getGatewayErrorMessage(error);
+            throw new Error(message);
+        }
+    }
+    
+    public async exploreDeployData(rholangCode: string): Promise<any> {
+        try {
+            const result = await this.submitExploratoryDeploy(rholangCode);
+            return result.expr;
+        } catch (error: any) {
+            const message = "BlockchainGateway.exploreDeployData: " + this.getGatewayErrorMessage(error);
+            console.error(message);
             throw new Error(message);
         }
     }

@@ -2,9 +2,8 @@ import useLoader from "@hooks/useLoader";
 import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
-import SignerTestPage from "@pages/SignerTestPage";
 import FullscreenLoader from "@components/FullScreenLoader";
-import { Address, ChainService, EncryptedRecord, MnemonicService, Vault, Wallet } from "asi-wallet-sdk";
+import { Address, AssetsService, EncryptedRecord, MnemonicService, Vault, Wallet } from "asi-wallet-sdk";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { ReactElement, useEffect, useState } from "react";
 import {
@@ -18,12 +17,6 @@ import {
 } from "./meta";
 import "./style.css";
 import { keccak512 } from "js-sha3";
-
-// 37ab5eb1e20b49ed02a33b3b2bf05eac2696140279e12ede4c3623186300a653
-// 1111dp3tKaHa1t1ix4HiFYMv5LXydjcufd4XyLLEAM3C8snWasmds
-
-// 67b89a30347d7352a1d2385de7610e9aa1a74ae82f9402dda48f4f70f44b613f
-// 1111RpAubAtDCJicMTEXXecYNVNwKtS1saNTmwRzhcg7K6rKx1Zea
 
 type ModalState = {
     type: Modals | null;
@@ -42,11 +35,10 @@ if (!config) {
 const Application = (): ReactElement => {
     const { isLoading, withLoader } = useLoader();
     const [modalState, setModalState] = useState<ModalState>({ type: null });
-    const [currentPage, setCurrentPage] = useState<"wallets" | "signer">("wallets");
 
     const [vault, setVault] = useState<Vault | null>(null);
     const [isVaultConfigured, setIsVaultConfigured] = useState<boolean>(false);
-    const [chainService, setChainService] = useState<ChainService | null>(null);
+    const [assetsService, setAssetsService] = useState<AssetsService | null>(null);
 
     const [currentPassword, setCurrentPassword] = useState<string>("");
 
@@ -131,11 +123,14 @@ const Application = (): ReactElement => {
 
             console.time("unlock");
             await vault.unlock(password);
-            console.time("unlock");
+            console.timeEnd("unlock");
 
             updateVault(vault);
         } catch (error) {
-            console.log(error);
+            console.error(error);
+            console.timeEnd("lock");
+            console.timeEnd("save");
+            console.timeEnd("unlock");
         }
     };
 
@@ -310,7 +305,7 @@ const Application = (): ReactElement => {
     };
 
     useEffect(() => {
-        withLoader(() => init(config, setVault, setChainService));
+        withLoader(() => init(config, setVault, setAssetsService));
     }, []);
 
     useEffect(() => {
@@ -331,23 +326,7 @@ const Application = (): ReactElement => {
             <ApplicationContext.Provider
                 value={{ modalState, setModalState, withLoader }}
             >
-                <nav className="app-navigation">
-                    <button
-                        className={`nav-button ${currentPage === "wallets" ? "active" : ""}`}
-                        onClick={() => setCurrentPage("wallets")}
-                    >
-                        Wallets
-                    </button>
-                    <button
-                        className={`nav-button ${currentPage === "signer" ? "active" : ""}`}
-                        onClick={() => setCurrentPage("signer")}
-                    >
-                        Signer Test
-                    </button>
-                </nav>
-
-                {currentPage === "wallets" && vault && (
-                    <WalletsPage
+                <WalletsPage
                         vault={vault}
                         removeWallet={removeWalletFromVault}
                         createPk={openCreateKeyPairWalletModal}
@@ -355,13 +334,8 @@ const Application = (): ReactElement => {
                         importDk={openRestoreMnemonicWalletModal}
                         createDk={openCreateMnemonicWalletModal}
                         deriveK={openDeriveWalletModal}
-                        chainService={chainService}
+                        assetsService={assetsService}
                     />
-                )}
-
-                {currentPage === "signer" && vault && (
-                    <SignerTestPage vault={vault} />
-                )}
 
                 <ModalManager
                     currentModal={modalState.type}

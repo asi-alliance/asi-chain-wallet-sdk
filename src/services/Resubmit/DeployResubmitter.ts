@@ -10,7 +10,6 @@ import {
     DeployStatus
 } from "./types";
 import NodeManager from "./NodeManager";
-import RChainService from "@services/Chain";
 import SignerService from "@services/Signer";
 import Wallet from "@domains/Wallet";
 import { PasswordProvider } from "@domains/Signer";
@@ -62,8 +61,8 @@ export default class DeployResubmitter {
 
         while (deployRetries > 0 && !this.isDeployExpired()) {
             try {
-                const chainService = new RChainService();
-                const latestBlockNumber = await chainService.getLatestBlockNumber();
+                const gateway = BlockchainGateway.getInstance();
+                const latestBlockNumber = await gateway.getLatestBlockNumber();
 
                 if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
                     throw new Error("DeployResubmitter.retryDeployToOneNode: Invalid block number");
@@ -78,10 +77,9 @@ export default class DeployResubmitter {
                     shardId: "root",
                 };
 
-                const signer = new SignerService();
-                const signedDeploy = await signer.sign({ wallet, data: deployData }, passwordProvider);
+                const signedDeploy = await SignerService.sign({ wallet, data: deployData }, passwordProvider);
 
-                const deployId = await chainService.sendSignedDeploy(signedDeploy);
+                const deployId = await gateway.submitDeploy(signedDeploy);
 
                 if (typeof deployId !== "string") {
                     const errorMessage = 'Invalid deploy ID received: ' + deployId;
