@@ -7,7 +7,8 @@ import {
     KeyDerivationService,
     MnemonicService,
     MnemonicStrength,
-    ChainService,
+    BlockchainGateway,
+    AssetsService,
     KeysManager,
     Wallet,
     Vault,
@@ -32,14 +33,22 @@ export type ModalProps =
     | ITransferCompletedModalProps
     | undefined;
 
-export const init = (config, setVault, setChainService) => {
+export const init = (config, setVault, setAssetsService) => {
     try {
-        const chainService = new ChainService({
-            validatorURL: config.ValidatorURL,
-            readOnlyURL: config.ReadOnlyURL,
+        BlockchainGateway.init({
+            validator: {
+                baseUrl: config.ValidatorURL,
+                axiosConfig: {},
+            },
+            indexer: {
+                baseUrl: config.ReadOnlyURL,
+                axiosConfig: {},
+            },
         });
 
-        console.log("Initialized Chain service", chainService);
+        const assetsService = new AssetsService();
+
+        console.log("Initialized Assets service", assetsService);
 
         console.log("Found keys", Vault.getSavedVaultKeys());
 
@@ -50,7 +59,7 @@ export const init = (config, setVault, setChainService) => {
         console.log("Vault instance", vault);
 
         setVault(vault);
-        setChainService(chainService);
+        setAssetsService(assetsService);
     } catch (error) {
         alert(error?.message || "Error during initialization");
     }
