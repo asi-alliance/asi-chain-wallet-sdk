@@ -3,7 +3,7 @@ import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { isAddress } from "@utils/validators";
 
-// const AssetsCache: Map<Address, Assets> = new Map();
+// TODO const AssetsCache: Map<Address, Assets> = new Map();
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;

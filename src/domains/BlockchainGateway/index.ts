@@ -95,9 +95,9 @@ export default class BlockchainGateway {
 
             // Parse deploy ID from response
             if (typeof result === "string") {
-                const deployIdMatch = result.match(
-                    /DeployId is:\s*([a-fA-F0-9]+)/,
-                );
+
+                const deployIdMatch = /DeployId is:\s*([a-fA-F0-9]+)/.exec(result);
+
                 if (deployIdMatch) {
                     return deployIdMatch[1];
                 }
