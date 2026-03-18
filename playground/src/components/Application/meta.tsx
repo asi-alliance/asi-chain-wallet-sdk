@@ -77,9 +77,15 @@ const wordsCountToMnemonicStrength = (words: 12 | 24) => {
 export const createMnemonicWallet = async (
     name: string,
     mnemonic: string,
-    password: string
+    password: string,
 ) => {
-    return await deriveNextWallet(keccak512(mnemonic), mnemonic, name, password, 0);
+    return await deriveNextWallet(
+        keccak512(mnemonic),
+        mnemonic,
+        name,
+        password,
+        0,
+    );
 };
 
 export const deriveNextWallet = async (
@@ -87,16 +93,16 @@ export const deriveNextWallet = async (
     mnemonic: string,
     name: string,
     password: string,
-    lastIndex: number
+    lastIndex: number,
 ) => {
     const nextIndex: number = lastIndex++;
 
-    const path: string = KeyDerivationService.buildBip44Path(
-        60,
-        0,
-        0,
-        nextIndex
-    );
+    const path: string = KeyDerivationService.buildBip44Path({
+        coinType: 60,
+        account: 0,
+        change: 0,
+        index: nextIndex,
+    });
 
     const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
     const masterNode = KeyDerivationService.seedToMasterNode(seed);
@@ -114,14 +120,14 @@ export const deriveNextWallet = async (
             privateKey,
             password,
             seedId,
-            nextIndex
+            nextIndex,
         ),
     };
 };
 
 export const createInitialMnemonic = (variant) => {
     return MnemonicService.generateMnemonic(
-        wordsCountToMnemonicStrength(variant)
+        wordsCountToMnemonicStrength(variant),
     );
 };
 

@@ -103,8 +103,9 @@ export default class Vault {
             password
         );
 
-        this.isLocked = true;
         this.wallets = new Map();
+        this.seeds = new Map();
+        this.isLocked = true;
     }
 
     public async unlock(password: string): Promise<void> {

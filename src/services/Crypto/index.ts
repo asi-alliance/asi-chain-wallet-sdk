@@ -89,7 +89,7 @@ export default class CryptoService {
         return new TextDecoder().decode(decrypted);
     }
 
-    private static async deriveKey(
+    public static async deriveKey(
         password: string,
         salt: Uint8Array,
     ): Promise<CryptoKey> {
