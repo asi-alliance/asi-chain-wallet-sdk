@@ -1,84 +1,21 @@
-import BinaryWriter from "@services/BinaryWriter";
+import Wallet from "@domains/Wallet";
+import SignerService from "@services/Signer";
+import BlockchainGateway from "@domains/BlockchainGateway";
+import { INVALID_BLOCK_NUMBER } from "@utils/constants";
+import { PasswordProvider, SignedResult } from "@domains/Signer";
 import { DEFAULT_PHLO_LIMIT } from "@config";
-import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
 import { AssetId } from "@domains/Asset";
-import BlockchainGateway from "@/domains/BlockchainGateway";
-import { blake2bHex } from "blakejs";
-import { ec as EC } from "elliptic";
 import {
     createCheckBalanceDeploy,
     createTransferDeploy,
-} from "../../domains/Deploy/factory";
-import { INVALID_BLOCK_NUMBER } from "@/utils";
-
-// to Signer
-const secp256k1 = new EC("secp256k1");
-
-export interface DeployData {
-    term: string;
-    phloLimit: number;
-    phloPrice: number;
-    validAfterBlockNumber: number;
-    timestamp: number;
-    shardId?: string;
-}
+} from "@domains/Deploy/factory";
+import { DeployData } from "@domains/Deploy";
 
 // to Wallet
 // const AssetsCache: Map<Address, Assets> = new Map();
 
 // to Signer
-export const signDeploy = (deployData: any, privateKey: string): any => {
-    const keyPair = secp256k1.keyFromPrivate(privateKey, "hex");
-
-    const deploySerialized = deployDataProtobufSerialize(deployData);
-
-    const hashed = blake2bHex(deploySerialized, undefined, 32);
-    const hashBytes = decodeBase16(hashed);
-
-    const sig = keyPair.sign(Array.from(hashBytes), { canonical: true });
-    const sigDER = sig.toDER();
-
-    const publicKeyArray = keyPair.getPublic("array");
-    const publicKeyBytes = new Uint8Array(publicKeyArray);
-
-    return {
-        data: {
-            term: deployData.term,
-            timestamp: deployData.timestamp,
-            phloPrice: deployData.phloPrice,
-            phloLimit: deployData.phloLimit,
-            validAfterBlockNumber: deployData.validAfterBlockNumber,
-            shardId: deployData.shardId,
-        },
-        deployer: encodeBase16(publicKeyBytes),
-        signature: encodeBase16(new Uint8Array(sigDER)),
-        sigAlgorithm: "secp256k1",
-    };
-};
-
-// To DeployManager | Signer
-const deployDataProtobufSerialize = (deployData: any): Uint8Array => {
-    const {
-        term,
-        timestamp,
-        phloPrice,
-        phloLimit,
-        validAfterBlockNumber,
-        shardId = "",
-    } = deployData;
-
-    const writer = new BinaryWriter();
-
-    writer.writeString(2, term);
-    writer.writeInt64(3, timestamp);
-    writer.writeInt64(7, phloPrice);
-    writer.writeInt64(8, phloLimit);
-    writer.writeInt64(10, validAfterBlockNumber);
-    writer.writeString(11, shardId);
-
-    return writer.getResultBuffer();
-};
 export interface RChainServiceConfig {
     // nodeURL: string;
     // shardID: string;
@@ -89,8 +26,11 @@ export interface RChainServiceConfig {
 
 export default class RChainService {
     private readonly gateway: BlockchainGateway;
+    private readonly signer: SignerService;
 
     constructor(config?: RChainServiceConfig) {
+        this.signer = new SignerService();
+
         if(BlockchainGateway.isInitialized()) {
             this.gateway = BlockchainGateway.getInstance();
             return;
@@ -169,7 +109,8 @@ export default class RChainService {
         fromAddress: string,
         toAddress: string,
         amount: bigint,
-        privateKey: string,
+        wallet: Wallet,
+        passwordProvider: PasswordProvider,
     ) {
         const transferRho = createTransferDeploy(
             fromAddress,
@@ -177,12 +118,13 @@ export default class RChainService {
             amount,
         );
 
-        return await this.sendDeploy(transferRho, privateKey);
+        return await this.sendDeploy(transferRho, wallet, passwordProvider);
     }
 
     async sendDeploy(
         rholangCode: string,
-        privateKey: string,
+        wallet: Wallet,
+        passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
@@ -201,11 +143,8 @@ export default class RChainService {
                 shardId: "root",
             };
 
-            // TODO to signer | refactor signing procedure
-            const signedDeploy = signDeploy(deployData, privateKey);
+            const signedDeploy = await this.signer.sign({wallet, data: deployData}, passwordProvider);
 
-            //console.log("Deploy data:", deployData);
-            //console.log("Signed deploy:", signedDeploy);
             console.log("RChainService.sendDeploy: Built deploy:", JSON.stringify(signedDeploy, null, 2));
 
             const result = await this.gateway.submitDeploy(signedDeploy);
@@ -224,6 +163,35 @@ export default class RChainService {
             return result.signature || result.deployId || result;
         } catch (error: any) {
             const errorMessage = "RChainService.sendDeploy:" + (error as Error).message;
+            console.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+    }
+
+    public async getLatestBlockNumber(): Promise<number> {
+        return this.gateway.getLatestBlockNumber();
+    }
+
+    async sendSignedDeploy(signedDeploy: SignedResult): Promise<string | undefined> {
+        try {
+            console.log("RChainService.sendSignedDeploy: Built deploy:", JSON.stringify(signedDeploy, null, 2));
+
+            const result = await this.gateway.submitDeploy(signedDeploy);
+            console.log("RChainService.sendSignedDeploy: Deploy result:", result);
+
+            if (typeof result === "string") {
+                const deployIdMatch = result.match(
+                    /DeployId is:\s*([a-fA-F0-9]+)/,
+                );
+                if (deployIdMatch) {
+                    return deployIdMatch[1];
+                }
+                return result;
+            }
+
+            return result.signature || result.deployId || result;
+        } catch (error: any) {
+            const errorMessage = "RChainService.sendSignedDeploy:" + (error as Error).message;
             console.error(errorMessage);
             throw new Error(errorMessage);
         }

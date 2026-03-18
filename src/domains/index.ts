@@ -1,6 +1,7 @@
 export * from "./Asset";
 export * from "./Vault";
 export * from "./Wallet";
+export * from "./Signer";
 // export * from "./EncryptedRecord";
 export * from "./HttpClient";
 export * from "./BrowserStorage";

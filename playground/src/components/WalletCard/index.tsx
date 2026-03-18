@@ -91,7 +91,8 @@ const WalletCard = ({
                     address,
                     toAddress,
                     amount,
-                    await wallet.decrypt(password)
+                    wallet,
+                    () => Promise.resolve(password)
                 );
 
                 console.log("Transfer successful", data);

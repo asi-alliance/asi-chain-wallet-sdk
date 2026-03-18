@@ -228,14 +228,14 @@ async getASIBalance(address: Address): Promise<bigint>
 Runs an `explore-deploy` with Rholang that queries ASI vault balance for `address`. Parses response and returns `BigInt` balance or `0` on errors.
 
 ```ts
-async transfer(fromAddress: string, toAddress: string, amount: bigint, privateKey: string): Promise<any>
+async transfer(fromAddress: string, toAddress: string, amount: bigint, wallet: Wallet, passwordProvider: PasswordProvider): Promise<any>
 ```
-Builds a Rholang transfer term for `amount` from `fromAddress` to `toAddress` and calls `sendDeploy` with the `privateKey` to sign and submit.
+Builds a Rholang transfer term for `amount` from `fromAddress` to `toAddress` and calls `sendDeploy` with the `wallet` and `passwordProvider` to sign and submit.
 
 ```ts
-async sendDeploy(rholangCode: string, privateKey: string, phloLimit: number = 500000): Promise<string>
+async sendDeploy(rholangCode: string, wallet: Wallet, passwordProvider: PasswordProvider, phloLimit: number = 500000): Promise<string>
 ```
-Builds deploy metadata (block number, timestamp), signs the deploy, sends it via RNode API, and attempts to return a deploy id or signature. Throws on failure.
+Builds deploy metadata (block number, timestamp), signs the deploy using the SignerService, sends it via RNode API, and attempts to return a deploy id or signature. Throws on failure.
 
 ```ts
 private async callRNodeAPI(methodName: string, data?: any): Promise<any>
@@ -260,6 +260,6 @@ Example usage:
 const config = { validatorURL: "https://validator.node", readOnlyURL: "https://readonly.node" };
 const chain = new RChainService(config);
 const balance = await chain.getASIBalance(myAddress);
-const deployId = await chain.transfer(senderAddress, recipientAddress, BigInt(100), senderPrivateKey);
+const deployId = await chain.transfer(senderAddress, recipientAddress, BigInt(100), wallet, passwordProvider);
 ```
 

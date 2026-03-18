@@ -116,7 +116,8 @@ const deployId = await chainService.transfer(
   fromAddress,
   toAddress,
   BigInt(1000000000), // 10 ASI in atomic units
-  privateKey
+  wallet,
+  passwordProvider
 );
 ```
 

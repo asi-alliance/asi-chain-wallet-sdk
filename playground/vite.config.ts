@@ -23,4 +23,7 @@ export default defineConfig({
             "asi-wallet-sdk": path.resolve(__dirname, "../dist/index.esm.js"),
         }
     },
+    optimizeDeps: {
+        include: ["@noble/secp256k1"],
+    },
 });

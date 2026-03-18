@@ -7,7 +7,7 @@ export type TWalletCreatePayload =
     | {
           mode: "privateKey";
           name: string;
-          privateKey: string;
+          privateKey: Uint8Array;
           password: string;
       }
     | {
@@ -78,7 +78,7 @@ const CreateWalletModal = ({
             onSubmit({
                 mode: "privateKey",
                 name: name.trim(),
-                privateKey: privateKey.trim(),
+                privateKey: new Uint8Array(JSON.parse(`[${privateKey.trim()}]`)),
                 password,
             });
 
