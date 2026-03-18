@@ -196,7 +196,7 @@ Behavior & methods:
 - `fetchBalance()` — fetches ASI balance via `chainService.getASIBalance(address)`.
 - `handlePrepareSend()` — opens transfer modal via `ApplicationContext`.
 - `handleSend()` — prompts `PasswordModal` then calls `transfer()`.
-- `transfer(toAddress, amount, password)` — unlocks wallet, calls `chainService.transfer`, locks wallet and shows `TransferCompletedModal` on success.
+- `transfer(toAddress, amount, password)` — unlocks wallet, calls `chainService.transfer` with wallet and password provider, locks wallet and shows `TransferCompletedModal` on success.
 
 Example: clicking Send triggers modal flow to unlock wallet and send funds.
 

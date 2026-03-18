@@ -20,7 +20,7 @@ export interface WalletMeta {
 export default class WalletsService {
     public static createWallet(
         privateKey?: Uint8Array,
-        options?: CreateWalletOptions
+        options?: CreateWalletOptions,
     ): WalletMeta {
         let keyPair: KeyPair;
 
@@ -31,7 +31,7 @@ export default class WalletsService {
         }
 
         const address: string = this.deriveAddressFromPublicKey(
-            keyPair.publicKey
+            keyPair.publicKey,
         );
 
         return {
@@ -43,24 +43,26 @@ export default class WalletsService {
 
     public static async createWalletFromMnemonic(
         mnemonic?: string,
-        index?: number
+        index?: number,
     ): Promise<WalletMeta> {
-        const seed = await KeyDerivationService.mnemonicToSeed(
-            mnemonic ?? MnemonicService.generateMnemonic()
-        );
+        const mnemonicToUse = mnemonic
+            ? MnemonicService.mnemonicToWordArray(mnemonic)
+            : MnemonicService.generateMnemonicArray();
+            
+        const seed = await KeyDerivationService.mnemonicToSeed(mnemonicToUse);
 
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
-        const path = KeyDerivationService.buildBip44Path(
-            ASI_COIN_TYPE,
-            0,
-            0,
-            index || 0
-        );
+        const path = KeyDerivationService.buildBip44Path({
+            coinType: ASI_COIN_TYPE,
+            account: 0,
+            change: 0,
+            index: index || 0,
+        });
 
         const privateKey = KeyDerivationService.derivePrivateKey(
             masterNode,
-            path
+            path,
         );
 
         return { ...this.createWallet(privateKey), mnemonic };
@@ -74,7 +76,6 @@ export default class WalletsService {
     }
 
     public static deriveAddressFromPublicKey(publicKey: Uint8Array): Address {
-
         const hash: string = keccak256(publicKey.slice(1));
 
         const addressBase: Uint8Array = decodeBase16(hash.slice(-40));
@@ -88,7 +89,7 @@ export default class WalletsService {
         const checksum: string = blake2bHex(
             addressPayloadBytes,
             undefined,
-            32
+            32,
         ).slice(0, 8);
 
         return encodeBase58(`${addressPayload}${checksum}`) as Address; // payload prefix should always start with `1111`

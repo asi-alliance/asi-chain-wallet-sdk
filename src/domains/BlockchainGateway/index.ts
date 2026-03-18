@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from "axios";
 import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
 import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
-import { DeployData } from "@services/Chain";
+import { SignedResult } from "@domains/Signer";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",
@@ -82,7 +82,7 @@ export default class BlockchainGateway {
     }
 
     public async submitDeploy(
-        deployData: DeployData,
+        deployData: SignedResult,
     ): Promise<any> {
         try {           
             return await this.validatorClient.post("/api/deploy", deployData, {

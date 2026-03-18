@@ -2,7 +2,7 @@ import Wallet from "@domains/Wallet";
 
 export interface SigningRequest {
     wallet: Wallet;
-    data: any; // Deploy data or any signable data
+    data: any;
 }
 
 export interface SignedResult {

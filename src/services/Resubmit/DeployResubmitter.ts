@@ -11,6 +11,12 @@ import {
 } from "./types";
 import NodeManager from "./NodeManager";
 import RChainService from "@services/Chain";
+import SignerService from "@services/Signer";
+import Wallet from "@domains/Wallet";
+import { PasswordProvider } from "@domains/Signer";
+import { DeployData } from "@domains/Deploy";
+import { INVALID_BLOCK_NUMBER } from "@utils";
+import { DEFAULT_PHLO_LIMIT } from "@config";
 
 
 export default class DeployResubmitter {
@@ -47,7 +53,8 @@ export default class DeployResubmitter {
 
     private async retryDeployToOneNode(
         rholangCode: string,
-        privateKey: Uint8Array,
+        wallet: Wallet,
+        passwordProvider: PasswordProvider,
         phloLimit?: number,
     ): Promise<ResubmitResult> {
         let deployRetries = this.config.deployRetries;
@@ -56,16 +63,30 @@ export default class DeployResubmitter {
         while (deployRetries > 0 && !this.isDeployExpired()) {
             try {
                 const chainService = new RChainService();
-                const deployId = await chainService.sendDeploy(
-                    rholangCode,
-                    privateKey,
-                    phloLimit
-                );
+                const latestBlockNumber = await chainService.getLatestBlockNumber();
+
+                if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
+                    throw new Error("DeployResubmitter.retryDeployToOneNode: Invalid block number");
+                }
+
+                const deployData: DeployData = {
+                    term: rholangCode,
+                    phloLimit: phloLimit || DEFAULT_PHLO_LIMIT,
+                    phloPrice: 1,
+                    validAfterBlockNumber: latestBlockNumber - 1,
+                    timestamp: Date.now(),
+                    shardId: "root",
+                };
+
+                const signer = new SignerService();
+                const signedDeploy = await signer.sign({ wallet, data: deployData }, passwordProvider);
+
+                const deployId = await chainService.sendSignedDeploy(signedDeploy);
 
                 if (typeof deployId !== "string") {
                     const errorMessage = 'Invalid deploy ID received: ' + deployId;
                     throw new Error(errorMessage);
-                }   
+                }
 
                 deployResult = { success: true, deployId };
 
@@ -100,7 +121,8 @@ export default class DeployResubmitter {
 
     private async retryDeployToRandomNodes(
         rholangCode: string,
-        privateKey: Uint8Array,
+        wallet: Wallet,
+        passwordProvider: PasswordProvider,
         phloLimit?: number
     ): Promise<ResubmitResult> {
         let deployResult: ResubmitResult = { success: false };
@@ -113,7 +135,8 @@ export default class DeployResubmitter {
 
             deployResult = await this.retryDeployToOneNode(
                 rholangCode,
-                privateKey,
+                wallet,
+                passwordProvider,
                 phloLimit
             );
 
@@ -186,7 +209,8 @@ export default class DeployResubmitter {
      */
     public async resubmit(
         rholangCode: string,
-        privateKey: Uint8Array,
+        wallet: Wallet,
+        passwordProvider: PasswordProvider,
         phloLimit?: number
     ): Promise<ResubmitResult> {
         console.log('DeployResubmitter: starting deploy submission with resubmission logic');
@@ -199,7 +223,8 @@ export default class DeployResubmitter {
             
             deployResult = await this.retryDeployToOneNode(
                 rholangCode,
-                privateKey,
+                wallet,
+                passwordProvider,
                 phloLimit
             );
 
@@ -207,7 +232,8 @@ export default class DeployResubmitter {
         } else {
             deployResult = await this.retryDeployToRandomNodes(
                 rholangCode,
-                privateKey,
+                wallet,
+                passwordProvider,
                 phloLimit
             );
         }

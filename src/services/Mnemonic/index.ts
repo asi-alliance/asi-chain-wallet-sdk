@@ -15,6 +15,12 @@ export default class MnemonicService {
         return bip39.generateMnemonic(strength);
     }
 
+    public static generateMnemonicArray(
+        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS
+    ): string[] {
+        return this.mnemonicToWordArray(this.generateMnemonic(strength));
+    }
+
     public static isMnemonicValid(mnemonic: string): boolean {
         return bip39.validateMnemonic(mnemonic);
     }

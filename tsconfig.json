@@ -7,7 +7,6 @@
         "baseUrl": ".",
         "paths": {
             "asi-wallet-sdk": ["dist"],
-            "@/*": ["src/*"],
 
             "@services/": ["src/services/"],
             "@domains/": ["src/domains/"],
