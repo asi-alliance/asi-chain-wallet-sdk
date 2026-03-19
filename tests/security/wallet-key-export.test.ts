@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { verify } from "@noble/secp256k1";
 
-import Wallet from "../../src/domains/Wallet";
+import Wallet, { SigningCapability } from "../../src/domains/Wallet";
 
 const PASSWORD = "wallet-password";
 const PRIVATE_KEY = Uint8Array.from([
@@ -57,5 +57,34 @@ test("withSigningCapability signs without exposing raw key bytes", async () => {
     assert.equal(
         await verify(signed.signature, digest, signed.publicKey),
         true,
+    );
+});
+
+test("signing capability cannot be reused after callback scope", async () => {
+    Wallet.disableUnsafeRawKeyExport();
+    const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
+    const digest = Uint8Array.from([
+        2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 2, 2, 2, 2, 2,
+    ]);
+
+    let leakedCapability: SigningCapability | null = null;
+
+    await wallet.withSigningCapability(PASSWORD, async (signingCapability) => {
+        leakedCapability = signingCapability;
+        await signingCapability.signDigest(digest);
+    });
+
+    assert.ok(leakedCapability);
+
+    await assert.rejects(
+        leakedCapability!.signDigest(digest),
+        /Signing capability has expired/,
+    );
+    assert.throws(
+        () => leakedCapability!.getPublicKey(),
+        /Signing capability has expired/,
     );
 });
