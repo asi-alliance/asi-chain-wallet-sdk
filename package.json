@@ -13,10 +13,9 @@
         "README.md"
     ],
     "scripts": {
-        "dev": "npm run prebuild && rollup -c -w",
-        "prebuild": "tsc -p tsconfig.build.json --emitDeclarationOnly",
-        "build": "npm run prebuild && rollup -c",
-        "test:security": "tsx --test tests/security/**/*.test.ts",
+        "dev": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c -w",
+        "build": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c",
+        "test:security": "node scripts/security/run-security-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
         "security:gate": "npm run build && npm run test:security && npm run check:secret-logs && npm audit --omit=dev"
     },
