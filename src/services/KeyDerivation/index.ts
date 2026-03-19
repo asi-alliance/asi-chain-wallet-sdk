@@ -1,6 +1,5 @@
 import * as tinysecp from "tiny-secp256k1";
-import bip32 from "bip32";
-import { BIP32Interface } from "bip32";
+import bip32, { BIP32Interface } from "bip32";
 import MnemonicService from "@services/Mnemonic";
 import { ASI_COIN_TYPE, DEFAULT_BIP_44_PATH_OPTIONS } from "@utils/constants";
 import { setupBufferPolyfill } from "@utils/polyfills";

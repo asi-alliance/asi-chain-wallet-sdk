@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { readdir, stat } from "fs/promises";
+import { readdir } from "fs/promises";
 import path from "path";
 
 const TEST_DIR = path.resolve("tests/security");

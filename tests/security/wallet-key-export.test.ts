@@ -80,11 +80,11 @@ test("signing capability cannot be reused after callback scope", async () => {
     assert.ok(leakedCapability);
 
     await assert.rejects(
-        leakedCapability!.signDigest(digest),
+        leakedCapability.signDigest(digest),
         /Signing capability has expired/,
     );
     assert.throws(
-        () => leakedCapability!.getPublicKey(),
+        () => leakedCapability.getPublicKey(),
         /Signing capability has expired/,
     );
 });

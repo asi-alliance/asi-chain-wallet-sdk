@@ -8,7 +8,7 @@ test("createWalletFromMnemonic returns generated mnemonic when omitted", async (
     const wallet = await WalletsService.createWalletFromMnemonic();
 
     assert.ok(wallet.mnemonic);
-    assert.equal(MnemonicService.isMnemonicValid(wallet.mnemonic!), true);
+    assert.equal(MnemonicService.isMnemonicValid(wallet.mnemonic), true);
 });
 
 test("generated mnemonic can deterministically recover wallet keys", async () => {
