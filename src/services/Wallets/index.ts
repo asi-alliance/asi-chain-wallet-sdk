@@ -48,6 +48,9 @@ export default class WalletsService {
         const mnemonicToUse = mnemonic
             ? MnemonicService.mnemonicToWordArray(mnemonic)
             : MnemonicService.generateMnemonicArray();
+        const normalizedMnemonic = MnemonicService.wordArrayToMnemonic(
+            mnemonicToUse,
+        );
             
         const seed = await KeyDerivationService.mnemonicToSeed(mnemonicToUse);
 
@@ -65,7 +68,7 @@ export default class WalletsService {
             path,
         );
 
-        return { ...this.createWallet(privateKey), mnemonic };
+        return { ...this.createWallet(privateKey), mnemonic: normalizedMnemonic };
     }
 
     public static deriveAddressFromPrivateKey(privateKey: Uint8Array): Address {
