@@ -115,6 +115,19 @@ export default class Wallet {
         }
     }
 
+    public async withDecryptedPrivateKey<T>(
+        password: string,
+        callback: (privateKey: Uint8Array) => Promise<T> | T,
+    ): Promise<T> {
+        const privateKey = await this.decrypt(password);
+
+        try {
+            return await callback(privateKey);
+        } finally {
+            privateKey.fill(0);
+        }
+    }
+
     public getEncryptedPrivateKey(): EncryptedData {
         return this.privateKey;
     }

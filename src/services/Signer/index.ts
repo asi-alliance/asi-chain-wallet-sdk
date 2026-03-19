@@ -18,32 +18,32 @@ export default class SignerService {
         const { wallet, data: deployData } = request;
 
         try {
-            const signer = await wallet.decrypt(await passwordProvider());
+            const password = await passwordProvider();
 
-            const deploySerialized =
-                this.deployDataProtobufSerialize(deployData);
+            return await wallet.withDecryptedPrivateKey(password, async (signer) => {
+                const deploySerialized =
+                    this.deployDataProtobufSerialize(deployData);
 
-            const hashed = blake2bHex(deploySerialized, undefined, 32);
-            const suitableBytes = Uint8Array.from(Buffer.from(hashed, "hex"));
+                const hashed = blake2bHex(deploySerialized, undefined, 32);
+                const suitableBytes = Uint8Array.from(Buffer.from(hashed, "hex"));
 
-            const signature = await sign(suitableBytes, signer);
-            const publicKey = KeysManager.getPublicKeyFromPrivateKey(signer);
+                const signature = await sign(suitableBytes, signer);
+                const publicKey = KeysManager.getPublicKeyFromPrivateKey(signer);
 
-            signer.fill(0);
-
-            return {
-                data: {
-                    term: deployData.term,
-                    timestamp: deployData.timestamp,
-                    phloPrice: deployData.phloPrice,
-                    phloLimit: deployData.phloLimit,
-                    validAfterBlockNumber: deployData.validAfterBlockNumber,
-                    shardId: deployData.shardId,
-                },
-                deployer: encodeBase16(publicKey),
-                signature: encodeBase16(signature),
-                sigAlgorithm: "secp256k1",
-            };
+                return {
+                    data: {
+                        term: deployData.term,
+                        timestamp: deployData.timestamp,
+                        phloPrice: deployData.phloPrice,
+                        phloLimit: deployData.phloLimit,
+                        validAfterBlockNumber: deployData.validAfterBlockNumber,
+                        shardId: deployData.shardId,
+                    },
+                    deployer: encodeBase16(publicKey),
+                    signature: encodeBase16(signature),
+                    sigAlgorithm: "secp256k1",
+                };
+            });
         } catch (error: any) {
             const errorMessage = `SignerService.sign: ${(error as Error).message}`;
             console.error(errorMessage);
