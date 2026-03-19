@@ -28,6 +28,7 @@ export enum WalletMemoryKeys {
 }
 
 export default class Wallet {
+    private static unsafeRawKeyExportEnabled = false;
     private name: string;
     private address: Address;
     private privateKey: EncryptedData;
@@ -91,9 +92,32 @@ export default class Wallet {
     }
 
     /**
-     * @deprecated Prefer `withDecryptedPrivateKey()` to keep key lifetime scoped.
+     * @deprecated Raw key export is disabled by default. Prefer `withDecryptedPrivateKey()`.
+     * Enable only for legacy migration by calling `Wallet.enableUnsafeRawKeyExportForLegacyInterop()`.
      */
     public async decrypt(password: string): Promise<Uint8Array> {
+        if (!Wallet.unsafeRawKeyExportEnabled) {
+            throw new Error(
+                "Wallet.decrypt is disabled by default for security. Use withDecryptedPrivateKey() instead.",
+            );
+        }
+
+        return await this.decryptPrivateKey(password);
+    }
+
+    public static enableUnsafeRawKeyExportForLegacyInterop(): void {
+        Wallet.unsafeRawKeyExportEnabled = true;
+    }
+
+    public static disableUnsafeRawKeyExport(): void {
+        Wallet.unsafeRawKeyExportEnabled = false;
+    }
+
+    public static isUnsafeRawKeyExportEnabled(): boolean {
+        return Wallet.unsafeRawKeyExportEnabled;
+    }
+
+    private async decryptPrivateKey(password: string): Promise<Uint8Array> {
         try {
             const decrypted = await CryptoService.decryptWithPassword(
                 this.privateKey,
@@ -122,7 +146,7 @@ export default class Wallet {
         password: string,
         callback: (privateKey: Uint8Array) => Promise<T> | T,
     ): Promise<T> {
-        const privateKey = await this.decrypt(password);
+        const privateKey = await this.decryptPrivateKey(password);
 
         try {
             return await callback(privateKey);
