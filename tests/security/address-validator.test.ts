@@ -5,6 +5,7 @@ import KeysManager from "../../src/services/KeysManager";
 import {
     isAddress,
     validateAddress,
+    validateAccountName,
     AddressValidationErrorCode,
 } from "../../src/utils/validators";
 
@@ -46,6 +47,13 @@ test("validateAddress returns deterministic error codes", () => {
         AddressValidationErrorCode.INVALID_LENGTH,
     );
 
+    const tooLongAddress = validateAddress(`1111${"A".repeat(51)}`);
+    assert.equal(tooLongAddress.isValid, false);
+    assert.equal(
+        tooLongAddress.errorCode,
+        AddressValidationErrorCode.INVALID_LENGTH,
+    );
+
     const invalidAlphabet = validateAddress(
         "1111AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA!",
     );
@@ -61,4 +69,34 @@ test("validateAddress returns deterministic error codes", () => {
         invalidBase58.errorCode,
         AddressValidationErrorCode.INVALID_BASE58,
     );
+
+    const invalidHexLength = validateAddress(`1111${"1".repeat(46)}`);
+    assert.equal(invalidHexLength.isValid, false);
+    assert.equal(
+        invalidHexLength.errorCode,
+        AddressValidationErrorCode.INVALID_HEX_LENGTH,
+    );
+});
+
+test("validateAccountName covers required, length, char and success paths", () => {
+    const required = validateAccountName("   ");
+    assert.equal(required.isValid, false);
+    assert.equal(required.error, "Account name is required");
+
+    const tooLong = validateAccountName("a".repeat(31));
+    assert.equal(tooLong.isValid, false);
+    assert.equal(
+        tooLong.error,
+        "Account name must be 30 characters or less",
+    );
+
+    const invalidChars = validateAccountName("bad/name");
+    assert.equal(invalidChars.isValid, false);
+    assert.equal(
+        invalidChars.error,
+        "Account name contains invalid characters",
+    );
+
+    const valid = validateAccountName("primary-account");
+    assert.equal(valid.isValid, true);
 });

@@ -78,13 +78,7 @@ export default class Wallet {
         return new Wallet(name, address, encrypted, masterNodeId, index);
     }
 
-    public static fromEncryptedData(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
-        index: number | null,
-    ): Wallet {
+    public static fromEncryptedData(name: string, address: Address, encryptedPrivateKey: EncryptedData, masterNodeId: string | null, index: number | null): Wallet {
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(

@@ -41,6 +41,7 @@ const ADDRESS_START_STRING = "1111";
 const ADDRESS_MINIMUM_LENGTH = 50;
 const ADDRESS_MAXIMUM_LENGTH = 54;
 const ADDRESS_ALPHABET_REGEX = /^[a-zA-Z0-9]+$/;
+const ADDRESS_BASE58_ALPHABET_REGEX = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const ADDRESS_PAYLOAD_HEX_LENGTH = 72;
 const ADDRESS_CHECKSUM_HEX_LENGTH = 8;
 const ADDRESS_TOTAL_HEX_LENGTH =
@@ -82,17 +83,9 @@ export const validateAddress = (address: string): AddressValidationResult => {
         return getInvalidResult(AddressValidationErrorCode.INVALID_LENGTH);
     }
 
-    if (!ADDRESS_ALPHABET_REGEX.test(address)) {
-        return getInvalidResult(AddressValidationErrorCode.INVALID_ALPHABET);
-    }
-
-    let decodedHex = "";
-
-    try {
-        decodedHex = encodeBase16(decodeBase58(address));
-    } catch {
-        return getInvalidResult(AddressValidationErrorCode.INVALID_BASE58);
-    }
+    if (!ADDRESS_ALPHABET_REGEX.test(address)) { return getInvalidResult(AddressValidationErrorCode.INVALID_ALPHABET); }
+    if (!ADDRESS_BASE58_ALPHABET_REGEX.test(address)) { return getInvalidResult(AddressValidationErrorCode.INVALID_BASE58); }
+    const decodedHex = encodeBase16(decodeBase58(address));
 
     if (decodedHex.length !== ADDRESS_TOTAL_HEX_LENGTH) {
         return getInvalidResult(AddressValidationErrorCode.INVALID_HEX_LENGTH);

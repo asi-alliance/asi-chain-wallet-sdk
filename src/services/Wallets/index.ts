@@ -51,16 +51,14 @@ export default class WalletsService {
         const mnemonicToUse = mnemonic
             ? MnemonicService.mnemonicToWordArray(mnemonic)
             : MnemonicService.generateMnemonicArray();
-        const normalizedMnemonic = MnemonicService.wordArrayToMnemonic(
-            mnemonicToUse,
-        );
-
+        const normalizedMnemonic =
+            MnemonicService.wordArrayToMnemonic(mnemonicToUse);
         if (!normalizedMnemonic || !MnemonicService.isMnemonicValid(normalizedMnemonic)) {
             throw new Error(
                 "WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid",
             );
         }
-            
+
         const seed = await KeyDerivationService.mnemonicToSeed(mnemonicToUse);
 
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
@@ -78,12 +76,6 @@ export default class WalletsService {
         );
 
         const walletMeta = this.createWallet(privateKey);
-        if (!normalizedMnemonic) {
-            throw new Error(
-                "WalletsService.createWalletFromMnemonic: Missing recovery mnemonic in result",
-            );
-        }
-
         return { ...walletMeta, mnemonic: normalizedMnemonic };
     }
 
