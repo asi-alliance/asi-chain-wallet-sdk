@@ -410,31 +410,43 @@ Model for a single wallet: stores encrypted private key material in memory with 
 Constructors / Factory methods:
 
 ```ts
-static fromPrivateKey(name: string, privateKey: string, password: string, masterNodeId?: string | null, index?: number | null): Wallet
+static fromPrivateKey(
+  name: string,
+  privateKey: Uint8Array,
+  password: string,
+  masterNodeId?: string | null,
+  index?: number | null
+): Promise<Wallet>
 ```
 Derives the wallet address from `privateKey`, encrypts the private key with `password` and returns a new `Wallet` instance (locked by default).
 
 ```ts
-static fromEncryptedData(name: string, address: Address, options: { encryptedPrivateKey: string; iv: string; salt: string; version: number; }, masterNodeId: string | null, index: number | null): Wallet
+static fromEncryptedData(
+  name: string,
+  address: Address,
+  encryptedPrivateKey: EncryptedData,
+  masterNodeId: string | null,
+  index: number | null
+): Wallet
 ```
-Constructs a `Wallet` from serialized/encrypted metadata. Throws if `address` format is invalid.
+Constructs a `Wallet` from serialized/encrypted metadata. Throws with a validation error code if the address is invalid.
 
 Instance methods:
 
 ```ts
-lock(): void
+decrypt(password: string): Promise<Uint8Array>
 ```
-Replaces the in-memory private key with the stored encrypted blob and marks the wallet as locked. Throws if memory context is lost.
+Deprecated raw-key export API. Disabled by default for security.
 
 ```ts
-unlock(password: string): void
+withDecryptedPrivateKey<T>(password: string, callback: (privateKey: Uint8Array) => Promise<T> | T): Promise<T>
 ```
-Decrypts the wallet's encrypted private key from memory using `password` and stores the plaintext private key in memory; marks wallet unlocked. Throws on failure.
+Decrypts the key only for the callback scope and zeroizes the key buffer in `finally`.
 
 ```ts
-getPrivateKey(): string
+getEncryptedPrivateKey(): EncryptedData
 ```
-Returns the plaintext private key; requires the wallet to be unlocked.
+Returns encrypted key payload metadata.
 
 ```ts
 registerAsset(asset: Asset): void
@@ -457,11 +469,6 @@ getIndex(): number | null
 Returns the wallet derivation index if present.
 
 ```ts
-getMemory(): Map<string, string>
-```
-Returns the internal memory map that stores encrypted private key and crypto params.
-
-```ts
 getAssets(): Map<string, Asset>
 ```
 Returns the registered assets map.
@@ -476,26 +483,33 @@ toString(): string
 ```
 Serializes wallet metadata (`StoredWalletMeta`) to a JSON string for storage.
 
-Private helpers (implementation detail):
+Static security switches:
 
 ```ts
-private ensureUnlocked(): void
+Wallet.enableUnsafeRawKeyExportForLegacyInterop(): void
 ```
-Throws if the wallet is locked.
+Explicitly enables deprecated `decrypt()` for legacy migration paths.
 
 ```ts
-private static encryptPrivateKey(privateKey: string, password: string)
+Wallet.disableUnsafeRawKeyExport(): void
 ```
-Helper that calls the `CryptoService` to produce `EncryptedData` for the private key.
+Disables raw key export.
 
-Example creating and unlocking a wallet with descriptive names:
+```ts
+Wallet.isUnsafeRawKeyExportEnabled(): boolean
+```
+Returns current raw-key-export policy flag.
+
+Example creating and signing with scoped key access:
 
 ```ts
 const walletName = "My Wallet";
-const rawPrivateKey = "0xabcdef...";
+const rawPrivateKey = new Uint8Array([/* 32 bytes */]);
 const walletPassword = "wallet-pass";
-const wallet = Wallet.fromPrivateKey(walletName, rawPrivateKey, walletPassword);
-// later
-wallet.unlock(walletPassword);
-console.log(wallet.getAddress());
+const wallet = await Wallet.fromPrivateKey(walletName, rawPrivateKey, walletPassword);
+
+const signaturePayload = await wallet.withDecryptedPrivateKey(walletPassword, (key) => {
+  return key.slice(0, 4);
+});
+console.log(signaturePayload);
 ```
