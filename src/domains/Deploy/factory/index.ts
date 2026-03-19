@@ -1,8 +1,22 @@
-export const createCheckBalanceDeploy = (address: string) => `
+import { Address } from "@domains/Wallet";
+
+export const escapeRholangString = (value: string): string => {
+    return value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r")
+        .replace(/\t/g, "\\t");
+};
+
+export const createCheckBalanceDeploy = (address: Address): string => {
+    const escapedAddress = escapeRholangString(address);
+
+    return `
     new return, rl(\`rho:registry:lookup\`), ASIVaultCh, vaultCh in {
         rl!(\`rho:rchain:asiVault\`, *ASIVaultCh) |
         for (@(_, ASIVault) <- ASIVaultCh) {
-            @ASIVault!("findOrCreate", "${address}", *vaultCh) |
+            @ASIVault!("findOrCreate", "${escapedAddress}", *vaultCh) |
             for (@maybeVault <- vaultCh) {
                 match maybeVault {
                 (true, vault) => @vault!("balance", *return)
@@ -12,12 +26,19 @@ export const createCheckBalanceDeploy = (address: string) => `
         }
     }
 `;
+};
 
 export const createTransferDeploy = (
-    fromAddress: string,
-    toAddress: string,
+    fromAddress: Address,
+    toAddress: Address,
     amount: bigint,
 ) => {
+    if (amount <= 0n) {
+        throw new Error("Transfer amount must be greater than zero");
+    }
+
+    const escapedFromAddress = escapeRholangString(fromAddress);
+    const escapedToAddress = escapeRholangString(toAddress);
     const amountString: string = amount.toString();
 
     return `
@@ -33,11 +54,11 @@ export const createTransferDeploy = (
         in {
             rl!(\`rho:rchain:asiVault\`, *ASIVaultCh) |
             for (@(_, ASIVault) <- ASIVaultCh) {
-            @ASIVault!("findOrCreate", "${fromAddress}", *vaultCh) |
-            @ASIVault!("findOrCreate", "${toAddress}", *toVaultCh) |
+            @ASIVault!("findOrCreate", "${escapedFromAddress}", *vaultCh) |
+            @ASIVault!("findOrCreate", "${escapedToAddress}", *toVaultCh) |
             @ASIVault!("deployerAuthKey", *deployerId, *asiVaultkeyCh) |
             for (@(true, vault) <- vaultCh; key <- asiVaultkeyCh; @(true, toVault) <- toVaultCh) {
-                @vault!("transfer", "${toAddress}", ${amountString}, *key, *resultCh) |
+                @vault!("transfer", "${escapedToAddress}", ${amountString}, *key, *resultCh) |
                 for (@result <- resultCh) {
                 match result {
                     (true, Nil) => {

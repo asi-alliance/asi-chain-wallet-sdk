@@ -9,17 +9,30 @@ import { INVALID_BLOCK_NUMBER } from "@utils/constants";
 import { PasswordProvider } from "@domains/Signer";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 import { DeployData } from "@domains/Deploy";
+import { isAddress } from "@utils/validators";
 
 export default class AssetsService {
     public async transfer(
-        fromAddress: string,
-        toAddress: string,
+        fromAddress: Address,
+        toAddress: Address,
         amount: bigint,
         wallet: Wallet,
         passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
+            if (!isAddress(fromAddress) || !isAddress(toAddress)) {
+                throw new Error(
+                    "AssetsService.transfer: Invalid 'fromAddress' or 'toAddress'",
+                );
+            }
+
+            if (amount <= 0n) {
+                throw new Error(
+                    "AssetsService.transfer: Transfer amount must be greater than zero",
+                );
+            }
+
             const gateway = BlockchainGateway.getInstance();
 
             const transferRho = createTransferDeploy(
@@ -60,6 +73,10 @@ export default class AssetsService {
     }
 
     async getASIBalance(address: Address): Promise<bigint> {
+        if (!isAddress(address)) {
+            throw new Error("AssetsService.getASIBalance: Invalid address");
+        }
+
         const gateway = BlockchainGateway.getInstance();
         const checkBalanceRho = createCheckBalanceDeploy(address);
 
