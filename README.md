@@ -26,8 +26,9 @@ Part of the [**Artificial Superintelligence Alliance**](https://superintelligenc
 5. [Architecture](#architecture)
 6. [Project Structure](#project-structure)
 7. [Documentation](#documentation)
-8. [Development](#development)
-9. [License](#license)
+8. [Security](#security)
+9. [Development](#development)
+10. [License](#license)
 
 ---
 
@@ -242,6 +243,17 @@ asi-chain-wallet-sdk/
 | ASI Chain Wallet | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet) |
 | ASI Chain Explorer | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
 | ASI Chain Faucet | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet) |
+
+---
+
+## Security
+
+| Document | Description |
+|----------|-------------|
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting policy, disclosure process, and supported versions |
+| [THREAT_MODEL.md](THREAT_MODEL.md) | Threat assumptions, trust boundaries, adversary model, and mitigations |
+| [security-review.md](security-review.md) | Point-in-time security findings and mitigation status |
+| [security-improvement-plan.md](security-improvement-plan.md) | Prioritized remediation roadmap and release gates |
 
 ---
 
