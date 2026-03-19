@@ -3,7 +3,7 @@ import path from "node:path";
 
 const ROOTS = ["src", "playground/src"];
 const EXTENSIONS = new Set([".ts", ".tsx"]);
-const LOG_PATTERN = /console\.(log|info|debug)\s*\(/;
+const CONSOLE_PATTERN = /console\.(log|info|debug|warn|error|trace)\s*\(/;
 const SENSITIVE_KEYWORDS = [
     "private",
     "mnemonic",
@@ -11,6 +11,14 @@ const SENSITIVE_KEYWORDS = [
     "decrypted",
     "signed deploy",
     "vault",
+];
+const SENSITIVE_SDK_PATH_PREFIXES = [
+    "src/domains/Wallet/",
+    "src/domains/Vault/",
+    "src/domains/Deploy/",
+    "src/services/Signer/",
+    "src/services/AssetsService/",
+    "src/services/Wallets/",
 ];
 
 const findings = [];
@@ -30,17 +38,28 @@ const walk = (dir) => {
 
         const content = fs.readFileSync(fullPath, "utf8");
         const lines = content.split("\n");
+        const normalizedPath = fullPath.split(path.sep).join("/");
+        const isSensitiveSdkPath = SENSITIVE_SDK_PATH_PREFIXES.some((prefix) =>
+            normalizedPath.startsWith(prefix),
+        );
 
         lines.forEach((line, index) => {
             const normalized = line.toLowerCase();
-            if (!LOG_PATTERN.test(line)) {
+            if (!CONSOLE_PATTERN.test(line)) {
                 return;
             }
 
-            if (
-                SENSITIVE_KEYWORDS.some((keyword) => normalized.includes(keyword))
-            ) {
-                findings.push(`${fullPath}:${index + 1}: ${line.trim()}`);
+            const hasSensitiveKeyword = SENSITIVE_KEYWORDS.some((keyword) =>
+                normalized.includes(keyword),
+            );
+
+            if (isSensitiveSdkPath || hasSensitiveKeyword) {
+                const reason = isSensitiveSdkPath
+                    ? "console-call-in-sensitive-sdk-path"
+                    : "sensitive-keyword-log";
+                findings.push(
+                    `${fullPath}:${index + 1}: [${reason}] ${line.trim()}`,
+                );
             }
         });
     }

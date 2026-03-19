@@ -75,7 +75,6 @@ export default class AssetsService {
         } catch (error: any) {
             const errorMessage =
                 "AssetsService.transfer: " + (error as Error).message;
-            console.error(errorMessage);
             throw new Error(errorMessage);
         }
     }
@@ -109,10 +108,6 @@ export default class AssetsService {
 
             return BigInt(0);
         } catch (error) {
-            console.error(
-                "AssetsService.getASIBalance: Error getting balance:",
-                error,
-            );
             return BigInt(0);
         }
     }

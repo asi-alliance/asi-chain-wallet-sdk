@@ -54,7 +54,6 @@ export default class SignerService {
             );
         } catch (error: any) {
             const errorMessage = `SignerService.sign: ${(error as Error).message}`;
-            console.error(errorMessage);
             throw new Error(errorMessage);
         }
     }

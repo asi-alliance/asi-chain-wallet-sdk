@@ -209,7 +209,9 @@ const Application = (): ReactElement => {
 
                 setModalState({ type: null });
             } catch (error) {
-                console.error("Error creating mnemonic wallet:", error);
+                throw new Error(
+                    "Failed to create wallet from recovery phrase",
+                );
             }
         });
 
@@ -271,7 +273,6 @@ const Application = (): ReactElement => {
                         }
                         openDeriveWalletModal(index, decryptedSeed);
                     } catch (error) {
-                        console.error("Error decrypting seed:", error);
                         alert("Failed to decrypt seed. Please check your password.");
                     }
                 },
