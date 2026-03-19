@@ -90,6 +90,9 @@ export default class Wallet {
         );
     }
 
+    /**
+     * @deprecated Prefer `withDecryptedPrivateKey()` to keep key lifetime scoped.
+     */
     public async decrypt(password: string): Promise<Uint8Array> {
         try {
             const decrypted = await CryptoService.decryptWithPassword(
