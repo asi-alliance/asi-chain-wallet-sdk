@@ -252,6 +252,7 @@ asi-chain-wallet-sdk/
 |----------|-------------|
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting policy, disclosure process, and supported versions |
 | [THREAT_MODEL.md](THREAT_MODEL.md) | Threat assumptions, trust boundaries, adversary model, and mitigations |
+| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees |
 | [security-review.md](security-review.md) | Point-in-time security findings and mitigation status |
 | [security-improvement-plan.md](security-improvement-plan.md) | Prioritized remediation roadmap and release gates |
 

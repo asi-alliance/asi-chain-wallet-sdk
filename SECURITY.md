@@ -57,3 +57,4 @@ Tracked in:
 1. `security-review.md`
 2. `security-improvement-plan.md`
 3. `THREAT_MODEL.md`
+4. `SECURITY_INVARIANTS.md`
