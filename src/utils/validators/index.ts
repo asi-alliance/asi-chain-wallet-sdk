@@ -1,7 +1,9 @@
 import type { Address } from "@domains/Wallet";
-import { blake2bHex } from "blakejs";
+import blakejs from "blakejs";
 import { decodeBase16, decodeBase58, encodeBase16 } from "@utils/codec";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+
+const { blake2bHex } = blakejs;
 
 const INVALID_ACCOUNT_NAME_CHARS: RegExp = /[<>:"/\\|?*]/;
 

@@ -3,12 +3,14 @@ import BinaryWriter from "@services/BinaryWriter";
 import { encodeBase16 } from "@utils/codec";
 import { DeployData } from "@domains/Deploy";
 import { sign } from "@noble/secp256k1";
-import { blake2bHex } from "blakejs";
+import blakejs from "blakejs";
 import {
     SigningRequest,
     PasswordProvider,
     SignedResult,
 } from "@domains/Signer";
+
+const { blake2bHex } = blakejs;
 
 export default class SignerService {
     public static async sign(

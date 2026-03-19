@@ -4,8 +4,11 @@ import KeysManager, { type KeyPair } from "@services/KeysManager";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "@utils/constants";
 import { decodeBase16, encodeBase58 } from "@utils/codec";
 import { Address } from "@domains/Wallet";
-import { blake2bHex } from "blakejs";
-import { keccak256 } from "js-sha3";
+import blakejs from "blakejs";
+import sha3 from "js-sha3";
+
+const { blake2bHex } = blakejs;
+const { keccak256 } = sha3;
 
 export interface CreateWalletOptions {
     name?: string;
