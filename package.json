@@ -16,7 +16,8 @@
         "dev": "npm run prebuild && rollup -c -w",
         "prebuild": "tsc -p tsconfig.build.json --emitDeclarationOnly",
         "build": "npm run prebuild && rollup -c",
-        "test:security": "tsx --test tests/security/**/*.test.ts"
+        "test:security": "tsx --test tests/security/**/*.test.ts",
+        "check:secret-logs": "node scripts/security/check-secret-logs.mjs"
     },
     "devDependencies": {
         "@rollup/plugin-alias": "^5.0.0",
