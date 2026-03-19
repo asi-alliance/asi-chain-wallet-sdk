@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
+import { verify } from "@noble/secp256k1";
 
 import Wallet from "../../src/domains/Wallet";
 
@@ -34,14 +35,27 @@ test("Wallet.decrypt can be explicitly re-enabled for legacy interop", async () 
     assert.deepEqual(Array.from(decrypted), Array.from(PRIVATE_KEY));
 });
 
-test("withDecryptedPrivateKey remains available when raw export is disabled", async () => {
+test("withSigningCapability signs without exposing raw key bytes", async () => {
     Wallet.disableUnsafeRawKeyExport();
     const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
+    const digest = Uint8Array.from([
+        1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1,
+    ]);
 
-    const firstBytes = await wallet.withDecryptedPrivateKey(
+    const signed = await wallet.withSigningCapability(
         PASSWORD,
-        (privateKey) => privateKey.slice(0, 4),
+        async (signingCapability) => {
+            const signature = await signingCapability.signDigest(digest);
+            const publicKey = signingCapability.getPublicKey();
+            return { signature, publicKey };
+        },
     );
 
-    assert.deepEqual(Array.from(firstBytes), [1, 2, 3, 4]);
+    assert.equal(
+        await verify(signed.signature, digest, signed.publicKey),
+        true,
+    );
 });

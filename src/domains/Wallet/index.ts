@@ -1,7 +1,9 @@
 import WalletsService from "@services/Wallets";
+import KeysManager from "@services/KeysManager";
 import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
+import { sign } from "@noble/secp256k1";
 
 // TODO const AssetsCache: Map<Address, Assets> = new Map();
 
@@ -25,6 +27,11 @@ export enum WalletMemoryKeys {
     CRYPTO_SALT = "crypto_salt",
     CRYPTO_IV = "crypto_iv",
     CRYPTO_VERSION = "crypto version",
+}
+
+export interface SigningCapability {
+    signDigest(digest: Uint8Array): Promise<Uint8Array>;
+    getPublicKey(): Uint8Array;
 }
 
 export default class Wallet {
@@ -95,13 +102,13 @@ export default class Wallet {
     }
 
     /**
-     * @deprecated Raw key export is disabled by default. Prefer `withDecryptedPrivateKey()`.
+     * @deprecated Raw key export is disabled by default. Prefer `withSigningCapability()`.
      * Enable only for legacy migration by calling `Wallet.enableUnsafeRawKeyExportForLegacyInterop()`.
      */
     public async decrypt(password: string): Promise<Uint8Array> {
         if (!Wallet.unsafeRawKeyExportEnabled) {
             throw new Error(
-                "Wallet.decrypt is disabled by default for security. Use withDecryptedPrivateKey() instead.",
+                "Wallet.decrypt is disabled by default for security. Use withSigningCapability() instead.",
             );
         }
 
@@ -145,15 +152,34 @@ export default class Wallet {
         }
     }
 
-    public async withDecryptedPrivateKey<T>(
+    public async withSigningCapability<T>(
         password: string,
-        callback: (privateKey: Uint8Array) => Promise<T> | T,
+        callback: (signingCapability: SigningCapability) => Promise<T> | T,
     ): Promise<T> {
         const privateKey = await this.decryptPrivateKey(password);
+        let expired = false;
+
+        const signingCapability: SigningCapability = {
+            signDigest: async (digest: Uint8Array): Promise<Uint8Array> => {
+                if (expired) {
+                    throw new Error("Signing capability has expired");
+                }
+
+                return await sign(digest, privateKey);
+            },
+            getPublicKey: (): Uint8Array => {
+                if (expired) {
+                    throw new Error("Signing capability has expired");
+                }
+
+                return KeysManager.getPublicKeyFromPrivateKey(privateKey);
+            },
+        };
 
         try {
-            return await callback(privateKey);
+            return await callback(signingCapability);
         } finally {
+            expired = true;
             privateKey.fill(0);
         }
     }
