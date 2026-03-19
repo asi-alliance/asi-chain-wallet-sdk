@@ -1,265 +1,234 @@
 # Services Reference
 
-This file contains extended, per-method documentation and usage examples for the service modules in `src/services`.
+This file documents the current service modules under `src/services`.
 
 ---
 
-## CryptoService (src/services/crypto/index.ts)
+## CryptoService (`src/services/Crypto/index.ts`)
 
-Utility for password-based encryption and decryption using PBKDF2 + AES.
+Password-based encryption/decryption using WebCrypto.
 
 ```ts
-encryptWithPassword(data: string, passphrase: string): EncryptedData
+encryptWithPassword(data: string, password: string): Promise<EncryptedData>
 ```
-Encrypts `data` with a derived key from `passphrase`. Returns `{ salt, iv, data, version }`.
+Encrypts plaintext with `PBKDF2(SHA-256)` derived key + `AES-GCM`.
 
 ```ts
-decryptWithPassword(payload: EncryptedData, passphrase: string): string
+decryptWithPassword(payload: EncryptedData, passphrase: string): Promise<string>
 ```
-Decrypts `payload` using `passphrase`. Throws `Error('Decryption failed')` on invalid credentials.
-
-Private helpers:
+Decrypts ciphertext payload. Throws on unsupported version or invalid credentials.
 
 ```ts
-private static generateSalt(): WordArray
+deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 ```
-Generates a random salt for PBKDF2.
+Derives the `AES-GCM` key from password + salt.
+
+Current profile highlights:
+
+- Version: `2`
+- KDF: `PBKDF2`, `100_000` iterations, `SHA-256`
+- Cipher: `AES-GCM`
+- Salt: `16` bytes
+- IV: `12` bytes
+
+---
+
+## WalletsService (`src/services/Wallets/index.ts`)
+
+Wallet creation and address derivation.
 
 ```ts
-private static generateIV(): WordArray
+createWallet(privateKey?: Uint8Array, options?: CreateWalletOptions): WalletMeta
 ```
-Generates a random IV for AES.
+Creates wallet metadata from an existing or generated secp256k1 private key.
 
 ```ts
-private static deriveKey(passphrase: string, salt: WordArray): WordArray
+createWalletFromMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
 ```
-Derives an encryption key using PBKDF2 with configured iterations and key size.
+Builds wallet from BIP-39 mnemonic + BIP-44 path. Always returns normalized mnemonic in output.
 
-Example usage:
+Validation behavior:
+
+- Throws `WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid` when mnemonic is blank/invalid.
 
 ```ts
-const secret = "sensitive-data";
-const passphrase = "strong-pass";
-const encrypted = CryptoService.encryptWithPassword(secret, passphrase);
-const decrypted = CryptoService.decryptWithPassword(encrypted, passphrase);
+deriveAddressFromPrivateKey(privateKey: Uint8Array): Address
+```
+Derives address from private key.
+
+```ts
+deriveAddressFromPublicKey(publicKey: Uint8Array): Address
+```
+Derives address from public key (`keccak256` + chain prefix + `blake2b` checksum + base58).
+
+---
+
+## MnemonicService (`src/services/Mnemonic/index.ts`)
+
+BIP-39 helpers.
+
+```ts
+generateMnemonic(strength?: MnemonicStrength): string
+```
+Generates mnemonic phrase (`12` or `24` words).
+
+```ts
+generateMnemonicArray(strength?: MnemonicStrength): string[]
+```
+Generates and splits mnemonic into words.
+
+```ts
+isMnemonicValid(mnemonic: string): boolean
+```
+Validates mnemonic.
+
+```ts
+mnemonicToWordArray(mnemonic: string): string[]
+wordArrayToMnemonic(words: string[]): string
+```
+Conversion helpers.
+
+---
+
+## KeyDerivationService (`src/services/KeyDerivation/index.ts`)
+
+BIP-32/BIP-44 derivation helpers.
+
+```ts
+buildBip44Path(options: Bip44PathOptions): string
+```
+Builds path `m/44'/coinType'/account'/change/index`.
+
+```ts
+derivePrivateKey(masterNode: BIP32Interface, path: string): Uint8Array
+```
+Derives private key bytes from master node and path.
+
+```ts
+mnemonicToSeed(mnemonicWords: string[] | string, passphrase?: string): Promise<Uint8Array>
+```
+Converts mnemonic to seed.
+
+```ts
+seedToMasterNode(seed: Uint8Array): BIP32Interface
+```
+Builds BIP32 master node using `tiny-secp256k1` + `bip32` factory.
+
+```ts
+deriveKeyFromMnemonic(...)
+deriveNextKeyFromMnemonic(...)
+```
+Convenience derivation helpers.
+
+---
+
+## KeysManager (`src/services/KeysManager/index.ts`)
+
+secp256k1 key utilities.
+
+```ts
+generateRandomKey(length?: number): Uint8Array
+generateKeyPair(keyLength?: number): KeyPair
+getKeyPairFromPrivateKey(privateKey: Uint8Array): KeyPair
+getPublicKeyFromPrivateKey(privateKey: Uint8Array): Uint8Array
+convertKeyToHex(key: Uint8Array): string
+deriveKeyFromMnemonic(mnemonicWords: string[], options?: Bip44PathOptions): Promise<Uint8Array>
+```
+
+`generateMpcKeyPair()` is intentionally unimplemented and throws.
+
+---
+
+## SignerService (`src/services/Signer/index.ts`)
+
+Builds deploy signatures without exposing raw key bytes to callers.
+
+```ts
+sign(request: SigningRequest, passwordProvider: PasswordProvider): Promise<SignedResult>
+```
+
+Flow:
+
+1. Gets password from `passwordProvider`.
+2. Uses `wallet.withSigningCapability(...)` to obtain scoped signing capability.
+3. Serializes deploy data (`BinaryWriter`).
+4. Hashes with `blake2b-256`.
+5. Signs digest with secp256k1 and returns `{ deployer, signature, sigAlgorithm }`.
+
+Security boundary:
+
+- Normal signing path does not return decrypted private key bytes.
+- Capability expires after callback scope.
+
+---
+
+## AssetsService (`src/services/AssetsService/index.ts`)
+
+Balance and transfer operations through `BlockchainGateway`.
+
+```ts
+transfer(
+  fromAddress: Address,
+  toAddress: Address,
+  amount: bigint,
+  wallet: Wallet,
+  passwordProvider: PasswordProvider,
+  phloLimit?: number
+): Promise<string | undefined>
+```
+
+Validation behavior:
+
+- Uses checksum-aware `validateAddress()` and returns deterministic address error codes.
+- Rejects non-positive amounts.
+
+```ts
+getASIBalance(address: Address): Promise<bigint>
+```
+
+- Validates address before exploration deploy.
+
+---
+
+## DeployResubmitter (`src/services/Resubmit/DeployResubmitter.ts`)
+
+Retry + resubmission flow for non-read-only deploys.
+
+```ts
+resubmit(
+  rholangCode: string,
+  wallet: Wallet,
+  passwordProvider: PasswordProvider,
+  phloLimit?: number
+): Promise<ResubmitResult>
+```
+
+Related exports from `src/services/Resubmit/index.ts`:
+
+- `ResubmitNodeManager`
+- `ResubmitConfig`
+- `ResubmitResult`
+
+---
+
+## FeeService (`src/services/Fee/index.ts`)
+
+Gas-fee helper utilities.
+
+```ts
+generateRandomGasFee(): string
+getGasFeeAsNumber(): number
+formatGasFee(fee?: string): string
 ```
 
 ---
 
-## WalletsService (src/services/WalletsService/index.ts)
+## BinaryWriter (`src/services/BinaryWriter/index.ts`)
 
-High level wallet creation and address derivation utilities.
-
-```ts
-static createWallet(privateKey?: string, options?: CreateWalletOptions): WalletMeta
-```
-Creates a wallet. If `privateKey` is omitted, a new keypair is generated. Returns `{ address, publicKey, privateKey }`.
+Low-level protobuf-like writer used by signing serialization.
 
 ```ts
-static createWalletFromMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
+writeString(fieldNumber: number, value: string): void
+writeInt64(fieldNumber: number, value: number): void
+getResultBuffer(): Uint8Array
 ```
-Derives a private key from `mnemonic` using BIP-39/BIP-44 and returns wallet metadata. If `mnemonic` is omitted, a new one is generated.
-
-```ts
-static deriveAddressFromPrivateKey(privateKey: string): Address
-```
-Derives the wallet `Address` from a raw `privateKey`.
-
-```ts
-static deriveAddressFromPublicKey(publicKey: string): Address
-```
-Derives the wallet `Address` from an uncompressed `publicKey` hex string. Steps: decode public key, keccak256 hash, take last 40 chars, compute blake2b checksum, encode base58 with chain prefix.
-
-Example usage:
-
-```ts
-const newWallet = WalletsService.createWallet();
-const derivedFromMnemonic = await WalletsService.createWalletFromMnemonic(myMnemonic, 0);
-const address = WalletsService.deriveAddressFromPrivateKey(myPrivateKey);
-```
-
----
-
-## MnemonicService (src/services/mnemonic/index.ts)
-
-Utilities around BIP-39 mnemonic generation and validation.
-
-```ts
-static generateMnemonic(strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS): string
-```
-Generates a mnemonic phrase. `strength` controls entropy (12 or 24 words).
-
-```ts
-static isMnemonicValid(mnemonic: string): boolean
-```
-Validates BIP-39 mnemonic phrase.
-
-```ts
-static mnemonicToWordArray(mnemonic: string): string[]
-```
-Splits a mnemonic string into an array of words.
-
-```ts
-static wordArrayToMnemonic(words: string[]): string
-```
-Joins an array of words into a mnemonic string.
-
-Example usage:
-
-```ts
-const mnemonic = MnemonicService.generateMnemonic();
-if (MnemonicService.isMnemonicValid(mnemonic)) {
-  const words = MnemonicService.mnemonicToWordArray(mnemonic);
-}
-```
-
----
-
-## KeyDerivationService (src/services/keyDerivation/index.ts)
-
-Derivation helpers for BIP-32/BIP-44 key derivation.
-
-```ts
-static buildBip44Path(coinType: number, account = 0, change = 0, index = 0): string
-```
-Returns a BIP-44 derivation path string: `m/44'/coinType'/account'/change/index`.
-
-```ts
-static derivePrivateKey(masterNode: bip32.BIP32Interface, path: string): string
-```
-Derives a private key hex from `masterNode` at `path`. Throws if the derived node lacks a private key.
-
-```ts
-static mnemonicToSeed(mnemonic: string, passphrase = ""): Promise<Uint8Array>
-```
-Converts mnemonic to a seed buffer (async).
-
-```ts
-static seedToMasterNode(seed: any): bip32.BIP32Interface
-```
-Converts a seed to a BIP32 master node using `tiny-secp256k1` (returns a node with `derivePath`).
-
-Example usage:
-
-```ts
-const bip44Path = KeyDerivationService.buildBip44Path(ASI_COIN_TYPE, 0, 0, 0);
-const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-const masterNode = KeyDerivationService.seedToMasterNode(seed);
-const derivedPrivateKey = KeyDerivationService.derivePrivateKey(masterNode, bip44Path);
-```
-
----
-
-## KeysService (src/services/keysService/index.ts)
-
-Elliptic curve key utilities (secp256k1).
-
-```ts
-static generateKeyPair(): KeyPair
-```
-Generates a new secp256k1 keypair and returns `{ publicKey, privateKey }` in hex.
-
-```ts
-static getKeyPairFromPrivateKey(privateKey: string): KeyPair
-```
-Reconstructs a keypair from `privateKey` hex and returns `{ publicKey, privateKey }`.
-
-```ts
-static generateMpcKeyPair(): any
-```
-Placeholder: throws `Error('MPC key generation is not implemented yet.')`.
-
-Private helper:
-
-```ts
-private static extractKeys(keyPair: EC.KeyPair): KeyPair
-```
-Converts an `elliptic` `KeyPair` into the `{ publicKey, privateKey }` shape.
-
-Example usage:
-
-```ts
-const keyPair = KeysService.generateKeyPair();
-const derivedPair = KeysService.getKeyPairFromPrivateKey(keyPair.privateKey);
-```
-
----
-
-## RChainService (src/services/chainService/index.ts)
-
-HTTP client and helpers for interacting with RChain nodes, building and signing deploys.
-
-Top-level helpers:
-
-```ts
-export const signDeploy(deployData: any, privateKey: string): any
-```
-Signs a serialized deploy using secp256k1. Returns the deploy augmented with `deployer`, `sig`, and `sigAlgorithm`.
-
-```ts
-const deployDataProtobufSerialize(deployData: any): Uint8Array
-```
-Serializes deploy fields into protobuf-like bytes using `BinaryWriter` (term, timestamp, phloPrice, phloLimit, validAfterBlockNumber, shardId).
-
-`RChainService` class:
-
-Constructor:
-
-```ts
-constructor(config: RChainServiceConfig)
-```
-Requires `{ validatorURL, readOnlyURL, options? }`. Creates Axios clients for read and validator nodes.
-
-Instance methods:
-
-```ts
-async exploreDeployData(rholangCode: string): Promise<any>
-```
-Sends an `explore-deploy` request to a read-only node and returns `expr` from response. Logs helpful message on network errors.
-
-```ts
-async getBalance(address: Address, assetId: AssetId): Promise<BigInt>
-```
-Not implemented: throws `RChainServiceError` indicating missing feature.
-
-```ts
-async getASIBalance(address: Address): Promise<bigint>
-```
-Runs an `explore-deploy` with Rholang that queries ASI vault balance for `address`. Parses response and returns `BigInt` balance or `0` on errors.
-
-```ts
-async transfer(fromAddress: string, toAddress: string, amount: bigint, wallet: Wallet, passwordProvider: PasswordProvider): Promise<any>
-```
-Builds a Rholang transfer term for `amount` from `fromAddress` to `toAddress` and calls `sendDeploy` with the `wallet` and `passwordProvider` to sign and submit.
-
-```ts
-async sendDeploy(rholangCode: string, wallet: Wallet, passwordProvider: PasswordProvider, phloLimit: number = 500000): Promise<string>
-```
-Builds deploy metadata (block number, timestamp), signs the deploy using the SignerService, sends it via RNode API, and attempts to return a deploy id or signature. Throws on failure.
-
-```ts
-private async callRNodeAPI(methodName: string, data?: any): Promise<any>
-```
-Internal HTTP helper that chooses read-only vs validator client based on `methodName` and `data`. Handles request/response errors and throws descriptive errors.
-
-```ts
-private isReadOnlyOperation(apiMethod: string): boolean
-```
-Determines whether `apiMethod` is a read-only operation (affects client selection).
-
-Errors and types:
-
-```ts
-export class RChainServiceError extends Error
-```
-Small wrapper for chain errors that prefixes messages with `[ChainService]:`.
-
-Example usage:
-
-```ts
-const config = { validatorURL: "https://validator.node", readOnlyURL: "https://readonly.node" };
-const chain = new RChainService(config);
-const balance = await chain.getASIBalance(myAddress);
-const deployId = await chain.transfer(senderAddress, recipientAddress, BigInt(100), wallet, passwordProvider);
-```
-

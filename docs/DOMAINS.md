@@ -439,9 +439,9 @@ decrypt(password: string): Promise<Uint8Array>
 Deprecated raw-key export API. Disabled by default for security.
 
 ```ts
-withDecryptedPrivateKey<T>(password: string, callback: (privateKey: Uint8Array) => Promise<T> | T): Promise<T>
+withSigningCapability<T>(password: string, callback: (signingCapability: SigningCapability) => Promise<T> | T): Promise<T>
 ```
-Decrypts the key only for the callback scope and zeroizes the key buffer in `finally`.
+Provides scoped signing methods (`signDigest`, `getPublicKey`) without exposing raw key bytes. The capability expires after callback scope.
 
 ```ts
 getEncryptedPrivateKey(): EncryptedData
@@ -508,8 +508,9 @@ const rawPrivateKey = new Uint8Array([/* 32 bytes */]);
 const walletPassword = "wallet-pass";
 const wallet = await Wallet.fromPrivateKey(walletName, rawPrivateKey, walletPassword);
 
-const signaturePayload = await wallet.withDecryptedPrivateKey(walletPassword, (key) => {
-  return key.slice(0, 4);
+const signaturePayload = await wallet.withSigningCapability(walletPassword, async (capability) => {
+  const digest = new Uint8Array(32).fill(1);
+  return await capability.signDigest(digest);
 });
 console.log(signaturePayload);
 ```
