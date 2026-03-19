@@ -186,7 +186,7 @@ See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindext
 
 - **Key Generation**: secp256k1 elliptic curve keypairs via [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts)
 - **Address Derivation**: keccak256 hash → blake2b checksum → Base58 encoding with [chain prefix](src/utils/constants)
-- **Encryption**: PBKDF2 (200,000 iterations) → AES-256 via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
+- **Encryption**: PBKDF2 (100,000 iterations) → AES-GCM via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
 - **Mnemonic**: BIP-39 standard (12/24 words) via [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts)
 - **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`) via [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts)
 
@@ -304,8 +304,8 @@ Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/P
 | [bip39](https://github.com/bitcoinjs/bip39) | 3.1.0 | BIP-39 mnemonic generation |
 | [blakejs](https://github.com/dcposch/blakejs) | 1.2.1 | BLAKE2b hashing for addresses |
 | [bs58](https://github.com/cryptocoinjs/bs58) | 6.0.0 | Base58 encoding |
-| [crypto-js](https://github.com/brix/crypto-js) | 4.2.0 | AES encryption and PBKDF2 |
-| [elliptic](https://github.com/indutny/elliptic) | 6.6.1 | secp256k1 elliptic curve operations |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.6.0 | Cryptographic hash helpers |
+| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0 | secp256k1 key generation and signing |
 | [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
 | [tiny-secp256k1](https://github.com/nicknisi/tiny-secp256k1) | 2.2.4 | secp256k1 for BIP-32 derivation |
 
