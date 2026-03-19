@@ -54,6 +54,12 @@ export default class WalletsService {
         const normalizedMnemonic = MnemonicService.wordArrayToMnemonic(
             mnemonicToUse,
         );
+
+        if (!normalizedMnemonic || !MnemonicService.isMnemonicValid(normalizedMnemonic)) {
+            throw new Error(
+                "WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid",
+            );
+        }
             
         const seed = await KeyDerivationService.mnemonicToSeed(mnemonicToUse);
 
@@ -71,7 +77,14 @@ export default class WalletsService {
             path,
         );
 
-        return { ...this.createWallet(privateKey), mnemonic: normalizedMnemonic };
+        const walletMeta = this.createWallet(privateKey);
+        if (!normalizedMnemonic) {
+            throw new Error(
+                "WalletsService.createWalletFromMnemonic: Missing recovery mnemonic in result",
+            );
+        }
+
+        return { ...walletMeta, mnemonic: normalizedMnemonic };
     }
 
     public static deriveAddressFromPrivateKey(privateKey: Uint8Array): Address {

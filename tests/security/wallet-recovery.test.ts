@@ -34,3 +34,15 @@ test("provided mnemonic is normalized in output", async () => {
 
     assert.equal(wallet.mnemonic, mnemonic);
 });
+
+test("createWalletFromMnemonic rejects missing or invalid recovery data", async () => {
+    await assert.rejects(
+        WalletsService.createWalletFromMnemonic("   ", 0),
+        /Recovery mnemonic is missing or invalid/,
+    );
+
+    await assert.rejects(
+        WalletsService.createWalletFromMnemonic("invalid words", 0),
+        /Recovery mnemonic is missing or invalid/,
+    );
+});
