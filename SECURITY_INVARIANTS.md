@@ -7,7 +7,8 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 1. Private key material must never be logged in plaintext.
 2. Signing operations must keep decrypted key lifetime as short as possible.
 3. Key buffers should be zeroized after signing usage when feasible.
-4. SDK APIs should prefer capability-based signing over raw key export.
+4. Raw key export must be disabled by default and only enabled explicitly for legacy migration.
+5. SDK APIs should prefer capability-based signing over raw key export.
 
 ## 2. Storage Invariants
 

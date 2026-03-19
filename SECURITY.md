@@ -58,3 +58,4 @@ Tracked in:
 2. `security-improvement-plan.md`
 3. `THREAT_MODEL.md`
 4. `SECURITY_INVARIANTS.md`
+5. `CRYPTO_PROFILE.md`
