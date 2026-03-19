@@ -5,6 +5,10 @@ export const encodeBase58 = (hex: string): string => {
     return bs58.encode(bytes);
 };
 
+export const decodeBase58 = (value: string): Uint8Array => {
+    return bs58.decode(value);
+};
+
 export const decodeBase16 = (hex: string): Uint8Array => {
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
