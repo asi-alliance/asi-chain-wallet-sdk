@@ -1,7 +1,7 @@
 import WalletsService from "@services/Wallets";
 import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import { isAddress } from "@utils/validators";
+import { validateAddress } from "@utils/validators";
 
 // TODO const AssetsCache: Map<Address, Assets> = new Map();
 
@@ -78,8 +78,11 @@ export default class Wallet {
         masterNodeId: string | null,
         index: number | null,
     ): Wallet {
-        if (!isAddress(address)) {
-            throw new Error("Invalid address format");
+        const validation = validateAddress(address);
+        if (!validation.isValid) {
+            throw new Error(
+                `Invalid address format: ${validation.errorCode ?? "UNKNOWN"}`,
+            );
         }
 
         return new Wallet(

@@ -9,7 +9,7 @@ import { INVALID_BLOCK_NUMBER } from "@utils/constants";
 import { PasswordProvider } from "@domains/Signer";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 import { DeployData } from "@domains/Deploy";
-import { isAddress } from "@utils/validators";
+import { validateAddress } from "@utils/validators";
 
 export default class AssetsService {
     public async transfer(
@@ -21,9 +21,17 @@ export default class AssetsService {
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
         try {
-            if (!isAddress(fromAddress) || !isAddress(toAddress)) {
+            const fromValidation = validateAddress(fromAddress);
+            if (!fromValidation.isValid) {
                 throw new Error(
-                    "AssetsService.transfer: Invalid 'fromAddress' or 'toAddress'",
+                    `AssetsService.transfer: Invalid 'fromAddress': ${fromValidation.errorCode ?? "UNKNOWN"}`,
+                );
+            }
+
+            const toValidation = validateAddress(toAddress);
+            if (!toValidation.isValid) {
+                throw new Error(
+                    `AssetsService.transfer: Invalid 'toAddress': ${toValidation.errorCode ?? "UNKNOWN"}`,
                 );
             }
 
@@ -73,8 +81,11 @@ export default class AssetsService {
     }
 
     async getASIBalance(address: Address): Promise<bigint> {
-        if (!isAddress(address)) {
-            throw new Error("AssetsService.getASIBalance: Invalid address");
+        const validation = validateAddress(address);
+        if (!validation.isValid) {
+            throw new Error(
+                `AssetsService.getASIBalance: Invalid address: ${validation.errorCode ?? "UNKNOWN"}`,
+            );
         }
 
         const gateway = BlockchainGateway.getInstance();

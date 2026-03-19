@@ -1,6 +1,11 @@
 import type { Address } from "@domains/Wallet";
 import blakejs from "blakejs";
-import { decodeBase16, decodeBase58, encodeBase16 } from "@utils/codec";
+import {
+    decodeBase16,
+    decodeBase58,
+    encodeBase16,
+    encodeBase58,
+} from "@utils/codec";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
 
 const { blake2bHex } = blakejs;
@@ -42,14 +47,43 @@ const ADDRESS_TOTAL_HEX_LENGTH =
     ADDRESS_PAYLOAD_HEX_LENGTH + ADDRESS_CHECKSUM_HEX_LENGTH;
 const ADDRESS_PREFIX_HEX = `${ASI_CHAIN_PREFIX.coinId}${ASI_CHAIN_PREFIX.version}`;
 
-export const isAddress = (address: string): address is Address => {
+export enum AddressValidationErrorCode {
+    INVALID_PREFIX = "INVALID_PREFIX",
+    INVALID_LENGTH = "INVALID_LENGTH",
+    INVALID_ALPHABET = "INVALID_ALPHABET",
+    INVALID_BASE58 = "INVALID_BASE58",
+    INVALID_HEX_LENGTH = "INVALID_HEX_LENGTH",
+    INVALID_CHAIN_PREFIX = "INVALID_CHAIN_PREFIX",
+    INVALID_CHECKSUM = "INVALID_CHECKSUM",
+    NON_CANONICAL = "NON_CANONICAL",
+}
+
+export interface AddressValidationResult {
+    isValid: boolean;
+    errorCode?: AddressValidationErrorCode;
+}
+
+const getInvalidResult = (
+    errorCode: AddressValidationErrorCode,
+): AddressValidationResult => ({
+    isValid: false,
+    errorCode,
+});
+
+export const validateAddress = (address: string): AddressValidationResult => {
+    if (!address.startsWith(ADDRESS_START_STRING)) {
+        return getInvalidResult(AddressValidationErrorCode.INVALID_PREFIX);
+    }
+
     if (
-        !address.startsWith(ADDRESS_START_STRING) ||
         address.length < ADDRESS_MINIMUM_LENGTH ||
-        address.length > ADDRESS_MAXIMUM_LENGTH ||
-        !ADDRESS_ALPHABET_REGEX.test(address)
+        address.length > ADDRESS_MAXIMUM_LENGTH
     ) {
-        return false;
+        return getInvalidResult(AddressValidationErrorCode.INVALID_LENGTH);
+    }
+
+    if (!ADDRESS_ALPHABET_REGEX.test(address)) {
+        return getInvalidResult(AddressValidationErrorCode.INVALID_ALPHABET);
     }
 
     let decodedHex = "";
@@ -57,18 +91,23 @@ export const isAddress = (address: string): address is Address => {
     try {
         decodedHex = encodeBase16(decodeBase58(address));
     } catch {
-        return false;
+        return getInvalidResult(AddressValidationErrorCode.INVALID_BASE58);
     }
 
     if (decodedHex.length !== ADDRESS_TOTAL_HEX_LENGTH) {
-        return false;
+        return getInvalidResult(AddressValidationErrorCode.INVALID_HEX_LENGTH);
+    }
+
+    const canonicalAddress = encodeBase58(decodedHex);
+    if (canonicalAddress !== address) {
+        return getInvalidResult(AddressValidationErrorCode.NON_CANONICAL);
     }
 
     const payloadHex = decodedHex.slice(0, ADDRESS_PAYLOAD_HEX_LENGTH);
     const checksumHex = decodedHex.slice(ADDRESS_PAYLOAD_HEX_LENGTH);
 
     if (!payloadHex.startsWith(ADDRESS_PREFIX_HEX)) {
-        return false;
+        return getInvalidResult(AddressValidationErrorCode.INVALID_CHAIN_PREFIX);
     }
 
     const expectedChecksumHex = blake2bHex(
@@ -77,8 +116,16 @@ export const isAddress = (address: string): address is Address => {
         32,
     ).slice(0, ADDRESS_CHECKSUM_HEX_LENGTH);
 
-    return (
-        checksumHex.length === ADDRESS_CHECKSUM_HEX_LENGTH &&
-        checksumHex === expectedChecksumHex
-    );
+    if (
+        checksumHex.length !== ADDRESS_CHECKSUM_HEX_LENGTH ||
+        checksumHex !== expectedChecksumHex
+    ) {
+        return getInvalidResult(AddressValidationErrorCode.INVALID_CHECKSUM);
+    }
+
+    return { isValid: true };
+};
+
+export const isAddress = (address: string): address is Address => {
+    return validateAddress(address).isValid;
 };
