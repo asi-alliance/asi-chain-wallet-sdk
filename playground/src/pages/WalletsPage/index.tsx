@@ -39,8 +39,6 @@ const WalletsPage = ({
 
         const wallets = vault.getWallets();
 
-        console.log("Wallets to render", wallets);
-
         const privateKeyWallets = wallets.filter(
             (wallet) => wallet.getIndex() === null
         );

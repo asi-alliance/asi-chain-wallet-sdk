@@ -82,9 +82,6 @@ const WalletCard = ({
                     throw new Error("Invalid 'toAddress' provided.");
                 }
 
-                console.log("Starting transfer...", { toAddress, amount });
-
-
                 setIsSending(true);
 
                 const data = await assetsService.transfer(
@@ -94,8 +91,6 @@ const WalletCard = ({
                     wallet,
                     () => Promise.resolve(password)
                 );
-
-                console.log("Transfer successful", data);
                 // alert("Transfer successful!");
 
                 setModalState({

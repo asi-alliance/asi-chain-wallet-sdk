@@ -126,8 +126,6 @@ export default class Vault {
 
         const { wallets, seeds } = JSON.parse(decryptedData);
 
-        console.log("Parsed unlocked data", wallets, seeds);
-
         this.metaToWallets(wallets);
         this.metaToSeeds(seeds);
 

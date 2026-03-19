@@ -48,15 +48,9 @@ export const init = (config, setVault, setAssetsService) => {
 
         const assetsService = new AssetsService();
 
-        console.log("Initialized Assets service", assetsService);
-
-        console.log("Found keys", Vault.getSavedVaultKeys());
-
         const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
 
         const vault = new Vault(encryptedVaultData);
-
-        console.log("Vault instance", vault);
 
         setVault(vault);
         setAssetsService(assetsService);

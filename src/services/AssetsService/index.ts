@@ -48,17 +48,7 @@ export default class AssetsService {
                 passwordProvider,
             );
 
-            console.log(
-                "AssetsService.transfer: Signed deploy ready for submission:",
-                JSON.stringify(signedDeploy, null, 2),
-            );
-
             const deployId = await gateway.submitDeploy(signedDeploy);
-
-            console.log(
-                "AssetsService.transfer: Deploy submitted successfully with ID:",
-                deployId,
-            );
 
             return deployId;
         } catch (error: any) {

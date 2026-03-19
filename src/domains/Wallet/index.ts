@@ -97,8 +97,6 @@ export default class Wallet {
                 password,
             );
 
-            console.log("decrypted", decrypted)
-
             const parsed = JSON.parse(decrypted);
             if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
                 // convert to sorted array of numbers

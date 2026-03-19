@@ -116,11 +116,7 @@ const Application = (): ReactElement => {
 
             vault.addWallet(wallet);
 
-            console.info("Wallet added to vault", wallet);
-            console.info("vault", vault);
-
             await saveVault(currentPassword);
-            console.info("vault after save", vault);
         });
 
     const removeWalletFromVault = (id: string) =>
