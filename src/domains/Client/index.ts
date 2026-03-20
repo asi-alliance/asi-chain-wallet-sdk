@@ -7,7 +7,7 @@ export interface ClientOptions {
 }
 
 export class Client {
-    private vault: Vault;
+    private readonly vault: Vault;
     private activeWalletAddress?: Address;
 
     private constructor(vault: Vault) {

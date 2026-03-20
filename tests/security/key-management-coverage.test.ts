@@ -3,7 +3,6 @@ import test, { afterEach } from "node:test";
 
 import Asset from "../../src/domains/Asset";
 import Wallet, { Address } from "../../src/domains/Wallet";
-import CryptoService from "../../src/services/Crypto";
 import KeyDerivationService from "../../src/services/KeyDerivation";
 import KeysManager from "../../src/services/KeysManager";
 import MnemonicService from "../../src/services/Mnemonic";

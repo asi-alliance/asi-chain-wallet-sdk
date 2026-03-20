@@ -145,7 +145,7 @@ export default class DeployResubmitter {
 
             if (
                 this.errorHandler.isDeploymentErrorFatal(
-                    deployResult.error?.blockchainError?.type!
+                    deployResult.error?.blockchainError?.type
                 )
             ) 
                 break;
@@ -213,7 +213,7 @@ export default class DeployResubmitter {
     ): Promise<ResubmitResult> {
         console.log('DeployResubmitter: starting deploy submission with resubmission logic');
         this.startSubmissionTime = Date.now();
-        let deployResult: ResubmitResult = { success: false };
+        let deployResult: ResubmitResult;
 
         // 1.1: Try deploying with retries to first node if `useRandomNode` is false
         if (!this.config.useRandomNode) {
@@ -242,7 +242,7 @@ export default class DeployResubmitter {
         console.log(`DeployResubmitter: deploy submitted successfully with ID: ${deployResult.deployId}. Starting to poll for status...`);
 
         // 2: Poll for deploy status
-        const pollResult = await this.pollDeployStatus(deployResult.deployId!);   
+        const pollResult = await this.pollDeployStatus(deployResult.deployId);   
 
         console.log(`DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`);
         return pollResult;

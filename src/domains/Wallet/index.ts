@@ -5,8 +5,6 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
 import { sign } from "@noble/secp256k1";
 
-// TODO const AssetsCache: Map<Address, Assets> = new Map();
-
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
 

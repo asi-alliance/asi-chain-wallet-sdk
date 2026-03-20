@@ -45,12 +45,12 @@ export default class BlockchainGateway {
         return new AxiosHttpClient(axiosInstance);
     }
 
-    public changeValidator(config: GatewayClientConfig): BlockchainGateway {
+    public changeValidator(config: GatewayClientConfig): this {
         this.validatorClient = BlockchainGateway.createHttpClient(config);
         return this;
     }
     
-    public changeIndexer(config: GatewayClientConfig): BlockchainGateway {
+    public changeIndexer(config: GatewayClientConfig): this {
         this.indexerClient = BlockchainGateway.createHttpClient(config);
         return this;
     }

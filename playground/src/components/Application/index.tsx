@@ -193,7 +193,7 @@ const Application = (): ReactElement => {
                 );
                 const encryptedSeed = await EncryptedRecord.createAndEncrypt(
                     mnemonic,
-                    payload.seedPassword!,
+                    payload.seedPassword,
                 );
 
                 const { wallet, seedId } = await createMnemonicWallet(
