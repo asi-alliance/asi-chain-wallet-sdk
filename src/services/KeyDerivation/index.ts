@@ -7,14 +7,6 @@ import { mnemonicToSeed } from "bip39";
 
 setupBufferPolyfill();
 
-const { BIP32Factory } = bip32 as unknown as {
-    BIP32Factory: (
-        ecc: typeof tinysecp,
-    ) => {
-        fromSeed(seed: Uint8Array): BIP32Interface;
-    };
-};
-
 export interface Bip44PathOptions {
     coinType: number;
     account?: number;
@@ -60,7 +52,7 @@ export default class KeyDerivationService {
     }
 
     public static seedToMasterNode(seed: any): BIP32Interface {
-        return BIP32Factory(tinysecp).fromSeed(seed);
+        return bip32(tinysecp).fromSeed(seed);
     }
 
     public static async deriveKeyFromMnemonic(

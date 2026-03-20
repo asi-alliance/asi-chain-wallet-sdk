@@ -199,7 +199,7 @@ const Application = (): ReactElement => {
                 const { wallet, seedId } = await createMnemonicWallet(
                     payload.name,
                     mnemonic,
-                    payload.seedPassword,
+                    payload.password,
                 );
 
                 vault.addWallet(wallet);
