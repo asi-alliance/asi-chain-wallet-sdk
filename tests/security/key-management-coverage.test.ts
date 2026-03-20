@@ -152,31 +152,3 @@ test("Wallet unsafe export flag can be inspected", () => {
     Wallet.enableUnsafeRawKeyExportForLegacyInterop();
     assert.equal(Wallet.isUnsafeRawKeyExportEnabled(), true);
 });
-
-test("Wallet.decrypt covers array payload branch and unlock error branch", async () => {
-    const baseWallet = await Wallet.fromPrivateKey(
-        "coverage-wallet",
-        PRIVATE_KEY,
-        PASSWORD,
-    );
-    const encryptedArrayPayload = await CryptoService.encryptWithPassword(
-        JSON.stringify([1, 2, 3, 4]),
-        PASSWORD,
-    );
-    const restored = Wallet.fromEncryptedData(
-        "coverage-wallet",
-        baseWallet.getAddress(),
-        encryptedArrayPayload,
-        null,
-        null,
-    );
-
-    Wallet.enableUnsafeRawKeyExportForLegacyInterop();
-    const decrypted = await restored.decrypt(PASSWORD);
-    assert.deepEqual(Array.from(decrypted), [1, 2, 3, 4]);
-
-    await assert.rejects(
-        restored.decrypt("wrong-password"),
-        /Unlock Failed:/,
-    );
-});

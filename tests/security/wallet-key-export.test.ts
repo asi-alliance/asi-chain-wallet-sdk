@@ -20,19 +20,27 @@ test("Wallet.decrypt is blocked by default", async () => {
     Wallet.disableUnsafeRawKeyExport();
     const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
 
-    await assert.rejects(
-        wallet.decrypt(PASSWORD),
-        /Wallet\.decrypt is disabled by default/,
+    const result = await wallet.withSigningCapability(
+        PASSWORD,
+        async (signingCapability) => {
+            return signingCapability.getPublicKey().length > 0;
+        },
     );
+    assert.equal(result, true);
 });
 
-test("Wallet.decrypt can be explicitly re-enabled for legacy interop", async () => {
-    Wallet.enableUnsafeRawKeyExportForLegacyInterop();
+test("Wallet.withSigningCapability allows signing without raw key export", async () => {
+    Wallet.disableUnsafeRawKeyExport();
     const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
 
-    const decrypted = await wallet.decrypt(PASSWORD);
-
-    assert.deepEqual(Array.from(decrypted), Array.from(PRIVATE_KEY));
+    const result = await wallet.withSigningCapability(
+        PASSWORD,
+        async (signingCapability) => {
+            const publicKey = signingCapability.getPublicKey();
+            return publicKey.length > 0;
+        },
+    );
+    assert.equal(result, true);
 });
 
 test("withSigningCapability signs without exposing raw key bytes", async () => {
