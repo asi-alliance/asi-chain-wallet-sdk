@@ -144,7 +144,7 @@ export default class DeployResubmitter {
             this.nodeManager.deactivateCurrentNode();
 
             if (
-                this.errorHandler.isDeploymentErrorFatal(
+                !deployResult.error?.blockchainError?.type || this.errorHandler.isDeploymentErrorFatal(
                     deployResult.error?.blockchainError?.type
                 )
             ) 
