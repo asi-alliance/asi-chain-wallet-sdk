@@ -29,7 +29,7 @@ export default class DeploymentErrorHandler {
             return RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE;
         }
 
-        if(errorMessage.includes("invalid deploy ID")) {
+        if (errorMessage.includes("invalid deploy ID")) {
             return RecoverableDeployErrors.INVALID_DEPLOY_ID;
         }
 
@@ -71,16 +71,35 @@ export default class DeploymentErrorHandler {
         return FatalDeployErrors.UNKNOWN_ERROR;
     }
 
-    public isDeploymentErrorRecoverable(errorType: DeploymentErrorType): boolean {
-        return Object.values(RecoverableDeployErrors).includes(errorType as RecoverableDeployErrors);
+    public isDeploymentErrorRecoverable(
+        errorType: DeploymentErrorType | undefined,
+    ): boolean {
+        if (!errorType) {
+            return false;
+        }
+
+        return Object.values(RecoverableDeployErrors).includes(
+            errorType as RecoverableDeployErrors,
+        );
     }
 
-    public isDeploymentErrorFatal(errorType: DeploymentErrorType): boolean {
-        return Object.values(FatalDeployErrors).includes(errorType as FatalDeployErrors);
+    public isDeploymentErrorFatal(
+        errorType: DeploymentErrorType | undefined,
+    ): boolean {
+        if (!errorType) {
+            return true;
+        }
+
+        return Object.values(FatalDeployErrors).includes(
+            errorType as FatalDeployErrors,
+        );
     }
 
     @useLowerCaseMessage
-    public isPollingErrorRecoverable(errorMessage: string): boolean {
+    public isPollingErrorRecoverable(
+        errorMessage: string | undefined,
+    ): boolean {
+        // should be error
         return (
             errorMessage.includes("casper instance") ||
             errorMessage.includes("storage") ||
@@ -88,7 +107,13 @@ export default class DeploymentErrorHandler {
         );
     }
 
-    public getErrorMessageByErrorType(errorType: DeploymentErrorType): string {
+    public getErrorMessageByErrorType(
+        errorType: DeploymentErrorType | undefined,
+    ): string {
+        if (!errorType) {
+            return FatalDeployErrors.UNKNOWN_ERROR;
+        }
+
         return (
             deploymentErrorMessages[errorType] ??
             deploymentErrorMessages[FatalDeployErrors.UNKNOWN_ERROR]
