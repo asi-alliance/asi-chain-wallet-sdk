@@ -148,7 +148,7 @@ export default class DeployResubmitter {
 
             if (
                 this.errorHandler.isDeploymentErrorFatal(
-                    deployResult.error?.blockchainError?.type,
+                    deployResult.error?.blockchainError?.type!
                 )
             )
                 break;
@@ -269,7 +269,7 @@ export default class DeployResubmitter {
         );
 
         // 2: Poll for deploy status
-        const pollResult = await this.pollDeployStatus(deployResult.deployId);
+        const pollResult = await this.pollDeployStatus(deployResult.deployId!);
 
         console.log(
             `DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`,
