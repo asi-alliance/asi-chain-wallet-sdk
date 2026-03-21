@@ -29,7 +29,7 @@ export default class DeploymentErrorHandler {
             return RecoverableDeployErrors.CASPER_INSTANCE_UNAVAILABLE;
         }
 
-        if(errorMessage.includes("invalid deploy ID")) {
+        if (errorMessage.includes("invalid deploy ID")) {
             return RecoverableDeployErrors.INVALID_DEPLOY_ID;
         }
 
@@ -71,12 +71,18 @@ export default class DeploymentErrorHandler {
         return FatalDeployErrors.UNKNOWN_ERROR;
     }
 
-    public isDeploymentErrorRecoverable(errorType: DeploymentErrorType): boolean {
-        return Object.values(RecoverableDeployErrors).includes(errorType as RecoverableDeployErrors);
+    public isDeploymentErrorRecoverable(
+        errorType: DeploymentErrorType,
+    ): boolean {
+        return Object.values(RecoverableDeployErrors).includes(
+            errorType as RecoverableDeployErrors,
+        );
     }
 
     public isDeploymentErrorFatal(errorType: DeploymentErrorType): boolean {
-        return Object.values(FatalDeployErrors).includes(errorType as FatalDeployErrors);
+        return Object.values(FatalDeployErrors).includes(
+            errorType as FatalDeployErrors,
+        );
     }
 
     @useLowerCaseMessage

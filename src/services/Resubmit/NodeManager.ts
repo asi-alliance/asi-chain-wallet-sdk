@@ -1,19 +1,19 @@
-import { NodeUrl, NodeProvider, BlockchainGateway } from "./types";
+import { NodeProvider, BlockchainGateway } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
 
 export default class NodeManager implements NodeProvider {
     private static instance: NodeManager;
 
     private retriesLeft: number;
-    private readonly availableNodesUrls: NodeUrl[];
+    private readonly availableNodesUrls: string[];
     private readonly useRandomNode: boolean;
 
     // maybe I'll use only `availableNodesUrls` and remove `inactiveNodesUrls` in the future, 
     // but for now it helps to keep track of inactive availableNodesUrls without modifying the original list
-    private readonly inactiveNodesUrls = new Set<NodeUrl>();
-    private currentNodeUrl: NodeUrl = "";
+    private readonly inactiveNodesUrls = new Set<string>();
+    private currentNodeUrl: string = "";
 
-    private constructor(availableNodesUrls: NodeUrl[], retriesLeft: number, useRandomNode: boolean) {
+    private constructor(availableNodesUrls: string[], retriesLeft: number, useRandomNode: boolean) {
         if(!availableNodesUrls?.length) {
             throw new Error("At least one node URL must be provided");
         }
@@ -24,7 +24,7 @@ export default class NodeManager implements NodeProvider {
     }
 
     public static initialize(
-        availableNodesUrls: NodeUrl[],
+        availableNodesUrls: string[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
         useRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.useRandomNode,
     ): NodeManager {
@@ -45,7 +45,7 @@ export default class NodeManager implements NodeProvider {
         await this.connectNode(this.availableNodesUrls[0]);
     }
 
-    private async connectNode(nodeUrl: NodeUrl): Promise<void> {
+    private async connectNode(nodeUrl: string): Promise<void> {
         if(BlockchainGateway.getInstance().getValidatorClientUrl() !== nodeUrl) 
             BlockchainGateway.getInstance().changeValidator({ baseUrl: nodeUrl });
 
@@ -76,7 +76,7 @@ export default class NodeManager implements NodeProvider {
         return false;
     }
 
-    private markNodeInactive(nodeUrl: NodeUrl): void {
+    private markNodeInactive(nodeUrl: string): void {
         this.inactiveNodesUrls.add(nodeUrl);
     }
 
@@ -86,7 +86,7 @@ export default class NodeManager implements NodeProvider {
         }
     }
 
-    private deactivateNode(nodeUrl: NodeUrl): void {
+    private deactivateNode(nodeUrl: string): void {
         this.retriesLeft--;
         this.markNodeInactive(nodeUrl);
         
@@ -94,7 +94,7 @@ export default class NodeManager implements NodeProvider {
             this.currentNodeUrl = "";
     }
 
-    private getAvailableNodesUrls(): NodeUrl[] {
+    private getAvailableNodesUrls(): string[] {
         return this.availableNodesUrls.filter((nodeUrl) => !this.inactiveNodesUrls.has(nodeUrl));
     }
 
@@ -102,7 +102,7 @@ export default class NodeManager implements NodeProvider {
         return this.retriesLeft;
     }
 
-    private getRandomAvailableNodeUrl(): NodeUrl {
+    private getRandomAvailableNodeUrl(): string {
         const availableNodeUrls = this.getAvailableNodesUrls();
 
         if (!availableNodeUrls?.length) {
