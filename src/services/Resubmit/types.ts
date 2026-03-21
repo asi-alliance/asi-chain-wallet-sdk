@@ -15,8 +15,6 @@ export {
     BlockchainGateway
 };
 
-export type NodeUrl = string;
-
 export interface NodeProvider {
     connectDefaultNode(): Promise<void>;
     connectActiveRandomNode(): Promise<void>;

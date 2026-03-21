@@ -4,10 +4,9 @@ import {
     DeploymentErrorHandler,
     NodeProvider,
     FatalDeployErrors,
-    NodeUrl,
     BlockchainGateway,
     DeployStatusResult,
-    DeployStatus
+    DeployStatus,
 } from "./types";
 import NodeManager from "./NodeManager";
 import SignerService from "@services/Signer";
@@ -17,26 +16,22 @@ import { DeployData } from "@domains/Deploy";
 import { INVALID_BLOCK_NUMBER } from "@utils";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 
-
 export default class DeployResubmitter {
     private readonly config: ResubmitConfig;
     private readonly nodeManager: NodeProvider;
     private readonly errorHandler: DeploymentErrorHandler;
     private startSubmissionTime = 0;
 
-    constructor(
-        config: ResubmitConfig,
-        availableNodesUrls: NodeUrl[]
-    ) {
+    constructor(config: ResubmitConfig, availableNodesUrls: string[]) {
         this.config = config;
         this.nodeManager = NodeManager.initialize(
-            availableNodesUrls, 
-            config.nodeSelectionAttempts, 
-            config.useRandomNode
+            availableNodesUrls,
+            config.nodeSelectionAttempts,
+            config.useRandomNode,
         );
         this.errorHandler = new DeploymentErrorHandler();
 
-        if(!BlockchainGateway.isInitialized())
+        if (!BlockchainGateway.isInitialized())
             throw new Error("BlockchainGateway is not initialized");
     }
 
@@ -47,7 +42,7 @@ export default class DeployResubmitter {
     }
 
     private sleep(sec: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, sec * 1000));
+        return new Promise((resolve) => setTimeout(resolve, sec * 1000));
     }
 
     private async retryDeployToOneNode(
@@ -65,7 +60,9 @@ export default class DeployResubmitter {
                 const latestBlockNumber = await gateway.getLatestBlockNumber();
 
                 if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
-                    throw new Error("DeployResubmitter.retryDeployToOneNode: Invalid block number");
+                    throw new Error(
+                        "DeployResubmitter.retryDeployToOneNode: Invalid block number",
+                    );
                 }
 
                 const deployData: DeployData = {
@@ -77,12 +74,16 @@ export default class DeployResubmitter {
                     shardId: "root",
                 };
 
-                const signedDeploy = await SignerService.sign({ wallet, data: deployData }, passwordProvider);
+                const signedDeploy = await SignerService.sign(
+                    { wallet, data: deployData },
+                    passwordProvider,
+                );
 
                 const deployId = await gateway.submitDeploy(signedDeploy);
 
                 if (typeof deployId !== "string") {
-                    const errorMessage = 'Invalid deploy ID received: ' + deployId;
+                    const errorMessage =
+                        "Invalid deploy ID received: " + deployId;
                     throw new Error(errorMessage);
                 }
 
@@ -90,28 +91,31 @@ export default class DeployResubmitter {
 
                 return deployResult;
             } catch (error) {
-                const errorMessage = "DeployResubmitter.retryDeployToOneNode:" + (error as Error).message;
-                const errorType = this.errorHandler.parseDeploymentError(errorMessage);
+                const errorMessage =
+                    "DeployResubmitter.retryDeployToOneNode:" +
+                    (error as Error).message;
+                const errorType =
+                    this.errorHandler.parseDeploymentError(errorMessage);
                 console.error(errorMessage);
 
-                deployResult.error = {  
+                deployResult.error = {
                     blockchainError: {
                         type: errorType,
                         message: errorMessage,
-                    }
+                    },
                 };
 
-                if(this.errorHandler.isDeploymentErrorFatal(errorType)) 
-                    break;
-                deployRetries --;
-            } 
+                if (this.errorHandler.isDeploymentErrorFatal(errorType)) break;
+                deployRetries--;
+            }
 
             await this.sleep(this.config.deployIntervalSeconds);
         }
-        
-        if(this.isDeployExpired()) {
+
+        if (this.isDeployExpired()) {
             deployResult.error = deployResult?.error || {};
-            deployResult.error.exceededTimeout = FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
+            deployResult.error.exceededTimeout =
+                FatalDeployErrors.DEPLOY_SUBMIT_TIMEOUT;
         }
 
         return { success: false, error: deployResult.error };
@@ -121,7 +125,7 @@ export default class DeployResubmitter {
         rholangCode: string,
         wallet: Wallet,
         passwordProvider: PasswordProvider,
-        phloLimit?: number
+        phloLimit?: number,
     ): Promise<ResubmitResult> {
         let deployResult: ResubmitResult = { success: false };
 
@@ -135,22 +139,21 @@ export default class DeployResubmitter {
                 rholangCode,
                 wallet,
                 passwordProvider,
-                phloLimit
+                phloLimit,
             );
 
-            if (deployResult.success)
-                break;
-                
+            if (deployResult.success) break;
+
             this.nodeManager.deactivateCurrentNode();
 
             if (
-                !deployResult.error?.blockchainError?.type || this.errorHandler.isDeploymentErrorFatal(
-                    deployResult.error?.blockchainError?.type
+                this.errorHandler.isDeploymentErrorFatal(
+                    deployResult.error?.blockchainError?.type,
                 )
-            ) 
+            )
                 break;
         }
-        
+
         return deployResult;
     }
 
@@ -158,14 +161,18 @@ export default class DeployResubmitter {
         let last_error: any;
 
         while (!this.isDeployExpired()) {
-            const checkDeployResult: DeployStatusResult = await BlockchainGateway.getInstance().getDeployStatus(deployId);
+            const checkDeployResult: DeployStatusResult =
+                await BlockchainGateway.getInstance().getDeployStatus(deployId);
             const deployStatus: DeployStatus = checkDeployResult.status;
 
             if (deployStatus === DeployStatus.CHECK_ERROR) {
                 const errorMessage = `DeployResubmitter.pollDeployStatus: ${
-                    'errorMessage' in checkDeployResult ? checkDeployResult.errorMessage : 'Unknown error'
+                    "errorMessage" in checkDeployResult
+                        ? checkDeployResult.errorMessage
+                        : "Unknown error"
                 }`;
-                const errorType = this.errorHandler.parseDeploymentError(errorMessage);
+                const errorType =
+                    this.errorHandler.parseDeploymentError(errorMessage);
                 console.error(errorMessage);
 
                 const blockchainError = {
@@ -174,28 +181,45 @@ export default class DeployResubmitter {
                 };
 
                 // "Bad Request" isn't fatal for polling, deploy can be included in block later
-                if(this.errorHandler.isDeploymentErrorFatal(errorType) && !errorMessage.includes("Bad Request")) 
-                    return { 
-                        success: false, 
-                        deployStatus: DeployStatus.CHECK_ERROR, 
-                        error: { blockchainError }
+                if (
+                    this.errorHandler.isDeploymentErrorFatal(errorType) &&
+                    !errorMessage.includes("Bad Request")
+                )
+                    return {
+                        success: false,
+                        deployStatus: DeployStatus.CHECK_ERROR,
+                        error: { blockchainError },
                     };
-                    
-                last_error = blockchainError;  
-            } 
 
-            console.log("DeployResubmitter.pollDeployStatus: current deploy status:", deployStatus);
-            
-            if (deployStatus == DeployStatus.INCLUDED_IN_BLOCK || deployStatus == DeployStatus.FINALIZED)  
-                return { success: true, deployStatus: checkDeployResult.status };
+                last_error = blockchainError;
+            }
+
+            console.log(
+                "DeployResubmitter.pollDeployStatus: current deploy status:",
+                deployStatus,
+            );
+
+            if (
+                deployStatus == DeployStatus.INCLUDED_IN_BLOCK ||
+                deployStatus == DeployStatus.FINALIZED
+            )
+                return {
+                    success: true,
+                    deployStatus: checkDeployResult.status,
+                };
 
             await this.sleep(this.config.pollingIntervalSeconds);
         }
 
-        return { 
-            success: false, 
-            deployStatus: last_error ? DeployStatus.CHECK_ERROR : DeployStatus.DEPLOYING,
-            error: { ...last_error, exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT } 
+        return {
+            success: false,
+            deployStatus: last_error
+                ? DeployStatus.CHECK_ERROR
+                : DeployStatus.DEPLOYING,
+            error: {
+                ...last_error,
+                exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT,
+            },
         };
     }
 
@@ -209,42 +233,47 @@ export default class DeployResubmitter {
         rholangCode: string,
         wallet: Wallet,
         passwordProvider: PasswordProvider,
-        phloLimit?: number
+        phloLimit?: number,
     ): Promise<ResubmitResult> {
-        console.log('DeployResubmitter: starting deploy submission with resubmission logic');
+        console.log(
+            "DeployResubmitter: starting deploy submission with resubmission logic",
+        );
         this.startSubmissionTime = Date.now();
         let deployResult: ResubmitResult;
 
         // 1.1: Try deploying with retries to first node if `useRandomNode` is false
         if (!this.config.useRandomNode) {
             await this.nodeManager.connectDefaultNode();
-            
+
             deployResult = await this.retryDeployToOneNode(
                 rholangCode,
                 wallet,
                 passwordProvider,
-                phloLimit
+                phloLimit,
             );
 
-        // 1.2: Try deploying with retries and random node switching
+            // 1.2: Try deploying with retries and random node switching
         } else {
             deployResult = await this.retryDeployToRandomNodes(
                 rholangCode,
                 wallet,
                 passwordProvider,
-                phloLimit
+                phloLimit,
             );
         }
 
-        if (!deployResult.success) 
-            return deployResult;
+        if (!deployResult.success) return deployResult;
 
-        console.log(`DeployResubmitter: deploy submitted successfully with ID: ${deployResult.deployId}. Starting to poll for status...`);
+        console.log(
+            `DeployResubmitter: deploy submitted successfully with ID: ${deployResult.deployId}. Starting to poll for status...`,
+        );
 
         // 2: Poll for deploy status
-        const pollResult = await this.pollDeployStatus(deployResult.deployId);   
+        const pollResult = await this.pollDeployStatus(deployResult.deployId);
 
-        console.log(`DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`);
+        console.log(
+            `DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`,
+        );
         return pollResult;
     }
 }
