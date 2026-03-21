@@ -279,7 +279,7 @@ export default class DeployResubmitter {
         );
 
         // 2: Poll for deploy status
-        const pollResult = await this.pollDeployStatus(deployResult.deployId!);
+        const pollResult = await this.pollDeployStatus(deployResult.deployId);
 
         console.log(
             `DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`,
