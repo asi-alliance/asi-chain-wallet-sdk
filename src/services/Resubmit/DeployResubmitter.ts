@@ -142,13 +142,19 @@ export default class DeployResubmitter {
                 phloLimit,
             );
 
-            if (deployResult.success) break;
+            if (deployResult.success) {
+                break;
+            }
 
             this.nodeManager.deactivateCurrentNode();
 
+            if (!deployResult.error?.blockchainError?.type) {
+                break
+            }
+
             if (
                 this.errorHandler.isDeploymentErrorFatal(
-                    deployResult.error?.blockchainError?.type!
+                    deployResult.error?.blockchainError?.type
                 )
             )
                 break;
@@ -262,8 +268,12 @@ export default class DeployResubmitter {
             );
         }
 
-        if (!deployResult.success) return deployResult;
+        // validate this point 
+        if (!deployResult.success || !deployResult?.deployId) {
+            return deployResult;
+        }
 
+        // should enter pollDeployStatus in other method 
         console.log(
             `DeployResubmitter: deploy submitted successfully with ID: ${deployResult.deployId}. Starting to poll for status...`,
         );
@@ -274,6 +284,7 @@ export default class DeployResubmitter {
         console.log(
             `DeployResubmitter: finished polling deploy status. Final status: ${pollResult.deployStatus}, success: ${pollResult.success}`,
         );
+
         return pollResult;
     }
 }
