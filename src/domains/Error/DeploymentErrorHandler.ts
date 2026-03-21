@@ -72,34 +72,21 @@ export default class DeploymentErrorHandler {
     }
 
     public isDeploymentErrorRecoverable(
-        errorType: DeploymentErrorType | undefined,
+        errorType: DeploymentErrorType,
     ): boolean {
-        if (!errorType) {
-            return false;
-        }
-
         return Object.values(RecoverableDeployErrors).includes(
             errorType as RecoverableDeployErrors,
         );
     }
 
-    public isDeploymentErrorFatal(
-        errorType: DeploymentErrorType | undefined,
-    ): boolean {
-        if (!errorType) {
-            return true;
-        }
-
+    public isDeploymentErrorFatal(errorType: DeploymentErrorType): boolean {
         return Object.values(FatalDeployErrors).includes(
             errorType as FatalDeployErrors,
         );
     }
 
     @useLowerCaseMessage
-    public isPollingErrorRecoverable(
-        errorMessage: string | undefined,
-    ): boolean {
-        // should be error
+    public isPollingErrorRecoverable(errorMessage: string): boolean {
         return (
             errorMessage.includes("casper instance") ||
             errorMessage.includes("storage") ||
@@ -107,13 +94,7 @@ export default class DeploymentErrorHandler {
         );
     }
 
-    public getErrorMessageByErrorType(
-        errorType: DeploymentErrorType | undefined,
-    ): string {
-        if (!errorType) {
-            return FatalDeployErrors.UNKNOWN_ERROR;
-        }
-
+    public getErrorMessageByErrorType(errorType: DeploymentErrorType): string {
         return (
             deploymentErrorMessages[errorType] ??
             deploymentErrorMessages[FatalDeployErrors.UNKNOWN_ERROR]
