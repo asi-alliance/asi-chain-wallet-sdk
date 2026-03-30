@@ -3,7 +3,7 @@ import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
 import {
     fromAtomicAmount,
-    ChainService,
+    AssetsService,
     isAddress,
     Address,
     Wallet,
@@ -13,13 +13,13 @@ import "./style.css";
 export interface IWalletCardProps {
     wallet: Wallet;
     removeWallet: (id: Address) => void;
-    chainService: ChainService;
+    assetsService: AssetsService;
 }
 
 const WalletCard = ({
     wallet,
     removeWallet,
-    chainService,
+    assetsService,
 }: IWalletCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
 
@@ -35,7 +35,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await chainService.getASIBalance(address);
+            const balance = await assetsService.getASIBalance(address);
 
             setBalance(balance);
         } catch (error) {
@@ -82,19 +82,15 @@ const WalletCard = ({
                     throw new Error("Invalid 'toAddress' provided.");
                 }
 
-                console.log("Starting transfer...", { toAddress, amount });
-
-
                 setIsSending(true);
 
-                const data = await chainService.transfer(
+                const data = await assetsService.transfer(
                     address,
                     toAddress,
                     amount,
-                    await wallet.decrypt(password)
+                    wallet,
+                    () => Promise.resolve(password)
                 );
-
-                console.log("Transfer successful", data);
                 // alert("Transfer successful!");
 
                 setModalState({

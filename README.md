@@ -3,7 +3,7 @@
 # ASI Chain: Wallet SDK
 
 [![Status](https://img.shields.io/badge/Status-BETA-FFA500?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk)
-[![Version](https://img.shields.io/badge/Version-0.1.0-A8E6A3?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk/releases)
+[![Version](https://img.shields.io/badge/Version-0.0.1-A8E6A3?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green?style=for-the-badge)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Available-C4F0C1?style=for-the-badge)](https://docs.asichain.io)
 
@@ -26,8 +26,9 @@ Part of the [**Artificial Superintelligence Alliance**](https://superintelligenc
 5. [Architecture](#architecture)
 6. [Project Structure](#project-structure)
 7. [Documentation](#documentation)
-8. [Development](#development)
-9. [License](#license)
+8. [Security](#security)
+9. [Development](#development)
+10. [License](#license)
 
 ---
 
@@ -39,12 +40,12 @@ ASI Chain Wallet SDK is a lightweight, modular TypeScript library designed to si
 
 ## Key Features
 
-- **Wallet Management** - Create, import, and derive wallets from private keys or mnemonic phrases via [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts)
-- **Secure Storage** - Password-based encryption using PBKDF2 + AES via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
-- **Key Derivation** - BIP-39 mnemonic generation and BIP-44 hierarchical deterministic key derivation via [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts)
-- **Vault System** - Encrypted container for managing multiple wallets and seeds via [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts)
-- **Chain Interaction** - Direct communication with ASI Chain nodes via [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts)
-- **Address Generation** - secp256k1 key generation with keccak256/blake2b address derivation via [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts)
+- **Wallet Management** - Create, import, and derive wallets from private keys or mnemonic phrases via [WalletsService](docs/SERVICES.md)
+- **Secure Storage** - Password-based encryption using PBKDF2 + AES via [CryptoService](docs/SERVICES.md)
+- **Key Derivation** - BIP-39 mnemonic generation and BIP-44 hierarchical deterministic key derivation via [KeyDerivationService](docs/SERVICES.md)
+- **Vault System** - Encrypted container for managing multiple wallets and seeds via [Vault](docs/DOMAINS.md)
+- **Chain Interaction** - Transfer and balance operations via [AssetsService](docs/SERVICES.md) and [BlockchainGateway](docs/DOMAINS.md)
+- **Address Generation** - secp256k1 key generation with keccak256/blake2b address derivation via [KeysManager](docs/SERVICES.md)
 
 ---
 
@@ -74,53 +75,53 @@ const derivedWallet = await WalletsService.createWalletFromMnemonic(mnemonic, 0)
 console.log('Derived Address:', derivedWallet.address);
 ```
 
-See [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts) and [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts) for full API reference.
+See [WalletsService](docs/SERVICES.md) and [MnemonicService](docs/SERVICES.md) for full API reference.
 
 ### Manage Wallets with Vault
 
 ```typescript
 import { Vault, Wallet } from 'asi-wallet-sdk';
 
-// Create and unlock vault
+// Create vault and add wallet
 const vault = new Vault();
-vault.lock('vault-password');
 
 // Add wallet to vault
-const wallet = Wallet.fromPrivateKey('My Wallet', privateKey, 'wallet-password');
-vault.unlock('vault-password');
+const wallet = await Wallet.fromPrivateKey('My Wallet', privateKey, 'wallet-password');
 vault.addWallet(wallet);
 
 // Save vault to localStorage
-vault.lock('vault-password');
+await vault.lock('vault-password');
 vault.save();
 ```
 
-See [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts) and [Wallet](docs/DOMAINS.md#wallet-srcdomainswalletindexts) for full API reference.
+See [Vault](docs/DOMAINS.md) and [Wallet](docs/DOMAINS.md) for full API reference.
 
 ### Check Balance and Transfer
 
 ```typescript
-import { RChainService } from 'asi-wallet-sdk';
+import { AssetsService, BlockchainGateway } from 'asi-wallet-sdk';
 
-const chainService = new RChainService({
-  validatorURL: 'http://validator-node:40403',
-  readOnlyURL: 'http://observer-node:40403'
+BlockchainGateway.init({
+  validator: { baseUrl: 'http://validator-node:40403' },
+  indexer: { baseUrl: 'http://observer-node:40403' },
 });
+const assetsService = new AssetsService();
 
 // Get ASI balance
-const balance = await chainService.getASIBalance(address);
+const balance = await assetsService.getASIBalance(address);
 console.log('Balance:', balance.toString());
 
 // Transfer tokens
-const deployId = await chainService.transfer(
+const deployId = await assetsService.transfer(
   fromAddress,
   toAddress,
   BigInt(1000000000), // 10 ASI in atomic units
-  privateKey
+  wallet,
+  passwordProvider
 );
 ```
 
-See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts) for full API reference. For amount conversions, see [functions utilities](docs/UTILS.md#functions-srcutilsfunctionsindexts).
+See [AssetsService](docs/SERVICES.md) for full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
 
 ---
 
@@ -141,10 +142,11 @@ See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindext
 │  │                      Services                                 │  │
 │  │  • WalletsService       - Wallet creation & address derivation│  │
 │  │  • CryptoService        - Password-based encryption (AES)     │  │
-│  │  • KeysService          - secp256k1 key generation            │  │
+│  │  • KeysManager          - secp256k1 key generation            │  │
 │  │  • KeyDerivationService - BIP-32/BIP-44 derivation            │  │
 │  │  • MnemonicService      - BIP-39 mnemonic handling            │  │
-│  │  • RChainService        - Blockchain node interaction         │  │
+│  │  • SignerService        - Deploy signing pipeline             │  │
+│  │  • AssetsService        - Balance + transfer operations       │  │
 │  │  • FeeService           - Gas fee calculations                │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
@@ -153,9 +155,9 @@ See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindext
 │  │  • Wallet              - Encrypted wallet with lock/unlock    │  │
 │  │  • Vault               - Multi-wallet container               │  │
 │  │  • Asset               - Token representation                 │  │
-│  │  • SeedRecord          - Encrypted seed phrase storage        │  │
-│  │  • SecureStorage       - localStorage encryption layer        │  │
-│  │  • BinaryWriter        - Protobuf-like serialization          │  │
+│  │  • EncryptedRecord     - Encrypted record storage             │  │
+│  │  • BrowserStorage      - Browser persistence adapter          │  │
+│  │  • BlockchainGateway   - Node API gateway                     │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
@@ -182,11 +184,11 @@ See [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindext
 
 ### Cryptographic Flow
 
-- **Key Generation**: secp256k1 elliptic curve keypairs via [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts)
+- **Key Generation**: secp256k1 elliptic curve keypairs via [KeysManager](docs/SERVICES.md)
 - **Address Derivation**: keccak256 hash → blake2b checksum → Base58 encoding with [chain prefix](src/utils/constants)
-- **Encryption**: PBKDF2 (200,000 iterations) → AES-256 via [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts)
-- **Mnemonic**: BIP-39 standard (12/24 words) via [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts)
-- **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`) via [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts)
+- **Encryption**: PBKDF2 (100,000 iterations) → AES-GCM via [CryptoService](docs/SERVICES.md)
+- **Mnemonic**: BIP-39 standard (12/24 words) via [MnemonicService](docs/SERVICES.md)
+- **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`) via [KeyDerivationService](docs/SERVICES.md)
 
 ---
 
@@ -227,9 +229,9 @@ asi-chain-wallet-sdk/
 
 | Document | Description |
 |----------|-------------|
-| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain models: [Wallet](docs/DOMAINS.md#wallet-srcdomainswalletindexts), [Vault](docs/DOMAINS.md#vault-srcdomainsvaultindexts), [Asset](docs/DOMAINS.md#asset-srcdomainsassetindexts), [SeedRecord](docs/DOMAINS.md#encryptedseedrecord-srcdomainsseedrecordindexts), [SecureStorage](docs/DOMAINS.md#securewebwalletsstorage-srcdomainssecurestorageindexts), [BinaryWriter](docs/DOMAINS.md#binarywriter-srcdomainsbinarywriterindexts) |
-| [docs/SERVICES.md](docs/SERVICES.md) | Services: [WalletsService](docs/SERVICES.md#walletsservice-srcserviceswalletserviceindexts), [CryptoService](docs/SERVICES.md#cryptoservice-srcservicescryptoindexts), [KeysService](docs/SERVICES.md#keysservice-srcserviceskeysserviceindexts), [KeyDerivationService](docs/SERVICES.md#keyderivationservice-srcserviceskeyderivationindexts), [MnemonicService](docs/SERVICES.md#mnemonicservice-srcservicesmnemonicindexts), [RChainService](docs/SERVICES.md#rchainservice-srcserviceschainserviceindexts) |
-| [docs/UTILS.md](docs/UTILS.md) | Utilities: [codec](docs/UTILS.md#codec-srcutilscodecindexts), [constants](docs/UTILS.md#constants-srcutilsconstantsindexts), [validators](docs/UTILS.md#validators-srcutilsvalidatorsindexts), [functions](docs/UTILS.md#functions-srcutilsfunctionsindexts), [polyfills](docs/UTILS.md#polyfills-srcutilspolyfillsindexts) |
+| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain models (`Wallet`, `Vault`, `Asset`, `BlockchainGateway`, and related types) |
+| [docs/SERVICES.md](docs/SERVICES.md) | Service layer (`WalletsService`, `CryptoService`, `KeysManager`, `KeyDerivationService`, `SignerService`, `AssetsService`, `DeployResubmitter`) |
+| [docs/UTILS.md](docs/UTILS.md) | Utility helpers (`codec`, `constants`, `validators`, `functions`, `polyfills`) |
 | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components and usage examples |
 
 ### Related Resources
@@ -241,6 +243,19 @@ asi-chain-wallet-sdk/
 | ASI Chain Wallet | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet) |
 | ASI Chain Explorer | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
 | ASI Chain Faucet | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet) |
+
+---
+
+## Security
+
+| Document | Description |
+|----------|-------------|
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting policy, disclosure process, and supported versions |
+| [THREAT_MODEL.md](THREAT_MODEL.md) | Threat assumptions, trust boundaries, adversary model, and mitigations |
+| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees |
+| [CRYPTO_PROFILE.md](CRYPTO_PROFILE.md) | Versioned crypto parameters, key-handling profile, and migration notes |
+| [security-review.md](security-review.md) | Point-in-time security findings and mitigation status |
+| [security-improvement-plan.md](security-improvement-plan.md) | Prioritized remediation roadmap and release gates |
 
 ---
 
@@ -262,6 +277,9 @@ npm run build
 
 # Watch mode for development
 npm run dev
+
+# Run security release gates locally
+npm run security:gate
 ```
 
 ### Playground
@@ -291,8 +309,8 @@ Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/P
 | [bip39](https://github.com/bitcoinjs/bip39) | 3.1.0 | BIP-39 mnemonic generation |
 | [blakejs](https://github.com/dcposch/blakejs) | 1.2.1 | BLAKE2b hashing for addresses |
 | [bs58](https://github.com/cryptocoinjs/bs58) | 6.0.0 | Base58 encoding |
-| [crypto-js](https://github.com/brix/crypto-js) | 4.2.0 | AES encryption and PBKDF2 |
-| [elliptic](https://github.com/indutny/elliptic) | 6.6.1 | secp256k1 elliptic curve operations |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.6.0 | Cryptographic hash helpers |
+| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0 | secp256k1 key generation and signing |
 | [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
 | [tiny-secp256k1](https://github.com/nicknisi/tiny-secp256k1) | 2.2.4 | secp256k1 for BIP-32 derivation |
 

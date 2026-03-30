@@ -7,7 +7,7 @@ export type TWalletCreatePayload =
     | {
           mode: "privateKey";
           name: string;
-          privateKey: string;
+          privateKey: Uint8Array;
           password: string;
       }
     | {
@@ -15,6 +15,7 @@ export type TWalletCreatePayload =
           name: string;
           mnemonicWords: string[];
           password: string;
+          seedPassword?: string
       };
 
 export interface IWalletCreateModalProps {
@@ -43,7 +44,7 @@ const CreateWalletModal = ({
     const [mnemonicWords, setMnemonicWords] = useState<string[]>(
         !initialMnemonic
             ? []
-            : MnemonicService.mnemonicToWordArray(initialMnemonic)
+            : MnemonicService.mnemonicToWordArray(initialMnemonic),
     );
 
     const computedTitle = useMemo(() => {
@@ -78,7 +79,9 @@ const CreateWalletModal = ({
             onSubmit({
                 mode: "privateKey",
                 name: name.trim(),
-                privateKey: privateKey.trim(),
+                privateKey: new Uint8Array(
+                    JSON.parse(`[${privateKey.trim()}]`),
+                ),
                 password,
             });
 

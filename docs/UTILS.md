@@ -122,7 +122,23 @@ Validates an account name. Checks for non-empty string, maximum length, and forb
 ```ts
 isAddress(address: string): address is Address
 ```
-Type-guard that checks whether `address` matches the expected format: starts with `1111`, length between 50 and 54 characters, and only alphanumeric characters. Returns `true` if valid.
+Type-guard that checks whether `address` is valid after full decode + checksum validation.
+
+```ts
+validateAddress(address: string): { isValid: boolean; errorCode?: AddressValidationErrorCode }
+```
+Performs detailed validation and returns a deterministic `errorCode` when invalid.
+
+`AddressValidationErrorCode` values:
+
+- `INVALID_PREFIX`
+- `INVALID_LENGTH`
+- `INVALID_ALPHABET`
+- `INVALID_BASE58`
+- `INVALID_HEX_LENGTH`
+- `INVALID_CHAIN_PREFIX`
+- `INVALID_CHECKSUM`
+- `NON_CANONICAL`
 
 Example:
 
@@ -134,5 +150,10 @@ if (!nameValidation.isValid) console.error(nameValidation.error);
 const candidateAddress = "1111...";
 if (isAddress(candidateAddress)) {
   // candidateAddress is now narrowed to `Address` type
+}
+
+const detailedResult = validateAddress(candidateAddress);
+if (!detailedResult.isValid) {
+  console.error(detailedResult.errorCode);
 }
 ```

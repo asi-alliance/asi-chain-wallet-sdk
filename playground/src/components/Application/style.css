@@ -4,6 +4,37 @@
   box-sizing: border-box;
 }
 
+.app-navigation {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  background: #fff;
+  border-bottom: 2px solid #e5e7eb;
+  align-items: center;
+}
+
+.nav-button {
+  padding: 0.75rem 1.5rem;
+  background: #f0f0f0;
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-button:hover {
+  background: #e0e0e0;
+}
+
+.nav-button.active {
+  background: #007acc;
+  color: white;
+  border-color: #005a9e;
+}
+
 .wallets-page {
   display: flex;
   flex-direction: column;

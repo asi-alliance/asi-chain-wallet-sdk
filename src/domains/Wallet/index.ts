@@ -1,7 +1,9 @@
-import Asset, { Assets } from "../Asset";
-import WalletsService from "../../services/Wallets";
-import CryptoService, { EncryptedData } from "../../services/Crypto";
-import { isAddress } from "../../utils/validators";
+import WalletsService from "@services/Wallets";
+import KeysManager from "@services/KeysManager";
+import Asset, { Assets } from "@domains/Asset";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import { validateAddress } from "@utils/validators";
+import { sign } from "@noble/secp256k1";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -25,7 +27,13 @@ export enum WalletMemoryKeys {
     CRYPTO_VERSION = "crypto version",
 }
 
+export interface SigningCapability {
+    signDigest(digest: Uint8Array): Promise<Uint8Array>;
+    getPublicKey(): Uint8Array;
+}
+
 export default class Wallet {
+    private static unsafeRawKeyExportEnabled = false;
     private name: string;
     private address: Address;
     private privateKey: EncryptedData;
@@ -39,7 +47,7 @@ export default class Wallet {
         address: Address,
         encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
-        index: number | null
+        index: number | null,
     ) {
         this.name = name;
         this.index = index;
@@ -52,37 +60,28 @@ export default class Wallet {
 
     public static async fromPrivateKey(
         name: string,
-        privateKey: string,
+        privateKey: Uint8Array,
         password: string,
         masterNodeId: string | null = null,
-        index: number | null = null
+        index: number | null = null,
     ): Promise<Wallet> {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
         const encrypted: EncryptedData = await this.encryptPrivateKey(
             privateKey,
-            password
+            password,
         );
 
-        return new Wallet(
-            name,
-            address,
-            encrypted,
-            masterNodeId,
-            index
-        );
+        return new Wallet(name, address, encrypted, masterNodeId, index);
     }
 
-    public static fromEncryptedData(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
-        index: number | null
-    ): Wallet {
-        if (!isAddress(address)) {
-            throw new Error("Invalid address format");
+    public static fromEncryptedData(name: string, address: Address, encryptedPrivateKey: EncryptedData, masterNodeId: string | null, index: number | null): Wallet {
+        const validation = validateAddress(address);
+        if (!validation.isValid) {
+            throw new Error(
+                `Invalid address format: ${validation.errorCode ?? "UNKNOWN"}`,
+            );
         }
 
         return new Wallet(
@@ -90,18 +89,90 @@ export default class Wallet {
             address,
             encryptedPrivateKey,
             masterNodeId,
-            index
+            index,
         );
     }
 
-    public async decrypt(password: string): Promise<string> {
-        try {
-            return await CryptoService.decryptWithPassword(
-                this.privateKey,
-                password
+    /**
+     * @deprecated Raw key export is disabled by default. Prefer `withSigningCapability()`.
+     * Enable only for legacy migration by calling `Wallet.enableUnsafeRawKeyExportForLegacyInterop()`.
+     */
+    public async decrypt(password: string): Promise<Uint8Array> {
+        if (!Wallet.unsafeRawKeyExportEnabled) {
+            throw new Error(
+                "Wallet.decrypt is disabled by default for security. Use withSigningCapability() instead.",
             );
+        }
+
+        return await this.decryptPrivateKey(password);
+    }
+
+    public static enableUnsafeRawKeyExportForLegacyInterop(): void {
+        Wallet.unsafeRawKeyExportEnabled = true;
+    }
+
+    public static disableUnsafeRawKeyExport(): void {
+        Wallet.unsafeRawKeyExportEnabled = false;
+    }
+
+    public static isUnsafeRawKeyExportEnabled(): boolean {
+        return Wallet.unsafeRawKeyExportEnabled;
+    }
+
+    private async decryptPrivateKey(password: string): Promise<Uint8Array> {
+        try {
+            const decrypted = await CryptoService.decryptWithPassword(
+                this.privateKey,
+                password,
+            );
+
+            const parsed = JSON.parse(decrypted);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                // convert to sorted array of numbers
+                const values: number[] = Object.keys(parsed)
+                    .sort((a, b) => Number(a) - Number(b))
+                    .map((k) => {
+                        const v = parsed[k];
+                        const num = typeof v === "string" ? Number(v) : v;
+                        return typeof num === "number" && !isNaN(num) ? num : 0;
+                    });
+                return new Uint8Array(values);
+            }
+            return new Uint8Array(parsed);
         } catch (error: any) {
             throw new Error("Unlock Failed: " + error?.message);
+        }
+    }
+
+    public async withSigningCapability<T>(
+        password: string,
+        callback: (signingCapability: SigningCapability) => Promise<T> | T,
+    ): Promise<T> {
+        const privateKey = await this.decryptPrivateKey(password);
+        let expired = false;
+
+        const signingCapability: SigningCapability = {
+            signDigest: async (digest: Uint8Array): Promise<Uint8Array> => {
+                if (expired) {
+                    throw new Error("Signing capability has expired");
+                }
+
+                return await sign(digest, privateKey);
+            },
+            getPublicKey: (): Uint8Array => {
+                if (expired) {
+                    throw new Error("Signing capability has expired");
+                }
+
+                return KeysManager.getPublicKeyFromPrivateKey(privateKey);
+            },
+        };
+
+        try {
+            return await callback(signingCapability);
+        } finally {
+            expired = true;
+            privateKey.fill(0);
         }
     }
 
@@ -145,7 +216,10 @@ export default class Wallet {
         return JSON.stringify(meta);
     }
 
-    private static async encryptPrivateKey(privateKey: string, password: string) {
-        return await CryptoService.encryptWithPassword(privateKey, password);
+    private static async encryptPrivateKey(
+        privateKey: Uint8Array,
+        password: string,
+    ) {
+        return await CryptoService.encryptWithPassword(JSON.stringify(privateKey), password);
     }
 }

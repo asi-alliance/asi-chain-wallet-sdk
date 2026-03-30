@@ -7,8 +7,9 @@ import {
     KeyDerivationService,
     MnemonicService,
     MnemonicStrength,
-    ChainService,
-    KeysService,
+    BlockchainGateway,
+    AssetsService,
+    KeysManager,
     Wallet,
     Vault,
 } from "asi-wallet-sdk";
@@ -32,25 +33,27 @@ export type ModalProps =
     | ITransferCompletedModalProps
     | undefined;
 
-export const init = (config, setVault, setChainService) => {
+export const init = (config, setVault, setAssetsService) => {
     try {
-        const chainService = new ChainService({
-            validatorURL: config.ValidatorURL,
-            readOnlyURL: config.ReadOnlyURL,
+        BlockchainGateway.init({
+            validator: {
+                baseUrl: config.ValidatorURL,
+                axiosConfig: {},
+            },
+            indexer: {
+                baseUrl: config.ReadOnlyURL,
+                axiosConfig: {},
+            },
         });
 
-        console.log("Initialized Chain service", chainService);
-
-        console.log("Found keys", Vault.getSavedVaultKeys());
+        const assetsService = new AssetsService();
 
         const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
 
         const vault = new Vault(encryptedVaultData);
 
-        console.log("Vault instance", vault);
-
         setVault(vault);
-        setChainService(chainService);
+        setAssetsService(assetsService);
     } catch (error) {
         alert(error?.message || "Error during initialization");
     }
@@ -68,9 +71,15 @@ const wordsCountToMnemonicStrength = (words: 12 | 24) => {
 export const createMnemonicWallet = async (
     name: string,
     mnemonic: string,
-    password: string
+    password: string,
 ) => {
-    return await deriveNextWallet(keccak512(mnemonic), mnemonic, name, password, 0);
+    return await deriveNextWallet(
+        keccak512(mnemonic),
+        mnemonic,
+        name,
+        password,
+        0,
+    );
 };
 
 export const deriveNextWallet = async (
@@ -78,23 +87,23 @@ export const deriveNextWallet = async (
     mnemonic: string,
     name: string,
     password: string,
-    lastIndex: number
+    lastIndex: number,
 ) => {
     const nextIndex: number = lastIndex++;
 
-    const path: string = KeyDerivationService.buildBip44Path(
-        60,
-        0,
-        0,
-        nextIndex
-    );
+    const path: string = KeyDerivationService.buildBip44Path({
+        coinType: 60,
+        account: 0,
+        change: 0,
+        index: nextIndex,
+    });
 
     const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
     const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
     const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
 
-    const { publicKey } = KeysService.getKeyPairFromPrivateKey(privateKey);
+    const { publicKey } = KeysManager.getKeyPairFromPrivateKey(privateKey);
 
     return {
         seedId,
@@ -105,17 +114,17 @@ export const deriveNextWallet = async (
             privateKey,
             password,
             seedId,
-            nextIndex
+            nextIndex,
         ),
     };
 };
 
 export const createInitialMnemonic = (variant) => {
     return MnemonicService.generateMnemonic(
-        wordsCountToMnemonicStrength(variant)
+        wordsCountToMnemonicStrength(variant),
     );
 };
 
 export const createInitialPrivateKey = () => {
-    return KeysService.generateKeyPair().privateKey;
+    return KeysManager.generateKeyPair().privateKey;
 };

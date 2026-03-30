@@ -1,4 +1,4 @@
-import { DEFAULT_DECIMALS_AMOUNT } from "../../config";
+import { DEFAULT_DECIMALS_AMOUNT } from "@config";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;

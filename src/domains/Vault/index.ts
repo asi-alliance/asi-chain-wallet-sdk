@@ -1,11 +1,10 @@
-import CryptoService, { type EncryptedData } from "../../services/Crypto";
-import { genRandomHex } from "../../utils/functions";
-import EncryptedRecord from "../EncryptedRecord";
+import CryptoService, { type EncryptedData } from "@services/Crypto";
+import EncryptedRecord from "@domains//EncryptedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
     StoredWalletMeta,
-} from "../Wallet";
+} from "@domains/Wallet";
 
 export type Wallets = Map<Address, Wallet>;
 
@@ -104,8 +103,9 @@ export default class Vault {
             password
         );
 
-        this.isLocked = true;
         this.wallets = new Map();
+        this.seeds = new Map();
+        this.isLocked = true;
     }
 
     public async unlock(password: string): Promise<void> {
@@ -125,8 +125,6 @@ export default class Vault {
         );
 
         const { wallets, seeds } = JSON.parse(decryptedData);
-
-        console.log("Parsed unlocked data", wallets, seeds);
 
         this.metaToWallets(wallets);
         this.metaToSeeds(seeds);

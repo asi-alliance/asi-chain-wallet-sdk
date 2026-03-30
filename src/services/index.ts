@@ -1,15 +1,21 @@
 export * from "./Fee";
-export * from "./Chain";
 export * from "./Crypto";
 export * from "./Wallets";
 export * from "./Mnemonic";
-export * from "./KeysService";
+export * from "./KeysManager";
 export * from "./KeyDerivation";
+export * from "./Resubmit";    
+export * from "./Signer";
+export * from "./AssetsService";
 
 export { default as KeyDerivationService } from "./KeyDerivation";
+export { default as BinaryWriter } from "./BinaryWriter";
 export { default as MnemonicService } from "./Mnemonic";
-export { default as KeysService } from "./KeysService";
+export { default as KeysManager } from "./KeysManager";
 export { default as WalletsService } from "./Wallets";
 export { default as CryptoService } from "./Crypto";
-export { default as ChainService } from "./Chain";
+
 export { default as FeeService } from "./Fee";
+export { default as DeployResubmitter } from "./Resubmit";
+export { default as SignerService } from "./Signer";
+export { default as AssetsService } from "./AssetsService";

@@ -260,8 +260,6 @@ const InputsForm = ({
         if (onValidSubmit) {
             onValidSubmit(normalized);
         }
-
-        console.log("VALID MNEMONIC:", normalized);
     };
 
     return (
