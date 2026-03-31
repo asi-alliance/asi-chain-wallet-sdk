@@ -1,6 +1,6 @@
 {
     "version": "0.1.0",
-    "name": "asi-wallet-sdk",
+    "name": "@asichain/asi-wallet-sdk",
     "description": "ASI Wallet SDK",
     "license": "Apache-2.0",
     "type": "module",
