@@ -62,7 +62,7 @@ npm install asi-wallet-sdk
 ### Create a New Wallet
 
 ```typescript
-import { WalletsService, MnemonicService } from 'asi-wallet-sdk';
+import { WalletsService, MnemonicService } from '@asichain/asi-wallet-sdk';
 
 // Generate a new wallet with random keys
 const wallet = WalletsService.createWallet();
@@ -80,7 +80,7 @@ See [WalletsService](docs/SERVICES.md) and [MnemonicService](docs/SERVICES.md) f
 ### Manage Wallets with Vault
 
 ```typescript
-import { Vault, Wallet } from 'asi-wallet-sdk';
+import { Vault, Wallet } from '@asichain/asi-wallet-sdk';
 
 // Create vault and add wallet
 const vault = new Vault();
@@ -99,7 +99,7 @@ See [Vault](docs/DOMAINS.md) and [Wallet](docs/DOMAINS.md) for full API referenc
 ### Check Balance and Transfer
 
 ```typescript
-import { AssetsService, BlockchainGateway } from 'asi-wallet-sdk';
+import { AssetsService, BlockchainGateway } from '@asichain/asi-wallet-sdk';
 
 BlockchainGateway.init({
   validator: { baseUrl: 'http://validator-node:40403' },
