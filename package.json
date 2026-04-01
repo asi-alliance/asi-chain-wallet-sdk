@@ -1,5 +1,5 @@
 {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "name": "@asichain/asi-wallet-sdk",
     "description": "ASI Wallet SDK",
     "license": "Apache-2.0",
@@ -8,6 +8,10 @@
     "module": "dist/index.esm.js",
     "types": "dist/index.d.ts",
     "sideEffects": false,
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/asi-alliance/asi-chain-wallet-sdk"
+    },
     "files": [
         "dist",
         "README.md"
