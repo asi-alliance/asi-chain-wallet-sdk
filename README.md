@@ -3,9 +3,10 @@
 # ASI Chain: Wallet SDK
 
 [![Status](https://img.shields.io/badge/Status-BETA-FFA500?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk)
-[![Version](https://img.shields.io/badge/Version-0.1.0-A8E6A3?style=for-the-badge)](https://github.com/asi-alliance/asi-chain-wallet-sdk/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green?style=for-the-badge)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Available-C4F0C1?style=for-the-badge)](https://docs.asichain.io)
+</br>
+![npm](https://img.shields.io/npm/v/@asichain/asi-wallet-sdk?label=asi-wallet-sdk&color=blue)
 
 <h3>TypeScript SDK for wallet management and blockchain interaction on ASI Chain</h3>
 
@@ -52,7 +53,7 @@ ASI Chain Wallet SDK is a lightweight, modular TypeScript library designed to si
 ## Installation
 
 ```bash
-npm install asi-wallet-sdk
+npm install @asichain/asi-wallet-sdk
 ```
 
 ---
@@ -188,7 +189,7 @@ See [AssetsService](docs/SERVICES.md) for full API reference. For amount convers
 - **Address Derivation**: keccak256 hash → blake2b checksum → Base58 encoding with [chain prefix](src/utils/constants)
 - **Encryption**: PBKDF2 (100,000 iterations) → AES-GCM via [CryptoService](docs/SERVICES.md)
 - **Mnemonic**: BIP-39 standard (12/24 words) via [MnemonicService](docs/SERVICES.md)
-- **Derivation Path**: BIP-44 (`m/44'/60'/0'/0/index`) via [KeyDerivationService](docs/SERVICES.md)
+- **Derivation Path**: BIP-44 via [KeyDerivationService](docs/SERVICES.md)
 
 ---
 
