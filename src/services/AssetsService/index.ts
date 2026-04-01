@@ -35,6 +35,12 @@ export default class AssetsService {
                 );
             }
 
+            if (fromAddress === toAddress) {
+                throw new Error(
+                    "AssetsService.transfer: Sender and recipient addresses cannot be the same",
+                );
+            }
+
             if (amount <= 0n) {
                 throw new Error(
                     "AssetsService.transfer: Transfer amount must be greater than zero",
