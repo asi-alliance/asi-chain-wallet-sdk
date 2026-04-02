@@ -36,8 +36,8 @@ export default [
             terser(),
         ],
         output: [
-            { file: pkg.module || "dist/index.esm.js", format: "esm" },
-            { file: pkg.main || "dist/index.cjs.js", format: "cjs" },
+            { file: pkg.module || "dist/index.esm.js", format: "esm", sourcemap: true },
+            { file: pkg.main || "dist/index.cjs.js", format: "cjs", sourcemap: true },
         ],
     },
     {
