@@ -53,12 +53,6 @@ export default class AssetsService {
                 );
             }
 
-            if (fromAddress === toAddress) {
-                throw new Error(
-                    "AssetsService.transfer: Sender and recipient addresses cannot be the same",
-                );
-            }
-
             const gateway = this.getBlockchainGateway();
 
             const transferRho = createTransferDeploy(
