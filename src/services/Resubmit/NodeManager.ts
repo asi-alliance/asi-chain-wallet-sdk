@@ -1,5 +1,6 @@
 import { NodeProvider, BlockchainGateway } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
+import { RequireBlockchainGateway } from "@utils/decorators";
 
 export default class NodeManager implements NodeProvider {
     private static instance: NodeManager;
@@ -35,6 +36,7 @@ export default class NodeManager implements NodeProvider {
         return instance;
     }
 
+    @RequireBlockchainGateway
     public async connectDefaultNode(): Promise<void> {
         if(this.useRandomNode) {
             throw new Error(
@@ -114,6 +116,7 @@ export default class NodeManager implements NodeProvider {
         return availableNodeUrls[index];
     }
 
+    @RequireBlockchainGateway
     public async connectActiveRandomNode(): Promise<void> {
         if(!this.useRandomNode) {
             throw new Error(

@@ -10,8 +10,14 @@ import { PasswordProvider } from "@domains/Signer";
 import { DEFAULT_PHLO_LIMIT } from "@config";
 import { DeployData } from "@domains/Deploy";
 import { validateAddress } from "@utils/validators";
+import { RequireBlockchainGateway } from "@utils/decorators";
 
 export default class AssetsService {
+    private getBlockchainGateway(): BlockchainGateway {
+        return BlockchainGateway.getInstance();
+    }
+
+    @RequireBlockchainGateway
     public async transfer(
         fromAddress: Address,
         toAddress: Address,
@@ -35,13 +41,19 @@ export default class AssetsService {
                 );
             }
 
+            if (fromAddress === toAddress) {
+                throw new Error(
+                    "AssetsService.transfer: Sender and recipient addresses cannot be the same",
+                );
+            }
+
             if (amount <= 0n) {
                 throw new Error(
                     "AssetsService.transfer: Transfer amount must be greater than zero",
                 );
             }
 
-            const gateway = BlockchainGateway.getInstance();
+            const gateway = this.getBlockchainGateway();
 
             const transferRho = createTransferDeploy(
                 fromAddress,
@@ -79,6 +91,7 @@ export default class AssetsService {
         }
     }
 
+    @RequireBlockchainGateway
     async getASIBalance(address: Address): Promise<bigint> {
         const validation = validateAddress(address);
         if (!validation.isValid) {
@@ -87,7 +100,7 @@ export default class AssetsService {
             );
         }
 
-        const gateway = BlockchainGateway.getInstance();
+        const gateway = this.getBlockchainGateway();
         const checkBalanceRho = createCheckBalanceDeploy(address);
 
         try {
