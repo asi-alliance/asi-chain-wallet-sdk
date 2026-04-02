@@ -1,9 +1,5 @@
 import BlockchainGateway from "@domains/BlockchainGateway";
 
-/**
- * Decorator that ensures BlockchainGateway is initialized before method execution (Stage 3)
- * Throws an error if BlockchainGateway has not been initialized via BlockchainGateway.init()
- */
 export function RequireBlockchainGateway<T>(
     value: Function,
     context: ClassMethodDecoratorContext,
