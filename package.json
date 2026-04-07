@@ -13,12 +13,16 @@
         "url": "https://github.com/asi-alliance/asi-chain-wallet-sdk"
     },
     "files": [
-        "dist",
+        "dist/index.cjs.js",
+        "dist/index.esm.js",
+        "dist/index.d.ts",
+        "dist/index.cjs.js.map",
+        "dist/index.esm.js.map",
         "README.md"
     ],
     "scripts": {
-        "dev": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c -w",
-        "build": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c",
+        "dev": "tsc -p tsconfig.build.json && rollup -c -w",
+        "build": "tsc -p tsconfig.build.json && rollup -c",
         "test:security": "node scripts/security/run-security-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
         "security:gate": "npm run build && npm run test:security && npm run check:secret-logs && npm audit --omit=dev"
