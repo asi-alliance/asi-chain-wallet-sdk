@@ -1,6 +1,6 @@
-import * as tinysecp from "tiny-secp256k1";
-import { BIP32Factory, type BIP32Interface } from "bip32";
+import ecc from "./ecc-adapter";
 import MnemonicService from "@services/Mnemonic";
+import { BIP32Factory, type BIP32Interface } from "bip32";
 import { ASI_COIN_TYPE, DEFAULT_BIP_44_PATH_OPTIONS } from "@utils/constants";
 import { setupBufferPolyfill } from "@utils/polyfills";
 import { mnemonicToSeed } from "bip39";
@@ -52,7 +52,8 @@ export default class KeyDerivationService {
     }
 
     public static seedToMasterNode(seed: any): BIP32Interface {
-        return BIP32Factory(tinysecp).fromSeed(seed);
+        BIP32Factory
+        return BIP32Factory(ecc).fromSeed(seed);
     }
 
     public static async deriveKeyFromMnemonic(
