@@ -4,8 +4,7 @@
     "description": "ASI Wallet SDK",
     "license": "Apache-2.0",
     "type": "module",
-    "main": "dist/index.cjs.js",
-    "module": "dist/index.esm.js",
+    "main": "dist/index.esm.js",
     "types": "dist/index.d.ts",
     "sideEffects": false,
     "repository": {
@@ -13,12 +12,16 @@
         "url": "https://github.com/asi-alliance/asi-chain-wallet-sdk"
     },
     "files": [
-        "dist",
+        "dist/index.cjs",
+        "dist/index.esm.js",
+        "dist/index.cjs.map",
+        "dist/index.esm.js.map",
+        "dist/index.d.ts",
         "README.md"
     ],
     "scripts": {
-        "dev": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c -w",
-        "build": "tsc -p tsconfig.build.json --emitDeclarationOnly && rollup -c",
+        "dev": "tsc -p tsconfig.build.json && rollup -c -w",
+        "build": "tsc -p tsconfig.build.json && rollup -c",
         "test:security": "node scripts/security/run-security-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
         "security:gate": "npm run build && npm run test:security && npm run check:secret-logs && npm audit --omit=dev"
@@ -51,7 +54,7 @@
     "exports": {
         ".": {
             "import": "./dist/index.esm.js",
-            "require": "./dist/index.cjs.js"
+            "require": "./dist/index.cjs"
         }
     }
 }
