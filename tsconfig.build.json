@@ -1,18 +1,18 @@
 {
     "extends": "./tsconfig.json",
     "compilerOptions": {
+        "strict": true,
         "target": "ES2020",
         "module": "ESNext",
         "moduleResolution": "Node",
         "outDir": "./dist",
         "declaration": true,
-        "emitDeclarationOnly": false,
-        "isolatedModules": false,
-        "strict": true,
+        "isolatedModules": true,
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
+        "emitDeclarationOnly": true,
         "skipLibCheck": true,
-        "sourceMap": true
+        "sourceMap": true,
     },
     "include": ["src"],
     "exclude": ["node_modules", "playground", "dist"]
