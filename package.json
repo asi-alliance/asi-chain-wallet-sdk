@@ -4,8 +4,7 @@
     "description": "ASI Wallet SDK",
     "license": "Apache-2.0",
     "type": "module",
-    "main": "dist/index.cjs.js",
-    "module": "dist/index.esm.js",
+    "main": "dist/index.esm.js",
     "types": "dist/index.d.ts",
     "sideEffects": false,
     "repository": {
@@ -13,11 +12,11 @@
         "url": "https://github.com/asi-alliance/asi-chain-wallet-sdk"
     },
     "files": [
-        "dist/index.cjs.js",
+        "dist/index.cjs",
         "dist/index.esm.js",
-        "dist/index.d.ts",
-        "dist/index.cjs.js.map",
+        "dist/index.cjs.map",
         "dist/index.esm.js.map",
+        "dist/index.d.ts",
         "README.md"
     ],
     "scripts": {
@@ -55,7 +54,7 @@
     "exports": {
         ".": {
             "import": "./dist/index.esm.js",
-            "require": "./dist/index.cjs.js"
+            "require": "./dist/index.cjs"
         }
     }
 }
