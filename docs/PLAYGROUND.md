@@ -14,18 +14,18 @@ Usage: the app is mounted by default — no programmatic API.
 
 ## Application (playground/src/components/Application)
 
-Top-level demo application that wires together the SDK `Vault`, `ChainService`, modals and `WalletsPage`.
+Top-level demo application that wires together the SDK `Vault`, `AssetsService`, modals and `WalletsPage`.
 
 Key exports and behavior:
 
-- `default` (React component) — maintains `vault`, `chainService`, `modalState`, and `currentPassword` in state; exposes helpers through `ApplicationContext`.
-- `init(config, setVault, setChainService)` — initializes `ChainService`, reads saved vault data and creates a `Vault` instance.
+- `default` (React component) — maintains `vault`, `assetsService`, `modalState`, and `currentPassword` in state; exposes helpers through `ApplicationContext`.
+- `init(config, setVault, setAssetsService)` — initializes `AssetsService`, reads saved vault data and creates a `Vault` instance.
 - Modal helpers: `openUnlockModal()`, `openCreatePasswordForVaultModal()`, `openCreateKeyPairWalletModal()`, `openImportKeyPairWalletModal()`, `openCreateMnemonicWalletModal(words)`, `openRestoreMnemonicWalletModal(words)`, `openDeriveWalletModal(index)` — open corresponding modals via context state.
 - Vault operations: `saveVault(password)`, `unlockVault(password)`, `createKeyPairWallet(payload)`, `handleCreateMnemonicWallet` (async factory calling `createMnemonicWallet` from `meta`), `handleDeriveWallet(name, password, index)`.
 
 Context provided to children (`ApplicationContext`): `{ modalState, setModalState, withLoader }` (see `useLoader` hook in playground/src/hooks).
 
-Example: the `WalletsPage` is rendered with props from the application state (vault, chainService, and action callbacks).
+Example: the `WalletsPage` is rendered with props from the application state (vault, assetsService, and action callbacks).
 
 ---
 
@@ -189,14 +189,14 @@ Props (`IWalletCardProps`):
 
 - `wallet: Wallet` — SDK `Wallet` instance.
 - `removeWallet(id: Address): void` — callback to remove wallet from vault.
-- `chainService: ChainService` — SDK chain service used to fetch balances and execute transfers.
+- `assetsService: AssetsService` — SDK assets service used to fetch balances and execute transfers.
 
 Behavior & methods:
 
-- `fetchBalance()` — fetches ASI balance via `chainService.getASIBalance(address)`.
+- `fetchBalance()` — fetches ASI balance via `assetsService.getASIBalance(address)`.
 - `handlePrepareSend()` — opens transfer modal via `ApplicationContext`.
 - `handleSend()` — prompts `PasswordModal` then calls `transfer()`.
-- `transfer(toAddress, amount, password)` — unlocks wallet, calls `chainService.transfer` with wallet and password provider, locks wallet and shows `TransferCompletedModal` on success.
+- `transfer(toAddress, amount, password)` — unlocks wallet, calls `assetsService.transfer` with wallet and password provider, locks wallet and shows `TransferCompletedModal` on success.
 
 Example: clicking Send triggers modal flow to unlock wallet and send funds.
 
@@ -208,6 +208,6 @@ Page that lists private-key and mnemonic wallets from a `Vault` and provides cre
 
 Props (`WalletsPageProps`):
 
-- `vault: Vault`, `chainService: ChainService`, `removeWallet(id: Address)`, `importPk()`, `importDk(words)`, `createPk()`, `createDk(words)`, `deriveK(index)`.
+- `vault: Vault`, `assetsService: AssetsService`, `removeWallet(id: Address)`, `importPk()`, `importDk(words)`, `createPk()`, `createDk(words)`, `deriveK(index)`.
 
 Behavior: separates wallets by `wallet.getIndex()` (null => private key wallets), exposes buttons to create/import/derive wallets, and renders `WalletCard` for each wallet.

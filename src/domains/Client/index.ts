@@ -6,7 +6,7 @@ export interface ClientOptions {
     password?: string;
 }
 
-export class Client {
+export default class Client {
     private readonly vault: Vault;
     private activeWalletAddress?: Address;
 
