@@ -54,8 +54,6 @@ This SDK is intended for hostile browser environments. Integrators should:
 
 Tracked in:
 
-1. `security-review.md`
-2. `security-improvement-plan.md`
-3. `THREAT_MODEL.md`
-4. `SECURITY_INVARIANTS.md`
-5. `CRYPTO_PROFILE.md`
+1. `THREAT_MODEL.md`
+2. `SECURITY_INVARIANTS.md`
+3. `CRYPTO_PROFILE.md`

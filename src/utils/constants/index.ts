@@ -14,6 +14,10 @@ export const GasFee = {
     DEPLOY: "0.0025",
 };
 
+export const HEX_RADIX: number = 16;
+
+export const HEX_BYTE_PADDING: number = 64;
+
 export const POWER_BASE: number = 10;
 
 export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
