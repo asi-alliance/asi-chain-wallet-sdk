@@ -1,4 +1,5 @@
 import bs58 from "bs58";
+import { HEX_BYTE_PADDING, HEX_RADIX } from "@utils/constants";
 
 export const encodeBase58 = (hex: string): string => {
     const bytes = decodeBase16(hex);
@@ -44,3 +45,15 @@ export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 
     return bytes.buffer;
 };
+
+
+export const bufferToBigInt = (buffer: Uint8Array): bigint =>
+    BigInt("0x" + Buffer.from(buffer).toString("hex"));
+
+export const bigIntToBuffer = (num: bigint): Uint8Array =>
+    Uint8Array.from(
+        Buffer.from(
+            num.toString(HEX_RADIX).padStart(HEX_BYTE_PADDING, "0"),
+            "hex",
+        ),
+    );
