@@ -37,7 +37,13 @@ export default [
         ],
         output: [
             { file: "dist/index.esm.js", format: "esm", sourcemap: true },
-            { file: "dist/index.cjs", format: "cjs", sourcemap: true },
+            {
+                file: "dist/index.cjs",
+                format: "cjs",
+                sourcemap: true,
+                exports: "named",
+                interop: "auto",
+            },
         ],
     },
     {
