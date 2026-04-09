@@ -249,6 +249,89 @@ type PasswordProvider = () => Promise<string>
 
 ---
 
+## Client (`src/domains/Client/index.ts`)
+
+High-level SDK client for simplified wallet and vault management.
+
+Constructor:
+
+```ts
+Client.create(options?: ClientOptions): Promise<Client>
+```
+
+Options interface:
+
+```ts
+interface ClientOptions {
+    vault?: Vault;
+    password?: string;
+}
+```
+
+Methods:
+
+```ts
+createWallet(name: string, privateKey: Uint8Array, password: string): Promise<Wallet>
+```
+Creates and adds a wallet to the vault.
+
+```ts
+selectActiveWallet(walletAddress: Address): boolean
+```
+Selects the currently active wallet. Returns `true` if wallet exists in vault.
+
+```ts
+getActiveWallet(): Wallet | undefined
+```
+Returns the currently active wallet or `undefined`.
+
+```ts
+getWallets(): Wallet[]
+```
+Returns all wallets stored in the vault.
+
+---
+
+## Deploy (`src/domains/Deploy/index.ts`)
+
+Deploy data structure and factory functions for RhoLang contract execution.
+
+Deploy data interface:
+
+```ts
+interface DeployData {
+    term: string;
+    phloLimit: number;
+    phloPrice: number;
+    validAfterBlockNumber: number;
+    timestamp: number;
+    shardId?: string;
+}
+```
+
+Factory helpers (`src/domains/Deploy/factory/index.ts`):
+
+```ts
+createCheckBalanceDeploy(address: Address): string
+```
+Generates RhoLang code for balance queries on the specified address.
+
+```ts
+createTransferDeploy(
+    fromAddress: Address,
+    toAddress: Address,
+    amount: bigint
+): string
+```
+Generates RhoLang code for ASI token transfers. Throws if amount ≤ 0.
+
+```ts
+escapeRholangString(value: string): string
+```
+Escapes special characters in strings for safe use in RhoLang code.
+
+---
+
 ## Deployment Error Types (`src/domains/Error/meta.ts`)
 
 Classification and mapping for deploy-related errors.
