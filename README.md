@@ -311,7 +311,6 @@ Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/P
 | [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.6.0 | Cryptographic hash helpers |
 | [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0 | secp256k1 key generation and signing |
 | [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
-| [tiny-secp256k1](https://github.com/nicknisi/tiny-secp256k1) | 2.2.4 | secp256k1 for BIP-32 derivation |
 
 **Playground** ([playground/package.json](playground/package.json)):
 

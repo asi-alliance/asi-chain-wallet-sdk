@@ -1,11 +1,10 @@
 import path from "path";
 import react from "@vitejs/plugin-react";
-import wasm from "vite-plugin-wasm";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-    plugins: [react(), nodePolyfills(), wasm()],
+    plugins: [react(), nodePolyfills()],
     resolve: {
         alias: {
             "@api": path.resolve(__dirname, "./src/api"),
