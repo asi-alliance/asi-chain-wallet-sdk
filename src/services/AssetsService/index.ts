@@ -1,6 +1,7 @@
 import SignerService from "@services/Signer";
 import Wallet, { Address } from "@domains/Wallet";
 import BlockchainGateway from "@domains/BlockchainGateway";
+import FundsReservationService from "@services/FundsReservation";
 import {
     createTransferDeploy,
     createCheckBalanceDeploy,
@@ -26,6 +27,9 @@ export default class AssetsService {
         passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
+        const reservationService = FundsReservationService.getInstance();
+        let reservationId: string | null = null;
+
         try {
             const fromValidation = validateAddress(fromAddress);
             if (!fromValidation.isValid) {
@@ -52,6 +56,15 @@ export default class AssetsService {
                     "AssetsService.transfer: Transfer amount must be greater than zero",
                 );
             }
+
+            // Lock funds for the transfer
+            reservationId = reservationService.lock(
+                fromAddress,
+                amount,
+                5 * 60 * 1000, // 5 minutes expiration
+                undefined,
+                `Transfer to ${toAddress}`,
+            );
 
             const gateway = this.getBlockchainGateway();
 
@@ -83,8 +96,25 @@ export default class AssetsService {
 
             const deployId = await gateway.submitDeploy(signedDeploy);
 
+            // Commit the reservation with the deploy ID
+            if (reservationId && deployId) {
+                reservationService.commit(reservationId, deployId);
+            }
+
             return deployId;
         } catch (error: any) {
+            // Release the reservation on error
+            if (reservationId) {
+                try {
+                    reservationService.release(reservationId);
+                } catch (releaseError: any) {
+                    console.error(
+                        "AssetsService.transfer: Failed to release reservation:",
+                        releaseError,
+                    );
+                }
+            }
+
             const errorMessage =
                 "AssetsService.transfer: " + (error as Error).message;
             throw new Error(errorMessage);

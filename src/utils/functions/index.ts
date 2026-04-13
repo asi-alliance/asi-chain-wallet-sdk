@@ -92,3 +92,7 @@ export const genRandomHex = (size: number) =>
     [...Array(size)]
         .map(() => Math.floor(Math.random() * 16).toString(16))
         .join("");
+
+export const generateRandomId = (): string => {
+    return `res_${Date.now()}_${genRandomHex(8)}`;
+};
