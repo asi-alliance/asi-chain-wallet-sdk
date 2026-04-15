@@ -106,6 +106,25 @@ export default class FundsReservationService {
     }
 
     /**
+     * Finalize (complete) a committed reservation, marking it as released after blockchain confirmation
+     * @param reservationId - ID of the reservation to finalize
+     */
+    finalize(reservationId: string): void {
+        const reservation = this.reservations.get(reservationId);
+        if (!reservation) {
+            throw new Error(
+                `FundsReservationService.finalize: Reservation not found (ID: ${reservationId})`,
+            );
+        }
+
+        try {
+            reservation.finalize();
+        } catch (error: any) {
+            throw new Error(`FundsReservationService.finalize: ${error.message}`);
+        }
+    }
+
+    /**
      * Get total reserved amount for an address (pending + committed)
      * @param address - Wallet address
      * @returns Total reserved amount

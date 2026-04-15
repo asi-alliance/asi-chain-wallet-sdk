@@ -110,6 +110,16 @@ export default class ReservationRecord {
         this.reservation.status = ReservationStatus.RELEASED;
     }
 
+    finalize(): void {
+        if (!this.isCommitted()) {
+            throw new Error(
+                `ReservationRecord.finalize: Cannot finalize a non-committed reservation (current status: ${this.reservation.status})`,
+            );
+        }
+
+        this.reservation.status = ReservationStatus.RELEASED;
+    }
+
     toObject(): Reservation {
         return { ...this.reservation };
     }
