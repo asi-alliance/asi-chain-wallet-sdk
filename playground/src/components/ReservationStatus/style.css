@@ -1,0 +1,114 @@
+.reservation-status {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+    border-left: 4px solid #4a90e2;
+}
+
+.reservation-status.loading {
+    opacity: 0.6;
+    color: #666;
+}
+
+.reservation-status.fetching {
+    opacity: 0.75;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.reservation-status__header {
+    margin-bottom: 10px;
+}
+
+.reservation-status__header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.reservation-status__content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.reservation-status__item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.reservation-status__item:last-child {
+    border-bottom: none;
+}
+
+.reservation-status__item.available {
+    background-color: rgba(76, 175, 80, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    border-bottom: none;
+    margin-top: 4px;
+}
+
+.reservation-status__label {
+    font-weight: 500;
+    color: #555;
+}
+
+.reservation-status__value {
+    font-weight: 600;
+    color: #2196f3;
+    font-family: "Courier New", monospace;
+}
+
+.reservation-status__value.reserved {
+    color: #ff9800;
+}
+
+.reservation-status__value.pending {
+    color: #f44336;
+}
+
+.reservation-status__info {
+    margin-top: 10px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    font-size: 12px;
+    color: #666;
+    line-height: 1.4;
+}
+
+.reservation-status__info p {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .reservation-status {
+        margin: 8px 0;
+        padding: 10px;
+    }
+
+    .reservation-status__header h4 {
+        font-size: 12px;
+    }
+
+    .reservation-status__content {
+        font-size: 12px;
+        gap: 6px;
+    }
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 0.75;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}

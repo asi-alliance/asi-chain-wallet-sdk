@@ -22,6 +22,7 @@
     "scripts": {
         "dev": "tsc -p tsconfig.build.json && rollup -c -w",
         "build": "tsc -p tsconfig.build.json && rollup -c",
+        "test:reservation": "node scripts/tests/reservation.mjs",
         "test:security": "node scripts/security/run-security-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
         "security:gate": "npm run build && npm run test:security && npm run check:secret-logs && npm audit --omit=dev"

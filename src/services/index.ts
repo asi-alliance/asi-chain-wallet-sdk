@@ -19,3 +19,4 @@ export { default as FeeService } from "./Fee";
 export { default as DeployResubmitter } from "./Resubmit";
 export { default as SignerService } from "./Signer";
 export { default as AssetsService } from "./AssetsService";
+export { default as FundsReservationService } from "./FundsReservation";
