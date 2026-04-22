@@ -1,0 +1,9 @@
+:root {
+  --color-warn: #d99e00;
+}
+
+.currency-value {
+  font-weight: 600;
+  color: #2196f3;
+  font-family: "Courier New", monospace;
+}

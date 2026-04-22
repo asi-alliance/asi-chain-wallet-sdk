@@ -10,9 +10,11 @@ import {
     FundsReservationService,
     BlockchainGateway,
     DeployStatus,
+    FeeService,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
+import { ITransferModalProps } from "@components/TransferModal";
 
 export interface IWalletCardProps {
     wallet: Wallet;
@@ -71,13 +73,13 @@ const WalletCard = ({
             props: {
                 toAddress: toAddress ?? "",
                 amount: amount ?? 0n,
+                gasFee: FeeService.getGasFeeVO(),
                 currentBalance: balance,
-                commission: 0,
                 onConfirm: handleSend,
                 onClose: () => {
                     setModalState({ type: null });
                 },
-            },
+            } satisfies ITransferModalProps,
         });
     };
 

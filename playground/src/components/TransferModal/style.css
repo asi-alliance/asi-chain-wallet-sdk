@@ -40,6 +40,8 @@
 	font-size: 1rem;
 	outline: none;
 	transition: border 0.2s;
+	max-width: none;
+	width: 100%;
 }
 
 .form-row input[type="text"]:focus,
@@ -75,4 +77,8 @@
 
 .form-actions button[type="button"]:hover {
 	background: #bdbdbd;
+}
+
+.transfer-modal .transfer-details {
+	max-width: 50vw;
 }
