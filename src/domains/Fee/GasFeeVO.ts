@@ -1,4 +1,4 @@
-import { Atomic } from "@domains/types/types";
+import { Atomic } from "@domains/types";
 
 /**
  * Value Object for GasFee in Atomic units

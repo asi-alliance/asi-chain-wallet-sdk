@@ -2,6 +2,7 @@ import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, from
 import { ChangeEvent, useCallback, useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 import { HighlightedRows, IHighlightedRowsProps } from "@components/common/HighlightedRows";
+import { superficialAmoutValidation } from "./superficialAmoutValidation";
 
 export interface ITransferModalProps {
     currentBalance: bigint;
@@ -25,6 +26,7 @@ const TransferModal = ({
     ), [gasFee]);
 
     const [amount, setAmount] = useState<bigint | null>(initialAmount);
+    const [amountError, setAmountError] = useState<string>(null);
 
     const estimatedTotalAmount = useMemo(() => {
         return fromAtomicAmountToString(amount + gasFee.gasFee);
@@ -42,7 +44,7 @@ const TransferModal = ({
             },
             {
                 label: "Estimated total amount:",
-                value: `${estimatedTotalAmount} ${COIN_NAME}`,
+                value: `${amountError !== null ? "N/A" : estimatedTotalAmount} ${COIN_NAME}`,
                 accented: true,
                 description: "Attention! This is not the maximum estimation! It may be higher! See 'Max total amount' below.",
             },
@@ -52,21 +54,26 @@ const TransferModal = ({
             },
             {
                 label: "Max total amount:",
-                value: `${maxTotalAmount} ${COIN_NAME}`,
+                value: `${amountError !== null ? "N/A" : maxTotalAmount} ${COIN_NAME}`,
                 description: "The maximum amount that can be charged for transfer + gas fee. This amount of funds will be temporarily reserved until the transaction is completed. Any funds not spent on gas fees will be returned to the wallet."
             },
 
         ]
-    }, [gasFeeView, estimatedTotalAmount, maxTotalAmount]);
+    }, [gasFeeView, estimatedTotalAmount, maxTotalAmount, amountError]);
 
     const onAmountChange = useCallback((event: ChangeEvent) => {
         const value = (event.target as HTMLInputElement).value;
         try {
             const atomic = toAtomicAmount(value);
+            if(!superficialAmoutValidation(atomic)) {
+                throw new Error("superficial validation failed");
+            }
             setAmount(atomic);
+            setAmountError(null);
         } catch(error) {
             console.error(error);
             setAmount(0n);
+            setAmountError(error.message);
         }
         
     }, []);

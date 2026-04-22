@@ -1,5 +1,5 @@
 import { GasFeeVO } from "@domains/Fee/GasFeeVO";
-import { Atomic } from "@domains/types/types";
+import { Atomic } from "@domains/types";
 import { randomBigInt } from "@utils";
 import { GAS_FEE } from "@utils/constants";
 import { IGasFeeView, mapGasFeeToView } from "./GasFeeView";
