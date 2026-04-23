@@ -12,8 +12,24 @@ import { DEFAULT_PHLO_LIMIT } from "@config";
 import { DeployData } from "@domains/Deploy";
 import { validateAddress } from "@utils/validators";
 import { RequireBlockchainGateway } from "@utils/decorators";
+import { GasFeeVO } from "@domains/Fee";
+import FeeService from "@services/Fee";
+import { Atomic } from "@domains/types";
 
 export default class AssetsService {
+    /**
+     * @returns amount + estimated gas fee
+     */
+    public static getEstimatedTotalTransferAmount(amount: Atomic, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
+        return amount + gasFee.gasFee;
+    }
+    /**
+     * @returns amount + max possible gas fee
+     */
+    public static getMaxTotalTransferAmount(amount: Atomic, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
+        return amount + gasFee.gasFeeRange.max;
+    }
+    
     private getBlockchainGateway(): BlockchainGateway {
         return BlockchainGateway.getInstance();
     }
@@ -23,6 +39,7 @@ export default class AssetsService {
         fromAddress: Address,
         toAddress: Address,
         amount: bigint,
+        gasFee: GasFeeVO,
         wallet: Wallet,
         passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
@@ -60,7 +77,7 @@ export default class AssetsService {
             // Lock funds for the transfer
             reservationId = reservationService.lock(
                 fromAddress,
-                amount,
+                amount + gasFee.gasFeeRange.max,
                 5 * 60 * 1000, // 5 minutes expiration
                 undefined,
                 `Transfer to ${toAddress}`,

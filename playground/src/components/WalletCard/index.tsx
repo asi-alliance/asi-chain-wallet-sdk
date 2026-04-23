@@ -11,10 +11,12 @@ import {
     BlockchainGateway,
     DeployStatus,
     FeeService,
+    GasFeeVO,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
+import { IPasswordModalProps } from "@components/PasswordModal";
 
 export interface IWalletCardProps {
     wallet: Wallet;
@@ -83,21 +85,21 @@ const WalletCard = ({
         });
     };
 
-    const handleSend = (toAddress, amount) => {
+    const handleSend = (toAddress, amount, gasFee: GasFeeVO) => {
         setModalState({
             type: Modals.PASSWORD_MODAL,
             props: {
                 title: "Unlock your wallet to send ASI",
                 onSubmit: (password: string) =>
-                    transfer(toAddress, amount, password),
+                    transfer(toAddress, amount, gasFee, password),
                 onClose: () => {
                     setModalState({ type: null });
                 },
-            },
+            } satisfies IPasswordModalProps, 
         });
     };
 
-    const transfer = (toAddress, amount, password) =>
+    const transfer = (toAddress, amount, gasFee: GasFeeVO, password) =>
         withLoader(async () => {
             try {
                 if (!isAddress(toAddress)) {
@@ -124,6 +126,7 @@ const WalletCard = ({
                     address,
                     toAddress,
                     amount,
+                    gasFee,
                     wallet,
                     () => Promise.resolve(password),
                 );

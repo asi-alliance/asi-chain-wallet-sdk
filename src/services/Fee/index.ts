@@ -14,7 +14,6 @@ export default class FeeService {
         return new GasFeeVO(this.generateRandomFakeGasFee(), GAS_FEE.MIN, GAS_FEE.MAX);
     }
     public static getGasFeeView(gasFeeVO: GasFeeVO = FeeService.getGasFeeVO()): IGasFeeView {
-        console.log(gasFeeVO);
         return mapGasFeeToView(gasFeeVO);
     }
 }

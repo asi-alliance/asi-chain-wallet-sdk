@@ -1,4 +1,4 @@
-import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, fromAtomicAmountToString } from "asi-wallet-sdk";
+import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, fromAtomicAmountToString, AssetsService } from "asi-wallet-sdk";
 import { ChangeEvent, useCallback, useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 import { HighlightedRows, IHighlightedRowsProps } from "@components/common/HighlightedRows";
@@ -9,7 +9,7 @@ export interface ITransferModalProps {
     toAddress: string;
     amount: bigint;
     gasFee: GasFeeVO;
-    onConfirm: (toAddress: string, amount: bigint) => void;
+    onConfirm: (toAddress: string, amount: bigint, gasFee: GasFeeVO) => void;
     onClose: () => void;
 }
 
@@ -88,7 +88,6 @@ const TransferModal = ({
 
             const atomicValueToTransfer = toAtomicAmount(amountValueRaw);
 
-            // alert(`${currentBalance}, ${atomicValueToTransfer}`)
             if (atomicValueToTransfer <= 0n) {
                 alert("Invalid amount");
                 return;
@@ -98,12 +97,16 @@ const TransferModal = ({
                 alert("Insufficient balance for this transfer.");
                 return;
             }
-            if (currentBalance < atomicValueToTransfer + gasFee.gasFee) {
+            if (currentBalance < AssetsService.getEstimatedTotalTransferAmount(amount, gasFee)) {
                 alert("Insufficient balance for this transfer including gas fee.");
                 return;
             }
+            if (currentBalance < AssetsService.getMaxTotalTransferAmount(amount, gasFee)) {
+                alert("Insufficient balance for this transfer including max possible gas fee.");
+                return;
+            }
 
-            onConfirm(toAddress, atomicValueToTransfer);
+            onConfirm(toAddress, atomicValueToTransfer, gasFee);
         } catch (error) {
             alert(error?.message);
         }
