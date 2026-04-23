@@ -73,6 +73,7 @@ const WalletCard = ({
         setModalState({
             type: Modals.TRANSFER_MODAL,
             props: {
+                fromAddress: address,
                 toAddress: toAddress ?? "",
                 amount: amount ?? 0n,
                 gasFee: FeeService.getGasFeeVO(),
@@ -85,13 +86,13 @@ const WalletCard = ({
         });
     };
 
-    const handleSend = (toAddress, amount, gasFee: GasFeeVO) => {
+    const handleSend = (toAddress, balance, amount, gasFee: GasFeeVO) => {
         setModalState({
             type: Modals.PASSWORD_MODAL,
             props: {
                 title: "Unlock your wallet to send ASI",
                 onSubmit: (password: string) =>
-                    transfer(toAddress, amount, gasFee, password),
+                    transfer(toAddress, balance, amount, gasFee, password),
                 onClose: () => {
                     setModalState({ type: null });
                 },
@@ -99,32 +100,15 @@ const WalletCard = ({
         });
     };
 
-    const transfer = (toAddress, amount, gasFee: GasFeeVO, password) =>
+    const transfer = (toAddress, balance, amount, gasFee: GasFeeVO, password) =>
         withLoader(async () => {
             try {
-                if (!isAddress(toAddress)) {
-                    throw new Error("Invalid 'toAddress' provided.");
-                }
-
-                const totalReserved =
-                    reservationService.getTotalReserved(address);
-                const availableBalance = balance - totalReserved;
-
-                if (amount > availableBalance) {
-                    const needed = amount - availableBalance;
-                    const formattedNeeded = fromAtomicAmount(needed);
-                    const formattedAvailable =
-                        fromAtomicAmount(availableBalance);
-                    throw new Error(
-                        `Insufficient available balance. You need ${formattedNeeded} more ASI. Available: ${formattedAvailable} ASI, Transferring: ${fromAtomicAmount(amount)} ASI`,
-                    );
-                }
-
                 setIsSending(true);
 
                 const data = await assetsService.transfer(
                     address,
                     toAddress,
+                    balance,
                     amount,
                     gasFee,
                     wallet,

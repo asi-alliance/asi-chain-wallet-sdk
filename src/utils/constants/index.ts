@@ -8,8 +8,8 @@ export const ASI_COIN_TYPE = 60;
 export const ASI_DECIMALS = 8;
 
 export const GAS_FEE = {
-    MIN: 0n, //TODO: clarify the values
-    MAX: 10250000n
+    MIN: 170000n,
+    MAX: 250000n
 };
 
 export const HEX_RADIX: number = 16;

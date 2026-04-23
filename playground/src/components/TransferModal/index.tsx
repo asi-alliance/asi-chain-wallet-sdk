@@ -1,21 +1,22 @@
-import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, fromAtomicAmountToString, AssetsService } from "asi-wallet-sdk";
+import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, fromAtomicAmountToString, TransferValidator, Address } from "asi-wallet-sdk";
 import { ChangeEvent, useCallback, useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 import { HighlightedRows, IHighlightedRowsProps } from "@components/common/HighlightedRows";
-import { superficialAmoutValidation } from "./superficialAmoutValidation";
 
 export interface ITransferModalProps {
     currentBalance: bigint;
+    fromAddress: string;
     toAddress: string;
     amount: bigint;
     gasFee: GasFeeVO;
-    onConfirm: (toAddress: string, amount: bigint, gasFee: GasFeeVO) => void;
+    onConfirm: (toAddress: string, balance: bigint, amount: bigint, gasFee: GasFeeVO) => void;
     onClose: () => void;
 }
 
 const TransferModal = ({
     currentBalance,
-    toAddress,
+    fromAddress,
+    toAddress: toAddressInitial,
     amount: initialAmount,
     gasFee,
     onConfirm,
@@ -25,16 +26,50 @@ const TransferModal = ({
         FeeService.getGasFeeView(gasFee)
     ), [gasFee]);
 
-    const [amount, setAmount] = useState<bigint | null>(initialAmount);
-    const [amountError, setAmountError] = useState<string>(null);
+    const [amountInput, setAmountInput] = useState(fromAtomicAmount(initialAmount));
+    const [amountTouched, setAmountTouched] = useState(false);
+    const [toAddress, setToAddress] = useState<string>(toAddressInitial ?? "");
+    const [toAddressTouched, setToAddressTouched] = useState(false);
 
+    const { amount, amountParsingError } = useMemo(() => {
+        try {
+            return {
+                amount: toAtomicAmount(amountInput),
+                amountParsingError: null,
+            };
+        } catch (error) {
+            return {
+                amount: null,
+                amountParsingError: error instanceof Error ? error.message : "Invalid amount format",
+            };
+        }
+    }, [amountInput]);
+
+    const { toAddressError, amountValidationError } = useMemo(() => {
+        try {
+            TransferValidator.validate(fromAddress as Address, toAddress as Address, currentBalance, amount ?? 0n, gasFee, "");
+            return {
+                toAddressError: null,
+                amountValidationError: null,
+            };
+        } catch (error) {
+            return {
+                toAddressError: error?.addressValidationError?.message ?? null,
+                amountValidationError: error?.amountValidationError?.message ?? null,
+            };
+        }
+    }, [fromAddress, toAddress, currentBalance, amount, gasFee]);
+
+    const amountError = amountParsingError ?? amountValidationError;
+    const safeAmount = amount ?? 0n;
+    
     const estimatedTotalAmount = useMemo(() => {
-        return fromAtomicAmountToString(amount + gasFee.gasFee);
-    }, [amount, gasFee]);
+        return fromAtomicAmountToString(safeAmount + gasFee.gasFee);
+    }, [safeAmount, gasFee]);
 
     const maxTotalAmount = useMemo(() => {
-        return fromAtomicAmountToString(amount + gasFee.gasFeeRange.max);
-    }, [amount, gasFee]);
+        return fromAtomicAmountToString(safeAmount + gasFee.gasFeeRange.max);
+    }, [safeAmount, gasFee]);
     
     const transferDetailsRows = useMemo((): IHighlightedRowsProps["rows"] => {
         return [
@@ -61,56 +96,30 @@ const TransferModal = ({
         ]
     }, [gasFeeView, estimatedTotalAmount, maxTotalAmount, amountError]);
 
+    const onToAddressChange = useCallback((event: ChangeEvent) => {
+        setToAddressTouched(true);
+        setToAddress((event.target as HTMLInputElement).value);
+    }, []);
+
     const onAmountChange = useCallback((event: ChangeEvent) => {
-        const value = (event.target as HTMLInputElement).value;
-        try {
-            const atomic = toAtomicAmount(value);
-            if(!superficialAmoutValidation(atomic)) {
-                throw new Error("superficial validation failed");
-            }
-            setAmount(atomic);
-            setAmountError(null);
-        } catch(error) {
-            console.error(error);
-            setAmount(0n);
-            setAmountError(error.message);
-        }
-        
+        setAmountTouched(true);
+        setAmountInput((event.target as HTMLInputElement).value);
     }, []);
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
         try {
-            const formData = new FormData(event.currentTarget);
-            const toAddress = (formData.get("toAddress") as string) ?? "";
-            const amountValueRaw = formData.get("amount") as string;
-
-            const atomicValueToTransfer = toAtomicAmount(amountValueRaw);
-
-            if (atomicValueToTransfer <= 0n) {
-                alert("Invalid amount");
-                return;
+            if (amount === null) {
+                throw new Error(amountParsingError ?? "Invalid amount format");
             }
-
-            if (currentBalance < atomicValueToTransfer) {
-                alert("Insufficient balance for this transfer.");
-                return;
-            }
-            if (currentBalance < AssetsService.getEstimatedTotalTransferAmount(amount, gasFee)) {
-                alert("Insufficient balance for this transfer including gas fee.");
-                return;
-            }
-            if (currentBalance < AssetsService.getMaxTotalTransferAmount(amount, gasFee)) {
-                alert("Insufficient balance for this transfer including max possible gas fee.");
-                return;
-            }
-
-            onConfirm(toAddress, atomicValueToTransfer, gasFee);
+            onConfirm(toAddress, currentBalance, amount, gasFee);
         } catch (error) {
             alert(error?.message);
+            //TODO: parse and show the error;
         }
     };
+    const isValid = !toAddressError && !amountError;
 
     return (
         <div className="transfer-modal">
@@ -122,9 +131,11 @@ const TransferModal = ({
                             type="text"
                             id="toAddress"
                             name="toAddress"
+                            onChange={onToAddressChange}
                             defaultValue={toAddress}
                             required
                         />
+                        {toAddressTouched && toAddressError}
                     </div>
                     <div className="form-row">
                         <label htmlFor="amount">Amount:</label>
@@ -133,9 +144,10 @@ const TransferModal = ({
                             id="amount"
                             name="amount"
                             onChange={onAmountChange}
-                            defaultValue={fromAtomicAmount(amount)}
+                            value={amountInput}
                             required
                         />
+                        {amountTouched && amountError}
                     </div>
                     <div className="form-row transfer-details">
                         <HighlightedRows title="Transfer details" rows={transferDetailsRows}/>
@@ -143,7 +155,7 @@ const TransferModal = ({
                     
                     
                     <div className="form-actions">
-                        <button className="submit-button" type="submit">
+                        <button className="submit-button" type="submit" disabled={!isValid}>
                             Send
                         </button>
                         <button

@@ -71,12 +71,16 @@
 	color: #333;
 }
 
-.form-actions button:hover {
+.form-actions button:not(:disabled):hover {
 	background: #005fa3;
 }
 
-.form-actions button[type="button"]:hover {
+.form-actions button[type="button"]:not(:disabled):hover {
 	background: #bdbdbd;
+}
+.form-actions button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .transfer-modal .transfer-details {

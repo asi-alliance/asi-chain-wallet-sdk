@@ -75,7 +75,7 @@
 	color: #333;
 }
 
-.form-actions button:hover {
+.form-actions button:not(:disabled):hover {
 	background: #005fa3;
 }
 

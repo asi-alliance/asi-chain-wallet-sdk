@@ -14,20 +14,10 @@ import { validateAddress } from "@utils/validators";
 import { RequireBlockchainGateway } from "@utils/decorators";
 import { GasFeeVO } from "@domains/Fee";
 import FeeService from "@services/Fee";
+import { TransferValidator } from "./TransferValidator";
 
 export default class AssetsService {
-    /**
-     * @returns amount + estimated gas fee
-     */
-    public static getEstimatedTotalTransferAmount(amount: bigint, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
-        return amount + gasFee.gasFee;
-    }
-    /**
-     * @returns amount + max possible gas fee
-     */
-    public static getMaxTotalTransferAmount(amount: bigint, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
-        return amount + gasFee.gasFeeRange.max;
-    }
+
     
     private getBlockchainGateway(): BlockchainGateway {
         return BlockchainGateway.getInstance();
@@ -37,6 +27,7 @@ export default class AssetsService {
     public async transfer(
         fromAddress: Address,
         toAddress: Address,
+        balance: bigint,
         amount: bigint,
         gasFee: GasFeeVO,
         wallet: Wallet,
@@ -47,31 +38,7 @@ export default class AssetsService {
         let reservationId: string | null = null;
 
         try {
-            const fromValidation = validateAddress(fromAddress);
-            if (!fromValidation.isValid) {
-                throw new Error(
-                    `AssetsService.transfer: Invalid 'fromAddress': ${fromValidation.errorCode ?? "UNKNOWN"}`,
-                );
-            }
-
-            const toValidation = validateAddress(toAddress);
-            if (!toValidation.isValid) {
-                throw new Error(
-                    `AssetsService.transfer: Invalid 'toAddress': ${toValidation.errorCode ?? "UNKNOWN"}`,
-                );
-            }
-
-            if (fromAddress === toAddress) {
-                throw new Error(
-                    "AssetsService.transfer: Sender and recipient addresses cannot be the same",
-                );
-            }
-
-            if (amount <= 0n) {
-                throw new Error(
-                    "AssetsService.transfer: Transfer amount must be greater than zero",
-                );
-            }
+            TransferValidator.validate(fromAddress, toAddress, balance, amount, gasFee, "AssetsService.transfer: ");
 
             // Lock funds for the transfer
             reservationId = reservationService.lock(
@@ -171,3 +138,5 @@ export default class AssetsService {
         }
     }
 }
+
+export {TransferValidator} from "./TransferValidator";
