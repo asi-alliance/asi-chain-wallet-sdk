@@ -116,7 +116,6 @@ const TransferModal = ({
             onConfirm(toAddress, currentBalance, amount, gasFee);
         } catch (error) {
             alert(error?.message);
-            //TODO: parse and show the error;
         }
     };
     const isValid = !toAddressError && !amountError;
