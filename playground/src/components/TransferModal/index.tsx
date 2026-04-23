@@ -135,7 +135,16 @@ const TransferModal = ({
                             defaultValue={toAddress}
                             required
                         />
-                        {toAddressTouched && toAddressError}
+                        <div
+                            className="form-error-slot"
+                            role={toAddressTouched && toAddressError ? "alert" : undefined}
+                        >
+                            {toAddressTouched && toAddressError && (
+                                <div className="form-error">
+                                    {toAddressError}
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div className="form-row">
                         <label htmlFor="amount">Amount:</label>
@@ -147,7 +156,16 @@ const TransferModal = ({
                             value={amountInput}
                             required
                         />
-                        {amountTouched && amountError}
+                        <div
+                            className="form-error-slot"
+                            role={amountTouched && amountError ? "alert" : undefined}
+                        >
+                            {amountTouched && amountError && (
+                                <div className="form-error">
+                                    {amountError}
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div className="form-row transfer-details">
                         <HighlightedRows title="Transfer details" rows={transferDetailsRows}/>

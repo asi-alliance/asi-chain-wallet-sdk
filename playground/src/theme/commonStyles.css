@@ -1,5 +1,6 @@
 :root {
   --color-warn: #d99e00;
+  --color-error: #c62828;
 }
 
 .currency-value {

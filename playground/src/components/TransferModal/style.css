@@ -18,22 +18,22 @@
 	border-radius: 10px;
 	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 	min-width: 340px;
+	max-width: min(560px, calc(100vw - 2rem));
 }
 
-.form-row {
+.transfer-modal .form-row {
 	display: flex;
 	flex-direction: column;
-	margin-bottom: 1.5rem;
 }
 
-.form-row label {
+.transfer-modal .form-row label {
 	margin-bottom: 0.5rem;
 	font-weight: 500;
 	color: #444;
 }
 
-.form-row input[type="text"],
-.form-row input[type="number"] {
+.transfer-modal .form-row input[type="text"],
+.transfer-modal .form-row input[type="number"] {
 	padding: 0.5rem 0.75rem;
 	border: 1px solid #ccc;
 	border-radius: 5px;
@@ -44,18 +44,38 @@
 	width: 100%;
 }
 
-.form-row input[type="text"]:focus,
-.form-row input[type="number"]:focus {
+.transfer-modal .form-error-slot {
+	display: flex;
+	justify-content: flex-start;
+	align-items: flex-start;
+	width: 100%;
+	min-height: 1.5rem;
+	padding-top: 0.25rem;
+}
+
+.transfer-modal .form-error {
+	width: 100%;
+	color: var(--color-error);
+	font-size: 0.8125rem;
+	line-height: 1.35;
+	text-align: left;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.transfer-modal .form-row input[type="text"]:focus,
+.transfer-modal .form-row input[type="number"]:focus {
 	border-color: #0078d4;
 }
 
-.form-actions {
-	display: center;
+.transfer-modal .form-actions {
+	display: flex;
 	justify-content: center;
 	gap: 0.75rem;
 }
 
-.form-actions button {
+.transfer-modal .form-actions button {
 	padding: 0.5rem 1.25rem;
 	border: none;
 	border-radius: 5px;
@@ -66,19 +86,19 @@
 	transition: background 0.2s;
 }
 
-.form-actions button[type="button"] {
+.transfer-modal .form-actions button[type="button"] {
 	background: #e0e0e0;
 	color: #333;
 }
 
-.form-actions button:not(:disabled):hover {
+.transfer-modal .form-actions button:not(:disabled):hover {
 	background: #005fa3;
 }
 
-.form-actions button[type="button"]:not(:disabled):hover {
+.transfer-modal .form-actions button[type="button"]:not(:disabled):hover {
 	background: #bdbdbd;
 }
-.form-actions button:disabled {
+.transfer-modal .form-actions button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
