@@ -1,11 +1,10 @@
 import { GasFeeVO } from "@domains/Fee/GasFeeVO";
-import { Atomic } from "@domains/types";
 import { randomBigInt } from "@utils";
 import { GAS_FEE } from "@utils/constants";
 import { IGasFeeView, mapGasFeeToView } from "./GasFeeView";
 
 export default class FeeService {
-    private static generateRandomFakeGasFee = (): Atomic => {
+    private static generateRandomFakeGasFee = (): bigint => {
         const fakeFee = randomBigInt(GAS_FEE.MIN, GAS_FEE.MAX);
         return fakeFee;
     };

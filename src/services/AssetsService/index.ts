@@ -14,19 +14,18 @@ import { validateAddress } from "@utils/validators";
 import { RequireBlockchainGateway } from "@utils/decorators";
 import { GasFeeVO } from "@domains/Fee";
 import FeeService from "@services/Fee";
-import { Atomic } from "@domains/types";
 
 export default class AssetsService {
     /**
      * @returns amount + estimated gas fee
      */
-    public static getEstimatedTotalTransferAmount(amount: Atomic, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
+    public static getEstimatedTotalTransferAmount(amount: bigint, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
         return amount + gasFee.gasFee;
     }
     /**
      * @returns amount + max possible gas fee
      */
-    public static getMaxTotalTransferAmount(amount: Atomic, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
+    public static getMaxTotalTransferAmount(amount: bigint, gasFee: GasFeeVO = FeeService.getGasFeeVO()) {
         return amount + gasFee.gasFeeRange.max;
     }
     

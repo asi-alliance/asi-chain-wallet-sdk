@@ -1,20 +1,18 @@
-import { Atomic } from "@domains/types";
-
 /**
  * Value Object for GasFee in domain (Atomic) units
  */
 export class GasFeeVO {
-  constructor(gasFee: Atomic, gasFeeRangeMin: Atomic, gasFeeRangeMax: Atomic) {
+  constructor(gasFee: bigint, gasFeeRangeMin: bigint, gasFeeRangeMax: bigint) {
     this.gasFee = gasFee;
     this.gasFeeRange = {
       min: gasFeeRangeMin,
       max: gasFeeRangeMax
     }
   }
-  public readonly gasFee: Atomic;
+  public readonly gasFee: bigint;
   public readonly gasFeeRange: {
-    min: Atomic;
-    max: Atomic;
+    min: bigint;
+    max: bigint;
   }
 }
 

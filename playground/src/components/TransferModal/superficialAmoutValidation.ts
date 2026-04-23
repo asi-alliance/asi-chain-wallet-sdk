@@ -1,5 +1,3 @@
-import {type Atomic} from "asi-wallet-sdk";
-
-export function superficialAmoutValidation(amount: Atomic) {
+export function superficialAmoutValidation(amount: bigint) {
   return amount > 0;
 }
