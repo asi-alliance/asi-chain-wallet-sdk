@@ -22,6 +22,7 @@
             "@layouts/*": ["./src/layouts/*"],
             "@components/*": ["./src/components/*"],
             "@context/*": ["./src/context/*"],
+            "@config/*": ["./src/config/*"],
             "@domains/*": ["./src/domains/*"],
             "@hooks/*": ["./src/hooks/*"],
             "@router/*": ["./src/router/*"],

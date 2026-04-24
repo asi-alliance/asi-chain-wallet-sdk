@@ -12,6 +12,7 @@ import {
     KeysManager,
     Wallet,
     Vault,
+    NetworkType,
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
@@ -33,7 +34,7 @@ export type ModalProps =
     | ITransferCompletedModalProps
     | undefined;
 
-export const init = (config, setVault, setAssetsService) => {
+export const init = (config, setVault, setAssetsService, networkType: NetworkType = NetworkType.DEVNET) => {
     try {
         BlockchainGateway.init({
             validator: {
@@ -44,6 +45,7 @@ export const init = (config, setVault, setAssetsService) => {
                 baseUrl: config.ReadOnlyURL,
                 axiosConfig: {},
             },
+            networkType,
         });
 
         const assetsService = new AssetsService();

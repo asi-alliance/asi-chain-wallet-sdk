@@ -3,11 +3,14 @@ import ModalManager from "./ModalManager";
 import ApplicationContext from "./context";
 import WalletsPage from "@pages/WalletsPage";
 import FullscreenLoader from "@components/FullScreenLoader";
+import NetworkSelector from "@components/NetworkSelector";
 import {
     Address,
     AssetsService,
     EncryptedRecord,
     MnemonicService,
+    NetworkType,
+    BlockchainGateway,
     Vault,
     Wallet,
 } from "asi-wallet-sdk";
@@ -31,11 +34,12 @@ type ModalState = {
 };
 
 const VAULT_STORAGE_KEY = "test_vault";
+const SELECTED_NETWORK_KEY = "asi_selected_network";
 
 const configs = import.meta.env.VITE_NETWORKS;
-const config = JSON.parse(configs)["DevNet"];
+const parsedConfigs = JSON.parse(configs);
 
-if (!config) {
+if (!parsedConfigs) {
     throw new Error("Network configuration (env) not found");
 }
 
@@ -50,6 +54,12 @@ const Application = (): ReactElement => {
     );
 
     const [currentPassword, setCurrentPassword] = useState<string>("");
+    
+    // Network state
+    const [currentNetwork, setCurrentNetwork] = useState<NetworkType>(() => {
+        const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkType;
+        return saved || NetworkType.DEVNET;
+    });
 
     const updateVault = (vault: Vault) => {
         setVault(
@@ -339,8 +349,39 @@ const Application = (): ReactElement => {
         });
     };
 
+    const handleNetworkChange = (network: NetworkType) => {
+        withLoader(async () => {
+            try {
+                // Save selected network
+                localStorage.setItem(SELECTED_NETWORK_KEY, network);
+                setCurrentNetwork(network);
+
+                // Reinitialize with new network
+                const networkConfig = parsedConfigs[network];
+                if (!networkConfig) {
+                    throw new Error(`Network configuration for ${network} not found`);
+                }
+
+                init(networkConfig, setVault, setAssetsService, network);
+                
+                // Update gateway network type
+                if (BlockchainGateway.isInitialized()) {
+                    BlockchainGateway.getInstance().setNetworkType(network);
+                }
+            } catch (error) {
+                alert(error?.message || `Failed to switch to ${network} network`);
+                // Revert network if switch fails
+                setCurrentNetwork((prev) => prev);
+            }
+        });
+    };
+
     useEffect(() => {
-        withLoader(() => init(config, setVault, setAssetsService));
+        const networkConfig = parsedConfigs[currentNetwork];
+        if (!networkConfig) {
+            throw new Error(`Network configuration for ${currentNetwork} not found`);
+        }
+        withLoader(() => init(networkConfig, setVault, setAssetsService, currentNetwork));
     }, []);
 
     useEffect(() => {
@@ -361,6 +402,12 @@ const Application = (): ReactElement => {
             <ApplicationContext.Provider
                 value={{ modalState, setModalState, withLoader }}
             >
+                <NetworkSelector 
+                    currentNetwork={currentNetwork}
+                    onNetworkChange={handleNetworkChange}
+                    isLoading={isLoading}
+                />
+                
                 <WalletsPage
                     vault={vault}
                     removeWallet={removeWalletFromVault}

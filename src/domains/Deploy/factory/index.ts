@@ -1,4 +1,6 @@
 import { Address } from "@domains/Wallet";
+import { createDevTransferDeploy, createDevCheckBalanceDeploy } from "./dev";
+import BlockchainGateway, { NetworkType } from "@domains/BlockchainGateway";
 
 export const escapeRholangString = (value: string): string => {
     return value
@@ -9,7 +11,8 @@ export const escapeRholangString = (value: string): string => {
         .replace(/\t/g, "\\t");
 };
 
-export const createCheckBalanceDeploy = (address: Address): string => {
+// DevNet deployment functions (default/current implementation)
+export const createCheckBalanceDeployDevNet = (address: Address): string => {
     const escapedAddress = escapeRholangString(address);
 
     return `
@@ -28,7 +31,7 @@ export const createCheckBalanceDeploy = (address: Address): string => {
 `;
 };
 
-export const createTransferDeploy = (
+export const createTransferDeployDevNet = (
     fromAddress: Address,
     toAddress: Address,
     amount: bigint,
@@ -79,4 +82,44 @@ export const createTransferDeploy = (
             }
         }
     `;
+};
+
+export const createCheckBalanceDeploy = (address: Address): string => {
+    try {
+        if (BlockchainGateway.isInitialized()) {
+            const gateway = BlockchainGateway.getInstance();
+            const network = gateway.getNetworkType();
+            
+            if (network === NetworkType.DEV) {
+                return createDevCheckBalanceDeploy(address);
+            }
+        }
+    } catch (error) {
+        console.warn("Failed to get network type from BlockchainGateway, defaulting to DevNet:", error);
+    }
+    
+    // Default to DevNet
+    return createCheckBalanceDeployDevNet(address);
+};
+
+export const createTransferDeploy = (
+    fromAddress: Address,
+    toAddress: Address,
+    amount: bigint,
+): string => {
+    try {
+        if (BlockchainGateway.isInitialized()) {
+            const gateway = BlockchainGateway.getInstance();
+            const network = gateway.getNetworkType();
+            
+            if (network === NetworkType.DEV) {
+                return createDevTransferDeploy(fromAddress, toAddress, amount);
+            }
+        }
+    } catch (error) {
+        console.warn("Failed to get network type from BlockchainGateway, defaulting to DevNet:", error);
+    }
+    
+    // Default to DevNet
+    return createTransferDeployDevNet(fromAddress, toAddress, amount);
 };

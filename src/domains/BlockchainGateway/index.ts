@@ -11,6 +11,11 @@ export enum DeployStatus {
     CHECK_ERROR = "CheckingError",
 }
 
+export enum NetworkType {
+    DEV = "Dev",
+    DEVNET = "DevNet",
+}
+
 export type DeployStatusResult = 
     | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR>}
     | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
@@ -23,6 +28,7 @@ type GatewayClientConfig = {
 export interface BlockchainGatewayConfig {
     validator: GatewayClientConfig;
     indexer: GatewayClientConfig;
+    networkType?: NetworkType;
 }
 
 export default class BlockchainGateway {
@@ -30,10 +36,12 @@ export default class BlockchainGateway {
 
     private validatorClient: HttpClient;
     private indexerClient: HttpClient;
+    private networkType: NetworkType = NetworkType.DEVNET;
 
-    private constructor(validatorClient: HttpClient, indexerClient: HttpClient) {
+    private constructor(validatorClient: HttpClient, indexerClient: HttpClient, networkType: NetworkType = NetworkType.DEVNET) {
         this.validatorClient = validatorClient;
         this.indexerClient = indexerClient;
+        this.networkType = networkType;
     }
 
     private static createHttpClient(config: GatewayClientConfig): HttpClient {
@@ -58,7 +66,8 @@ export default class BlockchainGateway {
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
             this.createHttpClient(config.validator), 
-            this.createHttpClient(config.indexer)
+            this.createHttpClient(config.indexer),
+            config.networkType || NetworkType.DEVNET
         );
         return BlockchainGateway.instance;
     }
@@ -75,6 +84,15 @@ export default class BlockchainGateway {
         }
 
         return BlockchainGateway.instance;
+    }
+
+    public setNetworkType(networkType: NetworkType): this {
+        this.networkType = networkType;
+        return this;
+    }
+
+    public getNetworkType(): NetworkType {
+        return this.networkType;
     }
 
     public getValidatorClientUrl(): string {
@@ -113,7 +131,14 @@ export default class BlockchainGateway {
 
     public async submitExploratoryDeploy(rholangCode: string): Promise<any> {
         try {
-            return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
+            // Different networks use different request formats
+            if (this.networkType === NetworkType.DEV) {
+                // Dev network expects {term: rholangCode}
+                return await this.indexerClient.post(`/api/explore-deploy`, { term: rholangCode });
+            } else {
+                // DevNet network expects rholangCode directly
+                return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
+            }
         } catch (error) {
             const message = "BlockchainGateway.submitExploratoryDeploy: " + this.getGatewayErrorMessage(error);
             throw new Error(message);

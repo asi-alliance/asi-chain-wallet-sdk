@@ -26,7 +26,7 @@ export interface IWalletCreateModalProps {
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
     initialMnemonic?: string;
-    initialPrivateKey?: string;
+    initialPrivateKey?: Uint8Array;
 }
 
 const CreateWalletModal = ({
@@ -37,7 +37,7 @@ const CreateWalletModal = ({
     onClose,
     isInputMode,
     initialMnemonic,
-    initialPrivateKey = "",
+    initialPrivateKey = new Uint8Array(),
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
@@ -149,7 +149,7 @@ const CreateWalletModal = ({
                                 placeholder=""
                                 autoComplete="off"
                                 required
-                                defaultValue={initialPrivateKey}
+                                defaultValue={JSON.stringify(Array.from(initialPrivateKey))}
                                 readOnly={!isInputMode}
                             />
                         </div>
