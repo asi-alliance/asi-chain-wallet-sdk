@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { AssetsService, Vault } from "asi-wallet-sdk";
 import { init, type NetworkConfig } from "../helpers";
 
-type PasswordSubmitHandler = (password: string) => Promise<void>;
+interface IPasswordSubmitHandler {
+    (password: string): Promise<void>;
+}
 
 type UseSdkParams = {
     config: NetworkConfig;
     vaultStorageKey: string;
-    onUnlockRequired?: (unlockVault: PasswordSubmitHandler) => void;
+    onUnlockRequired?: (unlockVault: IPasswordSubmitHandler) => void;
     onVaultPasswordRequired?: (
-        createVaultPassword: PasswordSubmitHandler,
+        createVaultPassword: IPasswordSubmitHandler,
     ) => void;
     onInitError?: (error: unknown) => void;
 };
@@ -125,5 +127,6 @@ const useSdk = ({
     };
 };
 
+export type { IPasswordSubmitHandler };
 export type UseSdkValue = ReturnType<typeof useSdk>;
 export { useSdk };

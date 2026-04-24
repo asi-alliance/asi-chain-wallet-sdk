@@ -29,5 +29,9 @@ const init = (config: NetworkConfig, vaultStorageKey: string) => {
     return { assetsService, vault };
 };
 
+const resetApp = () => {
+    Vault.clearSavedVaults();
+};
+
 export type { NetworkConfig };
-export { init };
+export { init, resetApp };

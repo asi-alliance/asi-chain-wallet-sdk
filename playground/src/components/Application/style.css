@@ -10,9 +10,6 @@ body {
 .app-navigation {
   display: flex;
   gap: 1rem;
-  padding: 1.5rem 2rem;
-  background: #fff;
-  border-bottom: 2px solid #e5e7eb;
   align-items: center;
 }
 

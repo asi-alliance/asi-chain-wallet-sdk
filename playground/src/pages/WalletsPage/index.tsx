@@ -72,26 +72,8 @@ const WalletsPage = (): ReactElement => {
         setSelectedMode(null);
     };
 
-    const resetApp = () => {
-        if (window.confirm("Are you sure? This action will wipe App's data")) {
-            localStorage.clear();
-            window.location.reload();
-            return;
-        }
-    };
-
     return (
         <div className="wallets-page">
-            <div className="wallets-page__header">
-                <div>
-                    <h2 className="wallets-page__title">ASI Wallets SDK</h2>
-                    <h3>PLAYGROUND</h3>
-                </div>
-                <button className="wallets-page__action" onClick={resetApp}>
-                    CLEAR LS
-                </button>
-            </div>
-
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">

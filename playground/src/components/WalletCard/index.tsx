@@ -4,7 +4,6 @@ import { Modals } from "@components/Application/meta";
 import {
     fromAtomicAmount,
     AssetsService,
-    isAddress,
     Address,
     Wallet,
     FundsReservationService,

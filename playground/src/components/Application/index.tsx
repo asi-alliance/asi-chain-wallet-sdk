@@ -4,15 +4,20 @@ import ApplicationContext, {
     type ApplicationContextValue,
     type ModalState,
 } from "./context";
-import { useSdk, SdkContext, type SdkContextValue } from "../../sdk-react-kit";
+import {
+    useSdk,
+    SdkContext,
+    type IPasswordSubmitHandler,
+    type SdkContextValue,
+} from "../../sdk-react-kit";
 import FullscreenLoader from "@components/FullScreenLoader";
 import { ReactElement, useState } from "react";
-import { ApplicationNavigation, PersistentPageRoutes } from "@router/index";
+import { PersistentPageRoutes } from "@router/index";
 import { Networks } from "../../config";
 import { Modals } from "./meta";
+import Header from "./Header";
 import "./style.css";
 
-type PasswordSubmitHandler = (password: string) => Promise<void>;
 const VAULT_STORAGE_KEY = "test_vault";
 
 const Application = (): ReactElement => {
@@ -25,7 +30,7 @@ const Application = (): ReactElement => {
         withLoader,
     } satisfies ApplicationContextValue;
 
-    const openUnlockModal = (unlockVault: PasswordSubmitHandler) => {
+    const openUnlockModal = (unlockVault: IPasswordSubmitHandler) => {
         setModalState({
             type: Modals.PASSWORD_MODAL,
             props: {
@@ -46,7 +51,7 @@ const Application = (): ReactElement => {
     };
 
     const openCreatePasswordForVaultModal = (
-        createVaultPassword: PasswordSubmitHandler,
+        createVaultPassword: IPasswordSubmitHandler,
     ) => {
         setModalState({
             type: Modals.PASSWORD_MODAL,
@@ -87,7 +92,7 @@ const Application = (): ReactElement => {
         <main>
             <ApplicationContext.Provider value={applicationContextValue}>
                 <SdkContext.Provider value={sdkContextValue}>
-                    <ApplicationNavigation />
+                    <Header />
                     <PersistentPageRoutes />
                 </SdkContext.Provider>
 

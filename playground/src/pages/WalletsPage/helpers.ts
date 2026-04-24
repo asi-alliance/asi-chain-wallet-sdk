@@ -18,7 +18,7 @@ import {
 import { keccak512 } from "js-sha3";
 
 type CreateWalletPageHandlersParams = {
-    sdk: SdkContextValue["sdk"];
+    sdk: SdkContextValue;
     setModalState: ApplicationContextValue["setModalState"];
     withLoader: ApplicationContextValue["withLoader"];
 };

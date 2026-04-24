@@ -74,6 +74,12 @@ export default class Vault {
         return localStorage.getItem(vaultKey);
     }
 
+    public static clearSavedVaults(): void {
+        this.getSavedVaultKeys().forEach((vaultKey: string) => {
+            localStorage.removeItem(vaultKey);
+        });
+    }
+
     public isVaultLocked(): boolean {
         return this.isLocked;
     }
