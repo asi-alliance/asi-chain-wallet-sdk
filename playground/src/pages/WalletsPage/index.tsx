@@ -1,29 +1,27 @@
 import WalletCard from "../../components/WalletCard";
 import { Fragment, useMemo, useState, type ReactElement } from "react";
-import { Address, AssetsService, Vault } from "asi-wallet-sdk";
+import { useAppContext } from "@components/Application/context";
+import { useSdkContext } from "@components/Application/SdkContext";
+import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
 
-interface WalletsPageProps {
-    vault: Vault;
-    assetsService: AssetsService;
-    removeWallet: (id: Address) => void;
-    importPk: () => void;
-    importDk: (words: 12 | 24) => void;
-    createPk: () => void;
-    createDk: (words: 12 | 24) => void;
-    deriveK: (index: number) => void;
-}
+const WalletsPage = (): ReactElement => {
+    const { setModalState, withLoader } = useAppContext();
+    const { sdk } = useSdkContext();
+    const { vault, assetsService } = sdk;
+    const {
+        removeWallet,
+        importPk,
+        importDk,
+        createPk,
+        createDk,
+        deriveK,
+    } = createWalletPageHandlers({
+        sdk,
+        setModalState,
+        withLoader,
+    });
 
-const WalletsPage = ({
-    vault,
-    assetsService,
-    removeWallet,
-    importPk,
-    importDk,
-    createPk,
-    createDk,
-    deriveK,
-}: WalletsPageProps): ReactElement => {
     const [isChoosingMethod, setIsChoosingMethod] = useState(false);
     const [selectedMode, setSelectedMode] = useState<
         "create" | "import" | null
