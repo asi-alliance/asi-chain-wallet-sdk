@@ -1,13 +1,13 @@
 import WalletCard from "../../components/WalletCard";
 import { Fragment, useMemo, useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
-import { useSdkContext } from "@components/Application/SdkContext";
+import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
 
 const WalletsPage = (): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
-    const { sdk } = useSdkContext();
+    const sdk = useSdkContext();
     const { vault, assetsService } = sdk;
     const {
         removeWallet,

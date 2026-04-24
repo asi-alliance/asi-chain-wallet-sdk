@@ -1,6 +1,6 @@
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import type { ApplicationContextValue } from "@components/Application/context";
-import type { SdkContextValue } from "@components/Application/SdkContext";
+import type { SdkContextValue } from "../../sdk-react-kit/SdkContext";
 import {
     createInitialMnemonic,
     createInitialPrivateKey,
