@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactElement } from "react";
+import { copyTextToClipboard } from "@utils/misc";
 import {
     formatAddress,
     formatAmount,
@@ -8,18 +9,20 @@ import {
 
 interface TxListItemProps {
     transaction: Transaction;
-    onCopy: (text: string) => void | Promise<void>;
 }
 
 const TxListItem = ({
     transaction,
-    onCopy,
 }: TxListItemProps): ReactElement => {
-    const handleCopyDeployId = (event: MouseEvent<HTMLButtonElement>) => {
+    const handleCopyDeployId = async (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
 
         if (transaction.deployId) {
-            void onCopy(transaction.deployId);
+            try {
+                await copyTextToClipboard(transaction.deployId);
+            } catch (error) {
+                console.error(error);
+            }
         }
     };
 

@@ -1,8 +1,6 @@
 import type { ReactElement } from "react";
-import type { TxHistoryAccount } from "../fixtures/txHistory.fixture";
 
 interface TxHistoryActionsProps {
-    selectedAccount: TxHistoryAccount | null;
     lastRefresh: Date;
     onRefreshAndSync: () => void | Promise<void>;
     onExportJSON: () => void | Promise<void>;
@@ -10,14 +8,14 @@ interface TxHistoryActionsProps {
 }
 
 const TxHistoryActions = ({
-    selectedAccount,
     lastRefresh,
     onRefreshAndSync,
     onExportJSON,
     onExportCSV,
 }: TxHistoryActionsProps): ReactElement => {
     return (
-        <section>
+        <section className="section">
+            <h2>TxHistoryActions</h2>
             <div>
                 <p>Auto-refresh: every 30s</p>
                 <p>Last: {lastRefresh.toLocaleTimeString()}</p>

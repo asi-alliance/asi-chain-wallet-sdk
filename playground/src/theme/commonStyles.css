@@ -9,11 +9,11 @@
   font-family: "Courier New", monospace;
 }
 
-.block {
+.section {
   border: 2px solid blue;
   padding: 10px;
 }
-.block:not(:last-child) {
+.section:not(:last-child) {
   margin-bottom: 10px;
 }
 .table {
@@ -28,4 +28,7 @@
 }
 .table td:not(:last-child) {
   border-right-color: rgb(230, 230, 230);
+}
+.table th {
+  border-bottom: 2px solid rgb(155, 155, 155);
 }

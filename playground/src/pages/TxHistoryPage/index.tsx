@@ -15,7 +15,6 @@ import {
     calculateTransactionStats,
     emptyTransactionStats,
     fetchBalance,
-    hasActiveTransactionFilters,
     networksFixture,
     selectedAccountFixture,
     selectedNetworkFixture,
@@ -24,8 +23,7 @@ import {
     type TransactionStats,
 } from "./fixtures/txHistory.fixture";
 import "./styles.css";
-import { copyTextToClipboard } from "@utils/misc";
-import { TxHistoryPrerequisites, TxHistoryPrerequisitesValues } from "./TxHistoryPrerequisites";
+import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
 
 const TxHistoryPage = (): ReactElement => {
     // History.tsx: selectedAccount/selectedNetwork came from Redux selectors.
@@ -42,11 +40,6 @@ const TxHistoryPage = (): ReactElement => {
     const [filter, setFilter] = useState<TransactionFilter>({});
     const [stats, setStats] = useState<TransactionStats>(emptyTransactionStats);
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-    const [prerequisites, setPrerequisites] = useState<TxHistoryPrerequisitesValues>(null);
-
-    const onChangeTxHistoryPrerequisites = useCallback((prerequisites: TxHistoryPrerequisitesValues) => {
-      setPrerequisites(prerequisites);
-    }, []);
 
     const checkPendingTransactionStatuses = useCallback(async () => {
         if (!selectedAccount || !selectedNetwork || !isAccountUnlocked) return;
@@ -84,7 +77,8 @@ const TxHistoryPage = (): ReactElement => {
 
             setTransactions(filteredTxs);
             setStats(calculateTransactionStats(filteredTxs));
-        } catch {
+        } catch (error) {
+            console.error(error);
             setTransactions([]);
             setStats(emptyTransactionStats);
         }
@@ -122,8 +116,8 @@ const TxHistoryPage = (): ReactElement => {
                 selectedNetwork.name,
                 selectedNetwork.graphqlUrl || "",
             );
-        } catch {
-            // History.tsx silently ignored export errors.
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -138,8 +132,8 @@ const TxHistoryPage = (): ReactElement => {
                 selectedNetwork.name,
                 selectedNetwork.graphqlUrl || "",
             );
-        } catch {
-            // History.tsx silently ignored export errors.
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -157,10 +151,6 @@ const TxHistoryPage = (): ReactElement => {
         setFilter({});
     };
 
-    const hasActiveFilters = () => {
-        return hasActiveTransactionFilters(filter);
-    };
-
     const handleRefreshAndSync = async () => {
         TransactionPollingService.forceCheck();
 
@@ -172,8 +162,8 @@ const TxHistoryPage = (): ReactElement => {
                     selectedNetwork.name,
                     selectedNetwork.graphqlUrl,
                 );
-            } catch {
-                // History.tsx silently ignored sync errors.
+            } catch (error) {
+                console.error(error);
             }
         }
 
@@ -194,8 +184,8 @@ const TxHistoryPage = (): ReactElement => {
                         selectedNetwork.name,
                     );
                 }
-            } catch {
-                // History.tsx silently ignored balance refresh errors.
+            } catch (error) {
+                console.error(error);
             }
         }
 
@@ -206,40 +196,24 @@ const TxHistoryPage = (): ReactElement => {
     return (
         <main className="tx-history-page">
             <h1>Transactions</h1>
-            <TxHistoryPrerequisites onChange={onChangeTxHistoryPrerequisites}/>
+            <TxHistoryPrerequisites selectedAccount={selectedAccount} />
             <TxHistoryActions
-                selectedAccount={selectedAccount}
                 lastRefresh={lastRefresh}
                 onRefreshAndSync={handleRefreshAndSync}
                 onExportJSON={handleExportJSON}
                 onExportCSV={handleExportCSV}
             />
-
-            <div className="block">
-              <h2>TxHistoryFilters</h2>
-              <TxHistoryFilters
+            <TxHistoryFilters
                 filter={filter}
                 networks={networks}
-                hasActiveFilters={hasActiveFilters()}
                 onFilterChange={handleFilterChange}
                 onClearFilters={handleClearFilters}
-              />
-            </div>
-
-
-            <div className="block">
-              <h2>TxHistoryStats</h2>
-              <TxHistoryStats stats={stats} />
-            </div>
-
-            <div className="block">
-              <h2>TxList</h2>
-              <TxList
+            />
+            <TxHistoryStats stats={stats} />
+            <TxList
                 transactions={transactions}
                 selectedAccount={selectedAccount}
-                onCopy={copyTextToClipboard}
-              />
-            </div>
+            />
         </main>
     );
 };

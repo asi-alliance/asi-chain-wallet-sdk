@@ -1,13 +1,16 @@
 import type { ReactElement } from "react";
-import type {
-    TransactionFilter,
-    TxHistoryNetwork,
+import SelectFilter, {
+    type SelectFilterOption,
+} from "@components/common/SelectFilter";
+import {
+    hasActiveTransactionFilters,
+    type TransactionFilter,
+    type TxHistoryNetwork,
 } from "../fixtures/txHistory.fixture";
 
 interface TxHistoryFiltersProps {
     filter: TransactionFilter;
     networks: TxHistoryNetwork[];
-    hasActiveFilters: boolean;
     onFilterChange: (
         key: keyof TransactionFilter,
         value: TransactionFilter[keyof TransactionFilter] | "all" | "",
@@ -19,58 +22,61 @@ const toDateInputValue = (date?: Date): string => {
     return date ? new Date(date).toISOString().split("T")[0] : "";
 };
 
+const typeOptions: SelectFilterOption[] = [
+    { value: "all", label: "All Types" },
+    { value: "send", label: "Send" },
+    { value: "receive", label: "Receive" },
+    { value: "deploy", label: "Deploy" },
+];
+
+const statusOptions: SelectFilterOption[] = [
+    { value: "all", label: "All Status" },
+    { value: "pending", label: "Pending" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "failed", label: "Failed" },
+];
+
 const TxHistoryFilters = ({
     filter,
     networks,
-    hasActiveFilters,
     onFilterChange,
     onClearFilters,
 }: TxHistoryFiltersProps): ReactElement => {
+    const networkOptions: SelectFilterOption[] = [
+        { value: "all", label: "All Networks" },
+        ...networks.map((network) => ({
+            value: network.name,
+            label: network.name,
+        })),
+    ];
+    const hasActiveFilters = hasActiveTransactionFilters(filter);
+
     return (
-        <section>
-            <label htmlFor="history-filter-type-select">Type</label>
-            <select
+        <section className="section">
+            <h2>TxHistoryFilters</h2>
+            <SelectFilter
                 id="history-filter-type-select"
+                label="Type"
                 value={filter.type || "all"}
-                onChange={(event) =>
-                    onFilterChange("type", event.target.value)
-                }
-            >
-                <option value="all">All Types</option>
-                <option value="send">Send</option>
-                <option value="receive">Receive</option>
-                <option value="deploy">Deploy</option>
-            </select>
+                options={typeOptions}
+                onChange={(value) => onFilterChange("type", value)}
+            />
 
-            <label htmlFor="history-filter-status-select">Status</label>
-            <select
+            <SelectFilter
                 id="history-filter-status-select"
+                label="Status"
                 value={filter.status || "all"}
-                onChange={(event) =>
-                    onFilterChange("status", event.target.value)
-                }
-            >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="failed">Failed</option>
-            </select>
+                options={statusOptions}
+                onChange={(value) => onFilterChange("status", value)}
+            />
 
-            <label htmlFor="history-filter-network-select">Network</label>
-            <select
+            <SelectFilter
                 id="history-filter-network-select"
+                label="Network"
                 value={filter.network || "all"}
-                onChange={(event) =>
-                    onFilterChange("network", event.target.value)
-                }
-            >
-                <option value="all">All Networks</option>
-                {networks.map((network) => (
-                    <option key={network.id} value={network.name}>
-                        {network.name}
-                    </option>
-                ))}
-            </select>
+                options={networkOptions}
+                onChange={(value) => onFilterChange("network", value)}
+            />
 
             <label htmlFor="history-filter-start-date-input">Start Date</label>
             <input

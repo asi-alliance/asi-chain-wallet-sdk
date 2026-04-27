@@ -7,7 +7,8 @@ interface TxHistoryStatsProps {
 
 const TxHistoryStats = ({ stats }: TxHistoryStatsProps): ReactElement => {
     return (
-        <section>
+        <section className="section">
+            <h2>TxHistoryStats</h2>
             <article>
                 <strong>{stats.total}</strong>
                 <h4>Total Transactions</h4>

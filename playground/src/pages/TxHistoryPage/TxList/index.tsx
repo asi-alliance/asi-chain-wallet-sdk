@@ -8,16 +8,16 @@ import TxListItem from "./TxListItem";
 interface TxListProps {
     transactions: Transaction[];
     selectedAccount: TxHistoryAccount | null;
-    onCopy: (text: string) => void | Promise<void>;
 }
 
 const TxList = ({
     transactions,
     selectedAccount,
-    onCopy,
 }: TxListProps): ReactElement => {
-    if (!transactions.length) {
-        return (
+    return(<section className="section">
+        <h2>TxList</h2>
+        {
+            !transactions.length? 
             <div>
                 {selectedAccount ? (
                     <>
@@ -30,12 +30,8 @@ const TxList = ({
                 ) : (
                     <p>Please select an account to view transaction history.</p>
                 )}
-            </div>
-        );
-    }
-
-    return (
-        <div>
+            </div> :
+                    <div>
             <table className="table">
                 <thead>
                     <tr>
@@ -53,13 +49,14 @@ const TxList = ({
                         <TxListItem
                             key={transaction.id}
                             transaction={transaction}
-                            onCopy={onCopy}
                         />
                     ))}
                 </tbody>
             </table>
         </div>
-    );
+
+        }
+    </section>)
 };
 
 export default TxList;
