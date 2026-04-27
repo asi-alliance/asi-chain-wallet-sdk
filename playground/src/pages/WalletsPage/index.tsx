@@ -1,5 +1,5 @@
 import WalletCard from "../../components/WalletCard";
-import { Fragment, useMemo, useState, type ReactElement } from "react";
+import { Fragment, useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";

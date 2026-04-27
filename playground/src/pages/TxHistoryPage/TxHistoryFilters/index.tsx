@@ -4,13 +4,13 @@ import SelectFilter, {
 } from "@components/common/SelectFilter";
 import {
     hasActiveTransactionFilters,
+    type Network,
     type TransactionFilter,
-    type TxHistoryNetwork,
 } from "../fixtures/txHistory.fixture";
 
 interface TxHistoryFiltersProps {
     filter: TransactionFilter;
-    networks: TxHistoryNetwork[];
+    networks: Network[];
     onFilterChange: (filter: TransactionFilter) => void;
 }
 

@@ -1,29 +1,38 @@
-export type TransactionType = "send" | "receive" | "deploy";
-
-export type TransactionStatus = "pending" | "confirmed" | "failed";
-
+// Source: asi-chain-wallet/src/services/transactionHistory.ts
+// Imported by History.tsx from "services/transactionHistory".
 export interface Transaction {
     id: string;
-    type: TransactionType;
-    status: TransactionStatus;
+    timestamp: Date;
+    type: "send" | "receive" | "deploy";
     from: string;
     to?: string;
     amount?: string;
-    timestamp: Date;
-    network: string;
-    note?: string;
     deployId?: string;
     blockHash?: string;
+    gasCost?: string;
+    status: "pending" | "confirmed" | "failed";
+    contractCode?: string;
+    note?: string;
+    network: string;
+    detectedBy?: "balance_change" | "manual" | "auto";
 }
 
+// Source: asi-chain-wallet/src/services/transactionHistory.ts
+// Imported by History.tsx from "services/transactionHistory".
 export interface TransactionFilter {
-    type?: TransactionType;
-    status?: TransactionStatus;
-    network?: string;
+    type?: "send" | "receive" | "deploy";
+    status?: "pending" | "confirmed" | "failed";
+    from?: string;
+    to?: string;
     startDate?: Date;
     endDate?: Date;
+    network?: string;
 }
 
+// Source has no named type.
+// History.tsx stores this as useState<any> and builds the object inline in loadTransactions.
+// A similar anonymous shape is also returned from
+// asi-chain-wallet/src/services/transactionHistory.ts -> TransactionHistoryService.getStatistics().
 export interface TransactionStats {
     total: number;
     sent: number;
@@ -34,15 +43,27 @@ export interface TransactionStats {
     failed: number;
 }
 
-export interface TxHistoryAccount {
+// Source: asi-chain-wallet/src/types/wallet.ts
+// Reaches History.tsx through RootState.wallet.selectedAccount from
+// asi-chain-wallet/src/store/walletSlice.ts.
+export interface Account {
     id: string;
     name: string;
+    address: string;
     revAddress: string;
+    ethAddress: string;
     publicKey: string;
-    balance?: string;
+    privateKey?: string;
+    balance: string;
+    isMetamask?: boolean;
+    networkId?: string;
+    createdAt: Date;
 }
 
-export interface TxHistoryNetwork {
+// Source: asi-chain-wallet/src/types/wallet.ts
+// Reaches History.tsx through RootState.wallet.selectedNetwork/networks from
+// asi-chain-wallet/src/store/walletSlice.ts.
+export interface Network {
     id: string;
     name: string;
     url: string;
@@ -52,16 +73,20 @@ export interface TxHistoryNetwork {
     graphqlUrl?: string;
 }
 
-export const selectedAccountFixture: TxHistoryAccount = {
+export const selectedAccountFixture: Account = {
     id: "account-1",
     name: "Playground account",
+    address: "1111WjP6iqqDa61z7wzVYmk7GdTqV9FSZJMzpYqWMe7r7CjixYz8V",
     revAddress: "1111WjP6iqqDa61z7wzVYmk7GdTqV9FSZJMzpYqWMe7r7CjixYz8V",
+    ethAddress: "0x0000000000000000000000000000000000000001",
     publicKey:
         "02a1633caf7bfca8e49af33e3f19b4a52dfcb1f0c4b46ad6f7a60d6d2056359f52",
     balance: "125.00000000",
+    networkId: "devnet",
+    createdAt: new Date("2026-04-24T10:00:00"),
 };
 
-export const selectedNetworkFixture: TxHistoryNetwork = {
+export const selectedNetworkFixture: Network = {
     id: "devnet",
     name: "DevNet",
     url: "https://node.devnet.example",
@@ -71,7 +96,7 @@ export const selectedNetworkFixture: TxHistoryNetwork = {
     graphqlUrl: "https://graphql.devnet.example",
 };
 
-export const networksFixture: TxHistoryNetwork[] = [
+export const networksFixture: Network[] = [
     selectedNetworkFixture,
     {
         id: "testnet",
@@ -302,8 +327,8 @@ export const fetchBalance = async ({
     network,
     forceRefresh,
 }: {
-    account: TxHistoryAccount;
-    network: TxHistoryNetwork;
+    account: Account;
+    network: Network;
     forceRefresh?: boolean;
 }): Promise<{ balance: string }> => {
     void account;

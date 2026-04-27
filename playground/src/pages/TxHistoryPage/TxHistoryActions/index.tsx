@@ -7,13 +7,13 @@ import {
 import KeyValueTable from "@components/common/KeyValueTable";
 import {
     TransactionHistoryService,
-    type TxHistoryAccount,
-    type TxHistoryNetwork,
+    type Account,
+    type Network,
 } from "../fixtures/txHistory.fixture";
 
 interface TxHistoryActionsProps {
-    selectedAccount?: TxHistoryAccount;
-    selectedNetwork?: TxHistoryNetwork;
+    selectedAccount?: Account;
+    selectedNetwork?: Network;
     onRefreshAndSync: () => void | Promise<void>;
     isTxHistoryLoading: boolean;
     txHistoryError: string | null;

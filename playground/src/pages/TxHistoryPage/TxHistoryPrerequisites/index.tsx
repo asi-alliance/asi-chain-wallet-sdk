@@ -1,11 +1,14 @@
 import { useCallback, useMemo, type ReactElement } from "react";
-import type { TxHistoryAccount } from "../fixtures/txHistory.fixture";
+import {
+    selectedAccountFixture,
+    type Account,
+} from "../fixtures/txHistory.fixture";
 import { useWallets } from "../../../sdk-react-kit/hooks/useWallets";
 import SelectFilter from "@components/common/SelectFilter";
 
 interface TxHistoryPrerequisitesProps {
-    account: TxHistoryAccount | null;
-    setAccount: (account: TxHistoryAccount | null) => void;
+    account: Account | null;
+    setAccount: (account: Account | null) => void;
     network: any | null;
     setNetwork: (network: any | null) => void;
 }
@@ -16,6 +19,9 @@ export const TxHistoryPrerequisites = ({
     network,
     setNetwork
 }: TxHistoryPrerequisitesProps): ReactElement => {
+    // Network selector facade is not wired yet; keep the setter in the props contract.
+    void setNetwork;
+
     const {flatWallets} = useWallets();
     console.log(flatWallets)
 
@@ -26,8 +32,25 @@ export const TxHistoryPrerequisites = ({
         }))];
     }, [flatWallets]);
     const onSelectAccountChange = useCallback((accountAddress: string) => {
-        setAccount(flatWallets.find(wallet => wallet.getAddress() === accountAddress));
-    }, []);
+        const selectedWallet = flatWallets.find(
+            (wallet) => wallet.getAddress() === accountAddress,
+        );
+
+        if (!selectedWallet) {
+            setAccount(null);
+            return;
+        }
+
+        // SDK Wallet is not the asi-chain-wallet Account from src/types/wallet.ts.
+        // This keeps the History.tsx Account contract explicit until the real mapper exists.
+        setAccount({
+            ...selectedAccountFixture,
+            id: selectedWallet.getAddress(),
+            name: selectedWallet.getName(),
+            address: selectedWallet.getAddress(),
+            revAddress: selectedWallet.getAddress(),
+        });
+    }, [flatWallets, setAccount]);
 
     return (
         <section className="section">

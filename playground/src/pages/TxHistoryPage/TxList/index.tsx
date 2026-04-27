@@ -1,13 +1,13 @@
 import type { ReactElement } from "react";
 import type {
+    Account,
     Transaction,
-    TxHistoryAccount,
 } from "../fixtures/txHistory.fixture";
 import TxListItem from "./TxListItem";
 
 interface TxListProps {
     transactions: Transaction[] | null;
-    selectedAccount: TxHistoryAccount | null;
+    selectedAccount: Account | null;
 }
 
 const TxContent = (transactions: TxListProps["transactions"]): ReactElement => {
