@@ -11,11 +11,7 @@ import {
 interface TxHistoryFiltersProps {
     filter: TransactionFilter;
     networks: TxHistoryNetwork[];
-    onFilterChange: (
-        key: keyof TransactionFilter,
-        value: TransactionFilter[keyof TransactionFilter] | "all" | "",
-    ) => void;
-    onClearFilters: () => void;
+    onFilterChange: (filter: TransactionFilter) => void;
 }
 
 const toDateInputValue = (date?: Date): string => {
@@ -36,11 +32,16 @@ const statusOptions: SelectFilterOption[] = [
     { value: "failed", label: "Failed" },
 ];
 
+const normalizeFilterValue = (
+    value: TransactionFilter[keyof TransactionFilter] | "all" | "",
+): TransactionFilter[keyof TransactionFilter] | undefined => {
+    return value === "all" || value === "" ? undefined : value;
+};
+
 const TxHistoryFilters = ({
     filter,
     networks,
     onFilterChange,
-    onClearFilters,
 }: TxHistoryFiltersProps): ReactElement => {
     const networkOptions: SelectFilterOption[] = [
         { value: "all", label: "All Networks" },
@@ -51,6 +52,30 @@ const TxHistoryFilters = ({
     ];
     const hasActiveFilters = hasActiveTransactionFilters(filter);
 
+    const handleFilterChange = (
+        key: keyof TransactionFilter,
+        value: TransactionFilter[keyof TransactionFilter] | "all" | "",
+    ) => {
+        const nextFilter = {
+            ...filter,
+            [key]: normalizeFilterValue(value),
+        };
+
+        Object.keys(nextFilter).forEach((filterKey) => {
+            const typedFilterKey = filterKey as keyof TransactionFilter;
+
+            if (!nextFilter[typedFilterKey]) {
+                delete nextFilter[typedFilterKey];
+            }
+        });
+
+        onFilterChange(nextFilter);
+    };
+
+    const handleClearFilters = () => {
+        onFilterChange({});
+    };
+
     return (
         <section className="section">
             <h2>TxHistoryFilters</h2>
@@ -59,7 +84,7 @@ const TxHistoryFilters = ({
                 label="Type"
                 value={filter.type || "all"}
                 options={typeOptions}
-                onChange={(value) => onFilterChange("type", value)}
+                onChange={(value) => handleFilterChange("type", value)}
             />
 
             <SelectFilter
@@ -67,7 +92,7 @@ const TxHistoryFilters = ({
                 label="Status"
                 value={filter.status || "all"}
                 options={statusOptions}
-                onChange={(value) => onFilterChange("status", value)}
+                onChange={(value) => handleFilterChange("status", value)}
             />
 
             <SelectFilter
@@ -75,7 +100,7 @@ const TxHistoryFilters = ({
                 label="Network"
                 value={filter.network || "all"}
                 options={networkOptions}
-                onChange={(value) => onFilterChange("network", value)}
+                onChange={(value) => handleFilterChange("network", value)}
             />
 
             <label htmlFor="history-filter-start-date-input">Start Date</label>
@@ -84,7 +109,7 @@ const TxHistoryFilters = ({
                 type="date"
                 value={toDateInputValue(filter.startDate)}
                 onChange={(event) => {
-                    onFilterChange(
+                    handleFilterChange(
                         "startDate",
                         event.target.value
                             ? new Date(`${event.target.value}T00:00:00`)
@@ -99,7 +124,7 @@ const TxHistoryFilters = ({
                 type="date"
                 value={toDateInputValue(filter.endDate)}
                 onChange={(event) => {
-                    onFilterChange(
+                    handleFilterChange(
                         "endDate",
                         event.target.value
                             ? new Date(`${event.target.value}T23:59:59`)
@@ -112,7 +137,7 @@ const TxHistoryFilters = ({
                 <button
                     id="history-clear-filters-button"
                     type="button"
-                    onClick={onClearFilters}
+                    onClick={handleClearFilters}
                 >
                     Clear Filters
                 </button>

@@ -52,16 +52,6 @@ export interface TxHistoryNetwork {
     graphqlUrl?: string;
 }
 
-export const emptyTransactionStats: TransactionStats = {
-    total: 0,
-    sent: 0,
-    received: 0,
-    deployed: 0,
-    pending: 0,
-    confirmed: 0,
-    failed: 0,
-};
-
 export const selectedAccountFixture: TxHistoryAccount = {
     id: "account-1",
     name: "Playground account",

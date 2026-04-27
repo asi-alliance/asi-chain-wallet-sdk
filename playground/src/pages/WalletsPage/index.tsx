@@ -4,11 +4,13 @@ import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
+import { useWallets } from "../../sdk-react-kit/hooks/useWallets";
 
 const WalletsPage = (): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
     const sdk = useSdkContext();
     const { vault, assetsService } = sdk;
+    const {wallets, lastIndex} = useWallets();
     const {
         removeWallet,
         importPk,
@@ -26,36 +28,37 @@ const WalletsPage = (): ReactElement => {
     const [selectedMode, setSelectedMode] = useState<
         "create" | "import" | null
     >(null);
-    const [lastIndex, setLastIndex] = useState<number | null>(null);
 
-    const wallets = useMemo(() => {
-        let lastIndexLocal: number | null = null;
 
-        if (!vault) {
-            return { privateKeyWallets: [], mnemonicWallets: [] };
-        }
+    // const [lastIndex, setLastIndex] = useState<number | null>(null);
+    // const wallets = useMemo(() => {
+    //     let lastIndexLocal: number | null = null;
 
-        const wallets = vault.getWallets();
+    //     if (!vault) {
+    //         return { privateKeyWallets: [], mnemonicWallets: [] };
+    //     }
 
-        const privateKeyWallets = wallets.filter(
-            (wallet) => wallet.getIndex() === null
-        );
-        const mnemonicWallets = wallets.filter((wallet) => {
-            if (typeof wallet.getIndex() === "number") {
-                lastIndexLocal = Math.max(
-                    lastIndexLocal === null ? -1 : lastIndexLocal,
-                    wallet.getIndex() as number
-                );
-            } else {
-                return false;
-            }
-            return true;
-        });
+    //     const wallets = vault.getWallets();
 
-        setLastIndex(lastIndexLocal);
+    //     const privateKeyWallets = wallets.filter(
+    //         (wallet) => wallet.getIndex() === null
+    //     );
+    //     const mnemonicWallets = wallets.filter((wallet) => {
+    //         if (typeof wallet.getIndex() === "number") {
+    //             lastIndexLocal = Math.max(
+    //                 lastIndexLocal === null ? -1 : lastIndexLocal,
+    //                 wallet.getIndex() as number
+    //             );
+    //         } else {
+    //             return false;
+    //         }
+    //         return true;
+    //     });
 
-        return { privateKeyWallets, mnemonicWallets };
-    }, [vault]);
+    //     setLastIndex(lastIndexLocal);
+
+    //     return { privateKeyWallets, mnemonicWallets };
+    // }, [vault]);
 
     if (!vault) {
         return <div>Loading vault...</div>;

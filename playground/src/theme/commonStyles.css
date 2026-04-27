@@ -1,6 +1,7 @@
 :root {
   --color-warn: #d99e00;
   --color-error: #c62828;
+  --color-success: #00ff00;
 }
 
 .currency-value {
@@ -16,11 +17,10 @@
 .section:not(:last-child) {
   margin-bottom: 10px;
 }
+
+/* table */
 .table {
   border-collapse: collapse;
-}
-.table tr {
-  /* border: 2px solid rgb(155, 155, 155) */
 }
 .table td {
   border: 2px solid rgb(155, 155, 155);
@@ -32,3 +32,20 @@
 .table th {
   border-bottom: 2px solid rgb(155, 155, 155);
 }
+/* /table */
+
+/* signals */
+.success {
+  font-weight: 600;
+  color: var(--color-success);
+}
+.warning {
+  font-weight: 600;
+  color: var(--color-warn);
+}
+.error {
+  font-weight: 600;
+  color: var(--color-error);
+}
+
+/* /signals */
