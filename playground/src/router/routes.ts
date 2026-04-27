@@ -9,7 +9,7 @@ export const PAGE_ROUTES = [
     },
     {
         path: PATHS.TX_HISTORY_PATH,
-        label: "Tx History",
+        label: "TxHistory",
         Page: TxHistoryPage,
     },
 ] as const;

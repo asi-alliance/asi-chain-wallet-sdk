@@ -23,7 +23,7 @@ const Header = (): ReactElement => {
                 type="button"
                 onClick={handleResetApp}
             >
-                CLEAR LS
+                CLEAR SDK LS
             </button>
         </header>
     );

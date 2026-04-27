@@ -8,3 +8,24 @@
   color: #2196f3;
   font-family: "Courier New", monospace;
 }
+
+.block {
+  border: 2px solid blue;
+  padding: 10px;
+}
+.block:not(:last-child) {
+  margin-bottom: 10px;
+}
+.table {
+  border-collapse: collapse;
+}
+.table tr {
+  /* border: 2px solid rgb(155, 155, 155) */
+}
+.table td {
+  border: 2px solid rgb(155, 155, 155);
+
+}
+.table td:not(:last-child) {
+  border-right-color: rgb(230, 230, 230);
+}
