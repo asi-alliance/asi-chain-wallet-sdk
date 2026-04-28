@@ -1,11 +1,7 @@
 import type { MouseEvent, ReactElement } from "react";
 import { copyTextToClipboard } from "@utils/misc";
-import {
-    formatAddress,
-    formatAmount,
-    formatDate,
-    type Transaction,
-} from "../../fixtures/txHistory.fixture";
+import { type Transaction} from "asi-wallet-sdk";
+import { formatAddress, formatAmount, formatDate } from "../../../../sdk-react-kit";
 
 interface TxListItemProps {
     transaction: Transaction;
@@ -37,7 +33,7 @@ const TxListItem = ({
                     : formatAddress(transaction.from)}
             </td>
             <td>{transaction.to ? formatAddress(transaction.to) : "-"}</td>
-            <td>{formatAmount(transaction.amount)}</td>
+            <td>{transaction.amount}</td>
             <td>
                 {transaction.note && <div>{transaction.note}</div>}
 

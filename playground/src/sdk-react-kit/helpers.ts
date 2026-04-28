@@ -3,6 +3,7 @@ import { AssetsService, BlockchainGateway, Vault } from "asi-wallet-sdk";
 type NetworkConfig = {
     ValidatorURL: string;
     ReadOnlyURL: string;
+    IndexerURL: string;
 };
 
 const getVaultStorageDataKey = (vaultStorageKey: string) =>
@@ -18,6 +19,10 @@ const init = (config: NetworkConfig, vaultStorageKey: string) => {
             baseUrl: config.ReadOnlyURL,
             axiosConfig: {},
         },
+        graphql: {
+            baseUrl: config.IndexerURL,
+            axiosConfig: {},
+        }
     });
 
     const assetsService = new AssetsService();

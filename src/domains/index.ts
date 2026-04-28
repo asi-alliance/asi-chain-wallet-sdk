@@ -9,6 +9,8 @@ export * from "./BlockchainGateway";
 export * from "./Error";
 export * from "./Reservation";
 export * from "./Fee";
+export * from "./Transaction";
+export * from "./Network";
 
 export { default as BlockchainGateway } from "./BlockchainGateway";
 export { default as EncryptedRecord } from "./EncryptedRecord";

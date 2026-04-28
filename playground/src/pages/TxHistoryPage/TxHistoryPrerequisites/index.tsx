@@ -1,14 +1,11 @@
 import { useCallback, useMemo, type ReactElement } from "react";
-import {
-    selectedAccountFixture,
-    type Account,
-} from "../fixtures/txHistory.fixture";
+
 import { useWallets } from "../../../sdk-react-kit/hooks/useWallets";
 import SelectFilter from "@components/common/SelectFilter";
 
 interface TxHistoryPrerequisitesProps {
-    account: Account | null;
-    setAccount: (account: Account | null) => void;
+    account: any | null;
+    setAccount: (account: any | null) => void;
     network: any | null;
     setNetwork: (network: any | null) => void;
 }
@@ -44,7 +41,6 @@ export const TxHistoryPrerequisites = ({
         // SDK Wallet is not the asi-chain-wallet Account from src/types/wallet.ts.
         // This keeps the History.tsx Account contract explicit until the real mapper exists.
         setAccount({
-            ...selectedAccountFixture,
             id: selectedWallet.getAddress(),
             name: selectedWallet.getName(),
             address: selectedWallet.getAddress(),

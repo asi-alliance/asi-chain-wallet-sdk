@@ -8,6 +8,7 @@ export * from "./Resubmit";
 export * from "./Signer";
 export * from "./AssetsService";
 export * from "./Fee";
+export * from "./TxHistory";
 
 export { default as KeyDerivationService } from "./KeyDerivation";
 export { default as BinaryWriter } from "./BinaryWriter";

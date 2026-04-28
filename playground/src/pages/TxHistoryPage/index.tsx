@@ -9,18 +9,18 @@ import TxHistoryStats from "./TxHistoryStats";
 import TxList from "./TxList";
 import {
     networksFixture,
-    selectedAccountFixture,
     selectedNetworkFixture,
-    type TransactionFilter,
 } from "./fixtures/txHistory.fixture";
 import "./styles.css";
 import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
 import { useTxHistory } from "../../sdk-react-kit/hooks/useTxHistory";
+import { type TransactionFilter } from "asi-wallet-sdk";
 
 const TxHistoryPage = (): ReactElement => {
     // History.tsx: selectedAccount/selectedNetwork came from Redux selectors.
     // Playground: fixed fixtures keep UI ready for the future SDK state source.
-    const selectedAccount = selectedAccountFixture;
+    // const selectedAccount = selectedAccountFixture;
+    const selectedAccount = "testSelectedAccount";
     const selectedNetwork = selectedNetworkFixture;
     const networks = networksFixture;
 

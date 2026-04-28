@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { applyTransactionFilter, calculateTransactionStats, fetchBalance, Transaction, TransactionHistoryService, TransactionPollingService, TransactionStats } from "../../pages/TxHistoryPage/fixtures/txHistory.fixture";
+import { Network, Transaction, TransactionFilter, TransactionStats, TxHistory as TxHistoryService, Wallet } from "asi-wallet-sdk";
 
 interface UseHistoryOptions {
   autoUpdate: boolean;
@@ -19,7 +19,7 @@ const defaultUseHistoryOptions: UseHistoryOptions = {
 }
 
 //TODO: any
-export const useTxHistory = (account: any, network: any, filter: any, options?: Partial<UseHistoryOptions>): TxHistory => {
+export const useTxHistory = (wallet: Wallet, network: Network, filter: TransactionFilter, options?: Partial<UseHistoryOptions>): TxHistory => {
   const [stats, setStats] = useState<TransactionStats>(null);
   const [transactions, setTransactions] = useState<Transaction[]>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -34,35 +34,31 @@ export const useTxHistory = (account: any, network: any, filter: any, options?: 
   const isAccountUnlocked = true;
 
   const checkPendingTransactionStatuses = useCallback(async () => {
-    if (!account || !network || !isAccountUnlocked) return;
-
-    if (!network.graphqlUrl || !network.graphqlUrl.trim()) {
-      return;
-    }
+    if (!wallet || !network || !isAccountUnlocked) return;
 
     // History.tsx: this prepared RChainService and optionally checked pending deploys.
     // Playground: left as a named lifecycle facade without network side effects.
-  }, [isAccountUnlocked, account, network]);
+  }, [isAccountUnlocked, wallet, network]);
 
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    if (!account || !network) {
+    if (!wallet || !network) {
       setTransactions(null);
       setStats(null);
       return;
     }
 
     try {
-      if (!account.revAddress || !account.publicKey) {
+      if (!wallet.revAddress || !wallet.publicKey) {
         setTransactions(null);
         setStats(null);
         return;
       }
 
-      const txs = await TransactionHistoryService.getTransactions(
-        account.revAddress,
-        account.publicKey,
+      const txs = await TxHistoryService.getFilteredTransactions(
+        wallet.revAddress,
+        wallet.publicKey,
         network.name,
         network.graphqlUrl || "",
         100,
@@ -78,10 +74,10 @@ export const useTxHistory = (account: any, network: any, filter: any, options?: 
       setStats(null);
     }
     setIsLoading(false);
-  }, [filter, account, network]);
+  }, [filter, wallet, network]);
 
   useEffect(() => {
-    // History.tsx: initial load + pending status check on account/network changes.
+    // History.tsx: initial load + pending status check on wallet/network changes.
     // Playground: same lifecycle, backed by fixture facades.
     loadTransactions();
 
@@ -102,37 +98,14 @@ export const useTxHistory = (account: any, network: any, filter: any, options?: 
   const refreshAndSync = async () => {
     TransactionPollingService.forceCheck();
 
-    if (account && network && network.graphqlUrl) {
+    if (wallet && network && network.graphqlUrl) {
       try {
-        await TransactionHistoryService.syncFromBlockchain(
-          account.revAddress,
-          account.publicKey,
+        await TxHistoryService.syncFromBlockchain(
+          wallet.revAddress,
+          wallet.publicKey,
           network.name,
           network.graphqlUrl,
         );
-      } catch (error) {
-        console.error(error);
-        setError(error);
-      }
-    }
-
-    if (account && network) {
-      try {
-        const oldBalance = account.balance || "0";
-        const balanceResult = await fetchBalance({
-          account: account,
-          network: network,
-        });
-        const newBalance = balanceResult.balance;
-
-        if (parseFloat(newBalance) > parseFloat(oldBalance)) {
-          TransactionHistoryService.detectReceivedTransaction(
-            account.revAddress,
-            oldBalance,
-            newBalance,
-            network.name,
-          );
-        }
       } catch (error) {
         console.error(error);
         setError(error);
