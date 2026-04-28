@@ -5,18 +5,16 @@ import {
     type ReactElement,
 } from "react";
 import KeyValueTable from "@components/common/KeyValueTable";
-import {
-    TransactionHistoryService,
-    type Account,
-    type Network,
-} from "../fixtures/txHistory.fixture";
+import {Network, TxHistory, Wallet} from "asi-wallet-sdk";
 
 interface TxHistoryActionsProps {
-    selectedAccount?: Account;
+    selectedAccount?: Wallet;
     selectedNetwork?: Network;
     onRefreshAndSync: () => void | Promise<void>;
     isTxHistoryLoading: boolean;
     txHistoryError: string | null;
+    offset: number;
+    limit: number;
 }
 
 const TxHistoryActions = ({
@@ -25,16 +23,10 @@ const TxHistoryActions = ({
     onRefreshAndSync,
     isTxHistoryLoading,
     txHistoryError,
+    offset,
+    limit,
 }: TxHistoryActionsProps): ReactElement => {
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setLastRefresh(new Date());
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, []);
 
     const handleRefreshAndSync = async () => {
         await onRefreshAndSync();
@@ -45,12 +37,12 @@ const TxHistoryActions = ({
         if (!selectedAccount || !selectedNetwork) return;
 
         try {
-            await TransactionHistoryService.downloadTransactions(
+            await TxHistory.downloadTransactions(
+                selectedNetwork,
+                selectedAccount.getAddress(),
+                offset,
+                limit,
                 "json",
-                selectedAccount.revAddress,
-                selectedAccount.publicKey,
-                selectedNetwork.name,
-                selectedNetwork.graphqlUrl || "",
             );
         } catch (error) {
             console.error(error);
@@ -61,12 +53,12 @@ const TxHistoryActions = ({
         if (!selectedAccount || !selectedNetwork) return;
 
         try {
-            await TransactionHistoryService.downloadTransactions(
+            await TxHistory.downloadTransactions(
+                selectedNetwork,
+                selectedAccount.getAddress(),
+                offset,
+                limit,
                 "csv",
-                selectedAccount.revAddress,
-                selectedAccount.publicKey,
-                selectedNetwork.name,
-                selectedNetwork.graphqlUrl || "",
             );
         } catch (error) {
             console.error(error);

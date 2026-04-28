@@ -1,4 +1,5 @@
-import { Transaction, TransactionFilter, TransactionStats } from "@domains/";
+import { Transaction } from "@domains/";
+import { TransactionFilter, TransactionStats } from "./types";
 
 export const hasActiveTransactionFilters = (
     filter: TransactionFilter,

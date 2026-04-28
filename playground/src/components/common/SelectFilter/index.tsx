@@ -20,6 +20,7 @@ const SelectFilter = ({
     options,
     onChange,
 }: SelectFilterProps): ReactElement => {
+    console.log("SelectFilter: value=", value)
     return (
         <>
             <label htmlFor={id}>{label}</label>

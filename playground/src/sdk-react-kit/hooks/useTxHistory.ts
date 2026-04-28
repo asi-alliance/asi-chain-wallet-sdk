@@ -8,7 +8,7 @@ interface UseHistoryOptions {
 interface TxHistory {
   stats: TransactionStats;
   transactions: Transaction[];
-  refreshAndSync: () => Promise<void>;
+  loadTransactions: () => Promise<void>;
   error: string | null;
   isLoading: boolean;
 }
@@ -41,6 +41,7 @@ export const useTxHistory = (wallet: Wallet, network: Network, filter: Transacti
   }, [isAccountUnlocked, wallet, network]);
 
   const loadTransactions = useCallback(async () => {
+    console.log("useTxHistory: loadTransactions: start");
     setIsLoading(true);
     setError(null);
     if (!wallet || !network) {
@@ -50,23 +51,16 @@ export const useTxHistory = (wallet: Wallet, network: Network, filter: Transacti
     }
 
     try {
-      if (!wallet.revAddress || !wallet.publicKey) {
-        setTransactions(null);
-        setStats(null);
-        return;
-      }
-
-      const txs = await TxHistoryService.getFilteredTransactions(
-        wallet.revAddress,
-        wallet.publicKey,
-        network.name,
-        network.graphqlUrl || "",
-        100,
+      const {filteredTxs, stats} = await TxHistoryService.getFilteredTxsWithStats(
+        network,
+        wallet.getAddress(),
+        filter,
+        0,
+        10, //TODO: from 
       );
-      const filteredTxs = applyTransactionFilter(txs, filter);
 
       setTransactions(filteredTxs);
-      setStats(calculateTransactionStats(filteredTxs));
+      setStats(stats);
     } catch (error) {
       console.error(error);
       setError(error);
@@ -95,30 +89,10 @@ export const useTxHistory = (wallet: Wallet, network: Network, filter: Transacti
     }
   }, [loadTransactions, options]);
 
-  const refreshAndSync = async () => {
-    TransactionPollingService.forceCheck();
-
-    if (wallet && network && network.graphqlUrl) {
-      try {
-        await TxHistoryService.syncFromBlockchain(
-          wallet.revAddress,
-          wallet.publicKey,
-          network.name,
-          network.graphqlUrl,
-        );
-      } catch (error) {
-        console.error(error);
-        setError(error);
-      }
-    }
-
-    loadTransactions();
-  };
-
   return {
     transactions,
     stats,
-    refreshAndSync,
+    loadTransactions,
     isLoading,
     error,
   }

@@ -10,9 +10,6 @@ export const selectedNetworkFixture: Network = {
 export const networksFixture: Network[] = [
     selectedNetworkFixture,
     {
-        id: "dev"
-    },
-    {
         id: "devnet"
     },
     {

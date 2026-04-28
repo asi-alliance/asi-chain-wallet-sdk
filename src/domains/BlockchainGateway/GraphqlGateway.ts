@@ -1,24 +1,66 @@
 import { HttpClient } from "@domains/HttpClient";
 import { GatewayClientConfig } from ".";
+import { Network } from "@domains/Network";
 
 export class GraphqlGateway {
   constructor(private httpClient: HttpClient) {
 
   }
-  async fetchTransactionHistory(address: string, publicKey: string, limit: number = 50): Promise<any[]> {
+  async fetchTransactionHistory(network: Network, address: string, offset: number = 0, limit: number = Number.POSITIVE_INFINITY): Promise<any[]> {
 
     try {
       const graphqlQuery = {
+        // query: `
+        //   query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int!) {
+        //     transfers(
+        //       where: {
+        //         _or: [
+        //           {from_address: {_eq: $address}},
+        //           {to_address: {_eq: $address}}
+        //         ]
+        //       },
+        //       order_by: {block_number: desc},
+        //       offset: $offset,
+        //       limit: $limit
+        //     ) {
+        //       deploy_id
+        //       block_number
+        //       from_address
+        //       to_address
+        //       amount_asi
+        //       timestamp
+        //       from_public_key
+        //     }
+        //     deployments(
+        //       where: {
+        //         deployer: {_eq: $publicKey}
+        //       },
+        //       order_by: {block_number: desc},
+        //       offset: $offset,
+        //       limit: $limit
+        //     ) {
+        //       deploy_id
+        //       block_number
+        //       deployer
+        //       timestamp
+        //       block {
+        //         block_hash
+        //       }
+        //     }
+        //   }
+        // `,
+        //TODO: bring back deployments
         query: `
-          query GetTransactionHistory($address: String!, $publicKey: String!, $limit: Int!) {
+          query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int!) {
             transfers(
               where: {
                 _or: [
-                  {from_public_key: {_eq: $publicKey}},
+                  {from_address: {_eq: $address}},
                   {to_address: {_eq: $address}}
                 ]
               },
               order_by: {block_number: desc},
+              offset: $offset,
               limit: $limit
             ) {
               deploy_id
@@ -29,58 +71,21 @@ export class GraphqlGateway {
               timestamp
               from_public_key
             }
-            deployments(
-              where: {
-                deployer: {_eq: $publicKey}
-              },
-              order_by: {block_number: desc},
-              limit: $limit
-            ) {
-              deploy_id
-              block_number
-              deployer
-              timestamp
-              block {
-                block_hash
-              }
-            }
           }
         `,
         variables: {
           address: address.trim(),
-          publicKey: publicKey.trim(),
+          offset: offset,
           limit: limit
         }
       };
 
-      const isTestQuery = address === 'test' && publicKey === 'test';
-
-      if (!isTestQuery && (!address || !publicKey)) {
-        return [];
-      }
-
-      if (isTestQuery) {
-        return [];
-      }
-
       let response;
       try {
-
-
-
-        // response = await axios.post(graphqlEndpoint, graphqlQuery, {
-        //   headers: {
-        //     'Content-Type': 'application/json'
-        //   }
-        // });
-
         response = await this.httpClient.post("", graphqlQuery);
         console.log("GraphqlGateway: response=", response);
         //TODO:
-        // 'Content-Type': 'application/json'
-
-
-
+        // headers: 'Content-Type': 'application/json'
 
         if (response.data?.errors) {
           console.error('[GraphQL] GraphQL errors:', response.data.errors);
@@ -120,7 +125,6 @@ export class GraphqlGateway {
 
         const isReceive = normalizedToAddress && normalizedToAddress === normalizedAddress;
         const isSend = normalizedFromAddress && normalizedFromAddress === normalizedAddress;
-
 
         let type: 'send' | 'receive' = 'send';
         if (isReceive && !isSend) {

@@ -2,11 +2,7 @@ import type { ReactElement } from "react";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
-import {
-    hasActiveTransactionFilters,
-    type Network,
-    type TransactionFilter,
-} from "../fixtures/txHistory.fixture";
+import {TransactionFilter, Network, hasActiveTransactionFilters } from "asi-wallet-sdk"
 
 interface TxHistoryFiltersProps {
     filter: TransactionFilter;
@@ -46,8 +42,8 @@ const TxHistoryFilters = ({
     const networkOptions: SelectFilterOption[] = [
         { value: "all", label: "All Networks" },
         ...networks.map((network) => ({
-            value: network.name,
-            label: network.name,
+            value: network.id,
+            label: network.id,
         })),
     ];
     const hasActiveFilters = hasActiveTransactionFilters(filter);

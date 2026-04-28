@@ -1,87 +1,34 @@
-import { Transaction, TransactionFilter, TransactionStats } from '@domains/';
+import { Network, Transaction } from '@domains/';
 import { BlockchainGateway } from '@domains/';
 import { fromAtomicAmount, toAtomicAmount } from '@utils';
-
-
+import { TransactionFilter, TransactionStats } from './types';
+import { applyTransactionFilter } from './helpers';
+export * from './types';
+export { hasActiveTransactionFilters } from "./helpers";
 
 export class TxHistory {
-    static async getTransactions(
+  static async getTransactions(
+    network: Network,
     address: string,
-    publicKey: string,
-    network: string,
     offset: number = 0, 
-    limit: number = Number.POSITIVE_INFINITY,
+    limit: number = Number.POSITIVE_INFINITY
   ): Promise<Transaction[]> {
     try {
-      if (!address || !publicKey) {
-        return [];
-      }
-
+      console.log("[sdk] TxHistory: getTransactions:", network, address, offset, limit);
       const transactions: Transaction[] = [];
 
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const raw = localStorage.getItem('asi_wallet_pending_transactions');
-          const pending: any[] = raw ? JSON.parse(raw) : [];
-          const normalizedAddress = address?.toLowerCase().trim();
-          const normalizedPublicKey = publicKey?.toLowerCase().trim();
-          const seen = new Set<string>();
-          for (const p of pending) {
-            const pFrom = (p.from || '').toLowerCase().trim();
-            const pTo = (p.to || '').toLowerCase().trim();
-            const matchesAccount = pTo === normalizedAddress || pFrom === normalizedAddress || pFrom === normalizedPublicKey;
-            if (!matchesAccount) continue;
-            if (seen.has(p.deployId)) continue;
-            seen.add(p.deployId);
-            
-            if (p.type === 'deploy') {
-              transactions.push({
-                id: p.deployId,
-                deployId: p.deployId,
-                from: p.from,
-                to: undefined,
-                amount: undefined,
-                timestamp: new Date(p.timestamp),
-                status: 'pending',
-                gasCost: "N/A",
-                type: 'deploy',
-                network,
-                detectedBy: 'manual'
-              } as any);
-              continue;
-            }
-            
-            let type: 'send' | 'receive' = 'send';
-            if (pTo === normalizedAddress && pFrom !== normalizedPublicKey) type = 'receive';
-            transactions.push({
-              id: p.deployId,
-              deployId: p.deployId,
-              from: p.from,
-              to: p.to,
-              amount: p.amount,
-              timestamp: new Date(p.timestamp),
-              status: 'pending',
-              gasCost: "N/A",
-              type,
-              network,
-              detectedBy: 'manual'
-            } as any);
-          }
-        }
-      } catch {}
-
       const blockchainGateway = BlockchainGateway.getInstance();
-      // const rchain = new RChainService('', '', '', 'root', graphqlUrl);
-      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(address, publicKey, limit);
-      
+      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(network, address, offset, limit);
+      console.log("getTransactions: blockchainTxs=", blockchainTxs)
+
+
       for (const bcTx of blockchainTxs) {
         const normalizedAddress = address?.toLowerCase().trim();
-        const normalizedPublicKey = publicKey?.toLowerCase().trim();
         const normalizedTo = bcTx.to?.toLowerCase().trim();
         const normalizedFrom = bcTx.from?.toLowerCase().trim();
         
         if (bcTx.type === 'deploy') {
-          const isDeploy = normalizedFrom && normalizedFrom === normalizedPublicKey;
+          const isDeploy = normalizedFrom;
           if (!isDeploy) {
             continue;
           }
@@ -105,7 +52,7 @@ export class TxHistory {
           blockHash: bcTx.blockHash,
           gasCost: "N/A",
           status: bcTx.status,
-          network: network,
+          network: "N/A",
           detectedBy: 'auto'
         };
         
@@ -125,16 +72,29 @@ export class TxHistory {
           }
         }
         return [...pendingOnly, ...confirmed];
-      } catch {}
+      } catch(error) {
+        console.error(error);
+      }
 
       return transactions;
     } catch (error: any) {
+      console.error(error);
       return [];
     }
   }
 
-  static async getTransactionsWithStats(): Promise<{transactions: Transaction[], stats: }> {
-    return;
+  static async getFilteredTxsWithStats(
+    network: Network,
+    address: string,
+    filter: TransactionFilter,
+    offset: number = 0, 
+    limit: number = Number.POSITIVE_INFINITY
+  ): Promise<{filteredTxs: Transaction[], stats: TransactionStats}> {
+    const transactions = await this.getTransactions(network, address, offset, limit);
+    console.log("getFilteredTxsWithStats: transactions=", transactions)
+    const filteredTxs = applyTransactionFilter(transactions, filter);
+    console.log("getFilteredTxsWithStats: filteredTxs=", filteredTxs)
+    return {filteredTxs, stats: await this.calcStatistics(transactions)};
   }
 
   static async calcStatistics(
@@ -188,13 +148,13 @@ export class TxHistory {
   }
 
   static async exportTransactions(
-    format: 'json' | 'csv' = 'json',
+    network: Network,
     address: string,
-    publicKey: string,
-    network: string,
-    graphqlUrl: string
+    offset: number = 0, 
+    limit: number = Number.POSITIVE_INFINITY,
+    format: 'json' | 'csv' = 'json'
   ): Promise<string> {
-    const transactions = await this.getTransactions(address, publicKey, network, graphqlUrl);
+    const transactions = await this.getTransactions(network, address, offset, limit);
     
     if (format === 'json') {
       return JSON.stringify(transactions, null, 2);
@@ -215,7 +175,7 @@ export class TxHistory {
       'Note'
     ];
     
-    const rows = transactions.map(tx => {
+    const rows = (transactions).map(tx => {
       const date = new Date(tx.timestamp);
       return [
         date.toLocaleDateString(),
@@ -237,13 +197,13 @@ export class TxHistory {
   }
 
   static async downloadTransactions(
-    format: 'json' | 'csv' = 'json',
+    network: Network,
     address: string,
-    publicKey: string,
-    network: string,
-    graphqlUrl: string
+    offset: number = 0, 
+    limit: number = Number.POSITIVE_INFINITY,
+    format: 'json' | 'csv' = 'json'
   ) {
-    const data = await this.exportTransactions(format, address, publicKey, network, graphqlUrl);
+    const data = await this.exportTransactions(network, address, offset, limit, format);
     const blob = new Blob([data], { 
       type: format === 'json' ? 'application/json' : 'text/csv' 
     });
@@ -255,19 +215,5 @@ export class TxHistory {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
-
-  static async syncFromBlockchain(
-    address: string,
-    publicKey: string,
-    network: string,
-    graphqlUrl: string
-  ): Promise<{ added: number; updated: number }> {
-    try {
-      const transactions = await this.getTransactions(address, publicKey, network, graphqlUrl);
-      return { added: transactions.length, updated: 0 };
-    } catch (error) {
-      return { added: 0, updated: 0 };
-    }
   }
 }

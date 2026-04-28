@@ -9,7 +9,6 @@ import TxHistoryStats from "./TxHistoryStats";
 import TxList from "./TxList";
 import {
     networksFixture,
-    selectedNetworkFixture,
 } from "./fixtures/txHistory.fixture";
 import "./styles.css";
 import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
@@ -17,19 +16,15 @@ import { useTxHistory } from "../../sdk-react-kit/hooks/useTxHistory";
 import { type TransactionFilter } from "asi-wallet-sdk";
 
 const TxHistoryPage = (): ReactElement => {
-    // History.tsx: selectedAccount/selectedNetwork came from Redux selectors.
-    // Playground: fixed fixtures keep UI ready for the future SDK state source.
-    // const selectedAccount = selectedAccountFixture;
-    const selectedAccount = "testSelectedAccount";
-    const selectedNetwork = selectedNetworkFixture;
     const networks = networksFixture;
 
-    const [account, setAccount] = useState(null);
-    const [network, setNetwork] = useState(null);
+    const [wallet, setWallet] = useState(null);
+    const [network, setNetwork] = useState(networks[0]);
     const [filter, setFilter] = useState<TransactionFilter>({});
 
-    const {transactions, stats, refreshAndSync, isLoading: isTxHistoryLoading, error: txHistoryError} = useTxHistory(selectedAccount, selectedNetwork, filter, {autoUpdate: true});
+    const {transactions, stats, loadTransactions, isLoading: isTxHistoryLoading, error: txHistoryError} = useTxHistory(wallet, network, filter, {autoUpdate: true});
 
+    console.log("TxHistoryPage: transactions=", transactions);
     const onFilterChange = useCallback((nextFilter: TransactionFilter) => {
         setFilter(nextFilter);
     }, []);
@@ -37,13 +32,15 @@ const TxHistoryPage = (): ReactElement => {
     return (
         <main className="tx-history-page">
             <h1>Transactions</h1>
-            <TxHistoryPrerequisites account={account} setAccount={setAccount} network={network} setNetwork={setNetwork} />
+            <TxHistoryPrerequisites account={wallet} setAccount={setWallet} network={network} setNetwork={setNetwork} />
             <TxHistoryActions
-                selectedAccount={selectedAccount}
-                selectedNetwork={selectedNetwork}
-                onRefreshAndSync={refreshAndSync}
+                selectedAccount={wallet}
+                selectedNetwork={network}
+                onRefreshAndSync={loadTransactions}
                 isTxHistoryLoading={isTxHistoryLoading}
                 txHistoryError={txHistoryError}
+                offset={0}
+                limit={10}
             />
             <TxHistoryFilters
                 filter={filter}
@@ -53,7 +50,7 @@ const TxHistoryPage = (): ReactElement => {
             <TxHistoryStats stats={stats} />
             <TxList
                 transactions={transactions}
-                selectedAccount={selectedAccount}
+                selectedAccount={wallet}
             />
         </main>
     );
