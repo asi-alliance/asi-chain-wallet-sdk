@@ -202,7 +202,8 @@ export default class Vault {
                 walletMeta.address,
                 JSON.parse(walletMeta.encryptedPrivateKey),
                 walletMeta.masterNodeId,
-                !walletMeta.index ? null : +walletMeta.index
+                !walletMeta.index ? null : +walletMeta.index,
+                walletMeta.publicKey ?? null,
             );
 
             wallets.set(address, wallet);

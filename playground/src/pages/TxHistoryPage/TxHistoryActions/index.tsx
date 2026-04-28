@@ -1,6 +1,5 @@
 import {
     useCallback,
-    useEffect,
     useState,
     type ReactElement,
 } from "react";
@@ -37,9 +36,15 @@ const TxHistoryActions = ({
         if (!selectedAccount || !selectedNetwork) return;
 
         try {
+            const publicKey = selectedAccount.getPublicKey();
+            if (!publicKey?.length) {
+                throw new Error("Wallet public key is missing");
+            }
+
             await TxHistory.downloadTransactions(
                 selectedNetwork,
                 selectedAccount.getAddress(),
+                publicKey,
                 offset,
                 limit,
                 "json",
@@ -53,9 +58,15 @@ const TxHistoryActions = ({
         if (!selectedAccount || !selectedNetwork) return;
 
         try {
+            const publicKey = selectedAccount.getPublicKey();
+            if (!publicKey?.length) {
+                throw new Error("Wallet public key is missing");
+            }
+
             await TxHistory.downloadTransactions(
                 selectedNetwork,
                 selectedAccount.getAddress(),
+                publicKey,
                 offset,
                 limit,
                 "csv",

@@ -2,9 +2,9 @@ import { Network, Transaction } from '@domains/';
 import { BlockchainGateway } from '@domains/';
 import type { GatewayTransactionHistoryItem } from '@domains/BlockchainGateway/GraphqlGateway';
 import { fromAtomicAmount, toAtomicAmount } from '@utils';
+import { encodeBase16 } from '@utils/codec';
 import { TransactionFilter, TransactionStats } from './types';
 import { applyTransactionFilter } from './helpers';
-import KeysManager from '@services/KeysManager';
 export * from './types';
 export { hasActiveTransactionFilters } from "./helpers";
 
@@ -12,15 +12,22 @@ export class TxHistory {
   static async getTransactions(
     network: Network,
     address: string,
-    offset: number = 0, 
-    limit: number = Number.POSITIVE_INFINITY
+    publicKey: Uint8Array,
+    offset: number = 0,
+    limit: number = Number.POSITIVE_INFINITY,
   ): Promise<Transaction[]> {
     try {
+      const publicKeyHex = encodeBase16(publicKey);
       const blockchainGateway = BlockchainGateway.getInstance();
-      const publicKey = KeysManager.getPublicKeyFromPrivateKey();
-      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(network, address, publicKey, offset, limit);
+      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(
+        network,
+        address,
+        publicKeyHex,
+        offset,
+        limit,
+      );
       const transactions = blockchainTxs
-        .filter((tx) => this.belongsToAddress(tx, address))
+        .filter((tx) => this.belongsToAccount(tx, address, publicKeyHex))
         .map((tx) => this.toTransaction(tx, network))
         .filter((tx): tx is Transaction => tx !== undefined);
 
@@ -40,11 +47,18 @@ export class TxHistory {
   static async getFilteredTxsWithStats(
     network: Network,
     address: string,
+    publicKey: Uint8Array,
     filter: TransactionFilter,
-    offset: number = 0, 
-    limit: number = Number.POSITIVE_INFINITY
+    offset: number = 0,
+    limit: number = Number.POSITIVE_INFINITY,
   ): Promise<{filteredTxs: Transaction[], stats: TransactionStats}> {
-    const transactions = await this.getTransactions(network, address, offset, limit);
+    const transactions = await this.getTransactions(
+      network,
+      address,
+      publicKey,
+      offset,
+      limit,
+    );
     const filteredTxs = applyTransactionFilter(transactions, filter);
     return {filteredTxs, stats: await this.calcStatistics(transactions)};
   }
@@ -114,16 +128,18 @@ export class TxHistory {
     };
   }
 
-  private static belongsToAddress(
+  private static belongsToAccount(
     tx: GatewayTransactionHistoryItem,
     address: string,
+    publicKey: string,
   ): boolean {
     const normalizedAddress = this.normalizeAddress(address);
+    const normalizedPublicKey = this.normalizeAddress(publicKey);
     const normalizedFrom = this.normalizeAddress(tx.from);
     const normalizedTo = this.normalizeAddress(tx.to);
 
     if (tx.type === 'deploy') {
-      return normalizedFrom === normalizedAddress;
+      return normalizedFrom === normalizedPublicKey || normalizedFrom === normalizedAddress;
     }
 
     return normalizedFrom === normalizedAddress || normalizedTo === normalizedAddress;
@@ -182,11 +198,12 @@ export class TxHistory {
   static async exportTransactions(
     network: Network,
     address: string,
-    offset: number = 0, 
+    publicKey: Uint8Array,
+    offset: number = 0,
     limit: number = Number.POSITIVE_INFINITY,
     format: 'json' | 'csv' = 'json'
   ): Promise<string> {
-    const transactions = await this.getTransactions(network, address, offset, limit);
+    const transactions = await this.getTransactions(network, address, publicKey, offset, limit);
     
     if (format === 'json') {
       return JSON.stringify(transactions, null, 2);
@@ -231,11 +248,12 @@ export class TxHistory {
   static async downloadTransactions(
     network: Network,
     address: string,
-    offset: number = 0, 
+    publicKey: Uint8Array,
+    offset: number = 0,
     limit: number = Number.POSITIVE_INFINITY,
     format: 'json' | 'csv' = 'json'
   ) {
-    const data = await this.exportTransactions(network, address, offset, limit, format);
+    const data = await this.exportTransactions(network, address, publicKey, offset, limit, format);
     const blob = new Blob([data], { 
       type: format === 'json' ? 'application/json' : 'text/csv' 
     });

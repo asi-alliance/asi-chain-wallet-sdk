@@ -33,6 +33,7 @@ interface RawTransfer {
     to_address?: string;
     amount_asi?: number | string;
     timestamp?: number | string;
+    from_public_key?: string;
 }
 
 interface RawDeployment {
@@ -50,6 +51,7 @@ const TRANSACTION_HISTORY_QUERY = `
     transfers(
       where: {
         _or: [
+          {from_public_key: {_eq: $publicKey}},
           {from_address: {_eq: $address}},
           {to_address: {_eq: $address}}
         ]
@@ -64,6 +66,7 @@ const TRANSACTION_HISTORY_QUERY = `
       to_address
       amount_asi
       timestamp
+      from_public_key
     }
     deployments(
       where: {
@@ -80,6 +83,7 @@ const TRANSACTION_HISTORY_QUERY = `
       block {
         block_hash
       }
+    }
   }
 `;
 
@@ -89,7 +93,7 @@ export class GraphqlGateway {
     async fetchTransactionHistory(
         network: Network,
         address: string,
-        publicKey: string,
+        publicKey: string = "",
         offset: number = 0,
         limit: number = Number.POSITIVE_INFINITY,
     ): Promise<GatewayTransactionHistoryItem[]> {
@@ -110,6 +114,7 @@ export class GraphqlGateway {
             return this.toTransactionHistoryItems(
                 envelope.data,
                 address,
+                publicKey,
             );
         } catch (error: any) {
             if (this.isRecoverableNetworkError(error)) {
@@ -153,8 +158,10 @@ export class GraphqlGateway {
     private toTransactionHistoryItems(
         data: TransactionHistoryQueryData | undefined,
         address: string,
+        publicKey: string,
     ): GatewayTransactionHistoryItem[] {
         const accountAddress = this.normalizeAddress(address);
+        const accountPublicKey = this.normalizeAddress(publicKey);
         const transfers = this.getArray(data?.transfers);
         const deployments = this.getArray(data?.deployments);
         const deploymentById = this.createDeploymentMap(deployments);
@@ -171,7 +178,7 @@ export class GraphqlGateway {
         );
         const deployTxs = deployments
             .filter((tx) => tx.deploy_id && !knownDeployIds.has(tx.deploy_id))
-            .map((tx) => this.toDeployHistoryItem(tx, accountAddress))
+            .map((tx) => this.toDeployHistoryItem(tx, accountPublicKey))
             .filter(this.isDefined);
 
         return [...transferTxs, ...deployTxs].sort((a, b) => {
@@ -214,11 +221,11 @@ export class GraphqlGateway {
 
     private toDeployHistoryItem(
         tx: RawDeployment,
-        accountAddress: string,
+        accountPublicKey: string,
     ): GatewayTransactionHistoryItem | undefined {
         const deployer = tx.deployer?.trim();
 
-        if (!deployer || this.normalizeAddress(deployer) !== accountAddress) {
+        if (!deployer || this.normalizeAddress(deployer) !== accountPublicKey) {
             return undefined;
         }
 

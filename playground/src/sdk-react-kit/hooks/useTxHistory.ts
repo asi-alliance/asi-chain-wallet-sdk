@@ -47,16 +47,27 @@ export const useTxHistory = (wallet: Wallet, network: Network, filter: Transacti
     if (!wallet || !network) {
       setTransactions(null);
       setStats(null);
+      setIsLoading(false);
       return;
     }
 
     try {
+      const publicKey = wallet.getPublicKey();
+      if (!publicKey?.length) {
+        setTransactions([]);
+        setStats(await TxHistoryService.calcStatistics([]));
+        setError("Wallet public key is missing");
+        setIsLoading(false);
+        return;
+      }
+
       const {filteredTxs, stats} = await TxHistoryService.getFilteredTxsWithStats(
         network,
         wallet.getAddress(),
+        publicKey,
         filter,
         0,
-        10, //TODO: from 
+        10, //TODO: from
       );
 
       setTransactions(filteredTxs);

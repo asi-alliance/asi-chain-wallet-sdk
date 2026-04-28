@@ -117,10 +117,14 @@ test("Wallet.fromEncryptedData validation and metadata paths are covered", async
         wallet.getEncryptedPrivateKey(),
         "master-node",
         7,
+        wallet.getPublicKey(),
     );
+
+    const publicKey = KeysManager.getPublicKeyFromPrivateKey(PRIVATE_KEY);
 
     assert.equal(restored.getName(), "coverage-wallet");
     assert.equal(restored.getAddress(), wallet.getAddress());
+    assert.deepEqual(Array.from(restored.getPublicKey() ?? []), Array.from(publicKey));
     assert.equal(restored.getIndex(), 7);
     assert.equal(restored.isWalletLocked(), true);
 
@@ -130,6 +134,24 @@ test("Wallet.fromEncryptedData validation and metadata paths are covered", async
     const serialized = JSON.parse(restored.toString());
     assert.equal(serialized.name, "coverage-wallet");
     assert.equal(serialized.masterNodeId, "master-node");
+    assert.equal(serialized.publicKey, KeysManager.convertKeyToHex(publicKey));
+
+    const legacyRestored = Wallet.fromEncryptedData(
+        "legacy-wallet",
+        wallet.getAddress(),
+        wallet.getEncryptedPrivateKey(),
+        "master-node",
+        7,
+    );
+    assert.equal(legacyRestored.getPublicKey(), undefined);
+
+    await legacyRestored.withSigningCapability(PASSWORD, (capability) => {
+        assert.deepEqual(Array.from(capability.getPublicKey()), Array.from(publicKey));
+    });
+    assert.deepEqual(
+        Array.from(legacyRestored.getPublicKey() ?? []),
+        Array.from(publicKey),
+    );
 
     assert.throws(
         () =>
