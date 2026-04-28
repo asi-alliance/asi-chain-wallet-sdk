@@ -1,219 +1,362 @@
 import { HttpClient } from "@domains/HttpClient";
-import { GatewayClientConfig } from ".";
 import { Network } from "@domains/Network";
 
-export class GraphqlGateway {
-  constructor(private httpClient: HttpClient) {
+type TransactionType = "send" | "receive" | "deploy";
+type TransactionStatus = "pending" | "confirmed" | "failed";
 
-  }
-  async fetchTransactionHistory(network: Network, address: string, offset: number = 0, limit: number = Number.POSITIVE_INFINITY): Promise<any[]> {
+export interface GatewayTransactionHistoryItem {
+    deployId?: string;
+    blockNumber?: number | string;
+    from: string;
+    to?: string;
+    amount?: string;
+    status: TransactionStatus;
+    timestamp: string;
+    blockHash?: string;
+    type: TransactionType;
+}
 
-    try {
-      const graphqlQuery = {
-        // query: `
-        //   query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int!) {
-        //     transfers(
-        //       where: {
-        //         _or: [
-        //           {from_address: {_eq: $address}},
-        //           {to_address: {_eq: $address}}
-        //         ]
-        //       },
-        //       order_by: {block_number: desc},
-        //       offset: $offset,
-        //       limit: $limit
-        //     ) {
-        //       deploy_id
-        //       block_number
-        //       from_address
-        //       to_address
-        //       amount_asi
-        //       timestamp
-        //       from_public_key
-        //     }
-        //     deployments(
-        //       where: {
-        //         deployer: {_eq: $publicKey}
-        //       },
-        //       order_by: {block_number: desc},
-        //       offset: $offset,
-        //       limit: $limit
-        //     ) {
-        //       deploy_id
-        //       block_number
-        //       deployer
-        //       timestamp
-        //       block {
-        //         block_hash
-        //       }
-        //     }
-        //   }
-        // `,
-        //TODO: bring back deployments
-        query: `
-          query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int!) {
-            transfers(
-              where: {
-                _or: [
-                  {from_address: {_eq: $address}},
-                  {to_address: {_eq: $address}}
-                ]
-              },
-              order_by: {block_number: desc},
-              offset: $offset,
-              limit: $limit
-            ) {
-              deploy_id
-              block_number
-              from_address
-              to_address
-              amount_asi
-              timestamp
-              from_public_key
-            }
-          }
-        `,
-        variables: {
-          address: address.trim(),
-          offset: offset,
-          limit: limit
-        }
-      };
+interface GraphqlEnvelope<TData> {
+    data?: TData;
+    errors?: unknown[];
+}
 
-      let response;
-      try {
-        response = await this.httpClient.post("", graphqlQuery);
-        console.log("GraphqlGateway: response=", response);
-        //TODO:
-        // headers: 'Content-Type': 'application/json'
+interface TransactionHistoryQueryData {
+    transfers?: RawTransfer[];
+    deployments?: RawDeployment[];
+}
 
-        if (response.data?.errors) {
-          console.error('[GraphQL] GraphQL errors:', response.data.errors);
-        }
-      } catch (error: any) {
-        console.error('[GraphQL] Request failed:', {
-          message: error.message,
-          code: error.code,
-          response: error.response?.status,
-          responseData: error.response?.data,
-          config: {
-            url: error.config?.url,
-            method: error.config?.method
-          }
-        });
+interface RawTransfer {
+    deploy_id?: string;
+    block_number?: number | string;
+    from_address?: string;
+    to_address?: string;
+    amount_asi?: number | string;
+    timestamp?: number | string;
+}
 
-        if (error.code === 'ERR_NETWORK' || error.message.includes('CORS') || error.message.includes('ERR_FAILED')) {
-          console.warn('[GraphQL] CORS or network error detected. Transaction history will be empty until API is configured properly.');
-          return [];
-        }
+interface RawDeployment {
+    deploy_id?: string;
+    block_number?: number | string;
+    deployer?: string;
+    timestamp?: number | string;
+    block?: {
+        block_hash?: string;
+    };
+}
 
-        throw error;
-      }
-
-      const transfers = response.data?.data?.transfers || [];
-      const deployments = response.data?.data?.deployments || [];
-
-      const deployTimestampMap = new Map();
-      deployments.forEach((deploy: any) => {
-        deployTimestampMap.set(deploy.deploy_id, deploy.timestamp);
-      });
-
-      const transferTxs = transfers.map((tx: any) => {
-        const normalizedAddress = address?.toLowerCase().trim();
-        const normalizedToAddress = tx.to_address?.toLowerCase().trim();
-        const normalizedFromAddress = tx.from_address?.toLowerCase().trim();
-
-        const isReceive = normalizedToAddress && normalizedToAddress === normalizedAddress;
-        const isSend = normalizedFromAddress && normalizedFromAddress === normalizedAddress;
-
-        let type: 'send' | 'receive' = 'send';
-        if (isReceive && !isSend) {
-          type = 'receive';
-        } else if (isSend && !isReceive) {
-          type = 'send';
-        } else if (isReceive && isSend) {
-          type = 'send';
-        } else {
-          type = 'receive';
-        }
-
-        let timestamp: string;
-        if (tx.timestamp) {
-          const date = new Date(parseInt(tx.timestamp));
-          timestamp = date.toISOString();
-        } else {
-          timestamp = new Date(0).toISOString();
-        }
-
-        return {
-          deployId: tx.deploy_id,
-          blockNumber: tx.block_number,
-          from: tx.from_address,
-          to: tx.to_address,
-          amount: tx.amount_asi,
-          status: 'confirmed',
-          timestamp: timestamp,
-          blockHash: undefined,
-          type: type
-        };
-      });
-
-      const deployTxs = deployments.map((tx: any) => {
-        let timestamp: string;
-        if (tx.timestamp) {
-          const date = new Date(parseInt(tx.timestamp));
-          timestamp = date.toISOString();
-        } else {
-          timestamp = new Date(0).toISOString();
-        }
-
-        return {
-          deployId: tx.deploy_id,
-          blockNumber: tx.block_number,
-          from: tx.deployer,
-          to: undefined,
-          amount: undefined,
-          status: 'confirmed',
-          timestamp: timestamp,
-          blockHash: tx.block?.block_hash,
-          type: 'deploy' as const
-        };
-      });
-
-      const allTxs = [...transferTxs, ...deployTxs];
-
-      const txMap = new Map();
-
-      allTxs.forEach(tx => {
-        const existingTx = txMap.get(tx.deployId);
-
-        if (!existingTx) {
-          txMap.set(tx.deployId, tx);
-        } else {
-          if (tx.type === 'deploy' && existingTx.type !== 'deploy') {
-            txMap.set(tx.deployId, {
-              ...existingTx,
-              blockHash: tx.blockHash
-            });
-          } else if (existingTx.type === 'deploy' && tx.type !== 'deploy') {
-            txMap.set(tx.deployId, {
-              ...tx,
-              blockHash: existingTx.blockHash
-            });
-          } else if (tx.type === 'deploy' && existingTx.type === 'deploy') {
-            txMap.set(tx.deployId, tx);
-          } else {
-            txMap.set(tx.deployId, tx);
-          }
-        }
-      });
-
-      const sortedTxs = Array.from(txMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-      return sortedTxs;
-    } catch (error) {
-      console.error('Error fetching transaction history from indexer:', error);
-      return [];
+const TRANSACTION_HISTORY_QUERY = `
+  query GetTransactionHistory($address: String!, $publicKey: String!, $offset: Int!, $limit: Int) {
+    transfers(
+      where: {
+        _or: [
+          {from_address: {_eq: $address}},
+          {to_address: {_eq: $address}}
+        ]
+      },
+      order_by: {block_number: desc},
+      offset: $offset,
+      limit: $limit
+    ) {
+      deploy_id
+      block_number
+      from_address
+      to_address
+      amount_asi
+      timestamp
     }
+    deployments(
+      where: {
+        deployer: {_eq: $publicKey}
+      },
+      order_by: {block_number: desc},
+      offset: $offset,
+      limit: $limit
+    ) {
+      deploy_id
+      block_number
+      deployer
+      timestamp
+      block {
+        block_hash
+      }
   }
+`;
+
+export class GraphqlGateway {
+    constructor(private httpClient: HttpClient) {}
+
+    async fetchTransactionHistory(
+        network: Network,
+        address: string,
+        publicKey: string,
+        offset: number = 0,
+        limit: number = Number.POSITIVE_INFINITY,
+    ): Promise<GatewayTransactionHistoryItem[]> {
+        try {
+            const response = await this.httpClient.post(
+                "",
+                this.createTransactionHistoryRequest(address, publicKey, offset, limit),
+            );
+            const envelope =
+                this.unwrapGraphqlEnvelope<TransactionHistoryQueryData>(
+                    response,
+                );
+
+            if (envelope.errors?.length) {
+                console.error("[GraphQL] GraphQL errors:", envelope.errors);
+            }
+
+            return this.toTransactionHistoryItems(
+                envelope.data,
+                address,
+            );
+        } catch (error: any) {
+            if (this.isRecoverableNetworkError(error)) {
+                console.warn(
+                    "[GraphQL] Network error while loading transaction history. Returning an empty history.",
+                );
+                return [];
+            }
+
+            console.error(
+                "Error fetching transaction history from indexer:",
+                error,
+            );
+            return [];
+        }
+    }
+
+    private createTransactionHistoryRequest(
+        address: string,
+        publicKey: string,
+        offset: number,
+        limit: number
+    ): { query: string; variables: Record<string, number | string> } {
+        const variables: Record<string, number | string> = {
+            address: address.trim(),
+            offset: this.toGraphqlOffset(offset),
+            publicKey,
+        };
+
+        const normalizedLimit = this.toOptionalGraphqlLimit(limit);
+        if (normalizedLimit !== undefined) {
+            variables.limit = normalizedLimit;
+        }
+
+        return {
+            query: TRANSACTION_HISTORY_QUERY,
+            variables,
+        };
+    }
+
+    private toTransactionHistoryItems(
+        data: TransactionHistoryQueryData | undefined,
+        address: string,
+    ): GatewayTransactionHistoryItem[] {
+        const accountAddress = this.normalizeAddress(address);
+        const transfers = this.getArray(data?.transfers);
+        const deployments = this.getArray(data?.deployments);
+        const deploymentById = this.createDeploymentMap(deployments);
+        const transferTxs = transfers
+            .map((tx) =>
+                this.toTransferHistoryItem(tx, accountAddress, deploymentById),
+            )
+            .filter(this.isDefined);
+
+        const knownDeployIds = new Set(
+            transferTxs
+                .map((tx) => tx.deployId)
+                .filter((deployId): deployId is string => !!deployId),
+        );
+        const deployTxs = deployments
+            .filter((tx) => tx.deploy_id && !knownDeployIds.has(tx.deploy_id))
+            .map((tx) => this.toDeployHistoryItem(tx, accountAddress))
+            .filter(this.isDefined);
+
+        return [...transferTxs, ...deployTxs].sort((a, b) => {
+            return (
+                new Date(b.timestamp).getTime() -
+                new Date(a.timestamp).getTime()
+            );
+        });
+    }
+
+    private toTransferHistoryItem(
+        tx: RawTransfer,
+        accountAddress: string,
+        deploymentById: Map<string, RawDeployment>,
+    ): GatewayTransactionHistoryItem | undefined {
+        const from = tx.from_address?.trim();
+        const to = tx.to_address?.trim();
+
+        if (!from || !to) {
+            return undefined;
+        }
+
+        const deployment = tx.deploy_id
+            ? deploymentById.get(tx.deploy_id)
+            : undefined;
+
+        return {
+            deployId: tx.deploy_id,
+            blockNumber: tx.block_number,
+            from,
+            to,
+            amount:
+                tx.amount_asi === undefined ? undefined : String(tx.amount_asi),
+            status: "confirmed",
+            timestamp: this.toIsoTimestamp(tx.timestamp ?? deployment?.timestamp),
+            blockHash: deployment?.block?.block_hash,
+            type: this.getTransferType(from, to, accountAddress),
+        };
+    }
+
+    private toDeployHistoryItem(
+        tx: RawDeployment,
+        accountAddress: string,
+    ): GatewayTransactionHistoryItem | undefined {
+        const deployer = tx.deployer?.trim();
+
+        if (!deployer || this.normalizeAddress(deployer) !== accountAddress) {
+            return undefined;
+        }
+
+        return {
+            deployId: tx.deploy_id,
+            blockNumber: tx.block_number,
+            from: deployer,
+            status: "confirmed",
+            timestamp: this.toIsoTimestamp(tx.timestamp),
+            blockHash: tx.block?.block_hash,
+            type: "deploy",
+        };
+    }
+
+    private createDeploymentMap(
+        deployments: RawDeployment[],
+    ): Map<string, RawDeployment> {
+        return new Map(
+            deployments
+                .filter((tx) => !!tx.deploy_id)
+                .map((tx) => [tx.deploy_id as string, tx]),
+        );
+    }
+
+    private unwrapGraphqlEnvelope<TData>(
+        response: unknown,
+    ): GraphqlEnvelope<TData> {
+        if (this.isRecord(response)) {
+            if ("transfers" in response || "deployments" in response) {
+                return { data: response as TData };
+            }
+
+            const nestedResponse = response.data;
+
+            if (
+                this.isRecord(nestedResponse) &&
+                ("data" in nestedResponse || "errors" in nestedResponse)
+            ) {
+                return nestedResponse as GraphqlEnvelope<TData>;
+            }
+        }
+
+        return response as GraphqlEnvelope<TData>;
+    }
+
+    private getTransferType(
+        from: string,
+        to: string,
+        accountAddress: string,
+    ): "send" | "receive" {
+        const normalizedFrom = this.normalizeAddress(from);
+        const normalizedTo = this.normalizeAddress(to);
+
+        if (normalizedFrom === accountAddress) {
+            return "send";
+        }
+
+        if (normalizedTo === accountAddress) {
+            return "receive";
+        }
+
+        return "receive";
+    }
+
+    private toIsoTimestamp(timestamp: number | string | undefined): string {
+        if (timestamp === undefined || timestamp === "") {
+            return new Date(0).toISOString();
+        }
+
+        if (typeof timestamp === "number") {
+            return this.toDateFromNumericTimestamp(timestamp).toISOString();
+        }
+
+        const trimmedTimestamp = timestamp.trim();
+        if (/^\d+$/.test(trimmedTimestamp)) {
+            return this.toDateFromNumericTimestamp(
+                Number(trimmedTimestamp),
+            ).toISOString();
+        }
+
+        const parsedTimestamp = Date.parse(trimmedTimestamp);
+        if (!Number.isFinite(parsedTimestamp)) {
+            return new Date(0).toISOString();
+        }
+
+        return new Date(parsedTimestamp).toISOString();
+    }
+
+    private toDateFromNumericTimestamp(timestamp: number): Date {
+        const milliseconds =
+            timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+
+        return new Date(milliseconds);
+    }
+
+    private toGraphqlOffset(offset: number): number {
+        if (!Number.isFinite(offset) || offset < 0) {
+            return 0;
+        }
+
+        return Math.trunc(offset);
+    }
+
+    private toOptionalGraphqlLimit(limit: number): number | undefined {
+        if (!Number.isFinite(limit)) {
+            return undefined;
+        }
+
+        if (limit <= 0) {
+            return 0;
+        }
+
+        return Math.trunc(limit);
+    }
+
+    private getArray<T>(value: T[] | undefined): T[] {
+        return Array.isArray(value) ? value : [];
+    }
+
+    private normalizeAddress(address: string | undefined): string {
+        return address?.trim().toLowerCase() ?? "";
+    }
+
+    private isRecoverableNetworkError(error: any): boolean {
+        const message = String(error?.message ?? "");
+
+        return (
+            error?.code === "ERR_NETWORK" ||
+            message.includes("CORS") ||
+            message.includes("ERR_FAILED")
+        );
+    }
+
+    private isRecord(value: unknown): value is Record<string, unknown> {
+        return typeof value === "object" && value !== null;
+    }
+
+    private isDefined<T>(value: T | undefined): value is T {
+        return value !== undefined;
+    }
 }

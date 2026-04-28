@@ -1,8 +1,10 @@
 import { Network, Transaction } from '@domains/';
 import { BlockchainGateway } from '@domains/';
+import type { GatewayTransactionHistoryItem } from '@domains/BlockchainGateway/GraphqlGateway';
 import { fromAtomicAmount, toAtomicAmount } from '@utils';
 import { TransactionFilter, TransactionStats } from './types';
 import { applyTransactionFilter } from './helpers';
+import KeysManager from '@services/KeysManager';
 export * from './types';
 export { hasActiveTransactionFilters } from "./helpers";
 
@@ -14,64 +16,16 @@ export class TxHistory {
     limit: number = Number.POSITIVE_INFINITY
   ): Promise<Transaction[]> {
     try {
-      console.log("[sdk] TxHistory: getTransactions:", network, address, offset, limit);
-      const transactions: Transaction[] = [];
-
       const blockchainGateway = BlockchainGateway.getInstance();
-      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(network, address, offset, limit);
-      console.log("getTransactions: blockchainTxs=", blockchainTxs)
-
-
-      for (const bcTx of blockchainTxs) {
-        const normalizedAddress = address?.toLowerCase().trim();
-        const normalizedTo = bcTx.to?.toLowerCase().trim();
-        const normalizedFrom = bcTx.from?.toLowerCase().trim();
-        
-        if (bcTx.type === 'deploy') {
-          const isDeploy = normalizedFrom;
-          if (!isDeploy) {
-            continue;
-          }
-        } else {
-          const isReceive = normalizedTo && normalizedTo === normalizedAddress;
-          const isSend = normalizedFrom && normalizedFrom === normalizedAddress;
-          
-          if (!isReceive && !isSend) {
-            continue;
-          }
-        }
-        
-        const transaction: Transaction = {
-          id: bcTx.deployId || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          timestamp: new Date(bcTx.timestamp),
-          type: bcTx.type,
-          from: bcTx.from,
-          to: bcTx.to,
-          amount: bcTx.amount,
-          deployId: bcTx.deployId,
-          blockHash: bcTx.blockHash,
-          gasCost: "N/A",
-          status: bcTx.status,
-          network: "N/A",
-          detectedBy: 'auto'
-        };
-        
-        transactions.push(transaction);
-      }
+      const publicKey = KeysManager.getPublicKeyFromPrivateKey();
+      const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(network, address, publicKey, offset, limit);
+      const transactions = blockchainTxs
+        .filter((tx) => this.belongsToAddress(tx, address))
+        .map((tx) => this.toTransaction(tx, network))
+        .filter((tx): tx is Transaction => tx !== undefined);
 
       try {
-        const knownIds = new Set(blockchainTxs.map((t: any) => t.deployId));
-        const pendingOnly = transactions.filter(t => t.status === 'pending' && !knownIds.has(t.deployId));
-        const confirmed = transactions.filter(t => t.status !== 'pending');
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const raw = localStorage.getItem('asi_wallet_pending_transactions');
-          const pending: any[] = raw ? JSON.parse(raw) : [];
-          const filtered = pending.filter(p => !knownIds.has(p.deployId));
-          if (filtered.length !== pending.length) {
-            localStorage.setItem('asi_wallet_pending_transactions', JSON.stringify(filtered));
-          }
-        }
-        return [...pendingOnly, ...confirmed];
+        this.removeConfirmedPendingTransactions(blockchainTxs);
       } catch(error) {
         console.error(error);
       }
@@ -91,9 +45,7 @@ export class TxHistory {
     limit: number = Number.POSITIVE_INFINITY
   ): Promise<{filteredTxs: Transaction[], stats: TransactionStats}> {
     const transactions = await this.getTransactions(network, address, offset, limit);
-    console.log("getFilteredTxsWithStats: transactions=", transactions)
     const filteredTxs = applyTransactionFilter(transactions, filter);
-    console.log("getFilteredTxsWithStats: filteredTxs=", filteredTxs)
     return {filteredTxs, stats: await this.calcStatistics(transactions)};
   }
 
@@ -125,26 +77,106 @@ export class TxHistory {
 
       if (tx.status === 'confirmed' && tx.amount) {
         if (tx.type === 'send') {
-          stats.totalSent = (BigInt(stats.totalSent) + BigInt(tx.amount)).toString();
+          stats.totalSent = this.addAmount(stats.totalSent, tx.amount);
         } else if (tx.type === 'receive') {
-
-
-          //TODO:
-          // const txAmount = utils.parseEther(tx.amount);
-          // const totalAmount = utils.parseEther(stats.totalReceived);
-          // stats.totalReceived = (txAmount.add(totalAmount)).toString();
-          const txAmount =  toAtomicAmount(tx.amount)
-          const totalAmount = toAtomicAmount(stats.totalReceived);
-          stats.totalReceived = fromAtomicAmount(txAmount + totalAmount);
+          stats.totalReceived = this.addAmount(stats.totalReceived, tx.amount);
         }
       }
 
       if (tx.gasCost) {
-        stats.totalGas = (BigInt(stats.totalGas) + BigInt(tx.gasCost)).toString();
+        stats.totalGas = this.addAmount(stats.totalGas, tx.gasCost);
       }
     });
 
     return stats;
+  }
+
+  private static toTransaction(
+    tx: GatewayTransactionHistoryItem,
+    network: Network,
+  ): Transaction | undefined {
+    if (!tx.from) {
+      return undefined;
+    }
+
+    return {
+      id: tx.deployId || this.createSyntheticId(tx),
+      timestamp: new Date(tx.timestamp),
+      type: tx.type,
+      from: tx.from,
+      to: tx.to,
+      amount: tx.amount,
+      deployId: tx.deployId,
+      blockHash: tx.blockHash,
+      status: tx.status,
+      network: network.id,
+      detectedBy: 'auto'
+    };
+  }
+
+  private static belongsToAddress(
+    tx: GatewayTransactionHistoryItem,
+    address: string,
+  ): boolean {
+    const normalizedAddress = this.normalizeAddress(address);
+    const normalizedFrom = this.normalizeAddress(tx.from);
+    const normalizedTo = this.normalizeAddress(tx.to);
+
+    if (tx.type === 'deploy') {
+      return normalizedFrom === normalizedAddress;
+    }
+
+    return normalizedFrom === normalizedAddress || normalizedTo === normalizedAddress;
+  }
+
+  private static removeConfirmedPendingTransactions(
+    blockchainTxs: GatewayTransactionHistoryItem[],
+  ): void {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+
+    const knownIds = new Set(
+      blockchainTxs
+        .map((tx) => tx.deployId)
+        .filter((deployId): deployId is string => !!deployId),
+    );
+
+    if (!knownIds.size) {
+      return;
+    }
+
+    const raw = localStorage.getItem('asi_wallet_pending_transactions');
+    const pending: any[] = raw ? JSON.parse(raw) : [];
+    const filtered = pending.filter((tx) => !knownIds.has(tx.deployId));
+
+    if (filtered.length !== pending.length) {
+      localStorage.setItem('asi_wallet_pending_transactions', JSON.stringify(filtered));
+    }
+  }
+
+  private static addAmount(total: string, amount: string): string {
+    try {
+      return fromAtomicAmount(toAtomicAmount(total) + toAtomicAmount(amount));
+    } catch (error) {
+      console.error(error);
+      return total;
+    }
+  }
+
+  private static createSyntheticId(tx: GatewayTransactionHistoryItem): string {
+    return [
+      tx.type,
+      tx.blockNumber ?? 'no_block',
+      tx.timestamp,
+      tx.from,
+      tx.to ?? 'no_to',
+      tx.amount ?? 'no_amount',
+    ].join('_');
+  }
+
+  private static normalizeAddress(address: string | undefined): string {
+    return address?.trim().toLowerCase() ?? '';
   }
 
   static async exportTransactions(
