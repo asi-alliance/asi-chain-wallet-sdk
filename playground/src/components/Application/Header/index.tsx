@@ -1,12 +1,13 @@
 import { type ReactElement } from "react";
 import { ApplicationNavigation } from "@router/index";
-import { resetApp } from "../../../sdk-react-kit";
 import "./style.css";
+import { useSdkContext } from "../../../sdk-react-kit";
 
 const Header = (): ReactElement => {
+    const sdk = useSdkContext();
     const handleResetApp = () => {
         if (window.confirm("Are you sure? This action will wipe App's data")) {
-            resetApp();
+            sdk.clearSdkData();
             window.location.reload();
         }
     };

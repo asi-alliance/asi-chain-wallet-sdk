@@ -12,7 +12,6 @@ export type Address = `1111${string & AddressBrand}`;
 export interface StoredWalletMeta {
     name: string;
     address: Address;
-    publicKey?: string;
     encryptedPrivateKey: string;
     masterNodeId: string | null;
     index: string | null;
@@ -38,7 +37,7 @@ export default class Wallet {
     private static unsafeRawKeyExportEnabled = false;
     private name: string;
     private address: Address;
-    private publicKey?: Uint8Array;
+    // private publicKey: Uint8Array;
     private privateKey: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
@@ -48,7 +47,6 @@ export default class Wallet {
     private constructor(
         name: string,
         address: Address,
-        publicKey: Uint8Array | undefined,
         encryptedPrivateKey: EncryptedData,
         masterNodeId: string | null,
         index: number | null,
@@ -57,7 +55,7 @@ export default class Wallet {
         this.index = index;
         this.masterNodeId = masterNodeId;
         this.address = address;
-        this.publicKey = publicKey ? new Uint8Array(publicKey) : undefined;
+        // this.publicKey = KeysManager.getKeyPairFromPrivateKey(encryptedPrivateKey);
         this.privateKey = encryptedPrivateKey;
         this.assets = new Map();
         this.isLocked = true;
@@ -79,10 +77,10 @@ export default class Wallet {
             password,
         );
 
-        return new Wallet(name, address, publicKey, encrypted, masterNodeId, index);
+        return new Wallet(name, address, encrypted, masterNodeId, index);
     }
 
-    public static fromEncryptedData(name: string, address: Address, encryptedPrivateKey: EncryptedData, masterNodeId: string | null, index: number | null, publicKey?: Uint8Array | string | null): Wallet {
+    public static fromEncryptedData(name: string, address: Address, encryptedPrivateKey: EncryptedData, masterNodeId: string | null, index: number | null): Wallet {
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(
@@ -90,17 +88,9 @@ export default class Wallet {
             );
         }
 
-        const normalizedPublicKey =
-            typeof publicKey === "string"
-                ? decodeBase16(publicKey)
-                : publicKey
-                  ? new Uint8Array(publicKey)
-                  : undefined;
-
         return new Wallet(
             name,
             address,
-            normalizedPublicKey,
             encryptedPrivateKey,
             masterNodeId,
             index,
@@ -164,7 +154,7 @@ export default class Wallet {
     ): Promise<T> {
         const privateKey = await this.decryptPrivateKey(password);
         const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
-        this.publicKey = new Uint8Array(publicKey);
+        // this.publicKey = new Uint8Array(publicKey);
         let expired = false;
 
         const signingCapability: SigningCapability = {
@@ -204,9 +194,9 @@ export default class Wallet {
         return this.address;
     }
 
-    public getPublicKey(): Uint8Array | undefined {
-        return this.publicKey ? new Uint8Array(this.publicKey) : undefined;
-    }
+    // public getPublicKey(): Uint8Array | undefined {
+    //     return this.publicKey ? new Uint8Array(this.publicKey) : undefined;
+    // }
 
     public getName(): string {
         return this.name;
@@ -228,7 +218,7 @@ export default class Wallet {
         const meta: StoredWalletMeta = {
             name: this.name,
             address: this.address,
-            publicKey: this.publicKey ? encodeBase16(this.publicKey) : undefined,
+            // publicKey: this.publicKey ? encodeBase16(this.publicKey) : undefined,
             encryptedPrivateKey: JSON.stringify(this.privateKey),
             masterNodeId: this.masterNodeId ?? "",
             index: this.index?.toString() ?? "",

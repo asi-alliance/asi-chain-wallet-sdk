@@ -73,7 +73,6 @@ const Application = (): ReactElement => {
 
     const sdk = useSdk({
         config: Networks["DevNet"],
-        vaultStorageKey: VAULT_STORAGE_KEY,
         onUnlockRequired: openUnlockModal,
         onVaultPasswordRequired: openCreatePasswordForVaultModal,
         onInitError: (error) => {

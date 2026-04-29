@@ -1,4 +1,4 @@
-import Vault from "@domains/Vault";
+import Vault from "../../infrastructureAdapters/WebVault";
 import Wallet, { Address } from "@domains/Wallet";
 
 export interface ClientOptions {

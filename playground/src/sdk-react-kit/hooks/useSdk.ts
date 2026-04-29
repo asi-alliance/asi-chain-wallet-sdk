@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AssetsService, Vault } from "asi-wallet-sdk";
 import { init, type NetworkConfig } from "../helpers";
 
@@ -8,7 +8,6 @@ interface IPasswordSubmitHandler {
 
 type UseSdkParams = {
     config: NetworkConfig;
-    vaultStorageKey: string;
     onUnlockRequired?: (unlockVault: IPasswordSubmitHandler) => void;
     onVaultPasswordRequired?: (
         createVaultPassword: IPasswordSubmitHandler,
@@ -21,7 +20,6 @@ const cloneVault = (vault: Vault) =>
 
 const useSdk = ({
     config,
-    vaultStorageKey,
     onUnlockRequired,
     onVaultPasswordRequired,
     onInitError,
@@ -60,7 +58,7 @@ const useSdk = ({
             console.timeEnd("lock");
 
             console.time("save");
-            vault.save(vaultStorageKey);
+            vault.save();
             console.timeEnd("save");
 
             console.time("unlock");
@@ -94,14 +92,14 @@ const useSdk = ({
     useEffect(() => {
         try {
             const { vault: initialVault, assetsService: initialAssetsService } =
-                init(config, vaultStorageKey);
+                init(config);
 
             setVault(initialVault);
             setAssetsService(initialAssetsService);
         } catch (error) {
             callbacksRef.current.onInitError?.(error);
         }
-    }, [config, vaultStorageKey]);
+    }, [config]);
 
     useEffect(() => {
         if (vault && vault.isVaultLocked()) {
@@ -117,6 +115,10 @@ const useSdk = ({
         }
     }, [vault, isVaultConfigured]);
 
+    const clearSdkData = useCallback(() => {
+        vault.clearSavedVault();
+    }, [vault]);
+
     return {
         vault,
         assetsService,
@@ -124,6 +126,7 @@ const useSdk = ({
         saveVault,
         unlockVault,
         createVaultPassword,
+        clearSdkData
     };
 };
 

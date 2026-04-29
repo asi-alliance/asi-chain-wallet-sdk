@@ -5,104 +5,78 @@ import Wallet, {
     type Address,
     StoredWalletMeta,
 } from "@domains/Wallet";
+import { IVault } from "../../application/ports/outbound/IVault";
 
 export type Wallets = Map<Address, Wallet>;
 
 export type Seeds = Map<string, EncryptedRecord>;
 
-export type VaultRawData = string;
+export type RawVaultData = string;
 
 export type StoredWalletsMetaRecords = Record<Address, StringifiedWalletMeta>;
 
 export type StoredSeedsMetaRecords = Record<string, string>;
 
-export const DEFAULT_STORAGE_KEY = "0";
+const DEFAULT_VAULT_STORAGE_KEY = "ASI_WALLETS_VAULT";
 
-const DEFAULT_SEED_ID_LENGTH: number = 16;
-
-export default class Vault {
-    private static vaultPrefix: string = `ASI_WALLETS_VAULT`;
-
+/**
+ * page-context IVault implementation. Intended for web page environment only. Not for extension. Do not use in extension. Designed to store the most sensitive data.
+ */
+export default class WebVault implements IVault {
     private isLocked: boolean;
+
     private wallets: Wallets;
     private seeds: Seeds;
+    
     private encryptedVaultData: EncryptedData | null;
 
-    constructor(VaultData?: VaultRawData) {
-        if (typeof window === "undefined") {
-            throw new Error(
-                "getVault can only be called in a browser environment"
-            );
-        }
-
+    constructor(vaultData?: RawVaultData) {
         this.isLocked = false;
         this.wallets = new Map();
         this.seeds = new Map();
         this.encryptedVaultData = null;
 
-        if (!VaultData) {
+        if(!vaultData) {
+            vaultData = this.getVaultDataFromStorage() ?? undefined;
+        }
+        
+        if (!vaultData) {
             return;
         }
 
-        const parsedData = JSON.parse(VaultData);
+        const parsedData = JSON.parse(vaultData);
 
         this.encryptedVaultData = parsedData;
         this.isLocked = true;
     }
 
-    public static getSavedVaultKeys(): string[] {
-        this.ensureBrowserEnvironment();
-
-        const keys: string[] = [];
-
-        for (let i = 0; i < localStorage.length; i++) {
-            const key: string | null = localStorage.key(i);
-
-            if (key && key.startsWith(this.vaultPrefix)) {
-                keys.push(key);
-            }
-        }
-
-        return keys;
+    private getVaultDataFromStorage(): RawVaultData | null {
+        return localStorage.getItem(DEFAULT_VAULT_STORAGE_KEY);
     }
 
-    public static getVaultDataFromStorage(
-        vaultKey: string
-    ): VaultRawData | null {
-        this.ensureBrowserEnvironment();
-
-        return localStorage.getItem(vaultKey);
+    /* vault management */
+    public isEmpty(): boolean {
+        this.ensureUnlocked();
+        return this.wallets.size === 0 && this.seeds.size === 0;
     }
-
-    public static clearSavedVaults(): void {
-        this.getSavedVaultKeys().forEach((vaultKey: string) => {
-            localStorage.removeItem(vaultKey);
-        });
-    }
-
     public isVaultLocked(): boolean {
         return this.isLocked;
     }
 
-    public save(vaultKey: string = DEFAULT_STORAGE_KEY): void {
-        Vault.ensureBrowserEnvironment();
-
+    public clearSavedVault(): void {
+        localStorage.removeItem(DEFAULT_VAULT_STORAGE_KEY);
+    }
+    public save(): void {
         if (!this.isLocked) {
             throw new Error("Cannot save an unlocked vault");
         }
 
-        const storageKey: string = `${Vault.vaultPrefix}_${vaultKey}`;
-
-        localStorage.setItem(
-            storageKey,
-            JSON.stringify(this.encryptedVaultData)
-        );
+        localStorage.setItem(DEFAULT_VAULT_STORAGE_KEY, JSON.stringify(this.encryptedVaultData));
     }
-
     public async lock(password: string): Promise<void> {
         this.ensureUnlocked();
 
-        const rawVaultData: VaultRawData = this.toString();
+        const rawVaultData: RawVaultData = this.toString();
 
         this.encryptedVaultData = await CryptoService.encryptWithPassword(
             rawVaultData,
@@ -113,7 +87,6 @@ export default class Vault {
         this.seeds = new Map();
         this.isLocked = true;
     }
-
     public async unlock(password: string): Promise<void> {
         if (!this.isLocked) {
             return;
@@ -129,67 +102,75 @@ export default class Vault {
             this.encryptedVaultData,
             password
         );
-
-        const { wallets, seeds } = JSON.parse(decryptedData);
+        const parsedDecryptedData = JSON.parse(decryptedData);
+        const { wallets, seeds } = parsedDecryptedData;
 
         this.metaToWallets(wallets);
         this.metaToSeeds(seeds);
 
         this.isLocked = false;
     }
+    /* vault management */
 
-    public isEmpty(): boolean {
-        this.ensureUnlocked();
-
-        return this.wallets.size === 0;
-    }
-
+    /* wallets */
     public getWallets(): Wallet[] {
         return Array.from(this.wallets.values());
     }
-
     public getWalletsCount(): number {
         this.ensureUnlocked();
-
         return this.wallets.size;
     }
-
     public getWalletAddresses(): Address[] {
         this.ensureUnlocked();
 
         return Array.from(this.wallets.keys());
     }
-
-    public addWallet(wallet: Wallet): void {
-        this.ensureUnlocked();
-
-        this.wallets.set(wallet.getAddress(), wallet);
-    }
-
-    public removeWallet(address: Address): void {
-        this.ensureUnlocked();
-
-        this.wallets.delete(address);
-    }
-
     public getWallet(address: Address): Wallet | undefined {
         this.ensureUnlocked();
-
         return this.wallets.get(address);
     }
-
+    public addWallet(wallet: Wallet): void {
+        this.ensureUnlocked();
+        this.wallets.set(wallet.getAddress(), wallet);
+    }
+    public removeWallet(address: Address): void {
+        this.ensureUnlocked();
+        this.wallets.delete(address);
+    }
     public hasWallet(address: Address): boolean {
         this.ensureUnlocked();
-
         return this.wallets.has(address);
     }
+    /* /wallets */
 
+    /* seeds */
     public hasSeed(seedId: string): boolean {
         this.ensureUnlocked();
-
         return this.seeds.has(seedId);
     }
+        public getSeeds(): EncryptedRecord[] {
+        this.ensureUnlocked();
+        return Array.from(this.seeds.values());
+    }
+    public getSeed(id: string): EncryptedRecord | undefined {
+        this.ensureUnlocked();
+        return this.seeds.get(id);
+    }
+    public addSeed(id: string, seed: EncryptedRecord): void {
+        this.ensureUnlocked();
+        this.seeds.set(id, seed);
+    }
+    public removeSeed(id: string): void {
+        this.ensureUnlocked();
+        this.seeds.delete(id);
+    }
+    public getSeedsIds(): string[] {
+        this.ensureUnlocked();
+        return Array.from(this.seeds.keys());
+    }
+    /* /seeds */
 
+    /* mappers */
     private metaToWallets(meta: StoredWalletsMetaRecords): void {
         const wallets: Wallets = new Map();
         const addresses: Address[] = Object.keys(meta) as Address[];
@@ -203,7 +184,7 @@ export default class Vault {
                 JSON.parse(walletMeta.encryptedPrivateKey),
                 walletMeta.masterNodeId,
                 !walletMeta.index ? null : +walletMeta.index,
-                walletMeta.publicKey ?? null,
+                // walletMeta.publicKey ?? null,
             );
 
             wallets.set(address, wallet);
@@ -225,36 +206,6 @@ export default class Vault {
         });
 
         this.seeds = seeds;
-    }
-
-    public getSeeds(): EncryptedRecord[] {
-        this.ensureUnlocked();
-
-        return Array.from(this.seeds.values());
-    }
-
-    public getSeed(id: string): EncryptedRecord | undefined {
-        this.ensureUnlocked();
-
-        return this.seeds.get(id);
-    }
-
-    public addSeed(id: string, seed: EncryptedRecord): void {
-        this.ensureUnlocked();
-
-        this.seeds.set(id, seed);
-    }
-
-    public removeSeed(id: string): void {
-        this.ensureUnlocked();
-
-        this.seeds.delete(id);
-    }
-
-    public getSeedsIds(): string[] {
-        this.ensureUnlocked();
-
-        return Array.from(this.seeds.keys());
     }
 
     public toString(): string {
@@ -291,18 +242,13 @@ export default class Vault {
             seeds: seedsMeta,
         });
     }
+    /* /mappers */
 
+    /* guards */
     private ensureUnlocked(): void {
         if (this.isLocked) {
             throw new Error("Attempted to access locked vault");
         }
     }
-
-    private static ensureBrowserEnvironment(): void {
-        if (typeof window === "undefined") {
-            throw new Error(
-                "getVault can only be called in a browser environment"
-            );
-        }
-    }
+    /* /guards */
 }

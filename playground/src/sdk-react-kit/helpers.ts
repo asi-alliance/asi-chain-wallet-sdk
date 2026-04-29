@@ -6,10 +6,7 @@ type NetworkConfig = {
     IndexerURL: string;
 };
 
-const getVaultStorageDataKey = (vaultStorageKey: string) =>
-    `ASI_WALLETS_VAULT_${vaultStorageKey}`;
-
-const init = (config: NetworkConfig, vaultStorageKey: string) => {
+const init = (config: NetworkConfig) => {
     BlockchainGateway.init({
         validator: {
             baseUrl: config.ValidatorURL,
@@ -26,17 +23,10 @@ const init = (config: NetworkConfig, vaultStorageKey: string) => {
     });
 
     const assetsService = new AssetsService();
-    const encryptedVaultData = Vault.getVaultDataFromStorage(
-        getVaultStorageDataKey(vaultStorageKey),
-    );
-    const vault = new Vault(encryptedVaultData);
+    const vault = new Vault();
 
     return { assetsService, vault };
 };
 
-const resetApp = () => {
-    Vault.clearSavedVaults();
-};
-
 export type { NetworkConfig };
-export { init, resetApp };
+export { init };

@@ -1,5 +1,5 @@
 export * from "./Asset";
-export * from "./Vault";
+export * from "../infrastructureAdapters/WebVault";
 export * from "./Wallet";
 export * from "./Signer";
 export * from "./Client";
@@ -18,6 +18,6 @@ export { default as SecureStorage } from "./BrowserStorage";
 export { default as AxiosHttpClient } from "./HttpClient"; 
 export { default as Client } from "./Client";
 export { default as Wallet } from "./Wallet";
-export { default as Vault } from "./Vault";
+export { default as Vault } from "../infrastructureAdapters/WebVault";
 export { default as Asset } from "./Asset";
 export { default as ReservationRecord } from "./Reservation";
