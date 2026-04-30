@@ -14,3 +14,5 @@ export interface Transaction {
   network: string;
   detectedBy?: 'balance_change' | 'manual' | 'auto';
 }
+
+

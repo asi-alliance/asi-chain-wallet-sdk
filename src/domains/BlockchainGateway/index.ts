@@ -96,7 +96,7 @@ export default class BlockchainGateway {
 
     public async submitDeploy(
         deployData: SignedResult,
-    ): Promise<string | undefined> {
+    ): Promise<string> {
         try {           
             const result = await this.validatorClient.post("/api/deploy", deployData, {
                 headers: {

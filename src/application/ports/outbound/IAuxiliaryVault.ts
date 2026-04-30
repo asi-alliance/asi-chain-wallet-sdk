@@ -1,6 +1,5 @@
 import { Transaction } from "@domains/Transaction";
 
-
 export interface IAuxiliaryVault {
   transactions: Map<string, Transaction>;
 
