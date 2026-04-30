@@ -70,6 +70,9 @@ export default class WebVault implements IVault {
         this.ensureUnlocked();
         return this.wallets.size === 0 && this.seeds.size === 0;
     }
+    public isExist(): boolean {
+        return Boolean(this.getVaultDataFromStorage());
+    }
     public isVaultLocked(): boolean {
         return this.isLocked;
     }

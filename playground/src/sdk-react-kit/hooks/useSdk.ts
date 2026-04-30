@@ -98,9 +98,18 @@ const useSdk = ({
             try {
                 const sdkClient = await init(config);
                 setSdkClient(sdkClient);
-                onUnlockRequired((password) => {
-                    sdkClient.vault.unlock(password);
-                })
+                if(sdkClient.vault.isExist()) {
+                    onUnlockRequired(async (password) => {
+                        await sdkClient.vault.unlock(password);
+                        setCurrentPassword(password);
+                    });
+                } else {
+                    onVaultPasswordRequired(async (password) => {
+                        console.log("onVaultPasswordRequired: start")
+                        await sdkClient.vault.unlock(password);
+                        setCurrentPassword(password);
+                    })
+                }
             } catch (error) {
                 callbacksRef.current.onInitError?.(error);
             }

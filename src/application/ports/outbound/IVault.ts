@@ -5,6 +5,7 @@ import { IUiEventDispatcher } from "./IUiEventDispatcher";
 
 export interface IVault {
     isEmpty(): boolean;
+    isExist(): boolean;
     isVaultLocked(): boolean;
     clearSavedVault(): void;
     save(): void;
