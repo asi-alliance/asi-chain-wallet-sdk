@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AssetsService, Vault } from "asi-wallet-sdk";
+import { AssetsService, Client, WebVault } from "asi-wallet-sdk";
 import { init, type NetworkConfig } from "../helpers";
+import { useWallets } from "./useWallets";
 
 interface IPasswordSubmitHandler {
-    (password: string): Promise<void>;
+    (password: string): (void | Promise<void>);
 }
 
 type UseSdkParams = {
@@ -15,7 +16,7 @@ type UseSdkParams = {
     onInitError?: (error: unknown) => void;
 };
 
-const cloneVault = (vault: Vault) =>
+const cloneVault = (vault: WebVault) =>
     Object.assign(Object.create(Object.getPrototypeOf(vault)), vault);
 
 const useSdk = ({
@@ -24,18 +25,21 @@ const useSdk = ({
     onVaultPasswordRequired,
     onInitError,
 }: UseSdkParams) => {
-    const [vault, setVault] = useState<Vault | null>(null);
+    const [sdkClient, setSdkClient] = useState<Client>(null);
     const [isVaultConfigured, setIsVaultConfigured] =
         useState<boolean>(false);
-    const [assetsService, setAssetsService] = useState<AssetsService | null>(
-        null,
-    );
+    // const [assetsService, setAssetsService] = useState<AssetsService | null>(
+        // null,
+    // );
     const [currentPassword, setCurrentPassword] = useState<string>("");
     const callbacksRef = useRef({
         onUnlockRequired,
         onVaultPasswordRequired,
         onInitError,
     });
+
+    const reactiveWallets = useWallets(sdkClient);
+    console.log("reactiveWallets=", reactiveWallets);
 
     useEffect(() => {
         callbacksRef.current = {
@@ -45,27 +49,27 @@ const useSdk = ({
         };
     }, [onUnlockRequired, onVaultPasswordRequired, onInitError]);
 
-    const updateVault = (nextVault: Vault) => {
-        setVault(cloneVault(nextVault));
-    };
+    // const updateVault = (nextVault: WebVault) => {
+    //     setVault(cloneVault(nextVault));
+    // };
 
     const saveVault = async (password: string) => {
-        if (!vault) return;
+        // if (!vault) return;
 
         try {
             console.time("lock");
-            await vault.lock(password);
+            await sdkClient.vault.lock(password);
             console.timeEnd("lock");
 
             console.time("save");
-            vault.save();
+            sdkClient.vault.save();
             console.timeEnd("save");
 
             console.time("unlock");
-            await vault.unlock(password);
+            await sdkClient.vault.unlock(password);
             console.timeEnd("unlock");
 
-            updateVault(vault);
+            // updateVault(sdkClient.vault);
         } catch (error) {
             console.error(error);
             console.timeEnd("lock");
@@ -76,11 +80,11 @@ const useSdk = ({
     };
 
     const unlockVault = async (password: string) => {
-        if (!vault) return;
+        if (!sdkClient.vault) return;
 
-        await vault.unlock(password);
+        await sdkClient.vault.unlock(password);
         setCurrentPassword(password);
-        updateVault(vault);
+        // updateVault(sdkClient.vault);
     };
 
     const createVaultPassword = async (password: string) => {
@@ -90,43 +94,41 @@ const useSdk = ({
     };
 
     useEffect(() => {
-        try {
-            const { vault: initialVault, assetsService: initialAssetsService } =
-                init(config);
-
-            setVault(initialVault);
-            setAssetsService(initialAssetsService);
-        } catch (error) {
-            callbacksRef.current.onInitError?.(error);
+        const initialize = async () => {
+            try {
+                const sdkClient = await init(config);
+                setSdkClient(sdkClient);
+                onUnlockRequired((password) => {
+                    sdkClient.vault.unlock(password);
+                })
+            } catch (error) {
+                callbacksRef.current.onInitError?.(error);
+            }
         }
+        initialize();
     }, [config]);
 
-    useEffect(() => {
-        if (vault && vault.isVaultLocked()) {
-            setIsVaultConfigured(true);
-            callbacksRef.current.onUnlockRequired?.(unlockVault);
-            return;
-        }
-
-        if (vault && vault.isEmpty() && !isVaultConfigured) {
-            callbacksRef.current.onVaultPasswordRequired?.(
-                createVaultPassword,
-            );
-        }
-    }, [vault, isVaultConfigured]);
+    // useEffect(() => {
+    //     if (sdkClient?.vault && sdkClient?.vault.isEmpty() && !isVaultConfigured) {
+    //         callbacksRef.current.onVaultPasswordRequired?.(
+    //             createVaultPassword,
+    //         );
+    //     }
+    // }, [sdkClient, isVaultConfigured]);
 
     const clearSdkData = useCallback(() => {
-        vault.clearSavedVault();
-    }, [vault]);
+        sdkClient?.vault.clearSavedVault();
+    }, [sdkClient]);
 
     return {
-        vault,
-        assetsService,
+        sdkClient,
+        // assetsService,
         currentPassword,
         saveVault,
         unlockVault,
         createVaultPassword,
-        clearSdkData
+        clearSdkData,
+        ...reactiveWallets,
     };
 };
 

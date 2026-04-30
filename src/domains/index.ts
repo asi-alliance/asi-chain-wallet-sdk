@@ -1,8 +1,6 @@
 export * from "./Asset";
-export * from "../infrastructureAdapters/WebVault";
 export * from "./Wallet";
 export * from "./Signer";
-export * from "../application";
 export * from "./HttpClient";
 export * from "./BrowserStorage";
 export * from "./BlockchainGateway";
@@ -16,8 +14,6 @@ export { default as BlockchainGateway } from "./BlockchainGateway";
 export { default as EncryptedRecord } from "./EncryptedRecord";
 export { default as SecureStorage } from "./BrowserStorage";
 export { default as AxiosHttpClient } from "./HttpClient"; 
-export { default as Client } from "../application";
 export { default as Wallet } from "./Wallet";
-export { default as Vault } from "../infrastructureAdapters/WebVault";
 export { default as Asset } from "./Asset";
 export { default as ReservationRecord } from "./Reservation";

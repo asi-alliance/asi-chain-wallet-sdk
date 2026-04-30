@@ -6,6 +6,7 @@ import Wallet, {
     StoredWalletMeta,
 } from "@domains/Wallet";
 import { IVault } from "../../application/ports/outbound/IVault";
+import { IUiEventDispatcher } from "../../application/ports/outbound/IUiEventDispatcher";
 
 export type Wallets = Map<Address, Wallet>;
 
@@ -29,6 +30,16 @@ export default class WebVault implements IVault {
     private seeds: Seeds;
     
     private encryptedVaultData: EncryptedData | null;
+    public _uiEventDispatcher: IUiEventDispatcher | null = null;
+    public get uiEventDispatcher() {
+        if(!this._uiEventDispatcher) {
+            throw new Error;
+        }
+        return this._uiEventDispatcher;
+    }
+    public set uiEventDispatcher(value: IUiEventDispatcher) {
+        this._uiEventDispatcher = value;
+    }
 
     constructor(vaultData?: RawVaultData) {
         this.isLocked = false;
@@ -72,6 +83,7 @@ export default class WebVault implements IVault {
         }
 
         localStorage.setItem(DEFAULT_VAULT_STORAGE_KEY, JSON.stringify(this.encryptedVaultData));
+        this.uiEventDispatcher.onVaultChanged?.();
     }
     public async lock(password: string): Promise<void> {
         this.ensureUnlocked();
@@ -88,6 +100,7 @@ export default class WebVault implements IVault {
         this.isLocked = true;
     }
     public async unlock(password: string): Promise<void> {
+        console.log("unlock: start")
         if (!this.isLocked) {
             return;
         }
@@ -109,6 +122,9 @@ export default class WebVault implements IVault {
         this.metaToSeeds(seeds);
 
         this.isLocked = false;
+        console.log("point1")
+        this.uiEventDispatcher.onVaultChanged?.();
+        console.log("point2")
     }
     /* vault management */
 

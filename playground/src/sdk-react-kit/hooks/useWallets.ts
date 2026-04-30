@@ -1,43 +1,55 @@
-import { useMemo, useState } from "react";
-import { useSdkContext } from "../SdkContext";
+import { useEffect, useMemo, useState } from "react";
+import {Client, Wallet} from "asi-wallet-sdk";
 
-export const useWallets = () => {
-      const sdk = useSdkContext();
-      const { vault } = sdk;
+
+const updateWallets = (sdkClient: Client, setWallets: React.Dispatch<{mnemonicWallets: Wallet[]; privateKeyWallets: Wallet[]}>, setLastIndex: React.Dispatch<number>) => {
+    console.log("updateWallets: start");
+    let lastIndexLocal: number | null = null;
+    const wallets = sdkClient.vault.getWallets();
+    console.log("updateWallets: wallets=", wallets);
+    const privateKeyWallets = wallets.filter(
+        (wallet) => wallet.getIndex() === null
+    );
+    const mnemonicWallets = wallets.filter((wallet) => {
+        if (typeof wallet.getIndex() === "number") {
+            lastIndexLocal = Math.max(
+                lastIndexLocal === null ? -1 : lastIndexLocal,
+                wallet.getIndex() as number
+            );
+        } else {
+            return false;
+        }
+        return true;
+    });
+
+    setLastIndex(lastIndexLocal);
+
+    setWallets({ mnemonicWallets, privateKeyWallets});
+};
+
+
+export const useWallets = (sdkClient: Client) => {
+      const [wallets, setWallets] = useState({mnemonicWallets: [], privateKeyWallets: []});
       const [lastIndex, setLastIndex] = useState<number | null>(null);
-      const wallets = useMemo(() => {
-          let lastIndexLocal: number | null = null;
-  
-          if (!vault) {
-              return { privateKeyWallets: [], mnemonicWallets: [] };
-          }
-  
-          const wallets = vault.getWallets();
-  
-          const privateKeyWallets = wallets.filter(
-              (wallet) => wallet.getIndex() === null
-          );
-          const mnemonicWallets = wallets.filter((wallet) => {
-              if (typeof wallet.getIndex() === "number") {
-                  lastIndexLocal = Math.max(
-                      lastIndexLocal === null ? -1 : lastIndexLocal,
-                      wallet.getIndex() as number
-                  );
-              } else {
-                  return false;
-              }
-              return true;
-          });
-  
-          setLastIndex(lastIndexLocal);
-  
-          return { privateKeyWallets, mnemonicWallets };
-      }, [vault]);
+
+      useEffect(() => {
+        if(sdkClient) {
+            sdkClient.uiEventDispatcher.onVaultChanged = () => {
+                updateWallets(sdkClient, setWallets, setLastIndex);
+            }
+        }
+        return () => {
+            if(sdkClient) {
+                sdkClient.uiEventDispatcher.onVaultChanged = null;
+            }
+        }
+      }, [sdkClient]);
+
       
       const flatWallets = useMemo(() => {
         return [
-          ...wallets.mnemonicWallets,
-          ...wallets.privateKeyWallets,
+          ...(wallets.mnemonicWallets ?? []),
+          ...(wallets.privateKeyWallets ?? []),
         ]
       }, [wallets]);
   return {wallets, lastIndex, flatWallets};

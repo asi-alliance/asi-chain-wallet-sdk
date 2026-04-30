@@ -1,8 +1,9 @@
 import { useCallback, useMemo, type ReactElement } from "react";
 
-import { useWallets } from "../../../sdk-react-kit/hooks/useWallets";
+// import { useWallets } from "../../../sdk-react-kit/hooks/useWallets";
 import SelectFilter from "@components/common/SelectFilter";
 import {Network, Wallet} from "asi-wallet-sdk";
+import { useSdkContext } from "../../../sdk-react-kit";
 
 interface TxHistoryPrerequisitesProps {
     account: Wallet | null;
@@ -20,7 +21,7 @@ export const TxHistoryPrerequisites = ({
     // Network selector facade is not wired yet; keep the setter in the props contract.
     void setNetwork;
 
-    const {flatWallets} = useWallets();
+    const {flatWallets} = useSdkContext();
     console.log(flatWallets)
 
     const accountOptions = useMemo(() => {

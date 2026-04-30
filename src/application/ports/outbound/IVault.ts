@@ -1,6 +1,7 @@
 import type EncryptedRecord from "@domains/EncryptedRecord";
 import type Wallet from "@domains/Wallet";
 import type { Address } from "@domains/Wallet";
+import { IUiEventDispatcher } from "./IUiEventDispatcher";
 
 export interface IVault {
     isEmpty(): boolean;
@@ -26,4 +27,5 @@ export interface IVault {
     getSeedsIds(): string[];
 
     toString(): string;
+    uiEventDispatcher: IUiEventDispatcher;
 }

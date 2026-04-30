@@ -4,11 +4,15 @@ import AssetsService from "@services/AssetsService";
 import { TxHistory } from "@services/TxHistory";
 import { IAuxiliaryVault } from "./ports/outbound/IAuxiliaryVault";
 import { IVault } from "./ports/outbound/IVault";
+import { IUiEventDispatcher } from "./ports/outbound/IUiEventDispatcher";
+import { UiEventDispatcher } from "../uiAdapters/UiEventDispatcher";
+export * from "./ports/outbound/IVault";
+export * from "./ports/outbound/IAuxiliaryVault";
+
 
 export type ClientOptions  = {
     vault: IVault;
     auxilliaryVault: IAuxiliaryVault;
-    password: string;
 } | {};
 
 export default class Client {
@@ -19,8 +23,9 @@ export default class Client {
     /* /infrastructure adapters */
 
     /* application services */
-    private assetsService: AssetsService;
+    public assetsService: AssetsService;
     private txHistory: TxHistory;
+    public uiEventDispatcher: IUiEventDispatcher;
     /* /application services */
 
     private activeWalletAddress?: Address;
@@ -31,9 +36,11 @@ export default class Client {
         this._vaultsPassword = vaultsPassword;
         this.assetsService = new AssetsService();
         this.txHistory = new TxHistory(this.auxilliaryVault);
+        this.uiEventDispatcher = new UiEventDispatcher();
+        this.vault.uiEventDispatcher = this.uiEventDispatcher;
     }
 
-    private get vault() {
+    public get vault() {
         if(!this._vault) {
             throw new Error(`Client: _vault=${this._vault}`);
         }
@@ -51,11 +58,8 @@ export default class Client {
         let auxilliaryVault;
         let vaultsPassword;
         if("vault" in options) {
-            vaultsPassword = options.password;
             vault = options.vault;
             auxilliaryVault = options.auxilliaryVault;
-            await vault.unlock(vaultsPassword);
-            await auxilliaryVault.unlock(vaultsPassword);
         }
         return new Client(vault, auxilliaryVault, vaultsPassword);
     }

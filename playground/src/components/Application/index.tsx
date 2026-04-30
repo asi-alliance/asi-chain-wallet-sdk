@@ -18,8 +18,6 @@ import { Modals } from "./meta";
 import Header from "./Header";
 import "./style.css";
 
-const VAULT_STORAGE_KEY = "test_vault";
-
 const Application = (): ReactElement => {
     const { isLoading, withLoader } = useLoader();
     const [modalState, setModalState] = useState<ModalState>({ type: null });

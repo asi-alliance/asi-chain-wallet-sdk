@@ -8,9 +8,9 @@ import { useWallets } from "../../sdk-react-kit/hooks/useWallets";
 
 const WalletsPage = (): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
-    const sdk = useSdkContext();
-    const { vault, assetsService } = sdk;
-    const {wallets, lastIndex} = useWallets();
+    const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
+    console.log("WalletsPage: wallets=", wallets);
+    // const {wallets, lastIndex} = useWallets();
     const {
         removeWallet,
         importPk,
@@ -19,7 +19,9 @@ const WalletsPage = (): ReactElement => {
         createDk,
         deriveK,
     } = createWalletPageHandlers({
-        sdk,
+        sdkClient,
+        saveVault,
+        currentPassword,
         setModalState,
         withLoader,
     });
@@ -29,38 +31,7 @@ const WalletsPage = (): ReactElement => {
         "create" | "import" | null
     >(null);
 
-
-    // const [lastIndex, setLastIndex] = useState<number | null>(null);
-    // const wallets = useMemo(() => {
-    //     let lastIndexLocal: number | null = null;
-
-    //     if (!vault) {
-    //         return { privateKeyWallets: [], mnemonicWallets: [] };
-    //     }
-
-    //     const wallets = vault.getWallets();
-
-    //     const privateKeyWallets = wallets.filter(
-    //         (wallet) => wallet.getIndex() === null
-    //     );
-    //     const mnemonicWallets = wallets.filter((wallet) => {
-    //         if (typeof wallet.getIndex() === "number") {
-    //             lastIndexLocal = Math.max(
-    //                 lastIndexLocal === null ? -1 : lastIndexLocal,
-    //                 wallet.getIndex() as number
-    //             );
-    //         } else {
-    //             return false;
-    //         }
-    //         return true;
-    //     });
-
-    //     setLastIndex(lastIndexLocal);
-
-    //     return { privateKeyWallets, mnemonicWallets };
-    // }, [vault]);
-
-    if (!vault) {
+    if (!sdkClient?.vault) {
         return <div>Loading vault...</div>;
     }
 
@@ -110,7 +81,7 @@ const WalletsPage = (): ReactElement => {
                                 <WalletCard
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={assetsService}
+                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}
@@ -199,7 +170,7 @@ const WalletsPage = (): ReactElement => {
                                 <WalletCard
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={assetsService}
+                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}

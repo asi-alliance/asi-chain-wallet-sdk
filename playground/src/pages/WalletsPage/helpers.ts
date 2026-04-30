@@ -12,13 +12,16 @@ import {
     Address,
     EncryptedRecord,
     MnemonicService,
-    Vault,
+    IVault,
     Wallet,
+    Client,
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
 type CreateWalletPageHandlersParams = {
-    sdk: SdkContextValue;
+    sdkClient: Client;
+    saveVault: (password: string) => Promise<void>;
+    currentPassword: string;
     setModalState: ApplicationContextValue["setModalState"];
     withLoader: ApplicationContextValue["withLoader"];
 };
@@ -47,15 +50,14 @@ const openCreateSeedModal = (
 };
 
 const addWalletToVault = async (
-    vault: Vault | null,
+    vault: IVault,
     wallet: Wallet,
     currentPassword: string,
     saveVault: (password: string) => Promise<void>,
 ) => {
-    if (!vault) return;
-
+    
     vault.addWallet(wallet);
-
+console.log("addWalletToVault: vault=", vault, "wallet=", wallet, "currentPassword=", currentPassword);
     await saveVault(currentPassword);
 };
 
@@ -63,24 +65,24 @@ const createInitialPrivateKeyInputValue = () =>
     Array.from(createInitialPrivateKey()).join(",");
 
 const createWalletPageHandlers = ({
-    sdk,
+    sdkClient,
+    saveVault,
+    currentPassword,
     setModalState,
     withLoader,
 }: CreateWalletPageHandlersParams): WalletPageHandlers => {
-    const { vault, currentPassword, saveVault } = sdk;
+    // const { vault, currentPassword, saveVault } = sdk;
 
     const removeWallet = (id: Address) =>
         withLoader(async () => {
-            if (!vault) return;
+            if (!sdkClient.vault) return;
 
-            vault.removeWallet(id);
+            sdkClient.vault.removeWallet(id);
 
             await saveVault(currentPassword);
         });
 
     const createKeyPairWallet = async (payload: TWalletCreatePayload) => {
-        if (!vault) return;
-
         try {
             if (payload.mode !== "privateKey") {
                 throw new Error(
@@ -93,9 +95,10 @@ const createWalletPageHandlers = ({
                 payload.privateKey,
                 payload.password,
             );
+            console.log("newWallet=", newWallet);
 
             await addWalletToVault(
-                vault,
+                sdkClient.vault,
                 newWallet,
                 currentPassword,
                 saveVault,
@@ -109,7 +112,7 @@ const createWalletPageHandlers = ({
 
     const handleCreateMnemonicWallet = (payload: TWalletCreatePayload) =>
         withLoader(async () => {
-            if (!vault) return;
+            if (!sdkClient.vault) return;
 
             if (payload.mode !== "mnemonic" || !payload.mnemonicWords) {
                 throw new Error(
@@ -132,8 +135,8 @@ const createWalletPageHandlers = ({
                     payload.password,
                 );
 
-                vault.addWallet(wallet);
-                vault.addSeed(seedId, encryptedSeed);
+                sdkClient.vault.addWallet(wallet);
+                sdkClient.vault.addSeed(seedId, encryptedSeed);
 
                 await saveVault(currentPassword);
 
@@ -152,7 +155,7 @@ const createWalletPageHandlers = ({
         seed: string,
     ) =>
         withLoader(async () => {
-            if (!vault) return;
+            if (!sdkClient.vault) return;
 
             try {
                 const seedId = keccak512(seed);
@@ -165,7 +168,7 @@ const createWalletPageHandlers = ({
                     index,
                 );
 
-                vault.addWallet(wallet);
+                sdkClient.vault.addWallet(wallet);
 
                 await saveVault(currentPassword);
                 setModalState({ type: null });
@@ -193,7 +196,7 @@ const createWalletPageHandlers = ({
                 title: "Enter Seed Password",
                 onSubmit: async (password: string) => {
                     try {
-                        const seeds = vault!.getSeeds();
+                        const seeds = sdkClient.vault!.getSeeds();
                         if (seeds.length === 0) {
                             throw new Error("No seeds available in the vault");
                         }
