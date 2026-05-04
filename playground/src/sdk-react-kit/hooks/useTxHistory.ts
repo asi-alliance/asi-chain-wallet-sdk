@@ -1,104 +1,68 @@
-import { useCallback, useEffect, useState } from "react";
-import { Network, Transaction, TransactionFilter, TransactionStats, TxHistory as TxHistoryService, Wallet } from "asi-wallet-sdk";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Client, Network, Pagination, Transaction, TransactionFilter, TransactionStats, Wallet } from "asi-wallet-sdk";
 
-interface UseHistoryOptions {
-  autoUpdate: boolean;
-  autoUpdateInterval: number; //ms
-}
-interface TxHistory {
+// interface UseHistoryOptions {
+//   autoUpdate: boolean;
+//   autoUpdateInterval: number; //ms
+// }
+export interface TxHistory {
   stats: TransactionStats;
   transactions: Transaction[];
-  loadTransactions: () => Promise<void>;
+  loadTransactions: (...args: any) => Promise<any>; //TODO: any
   error: string | null;
   isLoading: boolean;
 }
 
-const defaultUseHistoryOptions: UseHistoryOptions = {
-  autoUpdate: false,
-  autoUpdateInterval: 30000,
-}
+// const defaultUseHistoryOptions: UseHistoryOptions = {
+//   autoUpdate: false,
+//   autoUpdateInterval: 30000,
+// }
 
-//TODO: any
-export const useTxHistory = (wallet: Wallet, network: Network, filter: TransactionFilter, options?: Partial<UseHistoryOptions>): TxHistory => {
+export const useTxHistory = (sdkClient: Client, password: string): TxHistory => {
   const [stats, setStats] = useState<TransactionStats>(null);
   const [transactions, setTransactions] = useState<Transaction[]>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<any>(null);
 
+  // const options = useMemo(() => ({
+  //   ...defaultUseHistoryOptions,
+  //   ..._options,
+  // }), [_options]);
 
-  options = {
-    ...defaultUseHistoryOptions,
-    ...options,
-  }
 
-  const isAccountUnlocked = true;
-
-  const checkPendingTransactionStatuses = useCallback(async () => {
-    if (!wallet || !network || !isAccountUnlocked) return;
-
-    // History.tsx: this prepared RChainService and optionally checked pending deploys.
-    // Playground: left as a named lifecycle facade without network side effects.
-  }, [isAccountUnlocked, wallet, network]);
-
-  const loadTransactions = useCallback(async () => {
+  const loadTransactions = useCallback(async (network: Network, wallet: Wallet, filter: TransactionFilter, pagination: Pagination) => {
     console.log("useTxHistory: loadTransactions: start");
     setIsLoading(true);
     setError(null);
-    if (!wallet || !network) {
-      setTransactions(null);
-      setStats(null);
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const publicKey = wallet.getPublicKey();
-      if (!publicKey?.length) {
-        setTransactions([]);
-        setStats(await TxHistoryService.calcStatistics([]));
-        setError("Wallet public key is missing");
-        setIsLoading(false);
-        return;
-      }
-
-      const {filteredTxs, stats} = await TxHistoryService.getFilteredTxsWithStats(
+      // const publicKey = wallet.getPublicKey();
+      const {filteredTxs, stats} = await sdkClient.txHistory.getFilteredTxsWithStats(
         network,
         wallet.getAddress(),
-        publicKey,
         filter,
-        0,
-        10, //TODO: from
+        pagination,
+        password
       );
 
       setTransactions(filteredTxs);
       setStats(stats);
     } catch (error) {
       console.error(error);
-      setError(error);
+      setError(String(error));
       setTransactions(null);
       setStats(null);
     }
     setIsLoading(false);
-  }, [filter, wallet, network]);
+  }, [sdkClient, password]);
 
-  useEffect(() => {
-    // History.tsx: initial load + pending status check on wallet/network changes.
-    // Playground: same lifecycle, backed by fixture facades.
-    loadTransactions();
-
-    checkPendingTransactionStatuses().then(() => {
-      loadTransactions();
-    });
-  }, [checkPendingTransactionStatuses, loadTransactions]);
-
-  useEffect(() => {
-    if (options.autoUpdate) {
-      const interval = setInterval(() => {
-        loadTransactions();
-      }, options.autoUpdateInterval);
-      return () => clearInterval(interval);
-    }
-  }, [loadTransactions, options]);
+  // useEffect(() => {
+  //   if (options.autoUpdate) {
+  //     const interval = setInterval(() => {
+  //       loadTransactions();
+  //     }, options.autoUpdateInterval);
+  //     return () => clearInterval(interval);
+  //   }
+  // }, [loadTransactions, options]);
 
   return {
     transactions,

@@ -3,10 +3,8 @@ import {Client, Wallet} from "asi-wallet-sdk";
 
 
 const updateWallets = (sdkClient: Client, setWallets: React.Dispatch<{mnemonicWallets: Wallet[]; privateKeyWallets: Wallet[]}>, setLastIndex: React.Dispatch<number>) => {
-    console.log("updateWallets: start");
     let lastIndexLocal: number | null = null;
     const wallets = sdkClient.vault.getWallets();
-    console.log("updateWallets: wallets=", wallets);
     const privateKeyWallets = wallets.filter(
         (wallet) => wallet.getIndex() === null
     );

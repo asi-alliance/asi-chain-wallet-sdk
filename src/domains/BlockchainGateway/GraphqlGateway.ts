@@ -1,11 +1,13 @@
 import { HttpClient } from "@domains/HttpClient";
 import { Network } from "@domains/Network";
+import { Pagination } from "../../application";
+import { normalizeAddress } from "@domains/Wallet/mapping";
 
 type TransactionType = "send" | "receive" | "deploy";
 type TransactionStatus = "pending" | "confirmed" | "failed";
 
 export interface GatewayTransactionHistoryItem {
-    deployId?: string;
+    deployId: string;
     blockNumber?: number | string;
     from: string;
     to?: string;
@@ -27,7 +29,7 @@ interface TransactionHistoryQueryData {
 }
 
 interface RawTransfer {
-    deploy_id?: string;
+    deploy_id: string;
     block_number?: number | string;
     from_address?: string;
     to_address?: string;
@@ -37,7 +39,7 @@ interface RawTransfer {
 }
 
 interface RawDeployment {
-    deploy_id?: string;
+    deploy_id: string;
     block_number?: number | string;
     deployer?: string;
     timestamp?: number | string;
@@ -47,11 +49,10 @@ interface RawDeployment {
 }
 
 const TRANSACTION_HISTORY_QUERY = `
-  query GetTransactionHistory($address: String!, $publicKey: String!, $offset: Int!, $limit: Int) {
+  query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int) {
     transfers(
       where: {
         _or: [
-          {from_public_key: {_eq: $publicKey}},
           {from_address: {_eq: $address}},
           {to_address: {_eq: $address}}
         ]
@@ -68,22 +69,6 @@ const TRANSACTION_HISTORY_QUERY = `
       timestamp
       from_public_key
     }
-    deployments(
-      where: {
-        deployer: {_eq: $publicKey}
-      },
-      order_by: {block_number: desc},
-      offset: $offset,
-      limit: $limit
-    ) {
-      deploy_id
-      block_number
-      deployer
-      timestamp
-      block {
-        block_hash
-      }
-    }
   }
 `;
 
@@ -93,14 +78,13 @@ export class GraphqlGateway {
     async fetchTransactionHistory(
         network: Network,
         address: string,
-        publicKey: string = "",
-        offset: number = 0,
-        limit: number = Number.POSITIVE_INFINITY,
+        // publicKey: string = "",
+        pagination: Pagination,
     ): Promise<GatewayTransactionHistoryItem[]> {
         try {
             const response = await this.httpClient.post(
                 "",
-                this.createTransactionHistoryRequest(address, publicKey, offset, limit),
+                this.createTransactionHistoryRequest(address, pagination),
             );
             const envelope =
                 this.unwrapGraphqlEnvelope<TransactionHistoryQueryData>(
@@ -109,12 +93,12 @@ export class GraphqlGateway {
 
             if (envelope.errors?.length) {
                 console.error("[GraphQL] GraphQL errors:", envelope.errors);
+                throw envelope.errors;
             }
-
             return this.toTransactionHistoryItems(
-                envelope.data,
+                envelope.data as TransactionHistoryQueryData, //TODO: More accurate error handling in graphql
                 address,
-                publicKey,
+                // publicKey,
             );
         } catch (error: any) {
             if (this.isRecoverableNetworkError(error)) {
@@ -134,17 +118,16 @@ export class GraphqlGateway {
 
     private createTransactionHistoryRequest(
         address: string,
-        publicKey: string,
-        offset: number,
-        limit: number
-    ): { query: string; variables: Record<string, number | string> } {
-        const variables: Record<string, number | string> = {
+        // publicKey: string,
+        pagination: Pagination,
+    ): { query: string; variables: Record<string, number | string | undefined> } {
+        const variables: Record<string, number | string | undefined> = {
             address: address.trim(),
-            offset: this.toGraphqlOffset(offset),
-            publicKey,
+            offset: pagination.offset,
+            // publicKey,
         };
 
-        const normalizedLimit = this.toOptionalGraphqlLimit(limit);
+        const normalizedLimit = pagination.limit;
         if (normalizedLimit !== undefined) {
             variables.limit = normalizedLimit;
         }
@@ -156,14 +139,14 @@ export class GraphqlGateway {
     }
 
     private toTransactionHistoryItems(
-        data: TransactionHistoryQueryData | undefined,
+        data: TransactionHistoryQueryData,
         address: string,
-        publicKey: string,
+        // publicKey: string,
     ): GatewayTransactionHistoryItem[] {
-        const accountAddress = this.normalizeAddress(address);
-        const accountPublicKey = this.normalizeAddress(publicKey);
-        const transfers = this.getArray(data?.transfers);
-        const deployments = this.getArray(data?.deployments);
+        const accountAddress = normalizeAddress(address);
+        // const accountPublicKey = normalizeAddress(publicKey);
+        const transfers = this.getArray(data.transfers);
+        const deployments = this.getArray(data.deployments);
         const deploymentById = this.createDeploymentMap(deployments);
         const transferTxs = transfers
             .map((tx) =>
@@ -176,10 +159,13 @@ export class GraphqlGateway {
                 .map((tx) => tx.deployId)
                 .filter((deployId): deployId is string => !!deployId),
         );
-        const deployTxs = deployments
-            .filter((tx) => tx.deploy_id && !knownDeployIds.has(tx.deploy_id))
-            .map((tx) => this.toDeployHistoryItem(tx, accountPublicKey))
-            .filter(this.isDefined);
+        
+        // const deployTxs = deployments
+        //     .filter((tx) => tx.deploy_id && !knownDeployIds.has(tx.deploy_id))
+        //     .map((tx) => this.toDeployHistoryItem(tx, accountPublicKey))
+        //     .filter(this.isDefined);
+        const deployTxs: GatewayTransactionHistoryItem[] = [];
+
 
         return [...transferTxs, ...deployTxs].sort((a, b) => {
             return (
@@ -225,7 +211,7 @@ export class GraphqlGateway {
     ): GatewayTransactionHistoryItem | undefined {
         const deployer = tx.deployer?.trim();
 
-        if (!deployer || this.normalizeAddress(deployer) !== accountPublicKey) {
+        if (!deployer || normalizeAddress(deployer) !== accountPublicKey) {
             return undefined;
         }
 
@@ -276,8 +262,8 @@ export class GraphqlGateway {
         to: string,
         accountAddress: string,
     ): "send" | "receive" {
-        const normalizedFrom = this.normalizeAddress(from);
-        const normalizedTo = this.normalizeAddress(to);
+        const normalizedFrom = normalizeAddress(from);
+        const normalizedTo = normalizeAddress(to);
 
         if (normalizedFrom === accountAddress) {
             return "send";
@@ -321,33 +307,11 @@ export class GraphqlGateway {
         return new Date(milliseconds);
     }
 
-    private toGraphqlOffset(offset: number): number {
-        if (!Number.isFinite(offset) || offset < 0) {
-            return 0;
-        }
-
-        return Math.trunc(offset);
-    }
-
-    private toOptionalGraphqlLimit(limit: number): number | undefined {
-        if (!Number.isFinite(limit)) {
-            return undefined;
-        }
-
-        if (limit <= 0) {
-            return 0;
-        }
-
-        return Math.trunc(limit);
-    }
-
     private getArray<T>(value: T[] | undefined): T[] {
         return Array.isArray(value) ? value : [];
     }
 
-    private normalizeAddress(address: string | undefined): string {
-        return address?.trim().toLowerCase() ?? "";
-    }
+
 
     private isRecoverableNetworkError(error: any): boolean {
         const message = String(error?.message ?? "");

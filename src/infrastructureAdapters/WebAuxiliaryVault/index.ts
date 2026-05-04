@@ -61,7 +61,9 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
   }
 
   public async lock(password: string): Promise<void> {
-    this.ensureUnlocked();
+    if(this.isLocked) {
+      return;
+    }
 
     this.encryptedVaultData = await CryptoService.encryptWithPassword(
       this.toString(),
@@ -79,7 +81,7 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
     if (!this.encryptedVaultData) {
       throw new Error("Auxiliary vault was locked without encrypted data");
     }
-
+    console.log("WebAuxiliaryVault: unlock: password=", password);
     const decryptedData = await CryptoService.decryptWithPassword(
       this.encryptedVaultData,
       password

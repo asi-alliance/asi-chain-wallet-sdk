@@ -4,73 +4,70 @@ import {
     type ReactElement,
 } from "react";
 import KeyValueTable from "@components/common/KeyValueTable";
-import {Network, TxHistory, Wallet} from "asi-wallet-sdk";
+import {Network, Pagination, TransactionFilter, Wallet} from "asi-wallet-sdk";
+import { TxHistory } from "../../../sdk-react-kit/hooks/useTxHistory";
 
 interface TxHistoryActionsProps {
     selectedAccount?: Wallet;
     selectedNetwork?: Network;
-    onRefreshAndSync: () => void | Promise<void>;
-    isTxHistoryLoading: boolean;
-    txHistoryError: string | null;
-    offset: number;
-    limit: number;
+    filter: TransactionFilter;
+    txHistory: TxHistory;
+}
+
+const pagination: Pagination = {
+    offset: 0,
+    // limit: Number.POSITIVE_INFINITY,
+    limit: undefined,
 }
 
 const TxHistoryActions = ({
     selectedAccount,
     selectedNetwork,
-    onRefreshAndSync,
-    isTxHistoryLoading,
-    txHistoryError,
-    offset,
-    limit,
+    filter,
+    txHistory
 }: TxHistoryActionsProps): ReactElement => {
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     const handleRefreshAndSync = async () => {
-        await onRefreshAndSync();
+        await txHistory.loadTransactions(selectedNetwork, selectedAccount, filter, pagination)
         setLastRefresh(new Date());
     };
 
     const handleExportJSON = useCallback(async () => {
-        if (!selectedAccount || !selectedNetwork) return;
-
         try {
-            const publicKey = selectedAccount.getPublicKey();
-            if (!publicKey?.length) {
-                throw new Error("Wallet public key is missing");
-            }
+            // const publicKey = selectedAccount.getPublicKey();
+            // if (!publicKey?.length) {
+                // throw new Error("Wallet public key is missing");
+            // }
 
-            await TxHistory.downloadTransactions(
-                selectedNetwork,
-                selectedAccount.getAddress(),
-                publicKey,
-                offset,
-                limit,
-                "json",
-            );
+            // await TxHistory.downloadTransactions(
+            //     selectedNetwork,
+            //     selectedAccount.getAddress(),
+            //     publicKey,
+            //     offset,
+            //     limit,
+            //     "json",
+            // );
         } catch (error) {
             console.error(error);
         }
     }, [selectedAccount, selectedNetwork]);
 
     const handleExportCSV = useCallback(async () => {
-        if (!selectedAccount || !selectedNetwork) return;
-
         try {
-            const publicKey = selectedAccount.getPublicKey();
-            if (!publicKey?.length) {
-                throw new Error("Wallet public key is missing");
-            }
+            // const publicKey = selectedAccount.getPublicKey();
+            // if (!publicKey?.length) {
+            //     throw new Error("Wallet public key is missing");
+            // }
 
-            await TxHistory.downloadTransactions(
-                selectedNetwork,
-                selectedAccount.getAddress(),
-                publicKey,
-                offset,
-                limit,
-                "csv",
-            );
+            // await TxHistory.downloadTransactions(
+            //     selectedNetwork,
+            //     selectedAccount.getAddress(),
+            //     publicKey,
+            //     offset,
+            //     limit,
+            //     "csv",
+            // );
         } catch (error) {
             console.error(error);
         }
@@ -82,8 +79,8 @@ const TxHistoryActions = ({
             <div>
                 <KeyValueTable
                     rows={[
-                        { key: "isTxHistoryLoading:", value: isTxHistoryLoading.toString() },
-                        { key: "txHistoryError", value: String(txHistoryError), state: txHistoryError!==null ? "error" : "" },
+                        { key: "isTxHistoryLoading:", value: String(txHistory.isLoading) },
+                        { key: "txHistoryError", value: String(txHistory.error), state: txHistory.error!==null ? "error" : "" },
                         { key: "Last:", value: lastRefresh.toLocaleTimeString() },
                     ]}
                 />
@@ -91,7 +88,7 @@ const TxHistoryActions = ({
                 <button
                     id="history-refresh-button"
                     type="button"
-                    onClick={() => void handleRefreshAndSync()}
+                    onClick={() => handleRefreshAndSync()}
                 >
                     Refresh &amp; Sync
                 </button>

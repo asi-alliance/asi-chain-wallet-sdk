@@ -22,7 +22,6 @@ export const TxHistoryPrerequisites = ({
     void setNetwork;
 
     const {flatWallets} = useSdkContext();
-    console.log(flatWallets)
 
     const accountOptions = useMemo(() => {
         return [{value: "", label: "Select wallet"}, ...flatWallets.map((wallet) => ({

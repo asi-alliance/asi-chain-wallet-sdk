@@ -103,7 +103,6 @@ export default class WebVault implements IVault {
         this.isLocked = true;
     }
     public async unlock(password: string): Promise<void> {
-        console.log("unlock: start")
         if (!this.isLocked) {
             return;
         }
@@ -125,9 +124,7 @@ export default class WebVault implements IVault {
         this.metaToSeeds(seeds);
 
         this.isLocked = false;
-        console.log("point1")
         this.uiEventDispatcher.onVaultChanged?.();
-        console.log("point2")
     }
     /* vault management */
 

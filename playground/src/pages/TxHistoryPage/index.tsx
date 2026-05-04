@@ -12,8 +12,8 @@ import {
 } from "./fixtures/txHistory.fixture";
 import "./styles.css";
 import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
-import { useTxHistory } from "../../sdk-react-kit/hooks/useTxHistory";
 import { type TransactionFilter } from "asi-wallet-sdk";
+import { useSdkContext } from "../../sdk-react-kit";
 
 const TxHistoryPage = (): ReactElement => {
     const networks = networksFixture;
@@ -22,9 +22,8 @@ const TxHistoryPage = (): ReactElement => {
     const [network, setNetwork] = useState(networks[0]);
     const [filter, setFilter] = useState<TransactionFilter>({});
 
-    const {transactions, stats, loadTransactions, isLoading: isTxHistoryLoading, error: txHistoryError} = useTxHistory(wallet, network, filter, {autoUpdate: true});
+    const {txHistory} = useSdkContext();
 
-    console.log("TxHistoryPage: transactions=", transactions);
     const onFilterChange = useCallback((nextFilter: TransactionFilter) => {
         setFilter(nextFilter);
     }, []);
@@ -36,20 +35,17 @@ const TxHistoryPage = (): ReactElement => {
             <TxHistoryActions
                 selectedAccount={wallet}
                 selectedNetwork={network}
-                onRefreshAndSync={loadTransactions}
-                isTxHistoryLoading={isTxHistoryLoading}
-                txHistoryError={txHistoryError}
-                offset={0}
-                limit={10}
+                filter={filter}
+                txHistory={txHistory}
             />
             <TxHistoryFilters
                 filter={filter}
                 networks={networks}
                 onFilterChange={onFilterChange}
             />
-            <TxHistoryStats stats={stats} />
+            <TxHistoryStats stats={txHistory.stats} />
             <TxList
-                transactions={transactions}
+                transactions={txHistory.transactions}
                 selectedAccount={wallet}
             />
         </main>

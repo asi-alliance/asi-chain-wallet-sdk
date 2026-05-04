@@ -4,13 +4,10 @@ import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
-import { useWallets } from "../../sdk-react-kit/hooks/useWallets";
 
 const WalletsPage = (): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
     const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
-    console.log("WalletsPage: wallets=", wallets);
-    // const {wallets, lastIndex} = useWallets();
     const {
         removeWallet,
         importPk,
@@ -79,6 +76,7 @@ const WalletsPage = (): ReactElement => {
                                 tabIndex={0}
                             >
                                 <WalletCard
+                                    sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
                                     assetsService={sdkClient.assetsService}
@@ -168,6 +166,7 @@ const WalletsPage = (): ReactElement => {
                                 tabIndex={0}
                             >
                                 <WalletCard
+                                    sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
                                     assetsService={sdkClient.assetsService}

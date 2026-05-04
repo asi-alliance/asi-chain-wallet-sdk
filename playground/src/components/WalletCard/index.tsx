@@ -11,13 +11,16 @@ import {
     DeployStatus,
     FeeService,
     GasFeeVO,
+    Client,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
+import { networksFixture } from "@pages/TxHistoryPage/fixtures/txHistory.fixture";
 
 export interface IWalletCardProps {
+    sdkClient: Client;
     wallet: Wallet;
     removeWallet: (id: Address) => void;
     assetsService: AssetsService;
@@ -26,10 +29,13 @@ export interface IWalletCardProps {
 const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const WalletCard = ({
+    sdkClient,
     wallet,
     removeWallet,
     assetsService,
 }: IWalletCardProps): ReactElement => {
+    const network = networksFixture[0];
+
     const { setModalState, withLoader } = useAppContext();
 
     const reservationService = useMemo(
@@ -104,18 +110,20 @@ const WalletCard = ({
             try {
                 setIsSending(true);
 
-                const data = await assetsService.transfer(
+                // const data = await assetsService.transfer(
+                const data = await sdkClient.transfer(
+                    network,        
                     address,
                     toAddress,
                     balance,
                     amount,
                     gasFee,
+                    password,
                     wallet,
-                    () => Promise.resolve(password),
                 );
                 // alert("Transfer successful!");
 
-                registerPendingDeploy(data, amount, toAddress);
+                registerPendingDeploy(data, amount, toAddress); //TODO: use common vault for txHistory txs and wallets deploys 
 
                 await fetchBalance();
 
