@@ -117,4 +117,8 @@ export class Client {
         await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
         return deployId;
     }
+    public clearPersistance() {
+        this._vault?.clearSavedVault();
+        this._auxilliaryVault?.removeFromStorage();
+    }
 }

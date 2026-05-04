@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useEffect,
     useState,
     type ReactElement,
 } from "react";
@@ -29,9 +30,12 @@ const TxHistoryActions = ({
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     const handleRefreshAndSync = async () => {
-        await txHistory.loadTransactions(selectedNetwork, selectedAccount, filter, pagination)
+        await txHistory.loadTransactions(selectedNetwork, selectedAccount, filter, pagination);
         setLastRefresh(new Date());
     };
+    useEffect(() => {
+        handleRefreshAndSync();
+    }, [selectedNetwork, selectedAccount, filter, pagination]); 
 
     const handleExportJSON = useCallback(async () => {
         try {

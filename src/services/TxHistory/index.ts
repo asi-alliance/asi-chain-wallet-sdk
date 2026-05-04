@@ -1,4 +1,4 @@
-import { Network, Transaction } from '@domains/';
+import { Address, Network, Transaction } from '@domains/';
 import { BlockchainGateway } from '@domains/';
 import type { GatewayTransactionHistoryItem } from '@domains/BlockchainGateway/GraphqlGateway';
 import { fromAtomicAmount, toAtomicAmount } from '@utils';
@@ -7,19 +7,19 @@ import { TransactionFilter, TransactionStats } from './types';
 import { applyTransactionFilter } from './helpers';
 import { IAuxiliaryVault } from '../../application/ports/outbound/IAuxiliaryVault';
 import { normalizeAddress } from '@domains/Wallet/mapping';
-import { IFileSaver, Pagination } from '../../application';
+import { IFileSaver, Order, Pagination } from '../../application';
 export * from './types';
 export { hasActiveTransactionFilters } from "./helpers";
 
 export class TxHistory {
-    constructor(private _auxilliaryVault?: IAuxiliaryVault, private _fileSaver?: IFileSaver) {
+    constructor(private _auxiliaryVault?: IAuxiliaryVault, private _fileSaver?: IFileSaver) {
 
     }
-    private get auxilliaryVault() {
-        if(!this._auxilliaryVault) {
-            throw new Error("TxHistory: To call this method, you need to provide auxilliaryVault when initializing the sdk")
+    private get auxiliaryVault() {
+        if(!this._auxiliaryVault) {
+            throw new Error("TxHistory: To call this method, you need to provide auxiliaryVault when initializing the sdk")
         }
-        return this._auxilliaryVault;
+        return this._auxiliaryVault;
     }
     private get fileSaver() {
         if(!this._fileSaver) {
@@ -42,11 +42,11 @@ export class TxHistory {
             type: "send",
             network: network.id,
         }
-        await this.auxilliaryVault.unlock(auxVaultPassword);
-        this.auxilliaryVault.transactions.set(deployId, tx);
-        console.log("storeTxInAuxVault: auxilliaryVault.transactions=", this.auxilliaryVault.transactions);
-        await this.auxilliaryVault.lock(auxVaultPassword);
-        this.auxilliaryVault.save();
+        await this.auxiliaryVault.unlock(auxVaultPassword);
+        this.auxiliaryVault.transactions.set(deployId, tx);
+        console.log("storeTxInAuxVault: auxiliaryVault.transactions=", this.auxiliaryVault.transactions);
+        await this.auxiliaryVault.lock(auxVaultPassword);
+        this.auxiliaryVault.save();
     }
 
     /**
@@ -54,16 +54,16 @@ export class TxHistory {
      * @returns updated transactions from auxilliary vault
      */
     private async removeExcessTxsInAuxVault(indexerTxs: Transaction[], auxVaultPassword: string): Promise<Transaction[]> {
-        await this.auxilliaryVault.unlock(auxVaultPassword);
-        console.log(Array.from(this.auxilliaryVault.transactions.entries()));
-        for(const [key, value] of this.auxilliaryVault.transactions.entries()) {
+        await this.auxiliaryVault.unlock(auxVaultPassword);
+        console.log(Array.from(this.auxiliaryVault.transactions.entries()));
+        for(const [key, value] of this.auxiliaryVault.transactions.entries()) {
             if(indexerTxs.find(tx => tx.deployId === value.deployId)) {
-                this.auxilliaryVault.transactions.delete(key);
+                this.auxiliaryVault.transactions.delete(key);
             }
         }
-        const auxVaultTxs = Array.from(this.auxilliaryVault.transactions.values());
-        await this.auxilliaryVault.lock(auxVaultPassword);
-        this.auxilliaryVault.save();
+        const auxVaultTxs = Array.from(this.auxiliaryVault.transactions.values());
+        await this.auxiliaryVault.lock(auxVaultPassword);
+        this.auxiliaryVault.save();
         return auxVaultTxs;
     }
     /* /txs in local vault */
@@ -88,16 +88,6 @@ export class TxHistory {
             detectedBy: 'auto'
         };
     }
-    private belongsToAccount(
-        tx: GatewayTransactionHistoryItem,
-        address: string,
-    ): boolean {
-        const normalizedAddress = normalizeAddress(address);
-        const normalizedFrom = normalizeAddress(tx.from);
-        const normalizedTo = normalizeAddress(tx.to);
-
-        return normalizedAddress === normalizedFrom  || normalizedAddress === normalizedTo ;
-    }
     /* /getIndexerTxs helpers */
     private async getIndexerTxs(
         network: Network,
@@ -114,36 +104,48 @@ export class TxHistory {
                 // publicKeyHex,
                 pagination,
             );
-            const transactions = blockchainTxs
-                .filter((tx) => this.belongsToAccount(tx, address))
-                .map((tx) => this.toTransaction(tx, network))
-                .filter((tx): tx is Transaction => tx !== undefined);
-
+            const transactions = blockchainTxs.map((tx) => this.toTransaction(tx, network))
             return transactions;
         } catch (error: any) {
             console.error(error);
             return [];
         }
     }
-    
+
+    /**
+     * @param auxVaultTxs all transactions in auxiliary vault
+     * @param the address to which the filtered transactions should be related. to or from.
+     */
+    filterAndMapAuxVaultTxsWithAddress(auxVaultTxs: Transaction[], address: Address) {
+        const filtered = auxVaultTxs.filter(tx => tx.from ===address || tx.to===address);
+        filtered.forEach(tx => {
+            if(tx.to === address) {
+                tx.type = "receive"; //Transactions are saved only for the sender's wallet. If they also apply to the recipient's wallet, their type must be changed.
+            }
+        });
+        return filtered;
+    }
+    private sortTxsByTimestamp(txs: Transaction[], order: Order = "desc"): Transaction[] {
+        const sign = order === "asc" ? 1 : -1;
+        return txs.sort((a, b) => sign*(a.timestamp.valueOf() - b.timestamp.valueOf()));
+    }
     /**
      * sends a query to the indexer, updates local transactions, and returns the updated result
      * @returns both local and indexer transactions
      */
     public async syncTransactions(
         network: Network,
-        address: string,
+        address: Address,
         // publicKey: Uint8Array,
         pagination: Pagination,
         auxVaultPassword: string,
     ): Promise<Transaction[]> {
         const indexerTxs = await this.getIndexerTxs(network, address, pagination);
         const auxVaultTxs = await this.removeExcessTxsInAuxVault(indexerTxs, auxVaultPassword);
-        console.log("syncTransactions: auxVaultTxs=", auxVaultTxs);
-        return [
-            ...auxVaultTxs,
-            ...indexerTxs,
-        ]
+        const filteredAuxVaultTxs = this.filterAndMapAuxVaultTxsWithAddress(auxVaultTxs, address);
+
+        const mixedTxs = [...filteredAuxVaultTxs, ...indexerTxs];
+        return this.sortTxsByTimestamp(mixedTxs);
     }
 
     /* calcStatistics helpers */
@@ -200,7 +202,7 @@ export class TxHistory {
 
     public async getFilteredTxsWithStats(
         network: Network,
-        address: string,
+        address: Address,
         // publicKey: Uint8Array,
         filter: TransactionFilter,
         pagination: Pagination,
@@ -219,7 +221,7 @@ export class TxHistory {
 
     public async exportTransactions(
         network: Network,
-        address: string,
+        address: Address,
         // publicKey: Uint8Array,
         pagination: Pagination,
         format: 'json' | 'csv' = 'json',
@@ -269,8 +271,8 @@ export class TxHistory {
 
     public async downloadTransactions(
         network: Network,
-        address: string,
-        publicKey: Uint8Array,
+        address: Address,
+        // publicKey: Uint8Array,
         pagination: Pagination,
         format: 'json' | 'csv' = 'json',
         auxVaultPassword: string

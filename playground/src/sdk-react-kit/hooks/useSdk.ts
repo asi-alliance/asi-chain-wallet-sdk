@@ -91,7 +91,6 @@ const useSdk = ({
                         await sdkClient.vault.unlock(password);
                         sdkClient.vaultsPassword=password;
                         setCurrentPassword(password);
-                        await sdkClient.uiEventDispatcher.onVaultChanged?.();
                     });
                 } else {
                     onVaultPasswordRequired(async (password) => {
@@ -109,7 +108,7 @@ const useSdk = ({
     }, [config]);
 
     const clearSdkData = useCallback(() => {
-        sdkClient?.vault.clearSavedVault();
+        sdkClient?.clearPersistance();
     }, [sdkClient]);
 
     return {
