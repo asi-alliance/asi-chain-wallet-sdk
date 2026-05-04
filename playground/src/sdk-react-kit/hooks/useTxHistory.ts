@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Client, Network, Pagination, Transaction, TransactionFilter, TransactionStats, Wallet } from "asi-wallet-sdk";
+import { Address, Client, Network, Pagination, Transaction, TransactionFilter, TransactionStats, Wallet } from "asi-wallet-sdk";
 
 // interface UseHistoryOptions {
 //   autoUpdate: boolean;
@@ -9,6 +9,7 @@ export interface TxHistory {
   stats: TransactionStats;
   transactions: Transaction[];
   loadTransactions: (...args: any) => Promise<any>; //TODO: any
+  downloadTransactions: (...args: any) => Promise<any>;
   error: string | null;
   isLoading: boolean;
 }
@@ -55,14 +56,9 @@ export const useTxHistory = (sdkClient: Client, password: string): TxHistory => 
     setIsLoading(false);
   }, [sdkClient, password]);
 
-  // useEffect(() => {
-  //   if (options.autoUpdate) {
-  //     const interval = setInterval(() => {
-  //       loadTransactions();
-  //     }, options.autoUpdateInterval);
-  //     return () => clearInterval(interval);
-  //   }
-  // }, [loadTransactions, options]);
+  const downloadTransactions = useCallback(async (network: Network, address: Address, pagination: Pagination, format: "json" | "csv") => {
+    await sdkClient.txHistory.downloadTransactions(network, address, pagination, format, password);
+  }, [sdkClient, password]);
 
   return {
     transactions,
@@ -70,5 +66,6 @@ export const useTxHistory = (sdkClient: Client, password: string): TxHistory => 
     loadTransactions,
     isLoading,
     error,
+    downloadTransactions,
   }
 }

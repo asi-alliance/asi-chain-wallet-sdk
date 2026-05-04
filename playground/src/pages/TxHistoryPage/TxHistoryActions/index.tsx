@@ -5,7 +5,7 @@ import {
     type ReactElement,
 } from "react";
 import KeyValueTable from "@components/common/KeyValueTable";
-import {Network, Pagination, TransactionFilter, Wallet} from "asi-wallet-sdk";
+import { Network, Pagination, TransactionFilter, Wallet} from "asi-wallet-sdk";
 import { TxHistory } from "../../../sdk-react-kit/hooks/useTxHistory";
 
 interface TxHistoryActionsProps {
@@ -37,45 +37,19 @@ const TxHistoryActions = ({
         handleRefreshAndSync();
     }, [selectedNetwork, selectedAccount, filter, pagination]); 
 
-    const handleExportJSON = useCallback(async () => {
+    const onDownloadTxs = useCallback(async (format: "json" | "csv") => {
         try {
-            // const publicKey = selectedAccount.getPublicKey();
-            // if (!publicKey?.length) {
-                // throw new Error("Wallet public key is missing");
-            // }
-
-            // await TxHistory.downloadTransactions(
-            //     selectedNetwork,
-            //     selectedAccount.getAddress(),
-            //     publicKey,
-            //     offset,
-            //     limit,
-            //     "json",
-            // );
+            txHistory.downloadTransactions(
+                selectedNetwork,
+                selectedAccount.getAddress(),
+                // publicKey,
+                pagination,
+                format,
+            );
         } catch (error) {
             console.error(error);
         }
-    }, [selectedAccount, selectedNetwork]);
-
-    const handleExportCSV = useCallback(async () => {
-        try {
-            // const publicKey = selectedAccount.getPublicKey();
-            // if (!publicKey?.length) {
-            //     throw new Error("Wallet public key is missing");
-            // }
-
-            // await TxHistory.downloadTransactions(
-            //     selectedNetwork,
-            //     selectedAccount.getAddress(),
-            //     publicKey,
-            //     offset,
-            //     limit,
-            //     "csv",
-            // );
-        } catch (error) {
-            console.error(error);
-        }
-    }, [selectedAccount, selectedNetwork]);
+    }, [txHistory, selectedAccount, selectedNetwork]);
 
     return (
         <section className="section">
@@ -102,14 +76,14 @@ const TxHistoryActions = ({
                 <button
                     id="history-export-json-button"
                     type="button"
-                    onClick={() => void handleExportJSON()}
+                    onClick={() => onDownloadTxs("json")}
                 >
                     Export JSON
                 </button>
                 <button
                     id="history-export-csv-button"
                     type="button"
-                    onClick={() => void handleExportCSV()}
+                    onClick={() => onDownloadTxs("csv")}
                 >
                     Export CSV
                 </button>
