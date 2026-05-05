@@ -2,6 +2,7 @@ import axios, { AxiosRequestConfig } from "axios";
 import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
 import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
 import { SignedResult } from "@domains/Signer";
+import { GraphqlGateway } from "./GraphqlGateway";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",
@@ -15,7 +16,7 @@ export type DeployStatusResult =
     | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR>}
     | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
 
-type GatewayClientConfig = {
+export type GatewayClientConfig = {
     baseUrl: string;
     axiosConfig?: AxiosRequestConfig;
 };
@@ -23,17 +24,28 @@ type GatewayClientConfig = {
 export interface BlockchainGatewayConfig {
     validator: GatewayClientConfig;
     indexer: GatewayClientConfig;
+    graphql: GatewayClientConfig;
 }
 
 export default class BlockchainGateway {
     private static instance: BlockchainGateway;
-
+    /**
+     * regular deploy
+     */
     private validatorClient: HttpClient;
+    /**
+     * read only node.
+     */
     private indexerClient: HttpClient;
+    /**
+     * graphql indexer
+     */
+    public graphqlGateway: GraphqlGateway;
 
-    private constructor(validatorClient: HttpClient, indexerClient: HttpClient) {
+    private constructor(validatorClient: HttpClient, indexerClient: HttpClient, graphqlClient: HttpClient) {
         this.validatorClient = validatorClient;
         this.indexerClient = indexerClient;
+        this.graphqlGateway = new GraphqlGateway(graphqlClient);
     }
 
     private static createHttpClient(config: GatewayClientConfig): HttpClient {
@@ -58,7 +70,8 @@ export default class BlockchainGateway {
     public static init(config: BlockchainGatewayConfig): BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
             this.createHttpClient(config.validator), 
-            this.createHttpClient(config.indexer)
+            this.createHttpClient(config.indexer),
+            this.createHttpClient(config.graphql),
         );
         return BlockchainGateway.instance;
     }
@@ -83,7 +96,7 @@ export default class BlockchainGateway {
 
     public async submitDeploy(
         deployData: SignedResult,
-    ): Promise<string | undefined> {
+    ): Promise<string> {
         try {           
             const result = await this.validatorClient.post("/api/deploy", deployData, {
                 headers: {
@@ -218,4 +231,8 @@ export default class BlockchainGateway {
 
         return blocks[0];
     }
+
+    /* graphql */
+
+    /* /graphql */
 }

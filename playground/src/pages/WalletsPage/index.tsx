@@ -1,65 +1,34 @@
 import WalletCard from "../../components/WalletCard";
-import { Fragment, useMemo, useState, type ReactElement } from "react";
-import { Address, AssetsService, Vault } from "asi-wallet-sdk";
+import { Fragment, useState, type ReactElement } from "react";
+import { useAppContext } from "@components/Application/context";
+import { useSdkContext } from "../../sdk-react-kit/SdkContext";
+import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
 
-interface WalletsPageProps {
-    vault: Vault;
-    assetsService: AssetsService;
-    removeWallet: (id: Address) => void;
-    importPk: () => void;
-    importDk: (words: 12 | 24) => void;
-    createPk: () => void;
-    createDk: (words: 12 | 24) => void;
-    deriveK: (index: number) => void;
-}
+const WalletsPage = (): ReactElement => {
+    const { setModalState, withLoader } = useAppContext();
+    const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
+    const {
+        removeWallet,
+        importPk,
+        importDk,
+        createPk,
+        createDk,
+        deriveK,
+    } = createWalletPageHandlers({
+        sdkClient,
+        saveVault,
+        currentPassword,
+        setModalState,
+        withLoader,
+    });
 
-const WalletsPage = ({
-    vault,
-    assetsService,
-    removeWallet,
-    importPk,
-    importDk,
-    createPk,
-    createDk,
-    deriveK,
-}: WalletsPageProps): ReactElement => {
     const [isChoosingMethod, setIsChoosingMethod] = useState(false);
     const [selectedMode, setSelectedMode] = useState<
         "create" | "import" | null
     >(null);
-    const [lastIndex, setLastIndex] = useState<number | null>(null);
 
-    const wallets = useMemo(() => {
-        let lastIndexLocal: number | null = null;
-
-        if (!vault) {
-            return { privateKeyWallets: [], mnemonicWallets: [] };
-        }
-
-        const wallets = vault.getWallets();
-
-        const privateKeyWallets = wallets.filter(
-            (wallet) => wallet.getIndex() === null
-        );
-        const mnemonicWallets = wallets.filter((wallet) => {
-            if (typeof wallet.getIndex() === "number") {
-                lastIndexLocal = Math.max(
-                    lastIndexLocal === null ? -1 : lastIndexLocal,
-                    wallet.getIndex() as number
-                );
-            } else {
-                return false;
-            }
-            return true;
-        });
-
-        setLastIndex(lastIndexLocal);
-
-        return { privateKeyWallets, mnemonicWallets };
-    }, [vault]);
-
-    if (!vault) {
+    if (!sdkClient?.vault) {
         return <div>Loading vault...</div>;
     }
 
@@ -74,26 +43,8 @@ const WalletsPage = ({
         setSelectedMode(null);
     };
 
-    const resetApp = () => {
-        if (window.confirm("Are you sure? This action will wipe App's data")) {
-            localStorage.clear();
-            window.location.reload();
-            return;
-        }
-    };
-
     return (
         <div className="wallets-page">
-            <div className="wallets-page__header">
-                <div>
-                    <h2 className="wallets-page__title">ASI Wallets SDK</h2>
-                    <h3>PLAYGROUND</h3>
-                </div>
-                <button className="wallets-page__action" onClick={resetApp}>
-                    CLEAR LS
-                </button>
-            </div>
-
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
@@ -125,9 +76,10 @@ const WalletsPage = ({
                                 tabIndex={0}
                             >
                                 <WalletCard
+                                    sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={assetsService}
+                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}
@@ -214,9 +166,10 @@ const WalletsPage = ({
                                 tabIndex={0}
                             >
                                 <WalletCard
+                                    sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={assetsService}
+                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}

@@ -33,7 +33,7 @@ export default class AssetsService {
         wallet: Wallet,
         passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
-    ): Promise<string | undefined> {
+    ): Promise<string> {
         const reservationService = FundsReservationService.getInstance();
         let reservationId: string | null = null;
 

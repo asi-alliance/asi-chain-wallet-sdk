@@ -1,5 +1,6 @@
 import App from "@components/Application";
 import { createRoot, type Root } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 
 import "./theme/commonStyles.css";
 
@@ -11,4 +12,8 @@ if (!rootElement) {
 
 const reactRoot: Root = createRoot(rootElement);
 
-reactRoot.render(<App />);
+reactRoot.render(
+    <BrowserRouter>
+        <App />
+    </BrowserRouter>,
+);

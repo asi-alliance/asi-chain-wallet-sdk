@@ -7,15 +7,12 @@ import {
     KeyDerivationService,
     MnemonicService,
     MnemonicStrength,
-    BlockchainGateway,
-    AssetsService,
     KeysManager,
-    Wallet,
-    Vault,
+    Wallet
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
-const VAULT_GET_KEY = "ASI_WALLETS_VAULT_test_vault";
+
 
 export enum Modals {
     PASSWORD_MODAL = "unlockVault",
@@ -32,32 +29,6 @@ export type ModalProps =
     | IDeriveWalletModalProps
     | ITransferCompletedModalProps
     | undefined;
-
-export const init = (config, setVault, setAssetsService) => {
-    try {
-        BlockchainGateway.init({
-            validator: {
-                baseUrl: config.ValidatorURL,
-                axiosConfig: {},
-            },
-            indexer: {
-                baseUrl: config.ReadOnlyURL,
-                axiosConfig: {},
-            },
-        });
-
-        const assetsService = new AssetsService();
-
-        const encryptedVaultData = Vault.getVaultDataFromStorage(VAULT_GET_KEY);
-
-        const vault = new Vault(encryptedVaultData);
-
-        setVault(vault);
-        setAssetsService(assetsService);
-    } catch (error) {
-        alert(error?.message || "Error during initialization");
-    }
-};
 
 const wordsCountToMnemonicStrength = (words: 12 | 24) => {
     const valuesRecord: Record<number, MnemonicStrength> = {

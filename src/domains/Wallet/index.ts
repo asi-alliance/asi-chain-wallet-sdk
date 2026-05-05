@@ -3,6 +3,7 @@ import KeysManager from "@services/KeysManager";
 import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
+import { decodeBase16, encodeBase16 } from "@utils/codec";
 import { sign } from "@noble/secp256k1";
 
 type AddressBrand = { readonly __brand: unique symbol };
@@ -36,6 +37,7 @@ export default class Wallet {
     private static unsafeRawKeyExportEnabled = false;
     private name: string;
     private address: Address;
+    // private publicKey: Uint8Array;
     private privateKey: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
@@ -53,6 +55,7 @@ export default class Wallet {
         this.index = index;
         this.masterNodeId = masterNodeId;
         this.address = address;
+        // this.publicKey = KeysManager.getKeyPairFromPrivateKey(encryptedPrivateKey);
         this.privateKey = encryptedPrivateKey;
         this.assets = new Map();
         this.isLocked = true;
@@ -65,8 +68,9 @@ export default class Wallet {
         masterNodeId: string | null = null,
         index: number | null = null,
     ): Promise<Wallet> {
+        const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
         const address: Address =
-            WalletsService.deriveAddressFromPrivateKey(privateKey);
+            WalletsService.deriveAddressFromPublicKey(publicKey);
 
         const encrypted: EncryptedData = await this.encryptPrivateKey(
             privateKey,
@@ -149,6 +153,8 @@ export default class Wallet {
         callback: (signingCapability: SigningCapability) => Promise<T> | T,
     ): Promise<T> {
         const privateKey = await this.decryptPrivateKey(password);
+        const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
+        // this.publicKey = new Uint8Array(publicKey);
         let expired = false;
 
         const signingCapability: SigningCapability = {
@@ -164,7 +170,7 @@ export default class Wallet {
                     throw new Error("Signing capability has expired");
                 }
 
-                return KeysManager.getPublicKeyFromPrivateKey(privateKey);
+                return new Uint8Array(publicKey);
             },
         };
 
@@ -188,6 +194,10 @@ export default class Wallet {
         return this.address;
     }
 
+    // public getPublicKey(): Uint8Array | undefined {
+    //     return this.publicKey ? new Uint8Array(this.publicKey) : undefined;
+    // }
+
     public getName(): string {
         return this.name;
     }
@@ -208,6 +218,7 @@ export default class Wallet {
         const meta: StoredWalletMeta = {
             name: this.name,
             address: this.address,
+            // publicKey: this.publicKey ? encodeBase16(this.publicKey) : undefined,
             encryptedPrivateKey: JSON.stringify(this.privateKey),
             masterNodeId: this.masterNodeId ?? "",
             index: this.index?.toString() ?? "",
