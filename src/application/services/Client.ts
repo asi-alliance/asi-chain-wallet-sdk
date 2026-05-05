@@ -114,7 +114,8 @@ export class Client {
             wallet,
             () => Promise.resolve(password),
         );
-        await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
+        const localTxs = await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
+        this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
         return deployId;
     }
     public clearPersistance() {

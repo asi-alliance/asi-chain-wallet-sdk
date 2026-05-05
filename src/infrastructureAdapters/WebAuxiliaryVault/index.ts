@@ -1,6 +1,7 @@
 import CryptoService, { type EncryptedData } from "@services/Crypto";
 import { Transaction } from "@domains/Transaction";
 import { IAuxiliaryVault } from "../../application/ports/outbound/IAuxiliaryVault";
+import { IUiEventDispatcher } from "../../application/ports/outbound/IUiEventDispatcher";
 
 const DEFAULT_AUXILIARY_VAULT_STORAGE_KEY = "ASI_AUXILLIARY_VAULT";
 

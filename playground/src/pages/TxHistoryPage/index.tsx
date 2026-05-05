@@ -12,7 +12,7 @@ import {
 } from "./fixtures/txHistory.fixture";
 import "./styles.css";
 import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
-import { type TransactionFilter } from "asi-wallet-sdk";
+import { Wallet, type TransactionFilter } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
 
 const TxHistoryPage = (): ReactElement => {
@@ -26,12 +26,17 @@ const TxHistoryPage = (): ReactElement => {
 
     const onFilterChange = useCallback((nextFilter: TransactionFilter) => {
         setFilter(nextFilter);
-    }, []);
+        txHistory.setFilter(nextFilter);
+    }, [txHistory]);
+    const onWalletChange = useCallback((wallet: Wallet) => {
+        setWallet(wallet);
+        txHistory.setAddress(wallet.getAddress())
+    }, [txHistory]);
 
     return (
         <main className="tx-history-page">
             <h1>Transactions</h1>
-            <TxHistoryPrerequisites account={wallet} setAccount={setWallet} network={network} setNetwork={setNetwork} />
+            <TxHistoryPrerequisites account={wallet} setAccount={onWalletChange} network={network} setNetwork={setNetwork} />
             <TxHistoryActions
                 selectedAccount={wallet}
                 selectedNetwork={network}
