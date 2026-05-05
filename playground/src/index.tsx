@@ -1,6 +1,8 @@
 import App from "@components/Application";
 import { createRoot, type Root } from "react-dom/client";
 
+import "./theme/commonStyles.css";
+
 const rootElement: HTMLElement | null = document.getElementById("root");
 
 if (!rootElement) {

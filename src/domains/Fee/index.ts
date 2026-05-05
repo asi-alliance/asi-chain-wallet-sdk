@@ -1,0 +1,1 @@
+export {GasFeeVO} from "./GasFeeVO";

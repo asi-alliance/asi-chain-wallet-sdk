@@ -10,9 +10,13 @@ import {
     FundsReservationService,
     BlockchainGateway,
     DeployStatus,
+    FeeService,
+    GasFeeVO,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
+import { ITransferModalProps } from "@components/TransferModal";
+import { IPasswordModalProps } from "@components/PasswordModal";
 
 export interface IWalletCardProps {
     wallet: Wallet;
@@ -69,59 +73,44 @@ const WalletCard = ({
         setModalState({
             type: Modals.TRANSFER_MODAL,
             props: {
+                fromAddress: address,
                 toAddress: toAddress ?? "",
                 amount: amount ?? 0n,
+                gasFee: FeeService.getGasFeeVO(),
                 currentBalance: balance,
-                commission: 0,
                 onConfirm: handleSend,
                 onClose: () => {
                     setModalState({ type: null });
                 },
-            },
+            } satisfies ITransferModalProps,
         });
     };
 
-    const handleSend = (toAddress, amount) => {
+    const handleSend = (toAddress, balance, amount, gasFee: GasFeeVO) => {
         setModalState({
             type: Modals.PASSWORD_MODAL,
             props: {
                 title: "Unlock your wallet to send ASI",
                 onSubmit: (password: string) =>
-                    transfer(toAddress, amount, password),
+                    transfer(toAddress, balance, amount, gasFee, password),
                 onClose: () => {
                     setModalState({ type: null });
                 },
-            },
+            } satisfies IPasswordModalProps, 
         });
     };
 
-    const transfer = (toAddress, amount, password) =>
+    const transfer = (toAddress, balance, amount, gasFee: GasFeeVO, password) =>
         withLoader(async () => {
             try {
-                if (!isAddress(toAddress)) {
-                    throw new Error("Invalid 'toAddress' provided.");
-                }
-
-                const totalReserved =
-                    reservationService.getTotalReserved(address);
-                const availableBalance = balance - totalReserved;
-
-                if (amount > availableBalance) {
-                    const needed = amount - availableBalance;
-                    const formattedNeeded = fromAtomicAmount(needed);
-                    const formattedAvailable =
-                        fromAtomicAmount(availableBalance);
-                    throw new Error(
-                        `Insufficient available balance. You need ${formattedNeeded} more ASI. Available: ${formattedAvailable} ASI, Transferring: ${fromAtomicAmount(amount)} ASI`,
-                    );
-                }
-
                 setIsSending(true);
 
                 const data = await assetsService.transfer(
                     address,
                     toAddress,
+                    balance,
                     amount,
+                    gasFee,
                     wallet,
                     () => Promise.resolve(password),
                 );

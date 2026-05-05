@@ -57,14 +57,20 @@ export const toAtomicAmount = (amount: number | string): bigint => {
 };
 
 export const fromAtomicAmountToString = (atomicAmount: bigint): string => {
-    const integerPart: bigint = atomicAmount / ASI_BASE_UNIT;
-    const remainder: bigint = atomicAmount % ASI_BASE_UNIT;
+    const isNegative: boolean = atomicAmount < 0n;
+    const normalizedAtomicAmount: bigint = isNegative
+        ? -atomicAmount
+        : atomicAmount;
+
+    const integerPart: bigint = normalizedAtomicAmount / ASI_BASE_UNIT;
+    const remainder: bigint = normalizedAtomicAmount % ASI_BASE_UNIT;
 
     const baseString: string = ASI_BASE_UNIT.toString();
     const decimals: number = baseString.length - 1;
 
     const fraction: string = remainder.toString().padStart(decimals, "0");
-    const resultSting: string = `${integerPart.toString()}.${fraction}`;
+    const sign: string = isNegative ? "-" : "";
+    const resultSting: string = `${sign}${integerPart.toString()}.${fraction}`;
 
     return resultSting
         .replace(REGEX_TRIM_TRAILING_ZEROS, "$1")
