@@ -4,10 +4,48 @@ import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
+import NetworkSelector from "@components/NetworkSelector";
+import { NetworkType, BlockchainGateway } from "asi-wallet-sdk";
+import {Networks} from "@config/index";
+
+const SELECTED_NETWORK_KEY = "asi_selected_network";
+
 
 const WalletsPage = (): ReactElement => {
+    
+    // Network state
+    const [currentNetwork, setCurrentNetwork] = useState<NetworkType>(() => {
+        const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkType;
+        return saved || NetworkType.DEVNET;
+    });
+        const handleNetworkChange = (network: NetworkType) => {
+        withLoader(async () => {
+            try {
+                // Save selected network
+                localStorage.setItem(SELECTED_NETWORK_KEY, network);
+                setCurrentNetwork(network);
+
+                // Reinitialize with new network
+                const networkConfig = Networks[network];
+                if (!networkConfig) {
+                    throw new Error(`Network configuration for ${network} not found`);
+                }
+                
+                // Update gateway network type
+                if (BlockchainGateway.isInitialized()) {
+                    BlockchainGateway.getInstance().setNetworkType(network);
+                }
+            } catch (error) {
+                alert(error?.message || `Failed to switch to ${network} network`);
+                // Revert network if switch fails
+                setCurrentNetwork((prev) => prev);
+            }
+        });
+    };
+
+
     const { setModalState, withLoader } = useAppContext();
-    const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
+    const {sdkClient, saveVault, currentPassword, wallets, lastIndex, network} = useSdkContext();
     const {
         removeWallet,
         importPk,
@@ -45,6 +83,11 @@ const WalletsPage = (): ReactElement => {
 
     return (
         <div className="wallets-page">
+            <NetworkSelector
+                currentNetwork={currentNetwork}
+                onNetworkChange={handleNetworkChange}
+                isLoading={isLoading}
+            />
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">

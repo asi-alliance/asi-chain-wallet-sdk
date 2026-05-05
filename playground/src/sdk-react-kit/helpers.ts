@@ -1,4 +1,4 @@
-import { AssetsService, BlockchainGateway, WebVault, Client, WebAuxiliaryVault, WebFileSaver } from "asi-wallet-sdk";
+import { BlockchainGateway, WebVault, Client, WebAuxiliaryVault, WebFileSaver, NetworkType } from "asi-wallet-sdk";
 
 type NetworkConfig = {
     ValidatorURL: string;
@@ -6,7 +6,7 @@ type NetworkConfig = {
     IndexerURL: string;
 };
 
-const init = async (config: NetworkConfig) => {
+const init = async (config: NetworkConfig, networkType: NetworkType = NetworkType.DEVNET) => {
     const sdkClient = await Client.create({
         vault: new WebVault(),
         auxilliaryVault: new WebAuxiliaryVault(),
@@ -25,7 +25,8 @@ const init = async (config: NetworkConfig) => {
         graphql: {
             baseUrl: config.IndexerURL,
             axiosConfig: {},
-        }
+        },
+        networkType
     });
 
     return sdkClient;
