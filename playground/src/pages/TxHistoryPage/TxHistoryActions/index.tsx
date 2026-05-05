@@ -30,7 +30,7 @@ const TxHistoryActions = ({
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     const handleRefreshAndSync = async () => {
-        await txHistory.loadTransactions(selectedNetwork, selectedAccount, filter, pagination);
+        await txHistory.loadTransactions(selectedNetwork, pagination);
         setLastRefresh(new Date());
     };
     useEffect(() => {
@@ -41,7 +41,6 @@ const TxHistoryActions = ({
         try {
             txHistory.downloadTransactions(
                 selectedNetwork,
-                selectedAccount.getAddress(),
                 // publicKey,
                 pagination,
                 format,

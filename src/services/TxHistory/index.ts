@@ -44,8 +44,10 @@ export class TxHistory {
         }
         await this.auxiliaryVault.unlock(auxVaultPassword);
         this.auxiliaryVault.transactions.set(deployId, tx);
+        const allLocalTxs = Array.from(this.auxiliaryVault.transactions.values());
         await this.auxiliaryVault.lock(auxVaultPassword);
         this.auxiliaryVault.save();
+        return allLocalTxs;
     }
 
     /**
@@ -131,19 +133,17 @@ export class TxHistory {
      * sends a query to the indexer, updates local transactions, and returns the updated result
      * @returns both local and indexer transactions
      */
-    public async syncTransactions(
+    private async syncTransactions(
         network: Network,
         address: Address,
         // publicKey: Uint8Array,
         pagination: Pagination,
         auxVaultPassword: string,
-    ): Promise<Transaction[]> {
+    ) {
         const indexerTxs = await this.getIndexerTxs(network, address, pagination);
         const auxVaultTxs = await this.removeExcessTxsInAuxVault(indexerTxs, auxVaultPassword);
-        const filteredAuxVaultTxs = this.filterAndMapAuxVaultTxsWithAddress(auxVaultTxs, address);
-
-        const mixedTxs = [...filteredAuxVaultTxs, ...indexerTxs];
-        return this.sortTxsByTimestamp(mixedTxs);
+        
+        return {allLocalTxs: auxVaultTxs, indexerTxs: indexerTxs}
     }
 
     /* calcStatistics helpers */
@@ -156,9 +156,9 @@ export class TxHistory {
         }
     }
     /* /calcStatistics helpers */
-    private async calcStatistics(
+    private calcStatistics(
         transactions: Transaction[]
-    ): Promise<TransactionStats> {
+    ): TransactionStats {
 
         const stats = {
             total: transactions.length,
@@ -197,24 +197,63 @@ export class TxHistory {
 
         return stats;
     }
-
-    public async getFilteredTxsWithStats(
+    private getMixedTxsByParts(localTxs: Transaction[], indexerTxs: Transaction[]) {
+        const mixexTxs = [...localTxs, ...indexerTxs];
+        const txs = this.sortTxsByTimestamp(mixexTxs);
+        return txs; 
+    }
+    /**
+     * Allows you to build a transaction history from local and indexer transactions. This method is useful when local and indexer transactions are not updated simultaneously.
+     * @param localTxs Transactions associated with a specific request
+     * @param indexerTxs Transactions associated with a specific request
+     */
+    public buildTxHistoryWithStats(localTxs: Transaction[], indexerTxs: Transaction[]) {
+        const mixexTxs = this.getMixedTxsByParts(localTxs, indexerTxs);
+        return { txs: mixexTxs, stats: this.calcStatistics(mixexTxs) };
+    }
+    /**
+     * @param allLocalTxs all txs in auxiliary vault
+     * @returns filtered by address and filter txs from auxiliary vault
+     */
+    public filterLocalTxs(allLocalTxs: Transaction[], address: Address, filter: TransactionFilter | null) {
+        const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address);
+        const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter));
+        return filteredLocalTxs;
+    }
+    public async getFilteredTxs(
         network: Network,
         address: Address,
         // publicKey: Uint8Array,
         filter: TransactionFilter,
         pagination: Pagination,
         auxVaultPassword: string
-    ): Promise<{ filteredTxs: Transaction[], stats: TransactionStats }> {
-        const transactions = await this.syncTransactions(
+    ): Promise<{ localTxs: Transaction[], indexerTxs: Transaction[] }> {
+        const {allLocalTxs, indexerTxs} = await this.syncTransactions(
             network,
             address,
             // publicKey,
             pagination,
             auxVaultPassword
         );
-        const filteredTxs = applyTransactionFilter(transactions, filter);
-        return { filteredTxs, stats: await this.calcStatistics(transactions) };
+
+        const filteredLocalTxs = this.filterLocalTxs(allLocalTxs, address, filter);
+        const filteredIndexerTxs = this.sortTxsByTimestamp(applyTransactionFilter(indexerTxs, filter));
+
+        return { localTxs: filteredLocalTxs, indexerTxs: filteredIndexerTxs };
+    }
+    /**
+     * A function that retrieves transactions as a single array. Useful when there's no need to separate local and indexer transactions.
+     */
+    public async getMixedTxs(
+        network: Network,
+        address: Address,
+        // publicKey: Uint8Array,
+        filter: TransactionFilter,
+        pagination: Pagination,
+        auxVaultPassword: string
+    ) {
+        const { localTxs, indexerTxs } = await this.getFilteredTxs(network, address, filter, pagination, auxVaultPassword);
+        return this.getMixedTxsByParts(localTxs, indexerTxs);
     }
 
     public async exportTransactions(
@@ -222,10 +261,11 @@ export class TxHistory {
         address: Address,
         // publicKey: Uint8Array,
         pagination: Pagination,
+        filter: TransactionFilter,
         format: 'json' | 'csv' = 'json',
         auxVaultPassword: string
     ): Promise<string> {
-        const transactions = await this.syncTransactions(network, address, pagination, auxVaultPassword);
+        const transactions = await this.getMixedTxs(network, address, filter, pagination, auxVaultPassword);
 
         if (format === 'json') {
             return JSON.stringify(transactions, null, 2);
@@ -272,10 +312,11 @@ export class TxHistory {
         address: Address,
         // publicKey: Uint8Array,
         pagination: Pagination,
+        filter: TransactionFilter,
         format: 'json' | 'csv' = 'json',
         auxVaultPassword: string
     ) {
-        const data = await this.exportTransactions(network, address, pagination, format, auxVaultPassword);
+        const data = await this.exportTransactions(network, address, pagination, filter, format, auxVaultPassword);
         this.fileSaver.save({
             name: `transactions_${(new Date()).toISOString()}.${format}`,
             content: data,

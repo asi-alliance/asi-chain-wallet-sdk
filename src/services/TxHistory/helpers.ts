@@ -15,9 +15,12 @@ export const hasActiveTransactionFilters = (
 
 export const applyTransactionFilter = (
     transactions: Transaction[],
-    filter: TransactionFilter,
+    filter: TransactionFilter | null,
 ): Transaction[] => {
     let filteredTransactions = transactions;
+    if(!filter) {
+        return transactions;
+    }
 
     if (filter.type) {
         filteredTransactions = filteredTransactions.filter(
