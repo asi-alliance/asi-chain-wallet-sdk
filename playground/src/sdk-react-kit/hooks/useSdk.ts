@@ -32,9 +32,7 @@ const useSdk = ({
     });
 
     const reactiveWallets = useWallets(sdkClient);
-    console.log("reactiveWallets=", reactiveWallets);
     const txHistory = useTxHistory(sdkClient, currentPassword);
-    console.log("txHistory=", txHistory);
 
     useEffect(() => {
         callbacksRef.current = {
@@ -94,7 +92,6 @@ const useSdk = ({
                     });
                 } else {
                     onVaultPasswordRequired(async (password) => {
-                        console.log("onVaultPasswordRequired: start")
                         await sdkClient.vault.unlock(password);
                         sdkClient.vaultsPassword=password;
                         setCurrentPassword(password);

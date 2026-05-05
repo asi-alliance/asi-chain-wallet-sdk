@@ -32,7 +32,6 @@ export const useTxHistory = (sdkClient: Client, password: string): TxHistory => 
 
 
   const loadTransactions = useCallback(async (network: Network, wallet: Wallet, filter: TransactionFilter, pagination: Pagination) => {
-    console.log("useTxHistory: loadTransactions: start");
     setIsLoading(true);
     setError(null);
     try {

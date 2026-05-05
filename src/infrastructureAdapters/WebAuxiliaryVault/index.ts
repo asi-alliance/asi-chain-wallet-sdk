@@ -81,7 +81,6 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
     if (!this.encryptedVaultData) {
       throw new Error("Auxiliary vault was locked without encrypted data");
     }
-    console.log("WebAuxiliaryVault: unlock: password=", password);
     const decryptedData = await CryptoService.decryptWithPassword(
       this.encryptedVaultData,
       password

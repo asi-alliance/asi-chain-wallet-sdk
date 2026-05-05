@@ -44,7 +44,6 @@ export class TxHistory {
         }
         await this.auxiliaryVault.unlock(auxVaultPassword);
         this.auxiliaryVault.transactions.set(deployId, tx);
-        console.log("storeTxInAuxVault: auxiliaryVault.transactions=", this.auxiliaryVault.transactions);
         await this.auxiliaryVault.lock(auxVaultPassword);
         this.auxiliaryVault.save();
     }
@@ -55,7 +54,6 @@ export class TxHistory {
      */
     private async removeExcessTxsInAuxVault(indexerTxs: Transaction[], auxVaultPassword: string): Promise<Transaction[]> {
         await this.auxiliaryVault.unlock(auxVaultPassword);
-        console.log(Array.from(this.auxiliaryVault.transactions.entries()));
         for(const [key, value] of this.auxiliaryVault.transactions.entries()) {
             if(indexerTxs.find(tx => tx.deployId === value.deployId)) {
                 this.auxiliaryVault.transactions.delete(key);
