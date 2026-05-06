@@ -1,0 +1,39 @@
+{
+  "name": "f1r3node-staking-api-tests",
+  "version": "1.0.0",
+  "description": "Test suite for F1R3Node staking and validator API endpoints",
+  "main": "staking-api.test.js",
+  "scripts": {
+    "test": "jest --testTimeout=30000",
+    "test:watch": "jest --watch --testTimeout=30000",
+    "test:verbose": "jest --verbose --testTimeout=30000",
+    "test:coverage": "jest --coverage --testTimeout=30000"
+  },
+  "keywords": [
+    "f1r3node",
+    "staking",
+    "validator",
+    "blockchain",
+    "api",
+    "testing"
+  ],
+  "author": "F1R3FLY.io",
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/dist/**"
+    ]
+  }
+}
