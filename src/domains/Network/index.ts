@@ -1,1 +1,1 @@
-export * from "./fixture";
+export {Network, NetworkName} from "./Network";

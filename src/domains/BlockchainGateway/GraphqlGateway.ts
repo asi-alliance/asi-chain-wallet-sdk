@@ -1,7 +1,7 @@
-import { HttpClient } from "@domains/HttpClient";
 import { Network } from "@domains/Network";
 import { Pagination } from "../../application";
 import { normalizeAddress } from "@domains/Wallet/mapping";
+import { IHttpClient } from "../../application/ports/outbound/IHttpClient";
 
 type TransactionType = "send" | "receive" | "deploy";
 type TransactionStatus = "pending" | "confirmed" | "failed";
@@ -73,7 +73,10 @@ const TRANSACTION_HISTORY_QUERY = `
 `;
 
 export class GraphqlGateway {
-    constructor(private httpClient: HttpClient) {}
+    private httpClient: IHttpClient;
+    constructor(httpClient: IHttpClient) {
+        this.httpClient = httpClient;
+    }
 
     async fetchTransactionHistory(
         network: Network,

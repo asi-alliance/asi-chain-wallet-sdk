@@ -1,263 +1,73 @@
-import axios, { AxiosRequestConfig } from "axios";
-import AxiosHttpClient, { HttpClient } from "@domains/HttpClient";
-import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER} from "@utils/constants";
-import { SignedResult } from "@domains/Signer";
+import { AxiosRequestConfig } from "axios";
+
 import { GraphqlGateway } from "./GraphqlGateway";
-
-export enum DeployStatus {
-    DEPLOYING = "Deploying",
-    INCLUDED_IN_BLOCK = "IncludedInBlock",
-    FINALIZED = "Finalized",
-
-    CHECK_ERROR = "CheckingError",
-}
-
-export enum NetworkType {
-    DEV = "Dev",
-    DEVNET = "DevNet",
-}
-
-export type DeployStatusResult = 
-    | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR>}
-    | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
-
-export type GatewayClientConfig = {
-    baseUrl: string;
-    axiosConfig?: AxiosRequestConfig;
-};
+import { IHttpClientConfig, IHttpClientFactory } from "../../application/ports/outbound/IHttpClient";
+import { Network } from "@domains/Network";
+import { ValidatorGateway } from "./ValidatorGateway";
+import { ReadOnlyGateway } from "./ReadOnlyGateway";
+import { getGatewayErrorMessage } from "./common";
 
 export interface BlockchainGatewayConfig {
-    validator: GatewayClientConfig;
-    indexer: GatewayClientConfig;
-    graphql: GatewayClientConfig;
-    networkType?: NetworkType;
+    validator: IHttpClientConfig;
+    indexer: IHttpClientConfig;
+    graphql: IHttpClientConfig;
 }
 
-export default class BlockchainGateway {
-    private static instance: BlockchainGateway;
+export class BlockchainGateway {
+    private httpClientFactory: IHttpClientFactory;
     /**
-     * regular deploy
+     * regular deploy node access
      */
-    private validatorClient: HttpClient;
+    public validatorGateway!: ValidatorGateway;
     /**
-     * read only node.
+     * read only node access.
      */
-    private indexerClient: HttpClient;
+    public readOnlyGateway!: ReadOnlyGateway;
     /**
-     * graphql indexer
+     * access to indexer
      */
-    public graphqlGateway: GraphqlGateway;    
-    private networkType: NetworkType = NetworkType.DEVNET;
+    public graphqlGateway!: GraphqlGateway;    
+    private network!: Network;
 
-    private constructor(validatorClient: HttpClient, indexerClient: HttpClient, graphqlClient: HttpClient, networkType: NetworkType = NetworkType.DEVNET) {
-        this.validatorClient = validatorClient;
-        this.indexerClient = indexerClient;
-        this.graphqlGateway = new GraphqlGateway(graphqlClient);
-        this.networkType = networkType;
+    private constructor(httpClientFactory: IHttpClientFactory, currentNetwork: Network) {
+        this.httpClientFactory = httpClientFactory;
+        this.setNetwork(currentNetwork);
+    }
+    public setNetwork(network: Network) {
+        this.network = network;
+        if(!network.endpoints.validatorUrl) {
+            throw new Error(`BlockchainGateway: validatorUrl for ${network.name} network is not provided! Check .env file`);
+        }
+        this.validatorGateway = new ValidatorGateway(this.httpClientFactory(network.endpoints.validatorUrl));
+        if(!network.endpoints.readOnlyUrl) {
+            throw new Error(`BlockchainGateway: readOnlyUrl for ${network.name} network is not provided! Check .env file`);
+        }
+        this.readOnlyGateway = new ReadOnlyGateway(this.httpClientFactory(network.endpoints.readOnlyUrl), network);
+        if(!network.endpoints.indexerUrl) {
+            throw new Error(`BlockchainGateway: indexerUrl for ${network.name} network is not provided! Check .env file`);
+        }
+        this.graphqlGateway = new GraphqlGateway(this.httpClientFactory(network.endpoints.indexerUrl));
     }
 
-    private static createHttpClient(config: GatewayClientConfig): HttpClient {
-        const axiosInstance = axios.create({
-            baseURL: config.baseUrl,
-            ...config.axiosConfig,
-        });
-
-        return new AxiosHttpClient(axiosInstance);
-    }
-
-    public changeValidator(config: GatewayClientConfig): this {
-        this.validatorClient = BlockchainGateway.createHttpClient(config);
+    public changeValidator(config: IHttpClientConfig): this {
+        this.validatorGateway = new ValidatorGateway(this.httpClientFactory(config.baseUrl, config.axiosConfig))
         return this;
     }
     
-    public changeIndexer(config: GatewayClientConfig): this {
-        this.indexerClient = BlockchainGateway.createHttpClient(config);
+    public changeIndexer(config: IHttpClientConfig): this {
+        this.readOnlyGateway = new ReadOnlyGateway(this.httpClientFactory(config.baseUrl, config.axiosConfig), this.network);
         return this;
     }
 
-    public static init(config: BlockchainGatewayConfig): BlockchainGateway {
-        BlockchainGateway.instance = new BlockchainGateway(
-            this.createHttpClient(config.validator), 
-            this.createHttpClient(config.indexer),
-            this.createHttpClient(config.graphql),
-            config.networkType || NetworkType.DEVNET
-        );
-        return BlockchainGateway.instance;
-    }
 
-    public static isInitialized(): boolean {
-        return BlockchainGateway?.instance !== undefined;
-    }
 
-    public static getInstance(): BlockchainGateway {
-        if (!BlockchainGateway.isInitialized()) {
-            throw new Error(
-                "BlockchainGateway is not initialized. Call BlockchainGateway.init() first.",
-            );
-        }
 
-        return BlockchainGateway.instance;
-    }
-
-    public setNetworkType(networkType: NetworkType): this {
-        this.networkType = networkType;
-        return this;
-    }
-
-    public getNetworkType(): NetworkType {
-        return this.networkType;
-    }
-
-    public getValidatorClientUrl(): string {
-        return this.validatorClient.getBaseUrl() ?? "";
-    }
-
-    public async submitDeploy(
-        deployData: SignedResult,
-    ): Promise<string> {
-        try {           
-            const result = await this.validatorClient.post("/api/deploy", deployData, {
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            console.log("BlockchainGateway.submitDeploy: Deploy result:", result);
-
-            // Parse deploy ID from response
-            if (typeof result === "string") {
-
-                const deployIdMatch = /DeployId is:\s*([a-fA-F0-9]+)/.exec(result);
-
-                if (deployIdMatch) {
-                    return deployIdMatch[1];
-                }
-                return result;
-            }
-
-            return result.signature || result.deployId || result;
-        } catch (error) {
-            const message = "BlockchainGateway.submitDeploy: " + this.getGatewayErrorMessage(error);
-            throw new Error(message);
-        }
-    }
-
-    public async submitExploratoryDeploy(rholangCode: string): Promise<any> {
-        try {
-            // Different networks use different request formats
-            if (this.networkType === NetworkType.DEV) {
-                // Dev network expects {term: rholangCode}
-                return await this.indexerClient.post(`/api/explore-deploy`, { term: rholangCode });
-            } else {
-                // DevNet network expects rholangCode directly
-                return await this.indexerClient.post(`/api/explore-deploy`, rholangCode);
-            }
-        } catch (error) {
-            const message = "BlockchainGateway.submitExploratoryDeploy: " + this.getGatewayErrorMessage(error);
-            throw new Error(message);
-        }
-    }
-    
-    public async exploreDeployData(rholangCode: string): Promise<any> {
-        try {
-            const result = await this.submitExploratoryDeploy(rholangCode);
-            return result.expr;
-        } catch (error: any) {
-            const message = "BlockchainGateway.exploreDeployData: " + this.getGatewayErrorMessage(error);
-            console.error(message);
-            throw new Error(message);
-        }
-    }
-    
-    public async getDeploy(deployHash: string): Promise<any> {
-        return await this.indexerClient.get(`/api/deploy/${deployHash}`);
-    }
-
-    public async isDeployFinalized(deploy: any): Promise<boolean> {
-        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
-    }
-
-    public async getDeployStatus(deployHash: string): Promise<DeployStatusResult> {
-        try {
-            let deploy: any;
-
-            deploy = await this.getDeploy(deployHash);
-            if (!deploy?.blockHash) {
-                return { status: DeployStatus.DEPLOYING };
-            }
-
-            const isFinalized = await this.isDeployFinalized(deploy);
-            return { 
-                status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.INCLUDED_IN_BLOCK 
-            };
-        } catch (error) {
-            const message = "BlockchainGateway.getDeployStatus: " + this.getGatewayErrorMessage(error);
-            return { 
-                status: DeployStatus.CHECK_ERROR, 
-                errorMessage: message,
-            };
-        }
-    }
-
-    public async getBlock(blockHash: string): Promise<any> {
-        const response = await this.indexerClient.get(
-            `/api/block/${blockHash}`,
-        );
-
-        return response?.blockInfo;
-    }
-
-    public async getLatestBlockNumber(): Promise<number> {
-        try {
-            const block = await this.getLatestBlock();
-            return block?.blockNumber ?? INVALID_BLOCK_NUMBER;
-        } catch (error) {
-            const message = "BlockchainGateway.getLatestBlockNumber: " + this.getGatewayErrorMessage(error);
-            console.error(message);
-            return INVALID_BLOCK_NUMBER;
-        }
-    }
    
-    public async isValidatorActive(): Promise<boolean> {
-        try {
-            await this.validatorClient.get(`/status`);
-            return true;
-        } catch (error) {
-            console.error('BlockchainGateway.isValidatorActive: Node health check failed:', error);
-            return false;
-        }
-    }
 
-    private getGatewayErrorMessage(error: any): string {
-        if (axios.isAxiosError(error)) {
-            const status = error.response?.status ?? error.code;
-            const statusText = error.response?.statusText ?? ""; 
-            const url = error.config?.url ?? "";
-            return `Axios error while requesting "${url}": [${status}] ${statusText} - ${error.message}`;
-        }
 
-        if (error instanceof Error) {
-            return error.message;
-        }
-        
-        return String(error);
-    }
 
-    private validateBlocksResponse(blocks: any[]): void {
-        if (!blocks?.length) {
-            const errorMessage = 'BlockchainGateway.validateBlocksResponse: No blocks returned from /api/blocks endpoint';
-            throw new Error(errorMessage);
-        }
-    }
 
-    private async getLatestBlock(): Promise<any> {
-        const blocks = await this.indexerClient.get(`/api/blocks/1`);
-        this.validateBlocksResponse(blocks);
 
-        return blocks[0];
-    }
 
-    /* graphql */
 
-    /* /graphql */
 }

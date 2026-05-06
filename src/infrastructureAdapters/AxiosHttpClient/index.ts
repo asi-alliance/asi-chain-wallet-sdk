@@ -1,16 +1,7 @@
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+import type { AxiosInstance, AxiosResponse } from "axios";
+import { IHttpClient } from "../../application/ports/outbound/IHttpClient";
 
-export interface HttpClient {
-    get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>;
-    post<T = any>(
-        url: string,
-        data?: any,
-        config?: AxiosRequestConfig,
-    ): Promise<T>;
-    getBaseUrl(): string | undefined;
-}
-
-export default class AxiosHttpClient implements HttpClient {
+export default class AxiosHttpClient implements IHttpClient {
     constructor(private readonly client: AxiosInstance) {}
 
     async get<T>(url: string): Promise<T> {

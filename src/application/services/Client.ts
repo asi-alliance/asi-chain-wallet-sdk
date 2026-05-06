@@ -7,6 +7,10 @@ import { IVault } from "../ports/outbound/IVault";
 import { IUiEventDispatcher } from "../ports/outbound/IUiEventDispatcher";
 import { UiEventDispatcher } from "../../uiAdapters/UiEventDispatcher";
 import { IFileSaver } from "../ports/outbound/IFileSaver";
+import { NetworkProvider } from "./NetworkProvider";
+import { loadNetworksFromEnv } from "../../infrastructureAdapters/loadNetworksFromEnv";
+import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
+import { axiosHttpClientFactory } from "../../infrastructureAdapters/AxiosHttpClient/factory";
 
 export type ClientOptions  = {
     vault: IVault;
@@ -20,12 +24,14 @@ export class Client {
     private _auxilliaryVault?: IAuxiliaryVault;
     private _vaultsPassword?: string; 
     private _fileSaver?: IFileSaver;
+    private httpClientFactory: IHttpClientFactory;
     /* /infrastructure adapters */
 
     /* application services */
     public assetsService: AssetsService;
     public txHistory: TxHistory;
     public uiEventDispatcher: IUiEventDispatcher;
+    public networkProvider: NetworkProvider;
     /* /application services */
 
     private activeWalletAddress?: Address;
@@ -39,6 +45,8 @@ export class Client {
         this.txHistory = new TxHistory(this._auxilliaryVault, this._fileSaver);
         this.uiEventDispatcher = new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
+        this.networkProvider = new NetworkProvider(loadNetworksFromEnv());
+        this.httpClientFactory = axiosHttpClientFactory;
     }
     private get auxilliaryVault() {
         if(!this._auxilliaryVault) {
