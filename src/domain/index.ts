@@ -4,6 +4,7 @@ export * from "../infrastructure/adapters/AxiosHttpClient";
 export * from "../infrastructure/adapters/BrowserStorage";
 export * from "../infrastructure/adapters/BlockchainGateway";
 export * from "./valueObjects/Error";
+export * from "./valueObjects/KeyDerivation";
 export * from "./aggregates/Reservation";
 export * from "./aggregates/Fee";
 export * from "./aggregates/Transaction";
