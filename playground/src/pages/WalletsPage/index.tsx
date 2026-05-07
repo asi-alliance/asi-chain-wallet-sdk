@@ -5,8 +5,9 @@ import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
 import NetworkSelector from "@components/NetworkSelector";
-import { NetworkType, BlockchainGateway } from "asi-wallet-sdk";
-import {Networks} from "@config/index";
+// import { BlockchainGateway } from "asi-wallet-sdk";
+// import {Networks} from "@config/index";
+import {NetworkName } from "asi-wallet-sdk";
 
 const SELECTED_NETWORK_KEY = "asi_selected_network";
 
@@ -14,38 +15,38 @@ const SELECTED_NETWORK_KEY = "asi_selected_network";
 const WalletsPage = (): ReactElement => {
     
     // Network state
-    const [currentNetwork, setCurrentNetwork] = useState<NetworkType>(() => {
-        const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkType;
-        return saved || NetworkType.DEVNET;
-    });
-        const handleNetworkChange = (network: NetworkType) => {
+    // const [currentNetwork, setCurrentNetwork] = useState<NetworkType>(() => {
+    //     const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkType;
+    //     return saved || NetworkType.DEVNET;
+    // });
+        const handleNetworkChange = (networkName: NetworkName) => {
         withLoader(async () => {
             try {
                 // Save selected network
-                localStorage.setItem(SELECTED_NETWORK_KEY, network);
-                setCurrentNetwork(network);
+                // localStorage.setItem(SELECTED_NETWORK_KEY, network);
+                // setCurrentNetwork(network);
 
                 // Reinitialize with new network
-                const networkConfig = Networks[network];
-                if (!networkConfig) {
-                    throw new Error(`Network configuration for ${network} not found`);
-                }
+                // const networkConfig = Networks[network];
+                // if (!networkConfig) {
+                    // throw new Error(`Network configuration for ${network} not found`);
+                // }
                 
                 // Update gateway network type
-                if (BlockchainGateway.isInitialized()) {
-                    BlockchainGateway.getInstance().setNetworkType(network);
-                }
+                // if (BlockchainGateway.isInitialized()) {
+                //     BlockchainGateway.getInstance().setNetworkType(network);
+                // }
             } catch (error) {
-                alert(error?.message || `Failed to switch to ${network} network`);
+                // alert(error?.message || `Failed to switch to ${network} network`);
                 // Revert network if switch fails
-                setCurrentNetwork((prev) => prev);
+                // setCurrentNetwork((prev) => prev);
             }
         });
     };
 
 
     const { setModalState, withLoader } = useAppContext();
-    const {sdkClient, saveVault, currentPassword, wallets, lastIndex, network} = useSdkContext();
+    const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
     const {
         removeWallet,
         importPk,
@@ -81,13 +82,14 @@ const WalletsPage = (): ReactElement => {
         setSelectedMode(null);
     };
 
+    // <NetworkSelector
+    //             currentNetwork={currentNetwork}
+    //             onNetworkChange={handleNetworkChange}
+    //             isLoading={isLoading}
+    //         />
     return (
         <div className="wallets-page">
-            <NetworkSelector
-                currentNetwork={currentNetwork}
-                onNetworkChange={handleNetworkChange}
-                isLoading={isLoading}
-            />
+            
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">

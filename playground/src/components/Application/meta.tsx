@@ -4,10 +4,10 @@ import { IWalletCreateModalProps } from "@components/CreateWalletModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
 import { ITransferModalProps } from "@components/TransferModal";
 import {
-    KeyDerivationService,
-    MnemonicService,
+    // KeyDerivationService,
+    // MnemonicService,
     MnemonicStrength,
-    KeysManager,
+    // KeysManager,
     Wallet
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
@@ -62,40 +62,40 @@ export const deriveNextWallet = async (
 ) => {
     const nextIndex: number = lastIndex++;
 
-    const path: string = KeyDerivationService.buildBip44Path({
-        coinType: 60,
-        account: 0,
-        change: 0,
-        index: nextIndex,
-    });
+    // const path: string = KeyDerivationService.buildBip44Path({
+    //     coinType: 60,
+    //     account: 0,
+    //     change: 0,
+    //     index: nextIndex,
+    // });
 
-    const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-    const masterNode = KeyDerivationService.seedToMasterNode(seed);
+    // const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+    // const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
-    const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
+    // const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
 
-    const { publicKey } = KeysManager.getKeyPairFromPrivateKey(privateKey);
+    // const { publicKey } = KeysManager.getKeyPairFromPrivateKey(privateKey);
 
     return {
         seedId,
-        privateKey,
-        publicKey,
-        wallet: await Wallet.fromPrivateKey(
-            name,
-            privateKey,
-            password,
-            seedId,
-            nextIndex,
-        ),
+        // privateKey,
+        // publicKey,
+        // wallet: await Wallet.fromPrivateKey(
+        //     name,
+        //     privateKey,
+        //     password,
+        //     seedId,
+        //     nextIndex,
+        // ),
     };
 };
 
 export const createInitialMnemonic = (variant) => {
-    return MnemonicService.generateMnemonic(
-        wordsCountToMnemonicStrength(variant),
-    );
+    // return MnemonicService.generateMnemonic(
+    //     wordsCountToMnemonicStrength(variant),
+    // );
 };
 
 export const createInitialPrivateKey = () => {
-    return KeysManager.generateKeyPair().privateKey;
+    // return KeysManager.generateKeyPair().privateKey;
 };

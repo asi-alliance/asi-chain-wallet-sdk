@@ -7,11 +7,10 @@ import {
     Address,
     Wallet,
     FundsReservationService,
-    BlockchainGateway,
-    DeployStatus,
     FeeService,
     GasFeeVO,
     Client,
+    type DeployStatus,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
@@ -64,7 +63,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await assetsService.getASIBalance(address);
+            const balance = await assetsService.getASIBalance(network, address);
 
             setBalance(balance);
         } catch (error) {
@@ -172,20 +171,10 @@ const WalletCard = ({
                 return;
             }
 
-            // Check if BlockchainGateway is initialized
-            if (!BlockchainGateway.isInitialized()) {
-                console.warn(
-                    "BlockchainGateway is not initialized, cannot check deploy status",
-                );
-                return;
-            }
-
             const completedDeployIds: string[] = [];
             const reservations = reservationService.getReservations(address);
 
             console.info("reservations", reservations);
-
-            const blockchainGateway = BlockchainGateway.getInstance();
 
             for (const [deployId, deployInfo] of pendingDeploys.entries()) {
                 // Find reservation associated with this deploy ID
@@ -208,7 +197,7 @@ const WalletCard = ({
                 // Check if deploy is actually finalized on the blockchain
                 try {
                     const deployStatus =
-                        await blockchainGateway.getDeployStatus(deployId);
+                        await sdkClient.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
 
                     if (deployStatus.status === DeployStatus.FINALIZED) {
                         console.log(

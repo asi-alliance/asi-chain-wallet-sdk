@@ -27,7 +27,7 @@ export class Client {
     private _vaultsPassword?: string; 
     private _fileSaver?: IFileSaver;
     private httpClientFactory: IHttpClientFactory;
-    private blockchainGateway: BlockchainGateway;
+    public blockchainGateway: BlockchainGateway;
     /* /infrastructure adapters */
 
     /* application services */

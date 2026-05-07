@@ -4,6 +4,8 @@ import type { Network } from "../../../domain/aggregates/Network/Network";
 import { ValidatorGateway } from "./ValidatorGateway";
 import { ReadOnlyGateway } from "./ReadOnlyGateway";
 
+export {type DeployStatus} from "./ReadOnlyGateway";
+
 export interface BlockchainGatewayConfig {
     validator: IHttpClientConfig;
     indexer: IHttpClientConfig;

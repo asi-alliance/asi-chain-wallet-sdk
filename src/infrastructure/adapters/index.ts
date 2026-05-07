@@ -4,3 +4,4 @@ export {WebFileSaver} from "./WebFileSaver";
 export * from "./KeyDerivation";
 export * from "./Mnemonic";
 export * from "./KeysManager";
+export * from "./BlockchainGateway";
