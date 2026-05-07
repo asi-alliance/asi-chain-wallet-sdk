@@ -1,9 +1,12 @@
 import WalletsService from "@services/Wallets";
-import KeysManager from "@services/KeysManager";
-import Asset, { Assets } from "../../Asset";
-import CryptoService, { EncryptedData } from "../../../infrastructure/adapters/Crypto";
+import Secp256k1KeysManagerAdapter from "../../../infrastructure/adapters/KeysManager";
+import type { IKeyManager } from "../../services/KeyManagement";
+import type Asset from "../../Asset";
+import type { Assets } from "../../Asset";
+import CryptoService, {
+    type EncryptedData,
+} from "../../../infrastructure/adapters/Crypto";
 import { validateAddress } from "@domain/services/validators";
-import { decodeBase16, encodeBase16 } from "../../../infrastructure/misc/codec";
 import { sign } from "@noble/secp256k1";
 
 type AddressBrand = { readonly __brand: unique symbol };
@@ -35,6 +38,8 @@ export interface SigningCapability {
 
 export default class Wallet {
     private static unsafeRawKeyExportEnabled = false;
+    private static keyManager: Pick<IKeyManager, "getPublicKeyFromPrivateKey"> =
+        new Secp256k1KeysManagerAdapter();
     private name: string;
     private address: Address;
     // private publicKey: Uint8Array;
@@ -55,10 +60,16 @@ export default class Wallet {
         this.index = index;
         this.masterNodeId = masterNodeId;
         this.address = address;
-        // this.publicKey = KeysManager.getKeyPairFromPrivateKey(encryptedPrivateKey);
+        // this.publicKey = Wallet.keyManager.getKeyPairFromPrivateKey(encryptedPrivateKey);
         this.privateKey = encryptedPrivateKey;
         this.assets = new Map();
         this.isLocked = true;
+    }
+
+    public static configureKeyManager(
+        keyManager: Pick<IKeyManager, "getPublicKeyFromPrivateKey">,
+    ): void {
+        this.keyManager = keyManager;
     }
 
     public static async fromPrivateKey(
@@ -68,7 +79,8 @@ export default class Wallet {
         masterNodeId: string | null = null,
         index: number | null = null,
     ): Promise<Wallet> {
-        const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
+        const publicKey =
+            this.keyManager.getPublicKeyFromPrivateKey(privateKey);
         const address: Address =
             WalletsService.deriveAddressFromPublicKey(publicKey);
 
@@ -153,7 +165,8 @@ export default class Wallet {
         callback: (signingCapability: SigningCapability) => Promise<T> | T,
     ): Promise<T> {
         const privateKey = await this.decryptPrivateKey(password);
-        const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
+        const publicKey =
+            Wallet.keyManager.getPublicKeyFromPrivateKey(privateKey);
         // this.publicKey = new Uint8Array(publicKey);
         let expired = false;
 

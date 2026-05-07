@@ -4,3 +4,4 @@
 
 export * from "./AmountRepresentation";
 export * from "./Amount";
+export * from "./KeyManagement";

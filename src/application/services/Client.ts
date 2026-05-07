@@ -1,4 +1,4 @@
-import { GasFeeVO, Network } from "../../domain";
+import { GasFeeVO, IKeyManager, Network } from "../../domain";
 import Wallet, { Address } from "../../domain/aggregates/Wallet";
 import AssetsService from "./AssetsService";
 import { TxHistory } from "./TxHistory";
@@ -11,6 +11,7 @@ import { NetworkProvider } from "./NetworkProvider";
 import { loadNetworksFromEnv } from "../../infrastructure/adapters/loadNetworksFromEnv";
 import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
 import { axiosHttpClientFactory } from "../../infrastructure/adapters/AxiosHttpClient/factory";
+import { Secp256k1KeysManagerAdapter } from "../../infrastructure";
 
 export type ClientOptions  = {
     vault: IVault;
@@ -34,6 +35,10 @@ export class Client {
     public networkProvider: NetworkProvider;
     /* /application services */
 
+    /* domain services */
+    public keyManager: IKeyManager;
+    /* /domain services */
+
     private activeWalletAddress?: Address;
 
     private constructor(vault?: IVault, auxilliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver) {
@@ -47,6 +52,7 @@ export class Client {
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
         this.networkProvider = new NetworkProvider(loadNetworksFromEnv());
         this.httpClientFactory = axiosHttpClientFactory;
+        this.keyManager = new Secp256k1KeysManagerAdapter();
     }
     private get auxilliaryVault() {
         if(!this._auxilliaryVault) {
