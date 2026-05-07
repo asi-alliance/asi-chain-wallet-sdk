@@ -1,4 +1,4 @@
-import { DEFAULT_DECIMALS_AMOUNT } from "@config";
+import { ASI_DECIMALS } from "@domain/constants";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;
@@ -13,7 +13,7 @@ export default class Asset {
     constructor(
         id: string,
         name: string,
-        decimals: number = DEFAULT_DECIMALS_AMOUNT
+        decimals: number = ASI_DECIMALS
     ) {
         this.id = id;
         this.name = name;

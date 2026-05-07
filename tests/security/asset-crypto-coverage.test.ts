@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import Asset from "../../src/domain/Asset";
+import Asset from "../../src/domain/aggregates/Wallet/Asset";
 import CryptoService from "../../src/infrastructure/adapters/Crypto";
 
 test("Asset uses default decimals and returns values via getters", () => {
