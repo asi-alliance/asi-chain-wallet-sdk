@@ -1,22 +1,7 @@
-import { Network } from "@domains/Network";
-import { Pagination } from "../../application";
+import { Pagination, QueryOptions } from "../../application";
 import { normalizeAddress } from "@domains/Wallet/mapping";
 import { IHttpClient } from "../../application/ports/outbound/IHttpClient";
-
-type TransactionType = "send" | "receive" | "deploy";
-type TransactionStatus = "pending" | "confirmed" | "failed";
-
-export interface GatewayTransactionHistoryItem {
-    deployId: string;
-    blockNumber?: number | string;
-    from: string;
-    to?: string;
-    amount?: string;
-    status: TransactionStatus;
-    timestamp: string;
-    blockHash?: string;
-    type: TransactionType;
-}
+import { Transaction } from "@domains/Transaction";
 
 interface GraphqlEnvelope<TData> {
     data?: TData;
@@ -28,7 +13,7 @@ interface TransactionHistoryQueryData {
     deployments?: RawDeployment[];
 }
 
-interface RawTransfer {
+export interface RawTransfer {
     deploy_id: string;
     block_number?: number | string;
     from_address?: string;
@@ -36,6 +21,7 @@ interface RawTransfer {
     amount_asi?: number | string;
     timestamp?: number | string;
     from_public_key?: string;
+    network_name?: string; //NOTE/TODO: clarify
 }
 
 interface RawDeployment {
@@ -72,65 +58,26 @@ const TRANSACTION_HISTORY_QUERY = `
   }
 `;
 
+/**
+ * access to indexer
+ */
 export class GraphqlGateway {
     private httpClient: IHttpClient;
     constructor(httpClient: IHttpClient) {
         this.httpClient = httpClient;
     }
-
-    async fetchTransactionHistory(
-        network: Network,
-        address: string,
-        // publicKey: string = "",
-        pagination: Pagination,
-    ): Promise<GatewayTransactionHistoryItem[]> {
-        try {
-            const response = await this.httpClient.post(
-                "",
-                this.createTransactionHistoryRequest(address, pagination),
-            );
-            const envelope =
-                this.unwrapGraphqlEnvelope<TransactionHistoryQueryData>(
-                    response,
-                );
-
-            if (envelope.errors?.length) {
-                console.error("[GraphQL] GraphQL errors:", envelope.errors);
-                throw envelope.errors;
-            }
-            return this.toTransactionHistoryItems(
-                envelope.data as TransactionHistoryQueryData, //TODO: More accurate error handling in graphql
-                address,
-                // publicKey,
-            );
-        } catch (error: any) {
-            if (this.isRecoverableNetworkError(error)) {
-                console.warn(
-                    "[GraphQL] Network error while loading transaction history. Returning an empty history.",
-                );
-                return [];
-            }
-
-            console.error(
-                "Error fetching transaction history from indexer:",
-                error,
-            );
-            return [];
-        }
-    }
-
     private createTransactionHistoryRequest(
         address: string,
         // publicKey: string,
-        pagination: Pagination,
+        queryOptions: QueryOptions,
     ): { query: string; variables: Record<string, number | string | undefined> } {
         const variables: Record<string, number | string | undefined> = {
             address: address.trim(),
-            offset: pagination.offset,
+            offset: queryOptions?.pagination?.offset,
             // publicKey,
         };
 
-        const normalizedLimit = pagination.limit;
+        const normalizedLimit = queryOptions?.pagination?.limit;
         if (normalizedLimit !== undefined) {
             variables.limit = normalizedLimit;
         }
@@ -205,6 +152,7 @@ export class GraphqlGateway {
             timestamp: this.toIsoTimestamp(tx.timestamp ?? deployment?.timestamp),
             blockHash: deployment?.block?.block_hash,
             type: this.getTransferType(from, to, accountAddress),
+            networkName: tx.
         };
     }
 
@@ -332,5 +280,45 @@ export class GraphqlGateway {
 
     private isDefined<T>(value: T | undefined): value is T {
         return value !== undefined;
+    }
+
+    public async fetchTransactionHistory(
+        address: string,
+        // publicKey: string = "",
+        pagination: Pagination,
+    ): Promise<Transaction[]> {
+        try {
+            const response = await this.httpClient.post(
+                "",
+                this.createTransactionHistoryRequest(address, pagination),
+            );
+            const envelope =
+                this.unwrapGraphqlEnvelope<TransactionHistoryQueryData>(
+                    response,
+                );
+
+            if (envelope.errors?.length) {
+                console.error("[GraphQL] GraphQL errors:", envelope.errors);
+                throw envelope.errors;
+            }
+            return this.toTransactionHistoryItems(
+                envelope.data as TransactionHistoryQueryData, //TODO: More accurate error handling in graphql
+                address,
+                // publicKey,
+            );
+        } catch (error: any) {
+            if (this.isRecoverableNetworkError(error)) {
+                console.warn(
+                    "[GraphQL] Network error while loading transaction history. Returning an empty history.",
+                );
+                return [];
+            }
+
+            console.error(
+                "Error fetching transaction history from indexer:",
+                error,
+            );
+            return [];
+        }
     }
 }

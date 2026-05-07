@@ -1,4 +1,4 @@
-import BlockchainGateway from "@domains/BlockchainGateway";
+import BlockchainGateway from "../../infrastructureAdapters/BlockchainGateway";
 
 export function RequireBlockchainGateway<T>(
     value: Function,

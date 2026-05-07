@@ -1,6 +1,6 @@
 import SignerService from "@services/Signer";
 import Wallet, { Address } from "@domains/Wallet";
-import BlockchainGateway from "@domains/BlockchainGateway";
+import BlockchainGateway from "../../infrastructureAdapters/BlockchainGateway";
 import FundsReservationService from "@services/FundsReservation";
 import {
     createTransferDeploy,

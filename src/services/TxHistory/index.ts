@@ -1,6 +1,6 @@
 import { Address, Network, Transaction } from '@domains/';
 import { BlockchainGateway } from '@domains/';
-import type { GatewayTransactionHistoryItem } from '@domains/BlockchainGateway/GraphqlGateway';
+import type { GatewayTransactionHistoryItem } from '../../infrastructureAdapters/BlockchainGateway/GraphqlGateway';
 import { fromAtomicAmount, toAtomicAmount } from '@utils';
 import { encodeBase16 } from '@utils/codec';
 import { TransactionFilter, TransactionStats } from './types';
@@ -37,10 +37,10 @@ export class TxHistory {
             to: toAddress,
             timestamp: new Date(),
 
-            id: deployId, //TODO: remove this field
+            id: deployId, //NOTE/TODO: remove this field
             status: "pending",
             type: "send",
-            network: network.id,
+            networkName: network.name,
         }
         await this.auxiliaryVault.unlock(auxVaultPassword);
         this.auxiliaryVault.transactions.set(deployId, tx);
@@ -70,24 +70,7 @@ export class TxHistory {
     
 
     /* getIndexerTxs helpers */
-    private toTransaction(
-        tx: GatewayTransactionHistoryItem,
-        network: Network,
-    ): Transaction {
-        return {
-            id: tx.deployId,
-            timestamp: new Date(tx.timestamp),
-            type: tx.type,
-            from: tx.from,
-            to: tx.to,
-            amount: tx.amount,
-            deployId: tx.deployId,
-            blockHash: tx.blockHash,
-            status: tx.status,
-            network: network.id,
-            detectedBy: 'auto'
-        };
-    }
+
     /* /getIndexerTxs helpers */
     private async getIndexerTxs(
         network: Network,
@@ -98,14 +81,15 @@ export class TxHistory {
         try {
             // const publicKeyHex = encodeBase16(publicKey);
             const blockchainGateway = BlockchainGateway.getInstance();
-            const blockchainTxs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(
+            const txs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(
                 network,
                 address,
                 // publicKeyHex,
                 pagination,
             );
-            const transactions = blockchainTxs.map((tx) => this.toTransaction(tx, network))
-            return transactions;
+            // const transactions = blockchainTxs.map((tx) => this.toTransaction(tx, network))
+            // return transactions;
+            return txs;
         } catch (error: any) {
             console.error(error);
             return [];
@@ -299,7 +283,7 @@ export class TxHistory {
                 tx.gasCost || '',
                 tx.deployId || '',
                 tx.blockHash || '',
-                tx.network,
+                tx.networkName,
                 tx.note || ''
             ].map(val => `"${val}"`).join(',');
         });

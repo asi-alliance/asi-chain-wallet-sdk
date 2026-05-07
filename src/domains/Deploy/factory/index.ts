@@ -1,6 +1,6 @@
 import { Address } from "@domains/Wallet";
 import { createDevTransferDeploy, createDevCheckBalanceDeploy } from "./dev";
-import BlockchainGateway, { NetworkType } from "@domains/BlockchainGateway";
+import BlockchainGateway, { NetworkType } from "../../../infrastructureAdapters/BlockchainGateway";
 
 export const escapeRholangString = (value: string): string => {
     return value

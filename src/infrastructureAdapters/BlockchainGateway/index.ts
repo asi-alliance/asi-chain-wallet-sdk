@@ -5,7 +5,6 @@ import { IHttpClientConfig, IHttpClientFactory } from "../../application/ports/o
 import { Network } from "@domains/Network";
 import { ValidatorGateway } from "./ValidatorGateway";
 import { ReadOnlyGateway } from "./ReadOnlyGateway";
-import { getGatewayErrorMessage } from "./common";
 
 export interface BlockchainGatewayConfig {
     validator: IHttpClientConfig;
@@ -34,19 +33,19 @@ export class BlockchainGateway {
         this.setNetwork(currentNetwork);
     }
     public setNetwork(network: Network) {
-        this.network = network;
         if(!network.endpoints.validatorUrl) {
             throw new Error(`BlockchainGateway: validatorUrl for ${network.name} network is not provided! Check .env file`);
         }
-        this.validatorGateway = new ValidatorGateway(this.httpClientFactory(network.endpoints.validatorUrl));
         if(!network.endpoints.readOnlyUrl) {
             throw new Error(`BlockchainGateway: readOnlyUrl for ${network.name} network is not provided! Check .env file`);
         }
-        this.readOnlyGateway = new ReadOnlyGateway(this.httpClientFactory(network.endpoints.readOnlyUrl), network);
         if(!network.endpoints.indexerUrl) {
             throw new Error(`BlockchainGateway: indexerUrl for ${network.name} network is not provided! Check .env file`);
         }
+        this.validatorGateway = new ValidatorGateway(this.httpClientFactory(network.endpoints.validatorUrl));
+        this.readOnlyGateway = new ReadOnlyGateway(this.httpClientFactory(network.endpoints.readOnlyUrl), network);
         this.graphqlGateway = new GraphqlGateway(this.httpClientFactory(network.endpoints.indexerUrl));
+        this.network = network;
     }
 
     public changeValidator(config: IHttpClientConfig): this {
@@ -58,16 +57,4 @@ export class BlockchainGateway {
         this.readOnlyGateway = new ReadOnlyGateway(this.httpClientFactory(config.baseUrl, config.axiosConfig), this.network);
         return this;
     }
-
-
-
-
-   
-
-
-
-
-
-
-
 }
