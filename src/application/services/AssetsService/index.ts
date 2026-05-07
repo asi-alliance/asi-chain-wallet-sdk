@@ -11,19 +11,20 @@ import { PasswordProvider } from "../../../infrastructure/adapters/Signer";
 import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
 import { DeployData } from "../../common/DeployData";
 import { validateAddress } from "@domain/services/validators";
-import { RequireBlockchainGateway } from "../../common/decorators";
+// import { RequireBlockchainGateway } from "../../common/decorators";
 import { GasFeeVO } from "../../../domain/aggregates/Fee";
 import { TransferValidator } from "./TransferValidator";
+import { NetworkProvider } from "../NetworkProvider";
+import { Network } from "@domain/";
 
 export default class AssetsService {
+    constructor(private blockchaingGateway: BlockchainGateway) {
 
-    
-    private getBlockchainGateway(): BlockchainGateway {
-        return BlockchainGateway.getInstance();
     }
 
-    @RequireBlockchainGateway
+    // @RequireBlockchainGateway
     public async transfer(
+        network: Network,
         fromAddress: Address,
         toAddress: Address,
         balance: bigint,
@@ -48,15 +49,16 @@ export default class AssetsService {
                 `Transfer to ${toAddress}`,
             );
 
-            const gateway = this.getBlockchainGateway();
+            const gateway = this.blockchaingGateway;
 
             const transferRho = createTransferDeploy(
+                network,
                 fromAddress,
                 toAddress,
                 amount,
             );
 
-            const latestBlockNumber = await gateway.getLatestBlockNumber();
+            const latestBlockNumber = await gateway.readOnlyGateway.getLatestBlockNumber();
 
             if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
                 throw new Error("AssetsService.transfer: Invalid block number");
@@ -76,7 +78,7 @@ export default class AssetsService {
                 passwordProvider,
             );
 
-            const deployId = await gateway.submitDeploy(signedDeploy);
+            const deployId = await gateway.validatorGateway.submitDeploy(signedDeploy);
 
             // Commit the reservation with the deploy ID
             if (reservationId && deployId) {
@@ -103,8 +105,8 @@ export default class AssetsService {
         }
     }
 
-    @RequireBlockchainGateway
-    async getASIBalance(address: Address): Promise<bigint> {
+    // @RequireBlockchainGateway
+    async getASIBalance(network: Network, address: Address): Promise<bigint> {
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(
@@ -112,11 +114,11 @@ export default class AssetsService {
             );
         }
 
-        const gateway = this.getBlockchainGateway();
-        const checkBalanceRho = createCheckBalanceDeploy(address);
+        const gateway = this.blockchaingGateway;
+        const checkBalanceRho = createCheckBalanceDeploy(network, address);
 
         try {
-            const result = await gateway.exploreDeployData(checkBalanceRho);
+            const result = await gateway.readOnlyGateway.exploreDeployData(checkBalanceRho);
 
             if (result && result.length > 0) {
                 // expects the balance to be directly in expr[0].ExprInt.data

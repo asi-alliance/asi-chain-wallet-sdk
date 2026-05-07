@@ -1,12 +1,7 @@
 import {
     ResubmitConfig,
     ResubmitResult,
-    DeploymentErrorHandler,
     NodeProvider,
-    FatalDeployErrors,
-    BlockchainGateway,
-    DeployStatusResult,
-    DeployStatus,
 } from "./types";
 import NodeManager from "./NodeManager";
 import SignerService, { PasswordProvider } from "../../../infrastructure/adapters/Signer";
@@ -14,6 +9,9 @@ import Wallet from "../../../domain/aggregates/Wallet";
 import { DeployData } from "../../common/DeployData";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
 import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
+import { DeploymentErrorHandler, FatalDeployErrors } from "@domain/";
+import { DeployStatus, DeployStatusResult } from "../../../infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
+import { BlockchainGateway } from "../../../infrastructure/adapters/BlockchainGateway";
 
 export default class DeployResubmitter {
     private readonly config: ResubmitConfig;
@@ -21,17 +19,15 @@ export default class DeployResubmitter {
     private readonly errorHandler: DeploymentErrorHandler;
     private startSubmissionTime = 0;
 
-    constructor(config: ResubmitConfig, availableNodesUrls: string[]) {
+    constructor(private blockchainGateway: BlockchainGateway, config: ResubmitConfig, availableNodesUrls: string[]) {
         this.config = config;
         this.nodeManager = NodeManager.initialize(
+            blockchainGateway,
             availableNodesUrls,
             config.nodeSelectionAttempts,
             config.useRandomNode,
         );
         this.errorHandler = new DeploymentErrorHandler();
-
-        if (!BlockchainGateway.isInitialized())
-            throw new Error("BlockchainGateway is not initialized");
     }
 
     private isDeployExpired(): boolean {
@@ -55,8 +51,8 @@ export default class DeployResubmitter {
 
         while (deployRetries > 0 && !this.isDeployExpired()) {
             try {
-                const gateway = BlockchainGateway.getInstance();
-                const latestBlockNumber = await gateway.getLatestBlockNumber();
+                const gateway = this.blockchainGateway;
+                const latestBlockNumber = await gateway.readOnlyGateway.getLatestBlockNumber();
 
                 if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
                     throw new Error(
@@ -78,7 +74,7 @@ export default class DeployResubmitter {
                     passwordProvider,
                 );
 
-                const deployId = await gateway.submitDeploy(signedDeploy);
+                const deployId = await gateway.validatorGateway.submitDeploy(signedDeploy);
 
                 if (typeof deployId !== "string") {
                     const errorMessage =
@@ -167,7 +163,7 @@ export default class DeployResubmitter {
 
         while (!this.isDeployExpired()) {
             const checkDeployResult: DeployStatusResult =
-                await BlockchainGateway.getInstance().getDeployStatus(deployId);
+                await this.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
             const deployStatus: DeployStatus = checkDeployResult.status;
 
             if (deployStatus === DeployStatus.CHECK_ERROR) {

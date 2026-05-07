@@ -4,19 +4,8 @@ import {
     RecoverableDeployErrors,
     DeploymentErrorHandler,
 } from "../../../domain/valueObjects/Error";
-import BlockchainGateway, {
-    type DeployStatusResult,
-    DeployStatus,
-} from "../../../infrastructure/adapters/BlockchainGateway";
-
-export { 
-    DeployStatus,
-    DeployStatusResult,
-    DeploymentErrorHandler, 
-    RecoverableDeployErrors, 
-    FatalDeployErrors,
-    BlockchainGateway
-};
+import {BlockchainGateway} from "../../../infrastructure/adapters/BlockchainGateway";
+import { DeployStatus, DeployStatusResult } from "../../../infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
 
 export interface NodeProvider {
     connectDefaultNode(): Promise<void>;

@@ -9,7 +9,7 @@ export * from './types';
 export { hasActiveTransactionFilters } from "./helpers";
 
 export class TxHistory {
-    constructor(private _auxiliaryVault?: IAuxiliaryVault, private _fileSaver?: IFileSaver) {
+    constructor(private blockchainGateway: BlockchainGateway, private _auxiliaryVault?: IAuxiliaryVault, private _fileSaver?: IFileSaver) {
 
     }
     private get auxiliaryVault() {
@@ -74,8 +74,7 @@ export class TxHistory {
         pagination: Pagination,
     ): Promise<Transaction[]> {
         try {
-            const blockchainGateway = BlockchainGateway.getInstance();
-            const txs = await blockchainGateway.graphqlGateway.fetchTransactionHistory(
+            const txs = await this.blockchainGateway.graphqlGateway.fetchTransactionHistory(
                 address,
                 pagination,
             );

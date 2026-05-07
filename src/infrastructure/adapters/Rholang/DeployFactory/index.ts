@@ -1,6 +1,7 @@
+import { Network, NetworkName } from "@domain/";
 import { Address } from "../../../../domain/aggregates/Wallet";
+import { BlockchainGateway } from "../../BlockchainGateway";
 import { createDevTransferDeploy, createDevCheckBalanceDeploy } from "./dev";
-import BlockchainGateway, { NetworkType } from "../../BlockchainGateway";
 import { escapeRholangString } from "./shared";
 
 export { escapeRholangString } from "./shared";
@@ -78,42 +79,23 @@ export const createTransferDeployDevNet = (
     `;
 };
 
-export const createCheckBalanceDeploy = (address: Address): string => {
-    try {
-        if (BlockchainGateway.isInitialized()) {
-            const gateway = BlockchainGateway.getInstance();
-            const network = gateway.getNetworkType();
-            
-            if (network === NetworkType.DEV) {
-                return createDevCheckBalanceDeploy(address);
-            }
-        }
-    } catch (error) {
-        console.warn("Failed to get network type from BlockchainGateway, defaulting to DevNet:", error);
+export const createCheckBalanceDeploy = (network: Network, address: Address): string => {
+    if (network.name === "Dev" satisfies NetworkName) {
+        return createDevCheckBalanceDeploy(address);
     }
-    
     // Default to DevNet
     return createCheckBalanceDeployDevNet(address);
 };
 
 export const createTransferDeploy = (
+    network: Network,
     fromAddress: Address,
     toAddress: Address,
     amount: bigint,
 ): string => {
-    try {
-        if (BlockchainGateway.isInitialized()) {
-            const gateway = BlockchainGateway.getInstance();
-            const network = gateway.getNetworkType();
-            
-            if (network === NetworkType.DEV) {
-                return createDevTransferDeploy(fromAddress, toAddress, amount);
-            }
-        }
-    } catch (error) {
-        console.warn("Failed to get network type from BlockchainGateway, defaulting to DevNet:", error);
+    if (network.name === "Dev" satisfies NetworkName) {
+        return createDevTransferDeploy(fromAddress, toAddress, amount);
     }
-    
     // Default to DevNet
     return createTransferDeployDevNet(fromAddress, toAddress, amount);
 };

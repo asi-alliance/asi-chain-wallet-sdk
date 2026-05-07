@@ -1,6 +1,7 @@
-import { NodeProvider, BlockchainGateway } from "./types";
-import { RequireBlockchainGateway } from "../../common/decorators";
+import { NodeProvider } from "./types";
+// import { RequireBlockchainGateway } from "../../common/decorators";
 import { DEFAULT_RESUBMIT_CONFIG } from "../../../infrastructure/configuration";
+import { BlockchainGateway } from "../../../infrastructure/adapters/BlockchainGateway";
 
 export default class NodeManager implements NodeProvider {
     private static instance: NodeManager;
@@ -14,7 +15,7 @@ export default class NodeManager implements NodeProvider {
     private readonly inactiveNodesUrls = new Set<string>();
     private currentNodeUrl: string = "";
 
-    private constructor(availableNodesUrls: string[], retriesLeft: number, useRandomNode: boolean) {
+    private constructor(private blockchainGateway: BlockchainGateway, availableNodesUrls: string[], retriesLeft: number, useRandomNode: boolean) {
         if(!availableNodesUrls?.length) {
             throw new Error("At least one node URL must be provided");
         }
@@ -25,18 +26,19 @@ export default class NodeManager implements NodeProvider {
     }
 
     public static initialize(
+        blockchainGateway: BlockchainGateway,
         availableNodesUrls: string[],
         nodeSelectionAttempts: number = DEFAULT_RESUBMIT_CONFIG.nodeSelectionAttempts,
         useRandomNode: boolean = DEFAULT_RESUBMIT_CONFIG.useRandomNode,
     ): NodeManager {
         const attempts = useRandomNode ? Math.max(1, nodeSelectionAttempts) : 0;
-        const instance = new NodeManager(availableNodesUrls, attempts, useRandomNode);
+        const instance = new NodeManager(blockchainGateway, availableNodesUrls, attempts, useRandomNode);
 
         NodeManager.instance = instance;
         return instance;
     }
 
-    @RequireBlockchainGateway
+    // @RequireBlockchainGateway
     public async connectDefaultNode(): Promise<void> {
         if(this.useRandomNode) {
             throw new Error(
@@ -48,10 +50,10 @@ export default class NodeManager implements NodeProvider {
     }
 
     private async connectNode(nodeUrl: string): Promise<void> {
-        if(BlockchainGateway.getInstance().getValidatorClientUrl() !== nodeUrl) 
-            BlockchainGateway.getInstance().changeValidator({ baseUrl: nodeUrl });
+        if(this.blockchainGateway.validatorGateway.gethttpClientUrl() !== nodeUrl) 
+            this.blockchainGateway.changeValidator({ baseUrl: nodeUrl });
 
-        const isValidatorActive = await BlockchainGateway.getInstance().isValidatorActive();
+        const isValidatorActive = await this.blockchainGateway.validatorGateway.isValidatorActive();
 
         if(!isValidatorActive) {
             this.deactivateNode(nodeUrl);
@@ -116,7 +118,7 @@ export default class NodeManager implements NodeProvider {
         return availableNodeUrls[index];
     }
 
-    @RequireBlockchainGateway
+    // @RequireBlockchainGateway
     public async connectActiveRandomNode(): Promise<void> {
         if(!this.useRandomNode) {
             throw new Error(

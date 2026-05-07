@@ -12,6 +12,7 @@ import { loadNetworksFromEnv } from "../../infrastructure/adapters/loadNetworksF
 import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
 import { axiosHttpClientFactory } from "../../infrastructure/adapters/AxiosHttpClient/factory";
 import { Secp256k1KeysManagerAdapter } from "../../infrastructure";
+import { BlockchainGateway} from "../../infrastructure/adapters/BlockchainGateway";
 
 export type ClientOptions  = {
     vault: IVault;
@@ -26,6 +27,7 @@ export class Client {
     private _vaultsPassword?: string; 
     private _fileSaver?: IFileSaver;
     private httpClientFactory: IHttpClientFactory;
+    private blockchainGateway: BlockchainGateway;
     /* /infrastructure adapters */
 
     /* application services */
@@ -45,13 +47,14 @@ export class Client {
         this._vault = vault;
         this._auxilliaryVault = auxilliaryVault;
         this._vaultsPassword = vaultsPassword;
-        this.assetsService = new AssetsService();
+        this.httpClientFactory = axiosHttpClientFactory;
+        this.networkProvider = new NetworkProvider(loadNetworksFromEnv());
+        this.blockchainGateway = new BlockchainGateway(this.httpClientFactory, this.networkProvider.currentNetwork);
+        this.assetsService = new AssetsService(this.blockchainGateway);
         this._fileSaver = fileSaver;
-        this.txHistory = new TxHistory(this._auxilliaryVault, this._fileSaver);
+        this.txHistory = new TxHistory(this.blockchainGateway, this._auxilliaryVault, this._fileSaver);
         this.uiEventDispatcher = new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
-        this.networkProvider = new NetworkProvider(loadNetworksFromEnv());
-        this.httpClientFactory = axiosHttpClientFactory;
         this.keyManager = new Secp256k1KeysManagerAdapter();
     }
     private get auxilliaryVault() {
@@ -120,6 +123,7 @@ export class Client {
     }
     public async transfer(network: Network, fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
         const deployId = await this.assetsService.transfer(
+            network,
             fromAddress,
             toAddress,
             balance,

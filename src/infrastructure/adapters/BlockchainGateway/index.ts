@@ -26,7 +26,7 @@ export class BlockchainGateway {
     public graphqlGateway!: GraphqlGateway;    
     private network!: Network;
 
-    private constructor(httpClientFactory: IHttpClientFactory, currentNetwork: Network) {
+    public constructor(httpClientFactory: IHttpClientFactory, currentNetwork: Network) {
         this.httpClientFactory = httpClientFactory;
         this.setNetwork(currentNetwork);
     }
