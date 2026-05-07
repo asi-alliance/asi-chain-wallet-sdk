@@ -1,7 +1,5 @@
 import { Address } from "../../../../domain/aggregates/Wallet";
-import {
-    escapeRholangString,
-} from "./index";
+import { escapeRholangString } from "./shared";
 
 export const createDevCheckBalanceDeploy = (address: Address): string => {
     const escapedAddress = escapeRholangString(address);

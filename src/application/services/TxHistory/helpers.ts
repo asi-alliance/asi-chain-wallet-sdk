@@ -36,7 +36,7 @@ export const applyTransactionFilter = (
 
     if (filter.network) {
         filteredTransactions = filteredTransactions.filter(
-            (tx) => tx.network === filter.network,
+            (tx) => tx.networkName === filter.network,
         );
     }
 

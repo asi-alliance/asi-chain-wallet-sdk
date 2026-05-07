@@ -1,15 +1,9 @@
 import { Address } from "../../../../domain/aggregates/Wallet";
 import { createDevTransferDeploy, createDevCheckBalanceDeploy } from "./dev";
 import BlockchainGateway, { NetworkType } from "../../BlockchainGateway";
+import { escapeRholangString } from "./shared";
 
-export const escapeRholangString = (value: string): string => {
-    return value
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r")
-        .replace(/\t/g, "\\t");
-};
+export { escapeRholangString } from "./shared";
 
 // DevNet deployment functions (default/current implementation)
 export const createCheckBalanceDeployDevNet = (address: Address): string => {

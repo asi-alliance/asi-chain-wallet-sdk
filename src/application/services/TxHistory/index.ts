@@ -1,6 +1,6 @@
 import { Address, Network, Transaction } from '../../../domain';
-import { BlockchainGateway } from '../../../domain';
-import { fromAtomicAmount, toAtomicAmount } from '@utils';
+import { BlockchainGateway } from '../../../infrastructure/adapters/BlockchainGateway';
+import { fromAtomicAmount, toAtomicAmount } from '../../../domain/services/AmountRepresentation';
 import { TransactionFilter, TransactionStats } from './types';
 import { applyTransactionFilter } from './helpers';
 import { IAuxiliaryVault } from '../../ports/outbound/IAuxiliaryVault';

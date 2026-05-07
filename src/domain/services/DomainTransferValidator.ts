@@ -2,7 +2,7 @@ import { Address } from "@domain/aggregates/Wallet";
 import { Amount } from "./Amount";
 import { fromAtomicAmount } from "./AmountRepresentation";
 import { validateAddress } from "./validators";
-import { FundsReservationService } from "@services/";
+import FundsReservationService from "../../application/services/FundsReservation";
 import { COIN_NAME } from "@domain/constants";
 import { GasFeeVO } from "@domain/aggregates/Fee";
 

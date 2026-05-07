@@ -4,7 +4,10 @@ import {
     RecoverableDeployErrors,
     DeploymentErrorHandler,
 } from "../../../domain/valueObjects/Error";
-import BlockchainGateway, {type DeployStatusResult, DeployStatus } from '../../../infrastructure/adapters/BlockchainGateway';
+import BlockchainGateway, {
+    type DeployStatusResult,
+    DeployStatus,
+} from "../../../infrastructure/adapters/BlockchainGateway";
 
 export { 
     DeployStatus,

@@ -1,1 +1,1 @@
-export {Network, NetworkName} from "./Network";
+export type { Network, NetworkName } from "./Network";

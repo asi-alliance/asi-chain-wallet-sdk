@@ -1,5 +1,5 @@
 import { IHttpClient } from "../../../application/ports/outbound/IHttpClient";
-import { SignedResult } from "../../../domain/Signer";
+import { SignedResult } from "../Signer";
 import { getGatewayErrorMessage } from "./common";
 
 export class ValidatorGateway {

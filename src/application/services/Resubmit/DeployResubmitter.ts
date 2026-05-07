@@ -11,7 +11,7 @@ import {
 import NodeManager from "./NodeManager";
 import SignerService, { PasswordProvider } from "../../../infrastructure/adapters/Signer";
 import Wallet from "../../../domain/aggregates/Wallet";
-import { DeployData } from "../../../domain/Deploy";
+import { DeployData } from "../../common/DeployData";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
 import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
 

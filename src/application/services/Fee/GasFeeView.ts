@@ -1,5 +1,5 @@
 import { GasFeeVO } from "../../../domain/aggregates/Fee/GasFeeVO";
-import { fromAtomicAmount } from "@utils";
+import { fromAtomicAmount } from "../../../domain/services/AmountRepresentation";
 
 /**
  * GasFee object for ui presentation
