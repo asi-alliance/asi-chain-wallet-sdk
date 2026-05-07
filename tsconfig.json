@@ -9,13 +9,9 @@
 
             "@services/": ["./src/services"],
             "@domain/": ["./src/domain"],
-            "@config": ["./src/config"],
-            "@utils": ["./src/utils"],
 
             "@services/*": ["./src/services/*"],
             "@domain/*": ["./src/domain/*"],
-            "@config/*": ["./src/config/*"],
-            "@utils/*": ["./src/utils/*"]
         }
     }
 }

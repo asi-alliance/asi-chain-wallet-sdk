@@ -1,6 +1,5 @@
 export * from "./Asset";
 export * from "./aggregates/Wallet";
-export * from "./Signer";
 export * from "../infrastructure/adapters/AxiosHttpClient";
 export * from "../infrastructure/adapters/BrowserStorage";
 export * from "../infrastructure/adapters/BlockchainGateway";

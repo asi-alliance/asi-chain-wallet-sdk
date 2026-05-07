@@ -1,12 +1,22 @@
-import BinaryWriter from "../../infrastructure/adapters/BinaryWriter";
-import { encodeBase16 } from "../../infrastructure/misc/codec";
-import { DeployData } from "../../domain/Deploy";
+import BinaryWriter from "../BinaryWriter";
+import { encodeBase16 } from "../../misc/codec";
+import { DeployData } from "../../../domain/Deploy";
 import blakejs from "blakejs";
-import {
-    SigningRequest,
-    PasswordProvider,
-    SignedResult,
-} from "../../domain/Signer";
+import { Wallet } from "@domain/";
+
+export interface SigningRequest {
+    wallet: Wallet;
+    data: any;
+}
+
+export interface SignedResult {
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
+
+export type PasswordProvider = () => Promise<string>;
 
 const { blake2bHex } = blakejs;
 

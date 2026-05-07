@@ -3,8 +3,8 @@ import {
     FatalDeployErrors, 
     RecoverableDeployErrors,
     DeploymentErrorHandler,
-} from "../../domain/valueObjects/Error";
-import BlockchainGateway, {type DeployStatusResult, DeployStatus } from '../../infrastructure/adapters/BlockchainGateway';
+} from "../../../domain/valueObjects/Error";
+import BlockchainGateway, {type DeployStatusResult, DeployStatus } from '../../../infrastructure/adapters/BlockchainGateway';
 
 export { 
     DeployStatus,

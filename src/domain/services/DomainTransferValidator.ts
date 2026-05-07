@@ -2,8 +2,11 @@ import { Address } from "@domain/aggregates/Wallet";
 import { Amount } from "./Amount";
 import { fromAtomicAmount } from "./AmountRepresentation";
 import { validateAddress } from "./validators";
+import { FundsReservationService } from "@services/";
+import { COIN_NAME } from "@domain/constants";
+import { GasFeeVO } from "@domain/aggregates/Fee";
 
-function validateAddresses(fromAddress: Address, toAddress: Address, errorMessagePrefix: string): void {
+export function validateAddresses(fromAddress: Address, toAddress: Address, errorMessagePrefix: string): void {
   const fromValidation = validateAddress(fromAddress);
   if (!fromValidation.isValid) {
       throw new Error(
@@ -25,7 +28,7 @@ function validateAddresses(fromAddress: Address, toAddress: Address, errorMessag
   }
 }
 
-function validateAmount(fromAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, errorMessagePrefix: string): void {
+export function validateAmount(fromAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, errorMessagePrefix: string): void {
   if (amount <= 0n) {
       throw new Error(
           `${errorMessagePrefix}Transfer amount must be greater than zero`,

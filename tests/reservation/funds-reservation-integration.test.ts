@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import FundsReservationService from "@services/FundsReservation";
+import FundsReservationService from "../../src/application/services/FundsReservation";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { ReservationStatus } from "../../src/domain/aggregates/Reservation/types";
 import { Address } from "../../src/domain/aggregates/Wallet";

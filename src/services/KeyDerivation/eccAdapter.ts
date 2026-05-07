@@ -1,5 +1,5 @@
 import { bigIntToBuffer, bufferToBigInt } from "../../infrastructure/misc/codec";
-import { PRIVATE_KEY_LENGTH } from "@utils/constants";
+import { PRIVATE_KEY_LENGTH } from "@domain/constants";
 import { TinySecp256k1Interface } from "bip32";
 import { sha256 } from "@noble/hashes/sha2";
 import { hmac } from "@noble/hashes/hmac";

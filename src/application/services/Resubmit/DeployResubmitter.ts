@@ -9,12 +9,11 @@ import {
     DeployStatus,
 } from "./types";
 import NodeManager from "./NodeManager";
-import SignerService from "@services/Signer";
-import Wallet from "../../domain/aggregates/Wallet";
-import { PasswordProvider } from "../../domain/Signer";
-import { DeployData } from "../../domain/Deploy";
-import { INVALID_BLOCK_NUMBER } from "@utils";
-import { DEFAULT_PHLO_LIMIT } from "@config";
+import SignerService, { PasswordProvider } from "../../../infrastructure/adapters/Signer";
+import Wallet from "../../../domain/aggregates/Wallet";
+import { DeployData } from "../../../domain/Deploy";
+import { INVALID_BLOCK_NUMBER } from "@domain/constants";
+import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
 
 export default class DeployResubmitter {
     private readonly config: ResubmitConfig;

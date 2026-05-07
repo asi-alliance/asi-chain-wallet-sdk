@@ -1,6 +1,6 @@
-import ReservationRecord from "../../domain/aggregates/Reservation";
-import { Address } from "../../domain/aggregates/Wallet";
-import { ReservationStatus } from "../../domain/aggregates/Reservation/types";
+import ReservationRecord from "../../../domain/aggregates/Reservation";
+import { Address } from "../../../domain/aggregates/Wallet";
+import { ReservationStatus } from "../../../domain/aggregates/Reservation/types";
 
 export interface ReservationError {
     code:
