@@ -1,18 +1,13 @@
-import Bip32KeyDerivationAdapter from "../../infrastructure/adapters/KeyDerivation";
-import Bip39MnemonicAdapter from "../../infrastructure/adapters/Mnemonic";
-import Secp256k1KeysManagerAdapter from "../../infrastructure/adapters/KeysManager";
-import type { IKeyDerivation } from "../../application/ports/outbound/IKeyDerivation";
-import type { IMnemonicService } from "../../application/ports/outbound/IMnemonic";
-import type { IKeyManager, KeyPair } from "../../domain/services/KeyManagement";
-import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "../../domain/constants";
-import { decodeBase16, encodeBase58 } from "../../infrastructure/misc/codec";
-import type { Address } from "../../domain/aggregates/Wallet";
-import { MnemonicPhrase } from "../../domain/valueObjects/MnemonicPhrase";
-import blakejs from "blakejs";
-import sha3 from "js-sha3";
-
-const { blake2bHex } = blakejs;
-const { keccak256 } = sha3;
+import Bip32KeyDerivationAdapter from "../../../infrastructure/adapters/KeyDerivation";
+import Bip39MnemonicAdapter from "../../../infrastructure/adapters/Mnemonic";
+import Secp256k1KeysManagerAdapter from "../../../infrastructure/adapters/KeysManager";
+import type { IKeyDerivation } from "../../ports/outbound/IKeyDerivation";
+import type { IMnemonicService } from "../../ports/outbound/IMnemonic";
+import type { IKeyManager, KeyPair } from "../../../domain/services/KeyManagement";
+import { deriveAddressFromPublicKey } from "../../../domain/services/AddressDerivation";
+import { ASI_COIN_TYPE } from "../../../domain/constants";
+import type { Address } from "../../../domain/aggregates/Wallet";
+import { MnemonicPhrase } from "../../../domain/valueObjects/MnemonicPhrase";
 
 export interface CreateWalletOptions {
     name?: string;
@@ -108,26 +103,10 @@ export default class WalletsService {
         const keyPair: KeyPair =
             this.keyManager.getKeyPairFromPrivateKey(privateKey);
 
-        return this.deriveAddressFromPublicKey(keyPair.publicKey);
+        return deriveAddressFromPublicKey(keyPair.publicKey);
     }
 
     public static deriveAddressFromPublicKey(publicKey: Uint8Array): Address {
-        const hash: string = keccak256(publicKey.slice(1));
-
-        const addressBase: Uint8Array = decodeBase16(hash.slice(-40));
-
-        const addressBaseHash: string = keccak256(addressBase);
-
-        const addressPayload: string = `${ASI_CHAIN_PREFIX.coinId}${ASI_CHAIN_PREFIX.version}${addressBaseHash}`;
-
-        const addressPayloadBytes: Uint8Array = decodeBase16(addressPayload);
-
-        const checksum: string = blake2bHex(
-            addressPayloadBytes,
-            undefined,
-            32,
-        ).slice(0, 8);
-
-        return encodeBase58(`${addressPayload}${checksum}`) as Address; // payload prefix should always start with `1111`
+        return deriveAddressFromPublicKey(publicKey);
     }
 }

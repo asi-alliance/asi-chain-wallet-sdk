@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import WalletsService from "../../src/services/Wallets";
+import WalletsService from "../../src/application/services/Wallets";
 import KeysManager from "../../src/services/KeysManager";
 import {
     isAddress,

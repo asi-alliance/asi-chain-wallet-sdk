@@ -5,3 +5,4 @@
 export * from "./AmountRepresentation";
 export * from "./Amount";
 export * from "./KeyManagement";
+export * from "./AddressDerivation";

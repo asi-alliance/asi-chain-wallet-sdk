@@ -1,6 +1,6 @@
-import WalletsService from "@services/Wallets";
 import Secp256k1KeysManagerAdapter from "../../../infrastructure/adapters/KeysManager";
 import type { IKeyManager } from "../../services/KeyManagement";
+import { deriveAddressFromPublicKey } from "../../services/AddressDerivation";
 import type Asset from "../../Asset";
 import type { Assets } from "../../Asset";
 import CryptoService, {
@@ -82,7 +82,7 @@ export default class Wallet {
         const publicKey =
             this.keyManager.getPublicKeyFromPrivateKey(privateKey);
         const address: Address =
-            WalletsService.deriveAddressFromPublicKey(publicKey);
+            deriveAddressFromPublicKey(publicKey);
 
         const encrypted: EncryptedData = await this.encryptPrivateKey(
             privateKey,
