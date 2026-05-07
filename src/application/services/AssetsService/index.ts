@@ -5,7 +5,7 @@ import FundsReservationService from "../FundsReservation";
 import {
     createTransferDeploy,
     createCheckBalanceDeploy,
-} from "../../../domain/Deploy/factory";
+} from "../../../infrastructure/adapters/Rholang/DeployFactory";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
 import { PasswordProvider } from "../../../domain/Signer";
 import { DEFAULT_PHLO_LIMIT } from "@config";

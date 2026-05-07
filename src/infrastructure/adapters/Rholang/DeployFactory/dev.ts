@@ -1,4 +1,4 @@
-import { Address } from "../../aggregates/Wallet";
+import { Address } from "../../../../domain/aggregates/Wallet";
 import {
     escapeRholangString,
 } from "./index";

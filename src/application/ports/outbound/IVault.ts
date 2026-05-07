@@ -1,4 +1,4 @@
-import type EncryptedRecord from "../../../domain/EncryptedRecord";
+import type EncryptedRecord from "../../../infrastructure/adapters/VaultHelpers/EncryptedRecord";
 import type Wallet from "../../../domain/aggregates/Wallet";
 import type { Address } from "../../../domain/aggregates/Wallet";
 import { IUiEventDispatcher } from "./IUiEventDispatcher";

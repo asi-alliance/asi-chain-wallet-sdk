@@ -1,4 +1,4 @@
-import CryptoService, { type EncryptedData } from "../../infrastructure/adapters/Crypto";
+import CryptoService, { type EncryptedData } from "../../Crypto";
 
 export default class EncryptedRecord {
     private encryptedSeedData: EncryptedData;

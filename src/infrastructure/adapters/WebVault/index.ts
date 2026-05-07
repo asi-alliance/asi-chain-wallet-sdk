@@ -1,5 +1,5 @@
 import CryptoService, { type EncryptedData } from "../Crypto";
-import EncryptedRecord from "../../../domain/EncryptedRecord";
+import EncryptedRecord from "../VaultHelpers/EncryptedRecord";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,

@@ -12,7 +12,7 @@ export * from "./aggregates/Fee";
 export * from "./aggregates/Transaction";
 export * from "./aggregates/Network";
 
-export { default as EncryptedRecord } from "./EncryptedRecord";
+export { default as EncryptedRecord } from "../infrastructure/adapters/VaultHelpers/EncryptedRecord";
 export { default as SecureStorage } from "../infrastructure/adapters/BrowserStorage";
 export { default as AxiosHttpClient } from "../infrastructure/adapters/AxiosHttpClient"; 
 export { default as Wallet } from "./aggregates/Wallet";

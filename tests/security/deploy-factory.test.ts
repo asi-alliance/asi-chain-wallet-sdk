@@ -5,7 +5,7 @@ import {
     createCheckBalanceDeploy,
     createTransferDeploy,
     escapeRholangString,
-} from "../../src/domain/Deploy/factory";
+} from "../../src/infrastructure/adapters/Rholang/DeployFactory";
 
 test("escapeRholangString escapes dangerous characters", () => {
     const raw = "a\"b\\c\nd\re\tf";
