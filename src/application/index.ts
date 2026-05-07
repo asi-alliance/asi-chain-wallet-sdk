@@ -6,6 +6,7 @@ export * from "./ports/outbound/IVault";
 export * from "./ports/outbound/IAuxiliaryVault";
 export * from "./ports/outbound/IFileSaver";
 export * from "./ports/outbound/IKeyDerivation";
+export * from "./ports/outbound/IMnemonic";
 
 export * from "./common/QueryOptions";
 

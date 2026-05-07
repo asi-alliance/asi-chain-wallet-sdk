@@ -5,7 +5,6 @@
 export * from "../application/services/Fee";
 export * from "../infrastructure/adapters/Crypto";
 export * from "./Wallets";
-export * from "./Mnemonic";
 export * from "../application/services/Resubmit";    
 export * from "../infrastructure/adapters/Signer";
 export * from "../application/services/AssetsService";
@@ -13,7 +12,6 @@ export * from "../application/services/Fee";
 export * from "../application/services/TxHistory";
 
 export { default as BinaryWriter } from "../infrastructure/adapters/BinaryWriter";
-export { default as MnemonicService } from "./Mnemonic";
 export { default as WalletsService } from "./Wallets";
 export { default as CryptoService } from "../infrastructure/adapters/Crypto";
 

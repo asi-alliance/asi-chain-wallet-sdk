@@ -1,11 +1,13 @@
-import MnemonicService from "@services/Mnemonic";
 import Bip32KeyDerivationAdapter from "../../infrastructure/adapters/KeyDerivation";
+import Bip39MnemonicAdapter from "../../infrastructure/adapters/Mnemonic";
 import Secp256k1KeysManagerAdapter from "../../infrastructure/adapters/KeysManager";
 import type { IKeyDerivation } from "../../application/ports/outbound/IKeyDerivation";
+import type { IMnemonicService } from "../../application/ports/outbound/IMnemonic";
 import type { IKeyManager, KeyPair } from "../../domain/services/KeyManagement";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "../../domain/constants";
 import { decodeBase16, encodeBase58 } from "../../infrastructure/misc/codec";
 import type { Address } from "../../domain/aggregates/Wallet";
+import { MnemonicPhrase } from "../../domain/valueObjects/MnemonicPhrase";
 import blakejs from "blakejs";
 import sha3 from "js-sha3";
 
@@ -27,6 +29,8 @@ export default class WalletsService {
         new Secp256k1KeysManagerAdapter();
     private static keyDerivation: IKeyDerivation =
         new Bip32KeyDerivationAdapter();
+    private static mnemonicService: IMnemonicService =
+        new Bip39MnemonicAdapter();
 
     public static configureKeyManager(keyManager: IKeyManager): void {
         this.keyManager = keyManager;
@@ -34,6 +38,12 @@ export default class WalletsService {
 
     public static configureKeyDerivation(keyDerivation: IKeyDerivation): void {
         this.keyDerivation = keyDerivation;
+    }
+
+    public static configureMnemonicService(
+        mnemonicService: IMnemonicService,
+    ): void {
+        this.mnemonicService = mnemonicService;
     }
 
     public static createWallet(
@@ -63,14 +73,16 @@ export default class WalletsService {
         mnemonic?: string,
         index?: number,
     ): Promise<WalletMeta> {
-        const mnemonicToUse = mnemonic
-            ? MnemonicService.mnemonicToWordArray(mnemonic)
-            : MnemonicService.generateMnemonicArray();
-        const normalizedMnemonic =
-            MnemonicService.wordArrayToMnemonic(mnemonicToUse);
+        const phrase = mnemonic
+            ? MnemonicPhrase.fromString(mnemonic)
+            : MnemonicPhrase.fromString(
+                  this.mnemonicService.generateMnemonic(),
+              );
+        const normalizedMnemonic = phrase.toString();
+
         if (
             !normalizedMnemonic ||
-            !MnemonicService.isMnemonicValid(normalizedMnemonic)
+            !this.mnemonicService.isMnemonicValid(normalizedMnemonic)
         ) {
             throw new Error(
                 "WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid",
@@ -79,7 +91,7 @@ export default class WalletsService {
 
         const privateKey =
             await this.keyDerivation.derivePrivateKeyFromMnemonic(
-                mnemonicToUse,
+                phrase.words,
                 {
                     coinType: ASI_COIN_TYPE,
                     account: 0,
