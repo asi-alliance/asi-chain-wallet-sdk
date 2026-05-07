@@ -2,7 +2,7 @@ import ECC from "./eccAdapter";
 import MnemonicService from "@services/Mnemonic";
 import { ASI_COIN_TYPE, DEFAULT_BIP_44_PATH_OPTIONS } from "@utils/constants";
 import { BIP32Factory, type BIP32Interface } from "bip32";
-import { setupBufferPolyfill } from "@utils/polyfills";
+import { setupBufferPolyfill } from "../../infrastructure/misc/polyfills";
 import { mnemonicToSeed } from "bip39";
 
 setupBufferPolyfill();

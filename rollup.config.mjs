@@ -16,7 +16,7 @@ const external = [...Object.keys(pkg.dependencies || {}), ...builtinModules];
 
 const aliasEntries = {
     "@services": path.resolve("src/services"),
-    "@domains": path.resolve("src/domains"),
+    "@domain": path.resolve("src/domain"),
     "@config": path.resolve("src/config"),
     "@utils": path.resolve("src/utils"),
 };

@@ -1,4 +1,4 @@
-import { Network } from "@domains/Network";
+import { Network } from "../../../domain/aggregates/Network";
 import { defaults } from "./defaults";
 
 export class NetworkProvider {

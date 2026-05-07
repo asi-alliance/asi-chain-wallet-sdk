@@ -1,12 +1,12 @@
-import BinaryWriter from "@services/BinaryWriter";
-import { encodeBase16 } from "@utils/codec";
-import { DeployData } from "@domains/Deploy";
+import BinaryWriter from "../../infrastructure/adapters/BinaryWriter";
+import { encodeBase16 } from "../../infrastructure/misc/codec";
+import { DeployData } from "../../domain/Deploy";
 import blakejs from "blakejs";
 import {
     SigningRequest,
     PasswordProvider,
     SignedResult,
-} from "@domains/Signer";
+} from "../../domain/Signer";
 
 const { blake2bHex } = blakejs;
 

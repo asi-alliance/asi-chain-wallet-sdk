@@ -1,6 +1,6 @@
 import { NodeProvider, BlockchainGateway } from "./types";
 import { DEFAULT_RESUBMIT_CONFIG } from "@config";
-import { RequireBlockchainGateway } from "@utils/decorators";
+import { RequireBlockchainGateway } from "../../application/common/decorators";
 
 export default class NodeManager implements NodeProvider {
     private static instance: NodeManager;

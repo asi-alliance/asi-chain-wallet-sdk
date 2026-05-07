@@ -7,7 +7,7 @@ import {
     validateAddress,
     validateAccountName,
     AddressValidationErrorCode,
-} from "../../src/utils/validators";
+} from "../../src/domain/services/validators";
 
 test("isAddress accepts SDK-derived addresses", () => {
     const { privateKey } = KeysManager.generateKeyPair();

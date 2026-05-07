@@ -1,16 +1,16 @@
-import { GasFeeVO, Network } from "@domains/";
-import Wallet, { Address } from "@domains/Wallet";
-import AssetsService from "@services/AssetsService";
-import { TxHistory } from "@services/TxHistory";
+import { GasFeeVO, Network } from "../../domain";
+import Wallet, { Address } from "../../domain/aggregates/Wallet";
+import AssetsService from "./AssetsService";
+import { TxHistory } from "./TxHistory";
 import { IAuxiliaryVault } from "../ports/outbound/IAuxiliaryVault";
 import { IVault } from "../ports/outbound/IVault";
 import { IUiEventDispatcher } from "../ports/outbound/IUiEventDispatcher";
 import { UiEventDispatcher } from "../../uiAdapters/UiEventDispatcher";
 import { IFileSaver } from "../ports/outbound/IFileSaver";
 import { NetworkProvider } from "./NetworkProvider";
-import { loadNetworksFromEnv } from "../../infrastructureAdapters/loadNetworksFromEnv";
+import { loadNetworksFromEnv } from "../../infrastructure/adapters/loadNetworksFromEnv";
 import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
-import { axiosHttpClientFactory } from "../../infrastructureAdapters/AxiosHttpClient/factory";
+import { axiosHttpClientFactory } from "../../infrastructure/adapters/AxiosHttpClient/factory";
 
 export type ClientOptions  = {
     vault: IVault;

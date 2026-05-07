@@ -1,8 +1,8 @@
 import assert from "node:assert";
 import FundsReservationService from "@services/FundsReservation";
 import { describe, it, beforeEach, afterEach } from "node:test";
-import { ReservationStatus } from "@domains/Reservation/types";
-import { Address } from "@domains/Wallet";
+import { ReservationStatus } from "../../src/domain/aggregates/Reservation/types";
+import { Address } from "../../src/domain/aggregates/Wallet";
 
 const SENDER_ADDRESS = ("1111" + "a".repeat(60)) as Address;
 const RECIPIENT_1 = ("1111" + "b".repeat(60)) as Address;

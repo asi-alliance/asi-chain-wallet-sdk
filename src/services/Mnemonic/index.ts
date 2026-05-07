@@ -1,5 +1,5 @@
 import * as bip39 from "bip39";
-import { setupBufferPolyfill } from "@utils/polyfills";
+import { setupBufferPolyfill } from "../../infrastructure/misc/polyfills";
 
 setupBufferPolyfill();
 
