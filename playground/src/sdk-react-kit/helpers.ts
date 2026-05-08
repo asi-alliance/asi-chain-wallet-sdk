@@ -1,12 +1,6 @@
 import { WebVault, Client, WebAuxiliaryVault, WebFileSaver } from "asi-wallet-sdk";
 
-type NetworkConfig = {
-    ValidatorURL: string;
-    ReadOnlyURL: string;
-    IndexerURL: string;
-};
-
-const init = async (config: NetworkConfig) => {
+const init = async () => {
     const sdkClient = await Client.create({
         vault: new WebVault(),
         auxilliaryVault: new WebAuxiliaryVault(),
@@ -16,5 +10,4 @@ const init = async (config: NetworkConfig) => {
     return sdkClient;
 };
 
-export type { NetworkConfig };
 export { init };

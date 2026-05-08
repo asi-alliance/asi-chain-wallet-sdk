@@ -12,5 +12,6 @@ export * from "./common/QueryOptions";
 
 export * from "./services/Client";
 export { FeeService } from "./services/Fee";
-export { TxHistory } from "./services/TxHistory";
+export * from "./services/TxHistory";
+export {default as FundsReservationService} from "./services/FundsReservation";
 export * from "./services/AssetsService";

@@ -15,32 +15,16 @@ const SELECTED_NETWORK_KEY = "asi_selected_network";
 const WalletsPage = (): ReactElement => {
     
     // Network state
-    // const [currentNetwork, setCurrentNetwork] = useState<NetworkType>(() => {
-    //     const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkType;
-    //     return saved || NetworkType.DEVNET;
-    // });
+    const [currentNetwork, setCurrentNetwork] = useState<NetworkName>(() => { 
+        const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkName; //INFO/TODO: use NetworkProvider via useNetwork instead
+        return saved || "DevNet" satisfies NetworkName;
+    });
         const handleNetworkChange = (networkName: NetworkName) => {
         withLoader(async () => {
-            try {
-                // Save selected network
-                // localStorage.setItem(SELECTED_NETWORK_KEY, network);
-                // setCurrentNetwork(network);
-
-                // Reinitialize with new network
-                // const networkConfig = Networks[network];
-                // if (!networkConfig) {
-                    // throw new Error(`Network configuration for ${network} not found`);
-                // }
-                
-                // Update gateway network type
-                // if (BlockchainGateway.isInitialized()) {
-                //     BlockchainGateway.getInstance().setNetworkType(network);
-                // }
-            } catch (error) {
-                // alert(error?.message || `Failed to switch to ${network} network`);
-                // Revert network if switch fails
-                // setCurrentNetwork((prev) => prev);
-            }
+            //INFO/TODO: set network in client
+            
+            localStorage.setItem(SELECTED_NETWORK_KEY, networkName); //INFO/TODO: manage storage in client
+            setCurrentNetwork(networkName); //INFO/TODO: get from useSdkContext instead
         });
     };
 
@@ -82,14 +66,14 @@ const WalletsPage = (): ReactElement => {
         setSelectedMode(null);
     };
 
-    // <NetworkSelector
-    //             currentNetwork={currentNetwork}
-    //             onNetworkChange={handleNetworkChange}
-    //             isLoading={isLoading}
-    //         />
+
+
     return (
         <div className="wallets-page">
-            
+            <NetworkSelector
+                currentNetwork={currentNetwork}
+                onNetworkChange={handleNetworkChange}
+            />                
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
@@ -124,7 +108,6 @@ const WalletsPage = (): ReactElement => {
                                     sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}
@@ -214,7 +197,6 @@ const WalletsPage = (): ReactElement => {
                                     sdkClient={sdkClient}
                                     wallet={w}
                                     removeWallet={removeWallet}
-                                    assetsService={sdkClient.assetsService}
                                 />
                             </div>
                         ))}

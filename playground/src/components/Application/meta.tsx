@@ -6,9 +6,12 @@ import { ITransferModalProps } from "@components/TransferModal";
 import {
     // KeyDerivationService,
     // MnemonicService,
-    MnemonicStrength,
     // KeysManager,
-    Wallet
+    Wallet,
+    MnemonicStrength,
+    Bip32KeyDerivationAdapter, //INFO/TODO: Avoid using such adapters directly in client code. Instead, use the full SDK layer application API.
+    Secp256k1KeysManagerAdapter,
+    Bip39MnemonicAdapter, 
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
@@ -53,7 +56,8 @@ export const createMnemonicWallet = async (
     );
 };
 
-export const deriveNextWallet = async (
+
+export const deriveNextWallet = async ( //INFO/TODO: need to be placed in sdk
     seedId,
     mnemonic: string,
     name: string,
@@ -62,40 +66,40 @@ export const deriveNextWallet = async (
 ) => {
     const nextIndex: number = lastIndex++;
 
-    // const path: string = KeyDerivationService.buildBip44Path({
-    //     coinType: 60,
-    //     account: 0,
-    //     change: 0,
-    //     index: nextIndex,
-    // });
+    const path: string = Bip32KeyDerivationAdapter.buildBip44Path({
+        coinType: 60,
+        account: 0,
+        change: 0,
+        index: nextIndex,
+    });
 
-    // const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-    // const masterNode = KeyDerivationService.seedToMasterNode(seed);
+    const seed = await Bip32KeyDerivationAdapter.mnemonicToSeed(mnemonic);
+    const masterNode = Bip32KeyDerivationAdapter.seedToMasterNode(seed);
 
-    // const privateKey = KeyDerivationService.derivePrivateKey(masterNode, path);
+    const privateKey = Bip32KeyDerivationAdapter.derivePrivateKey(masterNode, path);
 
-    // const { publicKey } = KeysManager.getKeyPairFromPrivateKey(privateKey);
+    const { publicKey } = Secp256k1KeysManagerAdapter.getKeyPairFromPrivateKey(privateKey);
 
     return {
         seedId,
-        // privateKey,
-        // publicKey,
-        // wallet: await Wallet.fromPrivateKey(
-        //     name,
-        //     privateKey,
-        //     password,
-        //     seedId,
-        //     nextIndex,
-        // ),
+        privateKey,
+        publicKey,
+        wallet: await Wallet.fromPrivateKey(
+            name,
+            privateKey,
+            password,
+            seedId,
+            nextIndex,
+        ),
     };
 };
 
 export const createInitialMnemonic = (variant) => {
-    // return MnemonicService.generateMnemonic(
-    //     wordsCountToMnemonicStrength(variant),
-    // );
+    return Bip39MnemonicAdapter.generateMnemonic(
+        wordsCountToMnemonicStrength(variant),
+    );
 };
 
 export const createInitialPrivateKey = () => {
-    // return KeysManager.generateKeyPair().privateKey;
+    return Secp256k1KeysManagerAdapter.generateKeyPair().privateKey;
 };

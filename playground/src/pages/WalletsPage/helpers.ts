@@ -10,11 +10,12 @@ import {
 } from "@components/Application/meta";
 import {
     Address,
-    // EncryptedRecord,
+    EncryptedRecord,
     // MnemonicService,
     IVault,
     Wallet,
     Client,
+    MnemonicPhrase,
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
@@ -62,7 +63,7 @@ console.log("addWalletToVault: vault=", vault, "wallet=", wallet, "currentPasswo
 };
 
 const createInitialPrivateKeyInputValue = () => {
-    // return Array.from(createInitialPrivateKey()).join(",");
+    return createInitialPrivateKey();
 }
 
 const createWalletPageHandlers = ({
@@ -122,22 +123,22 @@ const createWalletPageHandlers = ({
             }
 
             try {
-                // const mnemonic = MnemonicService.wordArrayToMnemonic(
-                //     payload.mnemonicWords,
-                // );
-                // const encryptedSeed = await EncryptedRecord.createAndEncrypt(
-                //     mnemonic,
-                //     payload.seedPassword,
-                // );
+                const mnemonic = MnemonicPhrase.wordArrayToMnemonic(
+                    payload.mnemonicWords,
+                );
+                const encryptedSeed = await EncryptedRecord.createAndEncrypt(
+                    mnemonic,
+                    payload.seedPassword,
+                );
 
-                // const { wallet, seedId } = await createMnemonicWallet(
-                //     payload.name,
-                //     mnemonic,
-                //     payload.password,
-                // );
+                const { wallet, seedId } = await createMnemonicWallet(
+                    payload.name,
+                    mnemonic,
+                    payload.password,
+                );
 
-                // sdkClient.vault.addWallet(wallet);
-                // sdkClient.vault.addSeed(seedId, encryptedSeed);
+                sdkClient.vault.addWallet(wallet);
+                sdkClient.vault.addSeed(seedId, encryptedSeed);
 
                 await saveVault(currentPassword);
 
@@ -161,15 +162,15 @@ const createWalletPageHandlers = ({
             try {
                 const seedId = keccak512(seed);
 
-                // const { wallet } = await deriveNextWallet(
-                //     seedId,
-                //     seed,
-                //     name,
-                //     password,
-                //     index,
-                // );
+                const { wallet } = await deriveNextWallet(
+                    seedId,
+                    seed,
+                    name,
+                    password,
+                    index,
+                );
 
-                // sdkClient.vault.addWallet(wallet);
+                sdkClient.vault.addWallet(wallet);
 
                 await saveVault(currentPassword);
                 setModalState({ type: null });
@@ -226,7 +227,7 @@ const createWalletPageHandlers = ({
                 onSubmit: createKeyPairWallet,
                 isInputMode: false,
                 title: "Create KeyPair Wallet",
-                // initialPrivateKey: createInitialPrivateKeyInputValue(),
+                initialPrivateKey: createInitialPrivateKeyInputValue(),
                 onClose: () => setModalState({ type: null }),
             },
         });
@@ -261,10 +262,10 @@ const createWalletPageHandlers = ({
                 onClose: () => setModalState({ type: null }),
                 isInputMode: false,
                 title: "Create Mnemonic Wallet",
-                // initialMnemonic:
-                //     words === 12
-                //         ? createInitialMnemonic(12)
-                //         : createInitialMnemonic(24),
+                initialMnemonic:
+                    words === 12
+                        ? createInitialMnemonic(12)
+                        : createInitialMnemonic(24),
                 variant: words,
             },
         });

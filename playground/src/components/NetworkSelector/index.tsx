@@ -1,28 +1,26 @@
-import { NetworkType } from "asi-wallet-sdk";
+import { NetworkName } from "asi-wallet-sdk";
 import { ReactElement } from "react";
 import "./style.css";
 
 export interface NetworkSelectorProps {
-    currentNetwork: NetworkType;
-    onNetworkChange: (network: NetworkType) => void;
-    isLoading?: boolean;
+    currentNetwork: NetworkName;
+    onNetworkChange: (network: NetworkName) => void;
 }
-
-const networks: NetworkType[] = Object.values(NetworkType);
 
 const NetworkSelector = ({
     currentNetwork,
     onNetworkChange,
-    isLoading,
 }: NetworkSelectorProps): ReactElement => {
-    const handleNetworkChange = (network: NetworkType) => {
-        if (network !== currentNetwork && !isLoading) {
+    const networks: NetworkName[] = ["Dev"]; //INFO/TODO: get actual network array from NetworkProvider via useSdk hook
+
+    const handleNetworkChange = (network: NetworkName) => {
+        if (network !== currentNetwork) {
             onNetworkChange(network);
         }
     };
 
-    const buttonClass = (network: NetworkType) =>
-        `network-btn ${currentNetwork === network ? "active" : ""} ${isLoading ? "disabled" : ""}`;
+    const buttonClass = (network: NetworkName) =>
+        `network-btn ${currentNetwork === network ? "active" : ""}`;
 
     return (
         <div className="network-selector">
@@ -33,11 +31,8 @@ const NetworkSelector = ({
                         key={network}
                         className={buttonClass(network)}
                         onClick={() => handleNetworkChange(network)}
-                        disabled={isLoading || currentNetwork === network}
-                        title={
-                            isLoading
-                                ? "Loading..."
-                                : `Switch to ${network} network`
+                        disabled={currentNetwork === network}
+                        title={`Switch to ${network} network`
                         }
                     >
                         {network}

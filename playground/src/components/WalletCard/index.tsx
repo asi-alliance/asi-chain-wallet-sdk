@@ -3,14 +3,13 @@ import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
 import {
     fromAtomicAmount,
-    AssetsService,
     Address,
     Wallet,
     FundsReservationService,
     FeeService,
     GasFeeVO,
     Client,
-    type DeployStatus,
+    DeployStatus,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
@@ -22,7 +21,6 @@ export interface IWalletCardProps {
     sdkClient: Client;
     wallet: Wallet;
     removeWallet: (id: Address) => void;
-    assetsService: AssetsService;
 }
 
 const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
@@ -30,8 +28,7 @@ const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
 const WalletCard = ({
     sdkClient,
     wallet,
-    removeWallet,
-    assetsService,
+    removeWallet
 }: IWalletCardProps): ReactElement => {
     const network = networksFixture[0];
 
@@ -63,7 +60,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await assetsService.getASIBalance(network, address);
+            const balance = await sdkClient.assetsService.getASIBalance(network, address);
 
             setBalance(balance);
         } catch (error) {

@@ -1,6 +1,6 @@
 import InputsForm from "../InputsForm";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-// import { MnemonicService } from "asi-wallet-sdk";
+import { MnemonicPhrase } from "asi-wallet-sdk";
 import "./style.css";
 
 export type TWalletCreatePayload =
@@ -42,10 +42,9 @@ const CreateWalletModal = ({
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
     const [mnemonicWords, setMnemonicWords] = useState<string[]>(
-        // !initialMnemonic
-            // ? []
-            // : MnemonicService.mnemonicToWordArray(initialMnemonic),
-            []
+        !initialMnemonic
+            ? []
+            : MnemonicPhrase.toWordArray(initialMnemonic),
     );
 
     const computedTitle = useMemo(() => {

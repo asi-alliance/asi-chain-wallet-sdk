@@ -9,10 +9,16 @@ import { setupBufferPolyfill } from "../../misc/polyfills";
 setupBufferPolyfill();
 
 export class Bip39MnemonicAdapter implements IMnemonicService {
-    public generateMnemonic(
+    public static generateMnemonic(
         strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS,
     ): string {
         return bip39.generateMnemonic(strength);
+    }
+
+    public generateMnemonic(
+        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS,
+    ): string {
+        return Bip39MnemonicAdapter.generateMnemonic(strength);
     }
 
     public isMnemonicValid(mnemonic: string): boolean {
