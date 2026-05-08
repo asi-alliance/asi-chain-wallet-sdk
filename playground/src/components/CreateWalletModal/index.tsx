@@ -80,7 +80,7 @@ const CreateWalletModal = ({
                 mode: "privateKey",
                 name: name.trim(),
                 privateKey: new Uint8Array(
-                    JSON.parse(`[${privateKey.trim()}]`),
+                    JSON.parse(`${privateKey.trim()}`),
                 ),
                 password,
             });
