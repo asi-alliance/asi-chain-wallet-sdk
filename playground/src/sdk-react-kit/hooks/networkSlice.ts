@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Client, Network, NetworkName } from "asi-wallet-sdk";
 
 
-export type UseNetworkValue = {
+export type NetworkSlice = {
+    networkSetters: {
+        setCurrentNetwork: React.Dispatch<any>;
+        setNetworks: React.Dispatch<any>;
+    }
     currentNetwork: Network;
     setNetwork(networkName: NetworkName): Network;
     networks: Network[];
 }
 
-export const networkSlice = (sdkClient: Client): UseNetworkValue => {
+export const networkSlice = (sdkClient: Client): NetworkSlice => {
     const [currentNetwork, setCurrentNetwork] = useState<Network>(null);
     const [networks, setNetworks] = useState<Network[]>(null);
 
@@ -17,27 +21,15 @@ export const networkSlice = (sdkClient: Client): UseNetworkValue => {
         return newNetwork;
     }, [sdkClient]);
 
-    const useNetworkValue: UseNetworkValue = useMemo(() => ({
+    const networkSliceValue: NetworkSlice = useMemo(() => ({
+        networkSetters: {
+            setCurrentNetwork,
+            setNetworks,
+        },
         currentNetwork,
         setNetwork,
         networks,
     }), [currentNetwork, setNetwork, networks]); 
 
-    useEffect(() => {
-        if (sdkClient) {
-            sdkClient.uiEventDispatcher.onCurrentNetworkChanged = (newNetwork: Network) => {
-                console.log("onCurrentNetworkChanged: newNetwork=", newNetwork);
-                setCurrentNetwork(newNetwork);
-            }
-            sdkClient.uiEventDispatcher.onNetworksChanged = (networks: Network[]) => {
-                setNetworks(networks);
-            }
-            return () => {
-                sdkClient.uiEventDispatcher.onCurrentNetworkChanged = null;
-                sdkClient.uiEventDispatcher.onNetworksChanged = null;
-            }
-        }
-    }, [sdkClient]);
-
-    return useNetworkValue;
+    return networkSliceValue;
 }

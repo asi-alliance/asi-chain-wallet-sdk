@@ -1,10 +1,13 @@
+import { Network } from "asi-wallet-sdk";
+
 export function networkCallbacks(networkSetters) {
     return {
-        onCurrentNetworkChanged() {
-
+        onCurrentNetworkChanged(newNetwork: Network) {
+            console.log("onCurrentNetworkChanged: newNetwork=", newNetwork);
+            networkSetters.setCurrentNetwork(newNetwork);
         },
-        onNetworksChanged() {
-
+        onNetworksChanged(networks: Network[]) {
+            networkSetters.setNetworks(networks);
         },
     }
 }

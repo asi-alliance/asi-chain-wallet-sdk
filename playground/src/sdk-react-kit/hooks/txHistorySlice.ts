@@ -5,7 +5,12 @@ import { Address, Client, Network, Pagination, Transaction, TransactionFilter, T
 //   autoUpdate: boolean;
 //   autoUpdateInterval: number; //ms
 // }
-export interface TxHistory {
+export interface TxHistorySlice {
+    txHistorySetters: {
+
+    }
+
+
     setAddress: React.Dispatch<Address>,
     setFilter: React.Dispatch<TransactionFilter>,
     stats: TransactionStats;
@@ -21,14 +26,21 @@ export interface TxHistory {
 //   autoUpdateInterval: 30000,
 // }
 
-export const txHistorySlice = (sdkClient: Client, password: string): TxHistory => {
+export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySlice => {
     const [address, setAddress] = useState(null);
     const [filter, setFilter] = useState(null)
 
-    const [localTransactions, setLocalTransactions] = useState<Transaction[]>(null);
+    const [allLocalTxs, setAllLocalTxs] = useState<Transaction[]>(null);
     const [indexerTransactions, setIndexerTransactions] = useState<Transaction[]>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<any>(null);
+
+    const localTransactions = useMemo(() => {
+        if(!sdkClient || !allLocalTxs || !address) {
+            return;
+        }
+         return sdkClient?.txHistory.filterLocalTxs(allLocalTxs, address, filter); 
+    }, [allLocalTxs, address, filter]);
 
     const preparedData = useMemo(() => {
         if(!sdkClient || !localTransactions || !indexerTransactions) {
@@ -46,18 +58,6 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistory =
 
 
 
-    useEffect(() => {
-        if (sdkClient) {
-            sdkClient.uiEventDispatcher.onLocalTxHistoryChanged = (allLocalTxs: Transaction[]) => {
-                const localRequestTxs = sdkClient.txHistory.filterLocalTxs(allLocalTxs, address, filter);
-                setLocalTransactions(localRequestTxs);
-            }
-            return () => {
-                sdkClient.uiEventDispatcher.onLocalTxHistoryChanged = null;
-            }
-        }
-    }, [sdkClient, address, filter]);
-
     const loadTransactions = useCallback(async (network: Network, pagination: Pagination) => {
         if(!sdkClient) {
             return;
@@ -74,12 +74,13 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistory =
                 password
             );
 
-            setLocalTransactions(localTxs);
+            // setLocalTransactions
+            setAllLocalTxs(localTxs); //TODO: solve all or filtered local txs
             setIndexerTransactions(indexerTxs);
         } catch (error) {
             console.error(error);
             setError(String(error));
-            setLocalTransactions(null);
+            setAllLocalTxs(null); //TODO: solve all or filtered local txs
             setIndexerTransactions(null);
         }
         setIsLoading(false);
@@ -90,6 +91,11 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistory =
     }, [sdkClient, password, address, filter]);
 
     return {
+        txHistorySetters: {
+            setAllLocalTxs,
+            setIndexerTransactions
+        },
+
         transactions,
         stats,
         loadTransactions,

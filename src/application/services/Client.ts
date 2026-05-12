@@ -64,6 +64,9 @@ export class Client {
         this.uiEventDispatcher = uiEventDispatcher ?? new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
         this.keyManager = new Secp256k1KeysManagerAdapter();
+
+        this.uiEventDispatcher.onCurrentNetworkChanged?.(this.networkProvider.currentNetwork);
+        this.uiEventDispatcher.onNetworksChanged?.(this.networkProvider.networks);
     }
     private get auxilliaryVault() {
         if(!this._auxilliaryVault) {

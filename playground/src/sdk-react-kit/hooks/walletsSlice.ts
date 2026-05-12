@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import {Client, Wallet} from "asi-wallet-sdk";
 
 
@@ -27,22 +27,16 @@ const updateWallets = (sdkClient: Client, setWallets: React.Dispatch<{mnemonicWa
 
 
 export const walletsSlice = (sdkClient: Client) => {
+    const [vaultVersion, bumpVaultVersion] = useReducer((v) => v + 1, 0);
       const [wallets, setWallets] = useState({mnemonicWallets: [], privateKeyWallets: []});
       const [lastIndex, setLastIndex] = useState<number | null>(null);
 
       useEffect(() => {
-        if(sdkClient) {
-            sdkClient.uiEventDispatcher.onVaultChanged = () => {
-                updateWallets(sdkClient, setWallets, setLastIndex);
-            }
+        if(!sdkClient) {
+            return;
         }
-        return () => {
-            if(sdkClient) {
-                sdkClient.uiEventDispatcher.onVaultChanged = null;
-            }
-        }
-      }, [sdkClient]);
-
+        updateWallets(sdkClient, setWallets, setLastIndex);
+      }, [sdkClient, vaultVersion]);
       
       const flatWallets = useMemo(() => {
         return [
@@ -50,5 +44,9 @@ export const walletsSlice = (sdkClient: Client) => {
           ...(wallets.privateKeyWallets ?? []),
         ]
       }, [wallets]);
-  return {wallets, lastIndex, flatWallets};
+  return {
+    walletsSetters: {
+        bumpVaultVersion
+    },
+    wallets, lastIndex, flatWallets};
 }

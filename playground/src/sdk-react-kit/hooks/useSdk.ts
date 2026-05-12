@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Client } from "asi-wallet-sdk";
 import { init } from "../helpers";
-import { useWallets } from "./useWallets";
-import { useTxHistory } from "./txHistorySlice";
-import { useNetwork } from "./networkSlice";
+import { walletsSlice } from "./walletsSlice";
+import { txHistorySlice } from "./txHistorySlice";
+import { networkSlice } from "./networkSlice";
 import { useUiEventDispatcher } from "./uiEventDispatcher.ts/useUiEventDispatcher";
 
 interface IPasswordSubmitHandler {
@@ -31,12 +31,12 @@ const useSdk = ({
         onInitError,
     });
 
-    const reactiveWallets = useWallets(sdkClient);
-    const txHistory = useTxHistory(sdkClient, currentPassword);
-    const network = useNetwork(sdkClient);
+    const wallets = walletsSlice(sdkClient);
+    const txHistory = txHistorySlice(sdkClient, currentPassword);
+    const network = networkSlice(sdkClient);
 
     // ///////
-    const uiEventDispatcher = useUiEventDispatcher();
+    const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters);
     // ///////
 
     useEffect(() => {
@@ -120,7 +120,7 @@ const useSdk = ({
         unlockVault,
         createVaultPassword,
         clearSdkData,
-        ...reactiveWallets,
+        wallets,
         txHistory,
         network,
     };

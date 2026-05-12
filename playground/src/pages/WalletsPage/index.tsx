@@ -30,7 +30,7 @@ const WalletsPage = (): ReactElement => {
 
 
     const { setModalState, withLoader } = useAppContext();
-    const {sdkClient, saveVault, currentPassword, wallets, lastIndex} = useSdkContext();
+    const {sdkClient, saveVault, currentPassword, wallets} = useSdkContext();
     const {
         removeWallet,
         importPk,
@@ -70,10 +70,7 @@ const WalletsPage = (): ReactElement => {
 
     return (
         <div className="wallets-page">
-            <NetworkSelector
-                currentNetwork={currentNetwork}
-                onNetworkChange={handleNetworkChange}
-            />                
+            <NetworkSelector />                
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">
@@ -97,7 +94,7 @@ const WalletsPage = (): ReactElement => {
                     </div>
 
                     <div className="wallets-page__list">
-                        {wallets.privateKeyWallets.map((w) => (
+                        {wallets.wallets.privateKeyWallets.map((w) => (
                             <div
                                 key={w.getAddress()}
                                 className="wallets-page__card-wrap"
@@ -149,7 +146,7 @@ const WalletsPage = (): ReactElement => {
                             </Fragment>
                         )}
                         {!isChoosingMethod &&
-                        !wallets.mnemonicWallets?.length ? (
+                        !wallets.wallets.mnemonicWallets?.length ? (
                             <Fragment>
                                 <button
                                     className="wallets-page__action"
@@ -177,7 +174,7 @@ const WalletsPage = (): ReactElement => {
                                 <button
                                     className="wallets-page__action"
                                     type="button"
-                                    onClick={() => deriveK(lastIndex + 1)}
+                                    onClick={() => deriveK(wallets.lastIndex + 1)}
                                 >
                                     Derive
                                 </button>
@@ -186,7 +183,7 @@ const WalletsPage = (): ReactElement => {
                     </div>
 
                     <div className="wallets-page__list mnemonics">
-                        {wallets.mnemonicWallets.map((w) => (
+                        {wallets.wallets.mnemonicWallets.map((w) => (
                             <div
                                 key={w.getAddress()}
                                 className="wallets-page__card-wrap"
