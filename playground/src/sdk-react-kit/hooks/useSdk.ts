@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Client } from "asi-wallet-sdk";
-import { init, type NetworkConfig } from "../helpers";
+import { init } from "../helpers";
 import { useWallets } from "./useWallets";
-import { useTxHistory } from "./useTxHistory";
+import { useTxHistory } from "./txHistorySlice";
+import { useNetwork } from "./networkSlice";
+import { useUiEventDispatcher } from "./uiEventDispatcher.ts/useUiEventDispatcher";
 
 interface IPasswordSubmitHandler {
     (password: string): (void | Promise<void>);
 }
 
 type UseSdkParams = {
-    config: NetworkConfig;
     onUnlockRequired?: (unlockVault: IPasswordSubmitHandler) => void;
     onVaultPasswordRequired?: (
         createVaultPassword: IPasswordSubmitHandler,
@@ -18,7 +19,6 @@ type UseSdkParams = {
 };
 
 const useSdk = ({
-    config,
     onUnlockRequired,
     onVaultPasswordRequired,
     onInitError,
@@ -33,6 +33,11 @@ const useSdk = ({
 
     const reactiveWallets = useWallets(sdkClient);
     const txHistory = useTxHistory(sdkClient, currentPassword);
+    const network = useNetwork(sdkClient);
+
+    // ///////
+    const uiEventDispatcher = useUiEventDispatcher();
+    // ///////
 
     useEffect(() => {
         callbacksRef.current = {
@@ -82,7 +87,7 @@ const useSdk = ({
     useEffect(() => {
         const initialize = async () => {
             try {
-                const sdkClient = await init(config);
+                const sdkClient = await init(uiEventDispatcher);
                 setSdkClient(sdkClient);
                 if(sdkClient.vault.isExist()) {
                     onUnlockRequired(async (password) => {
@@ -102,7 +107,7 @@ const useSdk = ({
             }
         }
         initialize();
-    }, [config]);
+    }, []);
 
     const clearSdkData = useCallback(() => {
         sdkClient?.clearPersistance();
@@ -117,6 +122,7 @@ const useSdk = ({
         clearSdkData,
         ...reactiveWallets,
         txHistory,
+        network,
     };
 };
 

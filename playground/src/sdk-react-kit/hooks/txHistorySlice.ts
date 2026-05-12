@@ -21,7 +21,7 @@ export interface TxHistory {
 //   autoUpdateInterval: 30000,
 // }
 
-export const useTxHistory = (sdkClient: Client, password: string): TxHistory => {
+export const txHistorySlice = (sdkClient: Client, password: string): TxHistory => {
     const [address, setAddress] = useState(null);
     const [filter, setFilter] = useState(null)
 

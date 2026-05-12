@@ -6,7 +6,7 @@ import {
 } from "react";
 import KeyValueTable from "@components/common/KeyValueTable";
 import { Network, Pagination, TransactionFilter, Wallet} from "asi-wallet-sdk";
-import { TxHistory } from "../../../sdk-react-kit/hooks/useTxHistory";
+import { TxHistory } from "../../../sdk-react-kit/hooks/txHistorySlice";
 
 interface TxHistoryActionsProps {
     selectedAccount?: Wallet;

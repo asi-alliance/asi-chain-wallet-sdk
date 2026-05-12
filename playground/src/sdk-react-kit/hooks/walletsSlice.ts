@@ -26,7 +26,7 @@ const updateWallets = (sdkClient: Client, setWallets: React.Dispatch<{mnemonicWa
 };
 
 
-export const useWallets = (sdkClient: Client) => {
+export const walletsSlice = (sdkClient: Client) => {
       const [wallets, setWallets] = useState({mnemonicWallets: [], privateKeyWallets: []});
       const [lastIndex, setLastIndex] = useState<number | null>(null);
 
