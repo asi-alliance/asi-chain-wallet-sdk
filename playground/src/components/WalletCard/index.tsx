@@ -15,7 +15,7 @@ import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
-import { networksFixture } from "@pages/TxHistoryPage/fixtures/txHistory.fixture";
+import { useSdkContext } from "../../sdk-react-kit";
 
 export interface IWalletCardProps {
     sdkClient: Client;
@@ -30,9 +30,8 @@ const WalletCard = ({
     wallet,
     removeWallet
 }: IWalletCardProps): ReactElement => {
-    const network = networksFixture[0];
-
     const { setModalState, withLoader } = useAppContext();
+    const {network} = useSdkContext();
 
     const reservationService = useMemo(
         () => FundsReservationService.getInstance(),
@@ -60,7 +59,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await sdkClient.assetsService.getASIBalance(network, address);
+            const balance = await sdkClient.getASIBalance(address);
 
             setBalance(balance);
         } catch (error) {
@@ -107,8 +106,7 @@ const WalletCard = ({
                 setIsSending(true);
 
                 // const data = await assetsService.transfer(
-                const data = await sdkClient.transfer(
-                    network,        
+                const data = await sdkClient.transfer(       
                     address,
                     toAddress,
                     balance,
@@ -271,6 +269,10 @@ const WalletCard = ({
 
         return () => clearInterval(autoUpdateInterval);
     }, []);
+
+    useEffect(() => {
+        fetchBalance();
+    }, [network.currentNetwork]);
 
     useEffect(() => {
         console.log("Balance updated, refreshing reservations...");

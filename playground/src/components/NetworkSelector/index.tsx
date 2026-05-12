@@ -4,9 +4,7 @@ import "./style.css";
 import { useSdkContext } from "../../sdk-react-kit";
 
 const NetworkSelector = (): ReactElement => {
-    const {network} = useSdkContext();
-    console.log("NetworkSelector: network=", network);
-    
+    const {network} = useSdkContext();    
     const handleNetworkChange = (networkName: NetworkName) => {
         network.setNetwork(networkName);
     };

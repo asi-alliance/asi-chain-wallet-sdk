@@ -132,7 +132,8 @@ export class Client {
     getWallets(): Wallet[] {
         return this.vault.getWallets();
     }
-    public async transfer(network: Network, fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
+    public async transfer(fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
+        const network = this.networkProvider.currentNetwork;
         const deployId = await this.assetsService.transfer(
             network,
             fromAddress,
@@ -146,6 +147,10 @@ export class Client {
         const localTxs = await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
         this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
         return deployId;
+    }
+    public async getASIBalance(address: Address) {
+        const network = this.networkProvider.currentNetwork;
+        return await this.assetsService.getASIBalance(network, address);
     }
     public clearPersistance() {
         this._vault?.clearSavedVault();

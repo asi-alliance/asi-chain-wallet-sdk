@@ -95,7 +95,6 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySl
             setAllLocalTxs,
             setIndexerTransactions
         },
-
         transactions,
         stats,
         loadTransactions,
