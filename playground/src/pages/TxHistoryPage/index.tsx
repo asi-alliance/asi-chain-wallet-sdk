@@ -41,7 +41,7 @@ const TxHistoryPage = (): ReactElement => {
             />
             <TxHistoryFilters
                 filter={filter}
-                networks={network.networks}
+                // networks={network.networks}
                 onFilterChange={onFilterChange}
             />
             <TxHistoryStats stats={txHistory.stats} />

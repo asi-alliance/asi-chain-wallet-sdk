@@ -31,9 +31,10 @@ const useSdk = ({
         onInitError,
     });
 
-    const wallets = walletsSlice(sdkClient);
-    const txHistory = txHistorySlice(sdkClient, currentPassword);
     const network = networkSlice(sdkClient);
+    const wallets = walletsSlice(sdkClient);
+    const txHistory = txHistorySlice(sdkClient, currentPassword, network);
+    
 
     // ///////
     const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters);

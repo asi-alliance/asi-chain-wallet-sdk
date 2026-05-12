@@ -16,5 +16,3 @@ export interface Transaction {
   networkName: NetworkName; //TODO: clarify what network data will be stored
   detectedBy?: 'balance_change' | 'manual' | 'auto';
 }
-
-

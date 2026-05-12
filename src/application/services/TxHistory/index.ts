@@ -49,7 +49,7 @@ export class TxHistory {
 
     /**
      * filters and removes transactions from local vault that are no longer needed
-     * @returns updated transactions from auxilliary vault
+     * @returns updated all transactions from auxilliary vault
      */
     private async removeExcessTxsInAuxVault(indexerTxs: Transaction[], auxVaultPassword: string): Promise<Transaction[]> {
         await this.auxiliaryVault.unlock(auxVaultPassword);
@@ -186,9 +186,10 @@ export class TxHistory {
      * @param allLocalTxs all txs in auxiliary vault
      * @returns filtered by address and filter txs from auxiliary vault
      */
-    public filterLocalTxs(allLocalTxs: Transaction[], address: Address, filter: TransactionFilter | null) {
+    public filterLocalTxs(allLocalTxs: Transaction[], address: Address, filter: TransactionFilter | null, network: Network) {
+        console.log(allLocalTxs, network);
         const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address);
-        const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter));
+        const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter, network));
         return filteredLocalTxs;
     }
     public async getFilteredTxs(
@@ -204,8 +205,8 @@ export class TxHistory {
             auxVaultPassword
         );
 
-        const filteredLocalTxs = this.filterLocalTxs(allLocalTxs, address, filter);
-        const filteredIndexerTxs = this.sortTxsByTimestamp(applyTransactionFilter(indexerTxs, filter));
+        const filteredLocalTxs = this.filterLocalTxs(allLocalTxs, address, filter, network);
+        const filteredIndexerTxs = this.sortTxsByTimestamp(applyTransactionFilter(indexerTxs, filter, network));
 
         return { localTxs: filteredLocalTxs, indexerTxs: filteredIndexerTxs };
     }

@@ -1,4 +1,4 @@
-import { Transaction } from "../../../domain";
+import { Network, Transaction } from "../../../domain";
 import { TransactionFilter, TransactionStats } from "./types";
 
 export const hasActiveTransactionFilters = (
@@ -16,10 +16,14 @@ export const hasActiveTransactionFilters = (
 export const applyTransactionFilter = (
     transactions: Transaction[],
     filter: TransactionFilter | null,
+    network: Network,
 ): Transaction[] => {
     let filteredTransactions = transactions;
+    filteredTransactions = filteredTransactions.filter(
+        (tx) => tx.networkName === network.name
+    );
     if(!filter) {
-        return transactions;
+        return filteredTransactions;
     }
 
     if (filter.type) {
@@ -31,12 +35,6 @@ export const applyTransactionFilter = (
     if (filter.status) {
         filteredTransactions = filteredTransactions.filter(
             (tx) => tx.status === filter.status,
-        );
-    }
-
-    if (filter.network) {
-        filteredTransactions = filteredTransactions.filter(
-            (tx) => tx.networkName === filter.network,
         );
     }
 
@@ -55,7 +53,6 @@ export const applyTransactionFilter = (
             (tx) => new Date(tx.timestamp) <= endDate,
         );
     }
-
     return filteredTransactions;
 };
 

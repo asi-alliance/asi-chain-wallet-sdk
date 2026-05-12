@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Address, Client, Network, Pagination, Transaction, TransactionFilter, TransactionStats } from "asi-wallet-sdk";
+import { NetworkSlice } from "./networkSlice";
 
 // interface UseHistoryOptions {
 //   autoUpdate: boolean;
@@ -9,7 +10,6 @@ export interface TxHistorySlice {
     txHistorySetters: {
 
     }
-
 
     setAddress: React.Dispatch<Address>,
     setFilter: React.Dispatch<TransactionFilter>,
@@ -26,7 +26,7 @@ export interface TxHistorySlice {
 //   autoUpdateInterval: 30000,
 // }
 
-export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySlice => {
+export const txHistorySlice = (sdkClient: Client, password: string, network: NetworkSlice): TxHistorySlice => {
     const [address, setAddress] = useState(null);
     const [filter, setFilter] = useState(null)
 
@@ -39,8 +39,10 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySl
         if(!sdkClient || !allLocalTxs || !address) {
             return;
         }
-         return sdkClient?.txHistory.filterLocalTxs(allLocalTxs, address, filter); 
-    }, [allLocalTxs, address, filter]);
+        const txs = sdkClient?.txHistory.filterLocalTxs(allLocalTxs, address, filter, network.currentNetwork); 
+        console.log("txs=", txs);
+        return txs;
+    }, [allLocalTxs, address, filter, network.currentNetwork]);
 
     const preparedData = useMemo(() => {
         if(!sdkClient || !localTransactions || !indexerTransactions) {
