@@ -6,13 +6,14 @@ import {
 } from "react";
 import KeyValueTable from "@components/common/KeyValueTable";
 import { Network, Pagination, TransactionFilter, Wallet} from "asi-wallet-sdk";
-import { TxHistory } from "../../../sdk-react-kit/hooks/txHistorySlice";
+import { TxHistorySlice } from "../../../sdk-react-kit/hooks/txHistorySlice";
+import { NetworkSlice } from "../../../sdk-react-kit/hooks/networkSlice";
 
 interface TxHistoryActionsProps {
     selectedAccount?: Wallet;
-    selectedNetwork?: Network;
+    network: NetworkSlice;
     filter: TransactionFilter;
-    txHistory: TxHistory;
+    txHistory: TxHistorySlice;
 }
 
 const pagination: Pagination = {
@@ -23,24 +24,23 @@ const pagination: Pagination = {
 
 const TxHistoryActions = ({
     selectedAccount,
-    selectedNetwork,
     filter,
-    txHistory
+    txHistory,
+    network
 }: TxHistoryActionsProps): ReactElement => {
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
     const handleRefreshAndSync = async () => {
-        await txHistory.loadTransactions(selectedNetwork, pagination);
+        await txHistory.loadTransactions(pagination);
         setLastRefresh(new Date());
     };
     useEffect(() => {
         handleRefreshAndSync();
-    }, [selectedNetwork, selectedAccount, filter, pagination]); 
+    }, [selectedAccount, filter, pagination, network.currentNetwork]); 
 
     const onDownloadTxs = useCallback(async (format: "json" | "csv") => {
         try {
             txHistory.downloadTransactions(
-                selectedNetwork,
                 // publicKey,
                 pagination,
                 format,
@@ -48,7 +48,7 @@ const TxHistoryActions = ({
         } catch (error) {
             console.error(error);
         }
-    }, [txHistory, selectedAccount, selectedNetwork]);
+    }, [txHistory, selectedAccount]);
 
     return (
         <section className="section">

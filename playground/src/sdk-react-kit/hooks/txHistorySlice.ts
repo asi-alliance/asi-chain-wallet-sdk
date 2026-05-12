@@ -58,7 +58,7 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySl
 
 
 
-    const loadTransactions = useCallback(async (network: Network, pagination: Pagination) => {
+    const loadTransactions = useCallback(async (pagination: Pagination) => {
         if(!sdkClient) {
             return;
         }
@@ -67,7 +67,7 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySl
         try {
             // const publicKey = wallet.getPublicKey();
             const { localTxs, indexerTxs } = await sdkClient.txHistory.getFilteredTxs(
-                network,
+                sdkClient.networkProvider.currentNetwork,
                 address,
                 filter,
                 pagination,
@@ -86,8 +86,8 @@ export const txHistorySlice = (sdkClient: Client, password: string): TxHistorySl
         setIsLoading(false);
     }, [sdkClient, password, address, filter]);
 
-    const downloadTransactions = useCallback(async (network: Network, pagination: Pagination, format: "json" | "csv") => {
-        await sdkClient.txHistory.downloadTransactions(network, address, pagination, filter, format, password);
+    const downloadTransactions = useCallback(async (pagination: Pagination, format: "json" | "csv") => {
+        await sdkClient.txHistory.downloadTransactions(sdkClient.networkProvider.currentNetwork, address, pagination, filter, format, password);
     }, [sdkClient, password, address, filter]);
 
     return {

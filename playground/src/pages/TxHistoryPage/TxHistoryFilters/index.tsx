@@ -41,9 +41,9 @@ const TxHistoryFilters = ({
 }: TxHistoryFiltersProps): ReactElement => {
     const networkOptions: SelectFilterOption[] = [
         { value: "all", label: "All Networks" },
-        ...networks.map((network) => ({
-            value: network.id,
-            label: network.id,
+        ...(networks ?? []).map((network) => ({
+            value: network.name,
+            label: network.name,
         })),
     ];
     const hasActiveFilters = hasActiveTransactionFilters(filter);
