@@ -5,4 +5,6 @@ type UiCallback =  {
 export interface IUiEventDispatcher {
   onVaultChanged: UiCallback;
   onLocalTxHistoryChanged: UiCallback;
+  onCurrentNetworkChanged: UiCallback;
+  onNetworksChanged: UiCallback;
 }

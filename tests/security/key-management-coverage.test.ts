@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import Asset from "../../src/domains/Asset";
-import Wallet, { Address } from "../../src/domains/Wallet";
+import Asset from "../../src/domain/aggregates/Wallet/Asset";
+import Wallet, { Address } from "../../src/domain/aggregates/Wallet";
 import KeyDerivationService from "../../src/services/KeyDerivation";
 import KeysManager from "../../src/services/KeysManager";
 import MnemonicService from "../../src/services/Mnemonic";

@@ -13,7 +13,6 @@ import {
 import FullscreenLoader from "@components/FullScreenLoader";
 import { ReactElement, useState } from "react";
 import { PersistentPageRoutes } from "@router/index";
-import { Networks } from "../../config";
 import { Modals } from "./meta";
 import Header from "./Header";
 import "./style.css";
@@ -70,7 +69,6 @@ const Application = (): ReactElement => {
     };
 
     const sdk = useSdk({
-        config: Networks["DevNet"],
         onUnlockRequired: openUnlockModal,
         onVaultPasswordRequired: openCreatePasswordForVaultModal,
         onInitError: (error) => {

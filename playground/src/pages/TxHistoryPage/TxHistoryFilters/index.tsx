@@ -2,11 +2,11 @@ import type { ReactElement } from "react";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
-import {TransactionFilter, Network, hasActiveTransactionFilters } from "asi-wallet-sdk"
+import {TransactionFilter, hasActiveTransactionFilters } from "asi-wallet-sdk"
 
 interface TxHistoryFiltersProps {
     filter: TransactionFilter;
-    networks: Network[];
+    // networks: Network[];
     onFilterChange: (filter: TransactionFilter) => void;
 }
 
@@ -36,16 +36,16 @@ const normalizeFilterValue = (
 
 const TxHistoryFilters = ({
     filter,
-    networks,
+    // networks,
     onFilterChange,
 }: TxHistoryFiltersProps): ReactElement => {
-    const networkOptions: SelectFilterOption[] = [
-        { value: "all", label: "All Networks" },
-        ...networks.map((network) => ({
-            value: network.id,
-            label: network.id,
-        })),
-    ];
+    // const networkOptions: SelectFilterOption[] = [
+    //     { value: "all", label: "All Networks" },
+    //     ...(networks ?? []).map((network) => ({
+    //         value: network.name,
+    //         label: network.name,
+    //     })),
+    // ];
     const hasActiveFilters = hasActiveTransactionFilters(filter);
 
     const handleFilterChange = (
@@ -91,13 +91,13 @@ const TxHistoryFilters = ({
                 onChange={(value) => handleFilterChange("status", value)}
             />
 
-            <SelectFilter
+            {/* <SelectFilter
                 id="history-filter-network-select"
                 label="Network"
                 value={filter.network || "all"}
                 options={networkOptions}
                 onChange={(value) => handleFilterChange("network", value)}
-            />
+            /> */}
 
             <label htmlFor="history-filter-start-date-input">Start Date</label>
             <input

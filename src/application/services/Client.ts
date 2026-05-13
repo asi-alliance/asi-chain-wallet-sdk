@@ -1,18 +1,27 @@
-import { GasFeeVO, Network } from "@domains/";
-import Wallet, { Address } from "@domains/Wallet";
-import AssetsService from "@services/AssetsService";
-import { TxHistory } from "@services/TxHistory";
+import { GasFeeVO, IKeyManager, Network, NetworkName } from "../../domain";
+import Wallet, { Address } from "../../domain/aggregates/Wallet";
+import AssetsService from "./AssetsService";
+import { TxHistory } from "./TxHistory";
 import { IAuxiliaryVault } from "../ports/outbound/IAuxiliaryVault";
 import { IVault } from "../ports/outbound/IVault";
 import { IUiEventDispatcher } from "../ports/outbound/IUiEventDispatcher";
 import { UiEventDispatcher } from "../../uiAdapters/UiEventDispatcher";
 import { IFileSaver } from "../ports/outbound/IFileSaver";
+import { NetworkProvider } from "./NetworkProvider";
+import { loadNetworksFromEnv } from "../../infrastructure/adapters/loadNetworksFromEnv";
+import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
+import { axiosHttpClientFactory } from "../../infrastructure/adapters/AxiosHttpClient/factory";
+import { Secp256k1KeysManagerAdapter } from "../../infrastructure";
+import { BlockchainGateway} from "../../infrastructure/adapters/BlockchainGateway";
+import { ClientConfiguration, defaultClientConfiguration } from "../configuration";
 
 export type ClientOptions  = {
     vault: IVault;
     auxilliaryVault: IAuxiliaryVault;
-    fileSaver: IFileSaver;
-} | {} & {fileSaver?: IFileSaver};
+    fileSaver?: IFileSaver;
+    uiEventDispatcher?: IUiEventDispatcher;
+    clientConfiguration?: ClientConfiguration;
+} | {} & {fileSaver?: IFileSaver; clientConfiguration?: ClientConfiguration, uiEventDispatcher?: IUiEventDispatcher};
 
 export class Client {
     /* infrastructure adapters */
@@ -20,25 +29,44 @@ export class Client {
     private _auxilliaryVault?: IAuxiliaryVault;
     private _vaultsPassword?: string; 
     private _fileSaver?: IFileSaver;
+    private httpClientFactory: IHttpClientFactory;
+    public blockchainGateway: BlockchainGateway;
     /* /infrastructure adapters */
 
     /* application services */
     public assetsService: AssetsService;
     public txHistory: TxHistory;
     public uiEventDispatcher: IUiEventDispatcher;
+    public networkProvider: NetworkProvider;
     /* /application services */
+
+    /* domain services */
+    public keyManager: IKeyManager;
+    /* /domain services */
 
     private activeWalletAddress?: Address;
 
-    private constructor(vault?: IVault, auxilliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver) {
+    private constructor(vault?: IVault, auxilliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver, uiEventDispatcher?: IUiEventDispatcher, configuration?: Partial<ClientConfiguration>) {
+        const completedConfiguration:ClientConfiguration = {
+            ...defaultClientConfiguration,
+            ...configuration,
+        };
+
         this._vault = vault;
         this._auxilliaryVault = auxilliaryVault;
         this._vaultsPassword = vaultsPassword;
-        this.assetsService = new AssetsService();
+        this.httpClientFactory = axiosHttpClientFactory;
+        this.networkProvider = new NetworkProvider(loadNetworksFromEnv(), completedConfiguration.currentNetworkName);
+        this.blockchainGateway = new BlockchainGateway(this.httpClientFactory, this.networkProvider.currentNetwork);
+        this.assetsService = new AssetsService(this.blockchainGateway);
         this._fileSaver = fileSaver;
-        this.txHistory = new TxHistory(this._auxilliaryVault, this._fileSaver);
-        this.uiEventDispatcher = new UiEventDispatcher();
+        this.txHistory = new TxHistory(this.blockchainGateway, this._auxilliaryVault, this._fileSaver);
+        this.uiEventDispatcher = uiEventDispatcher ?? new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
+        this.keyManager = new Secp256k1KeysManagerAdapter();
+
+        this.uiEventDispatcher.onCurrentNetworkChanged?.(this.networkProvider.currentNetwork);
+        this.uiEventDispatcher.onNetworksChanged?.(this.networkProvider.networks);
     }
     private get auxilliaryVault() {
         if(!this._auxilliaryVault) {
@@ -77,7 +105,7 @@ export class Client {
             vault = options.vault;
             auxilliaryVault = options.auxilliaryVault;
         }
-        return new Client(vault, auxilliaryVault, vaultsPassword, options.fileSaver);
+        return new Client(vault, auxilliaryVault, vaultsPassword, options.fileSaver, options.uiEventDispatcher, options.clientConfiguration);
     }
 
     async createWallet(name: string, privateKey: Uint8Array, password: string): Promise<Wallet> {
@@ -104,8 +132,10 @@ export class Client {
     getWallets(): Wallet[] {
         return this.vault.getWallets();
     }
-    public async transfer(network: Network, fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
+    public async transfer(fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
+        const network = this.networkProvider.currentNetwork;
         const deployId = await this.assetsService.transfer(
+            network,
             fromAddress,
             toAddress,
             balance,
@@ -118,8 +148,18 @@ export class Client {
         this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
         return deployId;
     }
+    public async getASIBalance(address: Address) {
+        const network = this.networkProvider.currentNetwork;
+        return await this.assetsService.getASIBalance(network, address);
+    }
     public clearPersistance() {
         this._vault?.clearSavedVault();
         this._auxilliaryVault?.removeFromStorage();
+    }
+    public setNetworkByName(networkName: NetworkName) {
+        const updatedNetwork = this.networkProvider.setCurrentNetworkByName(networkName);
+        this.blockchainGateway.setNetwork(updatedNetwork);
+        this.uiEventDispatcher.onCurrentNetworkChanged?.(updatedNetwork);
+        return updatedNetwork;
     }
 }

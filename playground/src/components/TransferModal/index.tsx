@@ -1,4 +1,4 @@
-import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, fromAtomicAmountToString, TransferValidator, Address } from "asi-wallet-sdk";
+import { fromAtomicAmount, toAtomicAmount, GasFeeVO, FeeService, COIN_NAME, TransferValidator, Address } from "asi-wallet-sdk";
 import { ChangeEvent, useCallback, useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 import { HighlightedRows, IHighlightedRowsProps } from "@components/common/HighlightedRows";
@@ -64,11 +64,11 @@ const TransferModal = ({
     const safeAmount = amount ?? 0n;
     
     const estimatedTotalAmount = useMemo(() => {
-        return fromAtomicAmountToString(safeAmount + gasFee.gasFee);
+        return fromAtomicAmount(safeAmount + gasFee.gasFee);
     }, [safeAmount, gasFee]);
 
     const maxTotalAmount = useMemo(() => {
-        return fromAtomicAmountToString(safeAmount + gasFee.gasFeeRange.max);
+        return fromAtomicAmount(safeAmount + gasFee.gasFeeRange.max);
     }, [safeAmount, gasFee]);
     
     const transferDetailsRows = useMemo((): IHighlightedRowsProps["rows"] => {

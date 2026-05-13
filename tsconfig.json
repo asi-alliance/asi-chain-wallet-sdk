@@ -8,14 +8,10 @@
             "asi-wallet-sdk": ["./dist"],
 
             "@services/": ["./src/services"],
-            "@domains/": ["./src/domains"],
-            "@config": ["./src/config"],
-            "@utils": ["./src/utils"],
+            "@domain/": ["./src/domain"],
 
             "@services/*": ["./src/services/*"],
-            "@domains/*": ["./src/domains/*"],
-            "@config/*": ["./src/config/*"],
-            "@utils/*": ["./src/utils/*"]
+            "@domain/*": ["./src/domain/*"],
         }
     }
 }

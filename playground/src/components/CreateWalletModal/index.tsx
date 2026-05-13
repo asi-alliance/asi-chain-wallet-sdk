@@ -1,6 +1,6 @@
 import InputsForm from "../InputsForm";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-import { MnemonicService } from "asi-wallet-sdk";
+import { MnemonicPhrase } from "asi-wallet-sdk";
 import "./style.css";
 
 export type TWalletCreatePayload =
@@ -26,7 +26,7 @@ export interface IWalletCreateModalProps {
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
     initialMnemonic?: string;
-    initialPrivateKey?: string;
+    initialPrivateKey?: Uint8Array;
 }
 
 const CreateWalletModal = ({
@@ -37,14 +37,14 @@ const CreateWalletModal = ({
     onClose,
     isInputMode,
     initialMnemonic,
-    initialPrivateKey = "",
+    initialPrivateKey = new Uint8Array(),
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
     const [mnemonicWords, setMnemonicWords] = useState<string[]>(
         !initialMnemonic
             ? []
-            : MnemonicService.mnemonicToWordArray(initialMnemonic),
+            : MnemonicPhrase.toWordArray(initialMnemonic),
     );
 
     const computedTitle = useMemo(() => {
@@ -80,7 +80,7 @@ const CreateWalletModal = ({
                 mode: "privateKey",
                 name: name.trim(),
                 privateKey: new Uint8Array(
-                    JSON.parse(`[${privateKey.trim()}]`),
+                    JSON.parse(`${privateKey.trim()}`),
                 ),
                 password,
             });
@@ -149,7 +149,7 @@ const CreateWalletModal = ({
                                 placeholder=""
                                 autoComplete="off"
                                 required
-                                defaultValue={initialPrivateKey}
+                                defaultValue={JSON.stringify(Array.from(initialPrivateKey))}
                                 readOnly={!isInputMode}
                             />
                         </div>
