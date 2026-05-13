@@ -37,4 +37,7 @@ export class NetworkProvider {
     public get networks(): readonly Network[] {
         return this._networks;
     }
+    public hasNetwork(networkName: NetworkName) {
+        return this._networks.some(network => networkName === network.name);
+    }
 }

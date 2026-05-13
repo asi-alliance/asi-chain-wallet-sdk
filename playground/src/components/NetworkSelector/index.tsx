@@ -6,7 +6,13 @@ import { useSdkContext } from "../../sdk-react-kit";
 const NetworkSelector = (): ReactElement => {
     const {network} = useSdkContext();    
     const handleNetworkChange = async (networkName: NetworkName) => {
-        await network.setNetwork(networkName);
+        try {
+            await network.setNetwork(networkName);
+        } catch(error) {
+            console.error(error);
+            alert(error.message);
+        }
+        
     };
 
     const buttonClass = (networkName: NetworkName) =>

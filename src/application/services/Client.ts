@@ -106,7 +106,16 @@ export class Client {
     }
     public async onFirstUnlock() {
         await this.auxiliaryVault.unlock(this.vaultsPassword);
-        await this.setNetworkByName(this.auxiliaryVault.currentNetworkName ?? this.configuration.currentNetworkName);
+        let networkNameToSet;
+        if(!this.auxiliaryVault.currentNetworkName) {
+            networkNameToSet = this.configuration.currentNetworkName;    
+        } else if(!this.networkProvider.hasNetwork(this.auxiliaryVault.currentNetworkName)) {
+            console.warn(`Client: onFirstUnlock: the saved network ${this.auxiliaryVault.currentNetworkName} is missing from the list of networks. Fallback to default network ${this.configuration.currentNetworkName}`);
+            networkNameToSet=this.configuration.currentNetworkName;
+        } else {
+            networkNameToSet = this.auxiliaryVault.currentNetworkName;
+        }
+        await this.setNetworkByName(networkNameToSet);
         await this.auxiliaryVault.lock(this.vaultsPassword);
     }
 
