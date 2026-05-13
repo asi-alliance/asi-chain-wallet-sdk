@@ -3,7 +3,7 @@ import { WebVault, Client, WebAuxiliaryVault, WebFileSaver, IUiEventDispatcher }
 const init = async (uiEventDispatcher: IUiEventDispatcher) => {
     const sdkClient = await Client.create({
         vault: new WebVault(),
-        auxilliaryVault: new WebAuxiliaryVault(),
+        auxiliaryVault: new WebAuxiliaryVault(),
         fileSaver: new WebFileSaver(),
         uiEventDispatcher,
     });

@@ -2,6 +2,7 @@ import CryptoService, { type EncryptedData } from "../Crypto";
 import { Transaction } from "../../../domain/aggregates/Transaction";
 import { IAuxiliaryVault } from "../../../application/ports/outbound/IAuxiliaryVault";
 import { IUiEventDispatcher } from "../../../application/ports/outbound/IUiEventDispatcher";
+import { NetworkName } from "@domain/";
 
 const DEFAULT_AUXILIARY_VAULT_STORAGE_KEY = "ASI_AUXILLIARY_VAULT";
 
@@ -14,16 +15,26 @@ type StoredTransaction = Omit<Transaction, "timestamp"> & {
 type StoredTransactions = Array<[string, StoredTransaction]>;
 
 /**
+ * decrypted data in JSON format
+ */
+type StoredData = {
+  transactions: StoredTransactions;
+  currentNetworkName: NetworkName | null;
+}
+
+/**
  * Auxiliary storage for storing data that requires encryption but is not the most sensitive
  */
 export class WebAuxiliaryVault implements IAuxiliaryVault {
   public transactions: Map<string, Transaction>;
+  public currentNetworkName: NetworkName | null;
 
   private isLocked: boolean;
   private encryptedVaultData: EncryptedData | null;
 
   public constructor(vaultData?: RawAuxiliaryVaultData) {
     this.transactions = new Map();
+    this.currentNetworkName = null;
     this.isLocked = false;
     this.encryptedVaultData = null;
 
@@ -71,6 +82,7 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
       password
     );
     this.transactions = new Map();
+    this.currentNetworkName = null;
     this.isLocked = true;
   }
 
@@ -86,8 +98,11 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
       this.encryptedVaultData,
       password
     );
+    const storedData: StoredData = JSON.parse(decryptedData) as StoredData;
 
-    this.transactions = this.deserializeTransactions(decryptedData);
+    this.transactions = this.deserializeParsedTransactions(storedData.transactions);
+    this.currentNetworkName = storedData.currentNetworkName;
+
     this.encryptedVaultData = null;
     this.isLocked = false;
   }
@@ -95,7 +110,12 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
   public toString(): string {
     this.ensureUnlocked();
 
-    return JSON.stringify(this.serializeTransactions());
+    const storedData: StoredData = {
+      transactions: this.serializeTransactions(),
+      currentNetworkName: this.currentNetworkName,
+    }
+
+    return JSON.stringify(storedData);
   }
 
   private getVaultDataFromStorage(): RawAuxiliaryVaultData | null {
@@ -117,10 +137,6 @@ export class WebAuxiliaryVault implements IAuxiliaryVault {
         timestamp: transaction.timestamp.toISOString(),
       },
     ]);
-  }
-
-  private deserializeTransactions(rawTransactions: string): Map<string, Transaction> {
-    return this.deserializeParsedTransactions(JSON.parse(rawTransactions));
   }
 
   private deserializeParsedTransactions(

@@ -37,7 +37,8 @@ const Application = (): ReactElement => {
                         try {
                             await unlockVault(password);
                             setModalState({ type: null });
-                        } catch {
+                        } catch(error) {
+                            console.error(error);
                             alert(
                                 "Failed to unlock vault. Please check your password and try again.",
                             );

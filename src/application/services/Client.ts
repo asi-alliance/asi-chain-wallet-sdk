@@ -17,7 +17,7 @@ import { ClientConfiguration, defaultClientConfiguration } from "../configuratio
 
 export type ClientOptions  = {
     vault: IVault;
-    auxilliaryVault: IAuxiliaryVault;
+    auxiliaryVault: IAuxiliaryVault;
     fileSaver?: IFileSaver;
     uiEventDispatcher?: IUiEventDispatcher;
     clientConfiguration?: ClientConfiguration;
@@ -26,7 +26,7 @@ export type ClientOptions  = {
 export class Client {
     /* infrastructure adapters */
     private readonly _vault?: IVault;
-    private _auxilliaryVault?: IAuxiliaryVault;
+    private _auxiliaryVault?: IAuxiliaryVault;
     private _vaultsPassword?: string; 
     private _fileSaver?: IFileSaver;
     private httpClientFactory: IHttpClientFactory;
@@ -45,22 +45,27 @@ export class Client {
     /* /domain services */
 
     private activeWalletAddress?: Address;
+    
+    /**
+     * initial configuration
+     */
+    private configuration: ClientConfiguration;
 
-    private constructor(vault?: IVault, auxilliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver, uiEventDispatcher?: IUiEventDispatcher, configuration?: Partial<ClientConfiguration>) {
-        const completedConfiguration:ClientConfiguration = {
+    private constructor(vault?: IVault, auxiliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver, uiEventDispatcher?: IUiEventDispatcher, configuration?: Partial<ClientConfiguration>) {
+        this.configuration = {
             ...defaultClientConfiguration,
             ...configuration,
         };
 
         this._vault = vault;
-        this._auxilliaryVault = auxilliaryVault;
+        this._auxiliaryVault = auxiliaryVault;
         this._vaultsPassword = vaultsPassword;
         this.httpClientFactory = axiosHttpClientFactory;
-        this.networkProvider = new NetworkProvider(loadNetworksFromEnv(), completedConfiguration.currentNetworkName);
+        this.networkProvider = new NetworkProvider(loadNetworksFromEnv(), this.configuration.currentNetworkName);
         this.blockchainGateway = new BlockchainGateway(this.httpClientFactory, this.networkProvider.currentNetwork);
         this.assetsService = new AssetsService(this.blockchainGateway);
         this._fileSaver = fileSaver;
-        this.txHistory = new TxHistory(this.blockchainGateway, this._auxilliaryVault, this._fileSaver);
+        this.txHistory = new TxHistory(this.blockchainGateway, this._auxiliaryVault, this._fileSaver);
         this.uiEventDispatcher = uiEventDispatcher ?? new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
         this.keyManager = new Secp256k1KeysManagerAdapter();
@@ -68,11 +73,11 @@ export class Client {
         this.uiEventDispatcher.onCurrentNetworkChanged?.(this.networkProvider.currentNetwork);
         this.uiEventDispatcher.onNetworksChanged?.(this.networkProvider.networks);
     }
-    private get auxilliaryVault() {
-        if(!this._auxilliaryVault) {
-            throw new Error("Client: To call this method, you need to provide auxilliaryVault when initializing the sdk")
+    public get auxiliaryVault() {
+        if(!this._auxiliaryVault) {
+            throw new Error("Client: To call this method, you need to provide auxiliaryVault when initializing the sdk")
         }
-        return this._auxilliaryVault;
+        return this._auxiliaryVault;
     }
     private get fileSaver() {
         if(!this._fileSaver) {
@@ -96,16 +101,19 @@ export class Client {
     public set vaultsPassword(value: string) {
         this._vaultsPassword = value;
     }
+    public async onFirstUnlock() {
+        await this.setNetworkByName(this.auxiliaryVault.currentNetworkName ?? this.configuration.currentNetworkName);
+    }
 
     static async create(options: ClientOptions = {}): Promise<Client> {
         let vault;
-        let auxilliaryVault;
+        let auxiliaryVault;
         let vaultsPassword;
         if("vault" in options) {
             vault = options.vault;
-            auxilliaryVault = options.auxilliaryVault;
+            auxiliaryVault = options.auxiliaryVault;
         }
-        return new Client(vault, auxilliaryVault, vaultsPassword, options.fileSaver, options.uiEventDispatcher, options.clientConfiguration);
+        return new Client(vault, auxiliaryVault, vaultsPassword, options.fileSaver, options.uiEventDispatcher, options.clientConfiguration);
     }
 
     async createWallet(name: string, privateKey: Uint8Array, password: string): Promise<Wallet> {
@@ -154,11 +162,17 @@ export class Client {
     }
     public clearPersistance() {
         this._vault?.clearSavedVault();
-        this._auxilliaryVault?.removeFromStorage();
+        this._auxiliaryVault?.removeFromStorage();
     }
-    public setNetworkByName(networkName: NetworkName) {
+    public async setNetworkByName(networkName: NetworkName) {
         const updatedNetwork = this.networkProvider.setCurrentNetworkByName(networkName);
         this.blockchainGateway.setNetwork(updatedNetwork);
+        
+        await this.auxiliaryVault.unlock(this.vaultsPassword);
+        this.auxiliaryVault.currentNetworkName = networkName;
+        await this.auxiliaryVault.lock(this.vaultsPassword);
+        this.auxiliaryVault.save();
+
         this.uiEventDispatcher.onCurrentNetworkChanged?.(updatedNetwork);
         return updatedNetwork;
     }

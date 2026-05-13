@@ -3,9 +3,13 @@ import { Network, NetworkName } from "../../../domain/aggregates/Network";
 export class NetworkProvider {
     private _networks: Network[];
     private _currentNetwork!: Network | null;
-    constructor(networks: Network[], currentNetworkName: NetworkName) {
+    constructor(networks: Network[], currentNetworkName: NetworkName | null) {
         this._networks = networks;
-        this.setCurrentNetworkByName(currentNetworkName);
+        if(currentNetworkName === null) {
+            this._currentNetwork = null;
+        } else {
+            this.setCurrentNetworkByName(currentNetworkName);
+        }
     }
     public get currentNetwork(): Network {
         if(!this._currentNetwork) {
