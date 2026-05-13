@@ -18,6 +18,12 @@ export class NetworkProvider {
         return this._currentNetwork;
     }
     /**
+     * variant of the {@link currentNetwork} getter with an acceptable null
+     */
+    public getCurrentNetwork(): Network | null {
+        return this._currentNetwork;
+    }  
+    /**
      * @returns updated network
      */
     public setCurrentNetworkByName(networkName: NetworkName): Network {

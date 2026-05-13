@@ -28,9 +28,11 @@ export class BlockchainGateway {
     public graphqlGateway!: GraphqlGateway;    
     private network!: Network;
 
-    public constructor(httpClientFactory: IHttpClientFactory, currentNetwork: Network) {
+    public constructor(httpClientFactory: IHttpClientFactory, currentNetwork: Network | null) {
         this.httpClientFactory = httpClientFactory;
-        this.setNetwork(currentNetwork);
+        if(currentNetwork !== null) {
+            this.setNetwork(currentNetwork);
+        }
     }
     public setNetwork(network: Network) {
         if(!network.endpoints.validatorUrl) {

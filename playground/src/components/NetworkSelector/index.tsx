@@ -10,7 +10,7 @@ const NetworkSelector = (): ReactElement => {
     };
 
     const buttonClass = (networkName: NetworkName) =>
-        `network-btn ${networkName === network.currentNetwork.name ? "active" : ""}`;
+        `network-btn ${networkName === network.currentNetwork?.name ? "active" : ""}`;
 
     const networkList = useCallback(() => {
         if(!network.networks) {
@@ -23,7 +23,7 @@ const NetworkSelector = (): ReactElement => {
                         key={networkItem.name}
                         className={buttonClass(networkItem.name)}
                         onClick={() => handleNetworkChange(networkItem.name)}
-                        disabled={networkItem.name === network.currentNetwork.name}
+                        disabled={networkItem.name === network.currentNetwork?.name}
                         title={`Switch to ${network} network`
                         }
                     >

@@ -91,22 +91,20 @@ const useSdk = ({
                 const sdkClient = await init(uiEventDispatcher);
                 setSdkClient(sdkClient);
                 if(sdkClient.vault.isExist()) {
-                    onUnlockRequired(async (password) => {
-                        await sdkClient.vault.unlock(password);
-                        console.log("point1");
-                        await sdkClient.auxiliaryVault.unlock(password);
-                        console.log("point2");
+                    
+                    onUnlockRequired(async (password) => {             
+                        setCurrentPassword(password);
                         sdkClient.vaultsPassword=password;
                         await sdkClient.onFirstUnlock();
-                        setCurrentPassword(password);
+                        await sdkClient.vault.unlock(password);
+                        
                     });
                 } else {
                     onVaultPasswordRequired(async (password) => {
-                        await sdkClient.vault.unlock(password);
-                        await sdkClient.auxiliaryVault.unlock(password);
+                        setCurrentPassword(password);
                         sdkClient.vaultsPassword=password;
                         await sdkClient.onFirstUnlock();
-                        setCurrentPassword(password);
+                        await sdkClient.vault.unlock(password);
                     })
                 }
             } catch (error) {

@@ -64,6 +64,9 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
         if(!sdkClient) {
             return;
         }
+        if(!address) {
+            return null;
+        }
         setIsLoading(true);
         setError(null);
         try {
