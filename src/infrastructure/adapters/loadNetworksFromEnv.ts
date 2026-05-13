@@ -1,4 +1,4 @@
-import { Network, NetworkName } from "../../domain/aggregates/Network";
+import { Network, NetworkName } from "@/domain/aggregates/Network";
 
 type EnvNetworks = {
     [key: string]: {

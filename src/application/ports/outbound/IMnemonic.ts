@@ -1,4 +1,4 @@
-import type { MnemonicStrength } from "../../../domain/valueObjects/MnemonicPhrase";
+import type { MnemonicStrength } from "@/domain/valueObjects/MnemonicPhrase";
 
 export interface IMnemonicService {
     generateMnemonic(strength?: MnemonicStrength): string;

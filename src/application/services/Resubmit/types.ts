@@ -3,9 +3,9 @@ import {
     FatalDeployErrors, 
     RecoverableDeployErrors,
     DeploymentErrorHandler,
-} from "../../../domain/valueObjects/Error";
-import {BlockchainGateway} from "../../../infrastructure/adapters/BlockchainGateway";
-import { DeployStatus, DeployStatusResult } from "../../../infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
+} from "@/domain/valueObjects/Error";
+import {BlockchainGateway} from "@/infrastructure/adapters/BlockchainGateway";
+import { DeployStatus, DeployStatusResult } from "@/infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
 
 export interface NodeProvider {
     connectDefaultNode(): Promise<void>;

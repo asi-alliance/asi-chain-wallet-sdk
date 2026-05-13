@@ -1,9 +1,9 @@
 import * as bip39 from "bip39";
-import type { IMnemonicService } from "../../../application/ports/outbound/IMnemonic";
+import type { IMnemonicService } from "@/application/ports/outbound/IMnemonic";
 import {
     MnemonicPhrase,
     MnemonicStrength,
-} from "../../../domain/valueObjects/MnemonicPhrase";
+} from "@/domain/valueObjects/MnemonicPhrase";
 import { setupBufferPolyfill } from "../../misc/polyfills";
 
 setupBufferPolyfill();

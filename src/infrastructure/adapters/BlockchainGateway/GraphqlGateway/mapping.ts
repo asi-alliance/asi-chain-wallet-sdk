@@ -2,9 +2,9 @@
  * Anti-Corruption Layer (ACL)
  */
 
-import type { Transaction } from "../../../../domain/aggregates/Transaction";
-import type { NetworkName } from "../../../../domain/aggregates/Network/Network";
-import { normalizeAddress } from "../../../../domain/aggregates/Wallet/mapping";
+import type { Transaction } from "@/domain/aggregates/Transaction";
+import type { NetworkName } from "@/domain/aggregates/Network/Network";
+import { normalizeAddress } from "@/domain/aggregates/Wallet/mapping";
 import { type RawTransfer } from "./GraphqlGateway";
 
 type RawTransferMappingContext = {

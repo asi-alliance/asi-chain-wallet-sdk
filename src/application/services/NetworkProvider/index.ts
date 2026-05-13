@@ -1,4 +1,4 @@
-import { Network, NetworkName } from "../../../domain/aggregates/Network";
+import { Network, NetworkName } from "@/domain/aggregates/Network";
 
 export class NetworkProvider {
     private _networks: Network[];

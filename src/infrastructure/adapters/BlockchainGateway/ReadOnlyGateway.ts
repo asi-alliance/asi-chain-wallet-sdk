@@ -1,7 +1,7 @@
-import { Network, NetworkName } from "../../../domain/aggregates/Network";
-import { IHttpClient } from "../../../application/ports/outbound/IHttpClient";
+import { Network, NetworkName } from "@/domain/aggregates/Network";
+import { IHttpClient } from "@/application/ports/outbound/IHttpClient";
 import { getGatewayErrorMessage } from "./common";
-import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER } from "../../../domain/constants";
+import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER } from "@/domain/constants";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",

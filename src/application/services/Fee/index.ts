@@ -1,6 +1,6 @@
-import { GasFeeVO } from "../../../domain/aggregates/Fee/GasFeeVO";
-import { randomBigInt } from "../../../infrastructure/misc";
-import { GAS_FEE } from "../../../domain/constants";
+import { GasFeeVO } from "@/domain/aggregates/Fee/GasFeeVO";
+import { randomBigInt } from "@/infrastructure/misc";
+import { GAS_FEE } from "@/domain/constants";
 import { IGasFeeView, mapGasFeeToView } from "./GasFeeView";
 
 export class FeeService {

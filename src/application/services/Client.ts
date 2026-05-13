@@ -1,18 +1,18 @@
-import { GasFeeVO, IKeyManager, Network, NetworkName } from "../../domain";
-import Wallet, { Address } from "../../domain/aggregates/Wallet";
+import { GasFeeVO, IKeyManager, Network, NetworkName } from "@/domain";
+import Wallet, { Address } from "@/domain/aggregates/Wallet";
 import AssetsService from "./AssetsService";
 import { TxHistory } from "./TxHistory";
 import { IAuxiliaryVault } from "../ports/outbound/IAuxiliaryVault";
 import { IVault } from "../ports/outbound/IVault";
 import { IUiEventDispatcher } from "../ports/outbound/IUiEventDispatcher";
-import { UiEventDispatcher } from "../../uiAdapters/UiEventDispatcher";
+import { UiEventDispatcher } from "@/uiAdapters/UiEventDispatcher";
 import { IFileSaver } from "../ports/outbound/IFileSaver";
 import { NetworkProvider } from "./NetworkProvider";
-import { loadNetworksFromEnv } from "../../infrastructure/adapters/loadNetworksFromEnv";
+import { loadNetworksFromEnv } from "@/infrastructure/adapters/loadNetworksFromEnv";
 import { IHttpClient, IHttpClientFactory } from "../ports/outbound/IHttpClient";
-import { axiosHttpClientFactory } from "../../infrastructure/adapters/AxiosHttpClient/factory";
-import { Secp256k1KeysManagerAdapter } from "../../infrastructure";
-import { BlockchainGateway} from "../../infrastructure/adapters/BlockchainGateway";
+import { axiosHttpClientFactory } from "@/infrastructure/adapters/AxiosHttpClient/factory";
+import { Secp256k1KeysManagerAdapter } from "@/infrastructure";
+import { BlockchainGateway} from "@/infrastructure/adapters/BlockchainGateway";
 import { ClientConfiguration, defaultClientConfiguration } from "../configuration";
 
 export type ClientOptions  = {

@@ -1,4 +1,4 @@
-import { IFileSaver, IFileSaveRequest } from "../../../application/ports/outbound/IFileSaver";
+import { IFileSaver, IFileSaveRequest } from "@/application/ports/outbound/IFileSaver";
 
 export class WebFileSaver implements IFileSaver {
     async save(fileSaveRequest: IFileSaveRequest): Promise<void> {

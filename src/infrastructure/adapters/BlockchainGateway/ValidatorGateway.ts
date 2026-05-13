@@ -1,4 +1,4 @@
-import { IHttpClient } from "../../../application/ports/outbound/IHttpClient";
+import { IHttpClient } from "@/application/ports/outbound/IHttpClient";
 import { SignedResult } from "../Signer";
 import { getGatewayErrorMessage } from "./common";
 

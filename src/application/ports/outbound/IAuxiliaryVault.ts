@@ -1,5 +1,5 @@
 import { NetworkName } from "@domain/";
-import { Transaction } from "../../../domain/aggregates/Transaction";
+import { Transaction } from "@/domain/aggregates/Transaction";
 
 export interface IAuxiliaryVault {
   transactions: Map<string, Transaction>;
