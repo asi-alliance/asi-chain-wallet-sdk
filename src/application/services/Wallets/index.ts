@@ -1,13 +1,13 @@
-import Bip32KeyDerivationAdapter from "../../../infrastructure/adapters/KeyDerivation";
-import Bip39MnemonicAdapter from "../../../infrastructure/adapters/Mnemonic";
-import Secp256k1KeysManagerAdapter from "../../../infrastructure/adapters/KeysManager";
+import Bip32KeyDerivationAdapter from "@/infrastructure/adapters/KeyDerivation";
+import Bip39MnemonicAdapter from "@/infrastructure/adapters/Mnemonic";
+import Secp256k1KeysManagerAdapter from "@/infrastructure/adapters/KeysManager";
 import type { IKeyDerivation } from "../../ports/outbound/IKeyDerivation";
 import type { IMnemonicService } from "../../ports/outbound/IMnemonic";
-import type { IKeyManager, KeyPair } from "../../../domain/services/KeyManagement";
-import { deriveAddressFromPublicKey } from "../../../domain/services/AddressDerivation";
-import { ASI_COIN_TYPE } from "../../../domain/constants";
-import type { Address } from "../../../domain/aggregates/Wallet";
-import { MnemonicPhrase } from "../../../domain/valueObjects/MnemonicPhrase";
+import type { IKeyManager, KeyPair } from "@/domain/services/KeyManagement";
+import { deriveAddressFromPublicKey } from "@/domain/services/AddressDerivation";
+import { ASI_COIN_TYPE } from "@/domain/constants";
+import type { Address } from "@/domain/aggregates/Wallet";
+import { MnemonicPhrase } from "@/domain/valueObjects/MnemonicPhrase";
 
 export interface CreateWalletOptions {
     name?: string;

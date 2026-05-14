@@ -53,7 +53,7 @@ export const TxHistoryPrerequisites = ({
                 address: {account ? account.getAddress() : String(account)}
             </div>
             <div>
-                Network: {String(network.currentNetwork?.name)}
+                Network: {network.currentNetwork === null ? String(network.currentNetwork) : String(network.currentNetwork?.name)}
             </div>
         </section>
     );

@@ -4,14 +4,14 @@ import {
     NodeProvider,
 } from "./types";
 import NodeManager from "./NodeManager";
-import SignerService, { PasswordProvider } from "../../../infrastructure/adapters/Signer";
-import Wallet from "../../../domain/aggregates/Wallet";
+import SignerService, { PasswordProvider } from "@/infrastructure/adapters/Signer";
+import Wallet from "@/domain/aggregates/Wallet";
 import { DeployData } from "../../common/DeployData";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
-import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
+import { DEFAULT_PHLO_LIMIT } from "@/infrastructure/configuration";
 import { DeploymentErrorHandler, FatalDeployErrors } from "@domain/";
-import { DeployStatus, DeployStatusResult } from "../../../infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
-import { BlockchainGateway } from "../../../infrastructure/adapters/BlockchainGateway";
+import { DeployStatus, DeployStatusResult } from "@/infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
+import { BlockchainGateway } from "@/infrastructure/adapters/BlockchainGateway";
 
 export default class DeployResubmitter {
     private readonly config: ResubmitConfig;

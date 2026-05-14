@@ -1,5 +1,5 @@
 import type { AxiosInstance, AxiosResponse } from "axios";
-import { IHttpClient } from "../../../application/ports/outbound/IHttpClient";
+import { IHttpClient } from "@/application/ports/outbound/IHttpClient";
 
 export default class AxiosHttpClient implements IHttpClient {
     constructor(private readonly client: AxiosInstance) {}

@@ -1,4 +1,4 @@
-import { Network, Transaction } from "../../../domain";
+import { Network, Transaction } from "@/domain";
 import { TransactionFilter, TransactionStats } from "./types";
 
 export const hasActiveTransactionFilters = (

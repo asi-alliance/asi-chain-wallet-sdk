@@ -40,7 +40,6 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
             return;
         }
         const txs = sdkClient?.txHistory.filterLocalTxs(allLocalTxs, address, filter, network.currentNetwork); 
-        console.log("txs=", txs);
         return txs;
     }, [allLocalTxs, address, filter, network.currentNetwork]);
 
@@ -63,6 +62,9 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
     const loadTransactions = useCallback(async (pagination: Pagination) => {
         if(!sdkClient) {
             return;
+        }
+        if(!address) {
+            return null;
         }
         setIsLoading(true);
         setError(null);

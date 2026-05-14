@@ -12,6 +12,8 @@
 
             "@services/*": ["./src/services/*"],
             "@domain/*": ["./src/domain/*"],
+            
+            "@/*": ["./src/*"]
         }
     }
 }

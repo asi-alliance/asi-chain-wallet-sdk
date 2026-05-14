@@ -1,7 +1,7 @@
-import type { Pagination } from "../../../../application";
-import type { IHttpClient } from "../../../../application/ports/outbound/IHttpClient";
-import type { Transaction } from "../../../../domain/aggregates/Transaction";
-import type { NetworkName } from "../../../../domain/aggregates/Network/Network";
+import type { Pagination } from "@/application";
+import type { IHttpClient } from "@/application/ports/outbound/IHttpClient";
+import type { Transaction } from "@/domain/aggregates/Transaction";
+import type { NetworkName } from "@/domain/aggregates/Network/Network";
 import { mapRawTransferToTransaction } from "./mapping";
 
 interface GraphqlEnvelope<TData> {

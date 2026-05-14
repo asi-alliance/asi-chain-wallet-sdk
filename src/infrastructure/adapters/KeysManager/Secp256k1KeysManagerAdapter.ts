@@ -1,9 +1,9 @@
 import { getPublicKey, utils } from "@noble/secp256k1";
-import { PRIVATE_KEY_LENGTH } from "../../../domain/constants";
+import { PRIVATE_KEY_LENGTH } from "@/domain/constants";
 import type {
     IKeyManager,
     KeyPair,
-} from "../../../domain/services/KeyManagement";
+} from "@/domain/services/KeyManagement";
 
 const { bytesToHex, randomBytes } = utils;
 

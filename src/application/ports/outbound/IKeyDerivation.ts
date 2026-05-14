@@ -1,4 +1,4 @@
-import type { Bip44PathOptions } from "../../../domain/valueObjects/KeyDerivation";
+import type { Bip44PathOptions } from "@/domain/valueObjects/KeyDerivation";
 
 export interface IKeyDerivation {
     derivePrivateKeyFromMnemonic(

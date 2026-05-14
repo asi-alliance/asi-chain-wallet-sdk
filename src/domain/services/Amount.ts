@@ -1,5 +1,5 @@
 import { GasFeeVO } from "..";
-import {FeeService} from "../../application/services/Fee";
+import {FeeService} from "@/application/services/Fee";
 
 export class Amount {
   /**

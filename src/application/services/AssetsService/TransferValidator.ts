@@ -1,6 +1,6 @@
 import { validateAddresses, validateAmount } from "@domain/services/DomainTransferValidator";
-import { GasFeeVO } from "../../../domain/aggregates/Fee";
-import { Address } from "../../../domain/aggregates/Wallet";
+import { GasFeeVO } from "@/domain/aggregates/Fee";
+import { Address } from "@/domain/aggregates/Wallet";
 
 export class TransferValidator {
   public static validate(fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, errorMessagePrefix: string = "TransferValidator: ") {

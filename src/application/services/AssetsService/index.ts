@@ -1,18 +1,18 @@
-import SignerService from "../../../infrastructure/adapters/Signer";
-import Wallet, { Address } from "../../../domain/aggregates/Wallet";
-import { BlockchainGateway } from "../../../infrastructure/adapters/BlockchainGateway";
+import SignerService from "@/infrastructure/adapters/Signer";
+import Wallet, { Address } from "@/domain/aggregates/Wallet";
+import { BlockchainGateway } from "@/infrastructure/adapters/BlockchainGateway";
 import FundsReservationService from "../FundsReservation";
 import {
     createTransferDeploy,
     createCheckBalanceDeploy,
-} from "../../../infrastructure/adapters/Rholang/DeployFactory";
+} from "@/infrastructure/adapters/Rholang/DeployFactory";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
-import { PasswordProvider } from "../../../infrastructure/adapters/Signer";
-import { DEFAULT_PHLO_LIMIT } from "../../../infrastructure/configuration";
+import { PasswordProvider } from "@/infrastructure/adapters/Signer";
+import { DEFAULT_PHLO_LIMIT } from "@/infrastructure/configuration";
 import { DeployData } from "../../common/DeployData";
 import { validateAddress } from "@domain/services/validators";
 // import { RequireBlockchainGateway } from "../../common/decorators";
-import { GasFeeVO } from "../../../domain/aggregates/Fee";
+import { GasFeeVO } from "@/domain/aggregates/Fee";
 import { TransferValidator } from "./TransferValidator";
 import { NetworkProvider } from "../NetworkProvider";
 import { Network } from "@domain/";
