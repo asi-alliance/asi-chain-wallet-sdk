@@ -1,4 +1,4 @@
-import { Address, Network, Transaction } from '@/domain';
+import { Address, Network, NetworkName, Transaction } from '@/domain';
 import { BlockchainGateway } from '@/infrastructure/adapters/BlockchainGateway';
 import { fromAtomicAmount, toAtomicAmount } from '@/domain/services/AmountRepresentation';
 import { TransactionFilter, TransactionStats } from './types';
@@ -26,6 +26,9 @@ export class TxHistory {
     }
 
     /* txs in local vault */
+    /** 
+     * @returns all txs in aux vault 
+     */
     public async storeTxInAuxVault(deployId: string, network: Network, amount: bigint, fromAddress: string, toAddress: string, auxVaultPassword: string) {
         const tx: Transaction = {
             deployId,
@@ -87,10 +90,11 @@ export class TxHistory {
 
     /**
      * @param auxVaultTxs all transactions in auxiliary vault
-     * @param the address to which the filtered transactions should be related. to or from.
+     * @param address the address to which the filtered transactions should be related. to or from.
+     * @returns local txs filtered by address and network with swapped tx type
      */
-    filterAndMapAuxVaultTxsWithAddress(auxVaultTxs: Transaction[], address: Address) {
-        const filtered = auxVaultTxs.filter(tx => tx.from ===address || tx.to===address);
+    filterAndMapAuxVaultTxsWithAddress(auxVaultTxs: Transaction[], address: Address, networkName: NetworkName) {
+        const filtered = auxVaultTxs.filter(tx => ((tx.from ===address || tx.to===address) && tx.networkName === networkName));
         filtered.forEach(tx => {
             if(tx.to === address) {
                 tx.type = "receive"; //Transactions are saved only for the sender's wallet. If they also apply to the recipient's wallet, their type must be changed.
@@ -188,7 +192,7 @@ export class TxHistory {
      */
     public filterLocalTxs(allLocalTxs: Transaction[], address: Address, filter: TransactionFilter | null, network: Network) {
         console.log(allLocalTxs, network);
-        const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address);
+        const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address, network.name);
         const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter, network));
         return filteredLocalTxs;
     }

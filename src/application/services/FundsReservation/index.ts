@@ -1,6 +1,7 @@
 import ReservationRecord from "@/domain/aggregates/Reservation";
 import { Address } from "@/domain/aggregates/Wallet";
 import { ReservationStatus } from "@/domain/aggregates/Reservation/types";
+import { toAtomicAmount, Transaction } from "@domain/";
 
 export interface ReservationError {
     code:
@@ -17,7 +18,7 @@ export default class FundsReservationService {
     private reservations: Map<string, ReservationRecord> = new Map();
     private addressReservations: Map<Address, Set<string>> = new Map();
 
-    private constructor() {}
+    public constructor() {}
 
     static getInstance(): FundsReservationService {
         if (!FundsReservationService.instance) {
@@ -254,4 +255,31 @@ export default class FundsReservationService {
         }
         return result;
     }
+
+    /* reservations by transactions */
+
+    private obtainReservationFromTx(tx: Transaction) {
+        let reservation: ReservationRecord | undefined;
+        if(tx.status === "pending" && tx.type !== "receive") {
+            reservation = ReservationRecord.create(tx.from as Address, toAtomicAmount(tx.amount ?? ""), undefined, tx.deployId, undefined);
+        }
+        return reservation;
+    }
+    /**
+     * 
+     * @param localTxs transactions in aux vault for definite address and network
+     * @returns reservation records computed by local txs
+     */
+    getReservationsByTxs(localTxs: Transaction[]) {
+        const reservations: ReservationRecord[] = [];
+        for(const localTx of localTxs) {
+            const reservation = this.obtainReservationFromTx(localTx);
+            if(reservation) {
+                reservations.push(reservation);
+            }
+        }
+        return reservations;        
+    }
+
+    /* /reservations by transactions */
 }

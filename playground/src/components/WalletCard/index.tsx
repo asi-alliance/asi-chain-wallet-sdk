@@ -9,7 +9,7 @@ import {
     FeeService,
     GasFeeVO,
     Client,
-    DeployStatus,
+    ReadOnlyTxStatus,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
@@ -117,12 +117,22 @@ const WalletCard = ({
                 );
                 // alert("Transfer successful!");
 
-                registerPendingDeploy(data, amount, toAddress); //TODO: use common vault for txHistory txs and wallets deploys 
 
-                await fetchBalance();
 
+
+
+                
+
+                registerPendingDeploy(data, amount, toAddress); //INFO/TODO: use common vault for txHistory txs and wallets deploys 
                 // Check for completed deploys
                 await releaseCompletedReservations();
+                await fetchBalance();
+
+
+
+
+
+
 
                 setModalState({
                     type: Modals.TRANSFER_COMPLETED_MODAL,
@@ -141,7 +151,6 @@ const WalletCard = ({
                 );
                 handlePrepareSend(toAddress, amount);
             } finally {
-                console.log("Refreshing reservations after transfer...");
                 setIsSending(false);
             }
         });
@@ -194,7 +203,7 @@ const WalletCard = ({
                     const deployStatus =
                         await sdkClient.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
 
-                    if (deployStatus.status === DeployStatus.FINALIZED) {
+                    if (deployStatus.status === ReadOnlyTxStatus.FINALIZED) {
                         console.log(
                             `Deploy ${deployId} is FINALIZED on blockchain - transaction complete`,
                         );

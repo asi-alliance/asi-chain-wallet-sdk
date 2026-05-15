@@ -8,7 +8,8 @@ import { NetworkSlice } from "./networkSlice";
 // }
 export interface TxHistorySlice {
     txHistorySetters: {
-
+        setAllLocalTxs: React.Dispatch<any>,
+        setIndexerTransactions: React.Dispatch<any>,
     }
 
     setAddress: React.Dispatch<Address>,

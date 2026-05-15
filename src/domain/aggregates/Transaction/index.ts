@@ -1,5 +1,7 @@
 import { NetworkName } from "../Network";
 
+type TransactionStatus = 'pending' | 'confirmed' | 'failed';
+
 export interface Transaction {
   id: string;
   timestamp: Date;
@@ -10,7 +12,7 @@ export interface Transaction {
   deployId?: string;
   blockHash?: string;
   gasCost?: string;
-  status: 'pending' | 'confirmed' | 'failed';
+  status: TransactionStatus;
   contractCode?: string;
   note?: string;
   networkName: NetworkName; //TODO: clarify what network data will be stored

@@ -2,9 +2,9 @@ import { GraphqlGateway } from "./GraphqlGateway/GraphqlGateway";
 import type { IHttpClientConfig, IHttpClientFactory } from "@/application/ports/outbound/IHttpClient";
 import type { Network } from "@/domain/aggregates/Network/Network";
 import { ValidatorGateway } from "./ValidatorGateway";
-import { ReadOnlyGateway } from "./ReadOnlyGateway";
+import { ReadOnlyGateway } from "./ReadOnlyGateway/ReadOnlyGateway";
 
-export {DeployStatus} from "./ReadOnlyGateway";
+export {ReadOnlyTxStatus} from "./ReadOnlyGateway/types";
 
 export interface BlockchainGatewayConfig {
     validator: IHttpClientConfig;

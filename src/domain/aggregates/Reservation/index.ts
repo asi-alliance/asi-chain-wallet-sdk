@@ -1,6 +1,7 @@
 import { Address } from "../Wallet";
 import { Reservation, ReservationStatus } from "./types";
 import { generateRandomId } from "@/infrastructure/misc";
+export {type Reservation} from "./types";
 
 export default class ReservationRecord {
     private reservation: Reservation;

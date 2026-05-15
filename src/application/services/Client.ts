@@ -14,6 +14,7 @@ import { axiosHttpClientFactory } from "@/infrastructure/adapters/AxiosHttpClien
 import { Secp256k1KeysManagerAdapter } from "@/infrastructure";
 import { BlockchainGateway} from "@/infrastructure/adapters/BlockchainGateway";
 import { ClientConfiguration, defaultClientConfiguration } from "../configuration";
+import FundsReservationService from "./FundsReservation";
 
 export type ClientOptions  = {
     vault: IVault;
@@ -38,6 +39,7 @@ export class Client {
     public txHistory: TxHistory;
     public uiEventDispatcher: IUiEventDispatcher;
     public networkProvider: NetworkProvider;
+    public fundsReservation: FundsReservationService;
     /* /application services */
 
     /* domain services */
@@ -67,6 +69,7 @@ export class Client {
         
         this.networkProvider = new NetworkProvider(loadNetworksFromEnv(), null);
         this.blockchainGateway = new BlockchainGateway(this.httpClientFactory, this.networkProvider.getCurrentNetwork());
+        this.fundsReservation = new FundsReservationService();
         this.assetsService = new AssetsService(this.blockchainGateway);
         
         this.txHistory = new TxHistory(this.blockchainGateway, this._auxiliaryVault, this._fileSaver);
@@ -168,6 +171,11 @@ export class Client {
         );
         const localTxs = await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
         this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
+
+        const addressTxs = this.txHistory.filterAndMapAuxVaultTxsWithAddress(localTxs, fromAddress, network.name);
+        const addressReservations = this.fundsReservation.getReservationsByTxs(addressTxs);
+        console.log("addressReservations=", addressReservations);
+
         return deployId;
     }
     public async getASIBalance(address: Address) {
