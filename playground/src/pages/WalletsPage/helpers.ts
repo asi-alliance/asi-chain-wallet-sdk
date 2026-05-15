@@ -11,10 +11,11 @@ import {
 import {
     Address,
     EncryptedRecord,
-    MnemonicService,
+    // MnemonicService,
     IVault,
     Wallet,
     Client,
+    MnemonicPhrase,
 } from "asi-wallet-sdk";
 import { keccak512 } from "js-sha3";
 
@@ -61,8 +62,9 @@ console.log("addWalletToVault: vault=", vault, "wallet=", wallet, "currentPasswo
     await saveVault(currentPassword);
 };
 
-const createInitialPrivateKeyInputValue = () =>
-    Array.from(createInitialPrivateKey()).join(",");
+const createInitialPrivateKeyInputValue = () => {
+    return createInitialPrivateKey();
+}
 
 const createWalletPageHandlers = ({
     sdkClient,
@@ -121,7 +123,7 @@ const createWalletPageHandlers = ({
             }
 
             try {
-                const mnemonic = MnemonicService.wordArrayToMnemonic(
+                const mnemonic = MnemonicPhrase.wordArrayToMnemonic(
                     payload.mnemonicWords,
                 );
                 const encryptedSeed = await EncryptedRecord.createAndEncrypt(

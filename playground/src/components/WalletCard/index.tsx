@@ -3,27 +3,24 @@ import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
 import {
     fromAtomicAmount,
-    AssetsService,
     Address,
     Wallet,
     FundsReservationService,
-    BlockchainGateway,
-    DeployStatus,
     FeeService,
     GasFeeVO,
     Client,
+    DeployStatus,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
-import { networksFixture } from "@pages/TxHistoryPage/fixtures/txHistory.fixture";
+import { useSdkContext } from "../../sdk-react-kit";
 
 export interface IWalletCardProps {
     sdkClient: Client;
     wallet: Wallet;
     removeWallet: (id: Address) => void;
-    assetsService: AssetsService;
 }
 
 const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
@@ -31,12 +28,10 @@ const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
 const WalletCard = ({
     sdkClient,
     wallet,
-    removeWallet,
-    assetsService,
+    removeWallet
 }: IWalletCardProps): ReactElement => {
-    const network = networksFixture[0];
-
     const { setModalState, withLoader } = useAppContext();
+    const {network} = useSdkContext();
 
     const reservationService = useMemo(
         () => FundsReservationService.getInstance(),
@@ -64,7 +59,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await assetsService.getASIBalance(address);
+            const balance = await sdkClient.getASIBalance(address);
 
             setBalance(balance);
         } catch (error) {
@@ -111,8 +106,7 @@ const WalletCard = ({
                 setIsSending(true);
 
                 // const data = await assetsService.transfer(
-                const data = await sdkClient.transfer(
-                    network,        
+                const data = await sdkClient.transfer(       
                     address,
                     toAddress,
                     balance,
@@ -172,20 +166,10 @@ const WalletCard = ({
                 return;
             }
 
-            // Check if BlockchainGateway is initialized
-            if (!BlockchainGateway.isInitialized()) {
-                console.warn(
-                    "BlockchainGateway is not initialized, cannot check deploy status",
-                );
-                return;
-            }
-
             const completedDeployIds: string[] = [];
             const reservations = reservationService.getReservations(address);
 
             console.info("reservations", reservations);
-
-            const blockchainGateway = BlockchainGateway.getInstance();
 
             for (const [deployId, deployInfo] of pendingDeploys.entries()) {
                 // Find reservation associated with this deploy ID
@@ -208,7 +192,7 @@ const WalletCard = ({
                 // Check if deploy is actually finalized on the blockchain
                 try {
                     const deployStatus =
-                        await blockchainGateway.getDeployStatus(deployId);
+                        await sdkClient.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
 
                     if (deployStatus.status === DeployStatus.FINALIZED) {
                         console.log(
@@ -285,6 +269,10 @@ const WalletCard = ({
 
         return () => clearInterval(autoUpdateInterval);
     }, []);
+
+    useEffect(() => {
+        fetchBalance();
+    }, [network.currentNetwork]);
 
     useEffect(() => {
         console.log("Balance updated, refreshing reservations...");

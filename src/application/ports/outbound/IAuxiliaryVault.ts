@@ -1,4 +1,4 @@
-import { Transaction } from "@domains/Transaction";
+import { Transaction } from "../../../domain/aggregates/Transaction";
 
 export interface IAuxiliaryVault {
   transactions: Map<string, Transaction>;

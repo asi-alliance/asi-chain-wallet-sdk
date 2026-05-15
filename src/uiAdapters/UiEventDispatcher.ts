@@ -6,5 +6,6 @@ import { IUiEventDispatcher } from "../application/ports/outbound/IUiEventDispat
 export class UiEventDispatcher implements IUiEventDispatcher {
   public onVaultChanged = null;
   public onLocalTxHistoryChanged = null;
-
+  public onCurrentNetworkChanged = null;
+  public onNetworksChanged = null;
 }

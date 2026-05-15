@@ -1,36 +1,29 @@
-import { useCallback, useMemo, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, type ReactElement } from "react";
 
 // import { useWallets } from "../../../sdk-react-kit/hooks/useWallets";
 import SelectFilter from "@components/common/SelectFilter";
-import {Network, Wallet} from "asi-wallet-sdk";
+import {Wallet} from "asi-wallet-sdk";
 import { useSdkContext } from "../../../sdk-react-kit";
 
 interface TxHistoryPrerequisitesProps {
     account: Wallet | null;
     setAccount: (account: Wallet | null) => void;
-    network: Network | null;
-    setNetwork: (network: Network | null) => void;
 }
 
 export const TxHistoryPrerequisites = ({
     account,
-    setAccount, 
-    network,
-    setNetwork
+    setAccount
 }: TxHistoryPrerequisitesProps): ReactElement => {
-    // Network selector facade is not wired yet; keep the setter in the props contract.
-    void setNetwork;
-
-    const {flatWallets} = useSdkContext();
+    const {wallets, network} = useSdkContext();
 
     const accountOptions = useMemo(() => {
-        return [{value: "", label: "Select wallet"}, ...flatWallets.map((wallet) => ({
+        return [{value: "", label: "Select wallet"}, ...wallets.flatWallets.map((wallet) => ({
             value: wallet.getAddress(),
             label: wallet.getName(),
         }))];
-    }, [flatWallets]);
+    }, [wallets.flatWallets]);
     const onSelectAccountChange = useCallback((accountAddress: string) => {
-        const selectedWallet = flatWallets.find(
+        const selectedWallet = wallets.flatWallets.find(
             (wallet) => wallet.getAddress() === accountAddress,
         );
 
@@ -42,8 +35,7 @@ export const TxHistoryPrerequisites = ({
         // SDK Wallet is not the asi-chain-wallet Account from src/types/wallet.ts.
         // This keeps the History.tsx Account contract explicit until the real mapper exists.
         setAccount(selectedWallet);
-    }, [flatWallets, setAccount]);
-
+    }, [wallets.flatWallets, setAccount]);
     return (
         <section className="section">
             <h2>TxHistoryPrerequisites</h2>
@@ -61,7 +53,7 @@ export const TxHistoryPrerequisites = ({
                 address: {account ? account.getAddress() : String(account)}
             </div>
             <div>
-                Network: {String(network)}
+                Network: {String(network.currentNetwork?.name)}
             </div>
         </section>
     );

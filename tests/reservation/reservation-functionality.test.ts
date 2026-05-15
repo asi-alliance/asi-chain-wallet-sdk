@@ -1,9 +1,9 @@
 import assert from "node:assert";
-import ReservationRecord from "@domains/Reservation";
-import FundsReservationService from "@services/FundsReservation";
+import ReservationRecord from "../../src/domain/aggregates/Reservation";
+import FundsReservationService from "../../src/application/services/FundsReservation";
 import { describe, it, beforeEach, afterEach } from "node:test";
-import { ReservationStatus } from "@domains/Reservation/types";
-import { Address } from "@domains/Wallet";
+import { ReservationStatus } from "../../src/domain/aggregates/Reservation/types";
+import { Address } from "../../src/domain/aggregates/Wallet";
 
 const MOCK_ADDRESS = ("1111" + "a".repeat(60)) as Address;
 const MOCK_ADDRESS_2 = ("1111" + "b".repeat(60)) as Address;
