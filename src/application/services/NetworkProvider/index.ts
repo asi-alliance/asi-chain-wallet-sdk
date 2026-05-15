@@ -1,11 +1,15 @@
-import { Network, NetworkName } from "../../../domain/aggregates/Network";
+import { Network, NetworkName } from "@/domain/aggregates/Network";
 
 export class NetworkProvider {
     private _networks: Network[];
     private _currentNetwork!: Network | null;
-    constructor(networks: Network[], currentNetworkName: NetworkName) {
+    constructor(networks: Network[], currentNetworkName: NetworkName | null) {
         this._networks = networks;
-        this.setCurrentNetworkByName(currentNetworkName);
+        if(currentNetworkName === null) {
+            this._currentNetwork = null;
+        } else {
+            this.setCurrentNetworkByName(currentNetworkName);
+        }
     }
     public get currentNetwork(): Network {
         if(!this._currentNetwork) {
@@ -13,6 +17,12 @@ export class NetworkProvider {
         }
         return this._currentNetwork;
     }
+    /**
+     * variant of the {@link currentNetwork} getter with an acceptable null
+     */
+    public getCurrentNetwork(): Network | null {
+        return this._currentNetwork;
+    }  
     /**
      * @returns updated network
      */
@@ -26,5 +36,8 @@ export class NetworkProvider {
     }
     public get networks(): readonly Network[] {
         return this._networks;
+    }
+    public hasNetwork(networkName: NetworkName) {
+        return this._networks.some(network => networkName === network.name);
     }
 }

@@ -1,6 +1,6 @@
 import BinaryWriter from "../BinaryWriter";
 import { encodeBase16 } from "../../misc/codec";
-import { DeployData } from "../../../application/common/DeployData";
+import { DeployData } from "@/application/common/DeployData";
 import blakejs from "blakejs";
 import { Wallet } from "@domain/";
 

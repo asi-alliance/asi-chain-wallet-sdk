@@ -5,12 +5,18 @@ import { useSdkContext } from "../../sdk-react-kit";
 
 const NetworkSelector = (): ReactElement => {
     const {network} = useSdkContext();    
-    const handleNetworkChange = (networkName: NetworkName) => {
-        network.setNetwork(networkName);
+    const handleNetworkChange = async (networkName: NetworkName) => {
+        try {
+            await network.setNetwork(networkName);
+        } catch(error) {
+            console.error(error);
+            alert(error.message);
+        }
+        
     };
 
     const buttonClass = (networkName: NetworkName) =>
-        `network-btn ${networkName === network.currentNetwork.name ? "active" : ""}`;
+        `network-btn ${networkName === network.currentNetwork?.name ? "active" : ""}`;
 
     const networkList = useCallback(() => {
         if(!network.networks) {
@@ -23,7 +29,7 @@ const NetworkSelector = (): ReactElement => {
                         key={networkItem.name}
                         className={buttonClass(networkItem.name)}
                         onClick={() => handleNetworkChange(networkItem.name)}
-                        disabled={networkItem.name === network.currentNetwork.name}
+                        disabled={networkItem.name === network.currentNetwork?.name}
                         title={`Switch to ${network} network`
                         }
                     >

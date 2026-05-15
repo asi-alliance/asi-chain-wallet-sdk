@@ -5,7 +5,7 @@ import {
     decodeBase58,
     encodeBase16,
     encodeBase58,
-} from "../../../infrastructure/misc/codec";
+} from "@/infrastructure/misc/codec";
 import { ASI_CHAIN_PREFIX } from "@domain/constants";
 
 const { blake2bHex } = blakejs;

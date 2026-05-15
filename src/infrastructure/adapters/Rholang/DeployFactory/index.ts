@@ -1,5 +1,5 @@
 import { Network, NetworkName } from "@domain/";
-import { Address } from "../../../../domain/aggregates/Wallet";
+import { Address } from "@/domain/aggregates/Wallet";
 import { BlockchainGateway } from "../../BlockchainGateway";
 import { createDevTransferDeploy, createDevCheckBalanceDeploy } from "./dev";
 import { escapeRholangString } from "./shared";

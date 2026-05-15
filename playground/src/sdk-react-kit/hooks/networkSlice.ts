@@ -8,7 +8,7 @@ export type NetworkSlice = {
         setNetworks: React.Dispatch<any>;
     }
     currentNetwork: Network;
-    setNetwork(networkName: NetworkName): Network;
+    setNetwork(networkName: NetworkName): Promise<Network>;
     networks: Network[];
 }
 
@@ -16,8 +16,8 @@ export const networkSlice = (sdkClient: Client): NetworkSlice => {
     const [currentNetwork, setCurrentNetwork] = useState<Network>(null);
     const [networks, setNetworks] = useState<Network[]>(null);
 
-    const setNetwork = useCallback((networkName: NetworkName) => {
-        const newNetwork = sdkClient?.setNetworkByName(networkName);
+    const setNetwork = useCallback(async (networkName: NetworkName) => {
+        const newNetwork = await sdkClient?.setNetworkByName(networkName);
         return newNetwork;
     }, [sdkClient]);
 

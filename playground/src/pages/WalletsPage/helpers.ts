@@ -58,7 +58,6 @@ const addWalletToVault = async (
 ) => {
     
     vault.addWallet(wallet);
-console.log("addWalletToVault: vault=", vault, "wallet=", wallet, "currentPassword=", currentPassword);
     await saveVault(currentPassword);
 };
 
@@ -97,7 +96,6 @@ const createWalletPageHandlers = ({
                 payload.privateKey,
                 payload.password,
             );
-            console.log("newWallet=", newWallet);
 
             await addWalletToVault(
                 sdkClient.vault,

@@ -1,11 +1,11 @@
-import Secp256k1KeysManagerAdapter from "../../../infrastructure/adapters/KeysManager";
+import Secp256k1KeysManagerAdapter from "@/infrastructure/adapters/KeysManager";
 import type { IKeyManager } from "../../services/KeyManagement";
 import { deriveAddressFromPublicKey } from "../../services/AddressDerivation";
 import type Asset from "./Asset";
 import type { Assets } from "./Asset";
 import CryptoService, {
     type EncryptedData,
-} from "../../../infrastructure/adapters/Crypto";
+} from "@/infrastructure/adapters/Crypto";
 import { validateAddress } from "@domain/services/validators";
 import { sign } from "@noble/secp256k1";
 

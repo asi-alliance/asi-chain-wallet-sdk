@@ -1,4 +1,4 @@
-import { PRIVATE_KEY_LENGTH } from "../../../domain/constants";
+import { PRIVATE_KEY_LENGTH } from "@/domain/constants";
 import { bigIntToBuffer, bufferToBigInt } from "../../misc/codec";
 import { TinySecp256k1Interface } from "bip32";
 import { sha256 } from "@noble/hashes/sha2";

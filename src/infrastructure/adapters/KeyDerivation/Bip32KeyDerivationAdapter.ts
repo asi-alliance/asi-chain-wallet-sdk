@@ -1,12 +1,12 @@
 import { BIP32Factory, type BIP32Interface } from "bip32";
 import { mnemonicToSeed } from "bip39";
 import { Buffer } from "buffer";
-import type { IKeyDerivation } from "../../../application/ports/outbound/IKeyDerivation";
+import type { IKeyDerivation } from "@/application/ports/outbound/IKeyDerivation";
 import {
     Bip44Path,
     type Bip44PathOptions,
-} from "../../../domain/valueObjects/KeyDerivation";
-import { DEFAULT_BIP_44_PATH_OPTIONS } from "../../../domain/constants";
+} from "@/domain/valueObjects/KeyDerivation";
+import { DEFAULT_BIP_44_PATH_OPTIONS } from "@/domain/constants";
 import { setupBufferPolyfill } from "../../misc/polyfills";
 import ECC from "./eccAdapter";
 

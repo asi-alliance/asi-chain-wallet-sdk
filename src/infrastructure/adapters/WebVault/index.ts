@@ -4,9 +4,9 @@ import Wallet, {
     type StringifiedWalletMeta,
     type Address,
     StoredWalletMeta,
-} from "../../../domain/aggregates/Wallet";
-import { IVault } from "../../../application/ports/outbound/IVault";
-import { IUiEventDispatcher } from "../../../application/ports/outbound/IUiEventDispatcher";
+} from "@/domain/aggregates/Wallet";
+import { IVault } from "@/application/ports/outbound/IVault";
+import { IUiEventDispatcher } from "@/application/ports/outbound/IUiEventDispatcher";
 
 export type Wallets = Map<Address, Wallet>;
 

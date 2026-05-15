@@ -1,4 +1,4 @@
-import { Address } from "../../../../domain/aggregates/Wallet";
+import { Address } from "@/domain/aggregates/Wallet";
 import { escapeRholangString } from "./shared";
 
 export const createDevCheckBalanceDeploy = (address: Address): string => {
