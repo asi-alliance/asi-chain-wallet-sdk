@@ -15,3 +15,5 @@ export * from "./constants";
 export { default as Wallet } from "./aggregates/Wallet";
 export { default as Asset } from "./aggregates/Wallet/Asset";
 export { default as ReservationRecord } from "./aggregates/Reservation";
+
+export { Reservation } from "./services/Reservation/Reservation";

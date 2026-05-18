@@ -37,8 +37,6 @@ export const reservationSlice = (sdkClient: Client, network: Network, address: A
         obtainReservations();
     }, [sdkClient, network, address]);
 
-
-
     const reservationSliceValue: ReservationSlice = useMemo(() => ({
         reservations: reservations,
         reservationSetters: {

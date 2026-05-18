@@ -16,6 +16,7 @@ import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
 import { useSdkContext } from "../../sdk-react-kit";
+import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IWalletCardProps {
     sdkClient: Client;
@@ -32,6 +33,7 @@ const WalletCard = ({
 }: IWalletCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
     const {network} = useSdkContext();
+    const walletBalance = useWalletBalance(sdkClient, wallet.getAddress());
 
     const reservationService = useMemo(
         () => FundsReservationService.getInstance(),
@@ -54,7 +56,7 @@ const WalletCard = ({
 
     const index = wallet.getIndex();
     const address = wallet.getAddress();
-    const canSend = balance > 0n;
+    const canSend = balance > 0n; //INFO/TODO: to domain
 
     const fetchBalance = async () => {
         try {
@@ -274,6 +276,7 @@ const WalletCard = ({
             fetchBalance();
             // Check for completed deploys independently of balance updates
             await releaseCompletedReservations();
+            
         }, AUTO_UPDATE_INTERVAL);
 
         return () => clearInterval(autoUpdateInterval);
@@ -328,7 +331,7 @@ const WalletCard = ({
                     balance:{" "}
                     {isBalanceFetching
                         ? "loading balance ..."
-                        : `${fromAtomicAmount(balance)} ASI`}
+                        : `${fromAtomicAmount(walletBalance.totalBalance ?? 0n)} ASI`}
                 </div>
                 <ReservationStatus
                     key={pendingDeploys.size}

@@ -3,7 +3,7 @@ import { Address } from "@/domain/aggregates/Wallet";
 import { ReservationStatus } from "@/domain/aggregates/Reservation/types";
 import { Network, toAtomicAmount, Transaction } from "@domain/";
 import { TxHistory } from "../TxHistory";
-import { ReservationsFromTxsResolver } from "@domain/services/ReservationsFromTxsResolver/ReservationsFromTxsResolver";
+import { ReservationsFromTxsResolver } from "@domain/services/Reservation/ReservationsFromTxsResolver";
 
 export interface ReservationError {
     code:
