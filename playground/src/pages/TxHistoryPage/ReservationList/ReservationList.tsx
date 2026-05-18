@@ -1,4 +1,4 @@
-import { ReactElement, Fragment } from "react";
+import { ReactElement } from "react";
 import { useSdkContext } from "../../../sdk-react-kit";
 import { Item } from "./Item";
 import { ViewReservation } from "../../../sdk-react-kit/hooks/reservationSlice";

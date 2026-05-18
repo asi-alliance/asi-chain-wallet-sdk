@@ -69,10 +69,11 @@ export class Client {
         
         this.networkProvider = new NetworkProvider(loadNetworksFromEnv(), null);
         this.blockchainGateway = new BlockchainGateway(this.httpClientFactory, this.networkProvider.getCurrentNetwork());
-        this.fundsReservation = new FundsReservationService();
+        
         this.assetsService = new AssetsService(this.blockchainGateway);
         
         this.txHistory = new TxHistory(this.blockchainGateway, this._auxiliaryVault, this._fileSaver);
+        this.fundsReservation = new FundsReservationService(this.txHistory);
         this.uiEventDispatcher = uiEventDispatcher ?? new UiEventDispatcher();
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
         
@@ -157,7 +158,7 @@ export class Client {
     getWallets(): Wallet[] {
         return this.vault.getWallets();
     }
-    public async transfer(fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, password: string, wallet: Wallet) {
+    public async transfer(fromAddress: Address, toAddress: Address, balance: bigint, amount: bigint, gasFee: GasFeeVO, walletPassword: string, wallet: Wallet) {
         const network = this.networkProvider.currentNetwork;
         const deployId = await this.assetsService.transfer(
             network,
@@ -167,13 +168,12 @@ export class Client {
             amount,
             gasFee,
             wallet,
-            () => Promise.resolve(password),
+            () => Promise.resolve(walletPassword),
         );
         const localTxs = await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
         this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
 
-        const addressTxs = this.txHistory.filterAndMapAuxVaultTxsWithAddress(localTxs, fromAddress, network.name);
-        const addressReservations = this.fundsReservation.getReservationsByTxs(addressTxs);
+        const addressReservations = this.fundsReservation.getReservationsByTxs(network, fromAddress, this.vaultsPassword);
         console.log("addressReservations=", addressReservations);
 
         return deployId;
@@ -197,5 +197,11 @@ export class Client {
 
         this.uiEventDispatcher.onCurrentNetworkChanged?.(updatedNetwork);
         return updatedNetwork;
+    }
+
+    public async getReservationsByTxs(address: Address) {
+        const network = this.networkProvider.currentNetwork;
+        const auxWalletPassword = this.vaultsPassword;
+        return await this.fundsReservation.getReservationsByTxs(network, address, auxWalletPassword);
     }
 }

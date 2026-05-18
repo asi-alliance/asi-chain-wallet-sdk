@@ -1,7 +1,9 @@
 import ReservationRecord from "@/domain/aggregates/Reservation";
 import { Address } from "@/domain/aggregates/Wallet";
 import { ReservationStatus } from "@/domain/aggregates/Reservation/types";
-import { toAtomicAmount, Transaction } from "@domain/";
+import { Network, toAtomicAmount, Transaction } from "@domain/";
+import { TxHistory } from "../TxHistory";
+import { ReservationsFromTxsResolver } from "@domain/services/ReservationsFromTxsResolver/ReservationsFromTxsResolver";
 
 export interface ReservationError {
     code:
@@ -18,11 +20,11 @@ export default class FundsReservationService {
     private reservations: Map<string, ReservationRecord> = new Map();
     private addressReservations: Map<Address, Set<string>> = new Map();
 
-    public constructor() {}
+    public constructor(private txHistory: TxHistory) {}
 
     static getInstance(): FundsReservationService {
         if (!FundsReservationService.instance) {
-            FundsReservationService.instance = new FundsReservationService();
+            FundsReservationService.instance = new FundsReservationService(null as unknown as TxHistory);
         }
         return FundsReservationService.instance;
     }
@@ -257,29 +259,12 @@ export default class FundsReservationService {
     }
 
     /* reservations by transactions */
-
-    private obtainReservationFromTx(tx: Transaction) {
-        let reservation: ReservationRecord | undefined;
-        if(tx.status === "pending" && tx.type !== "receive") {
-            reservation = ReservationRecord.create(tx.from as Address, toAtomicAmount(tx.amount ?? ""), undefined, tx.deployId, undefined);
-        }
-        return reservation;
-    }
     /**
-     * 
-     * @param localTxs transactions in aux vault for definite address and network
-     * @returns reservation records computed by local txs
+     * Application layer service. Orchestrates the retrieval of reservations from transactions.
      */
-    getReservationsByTxs(localTxs: Transaction[]) {
-        const reservations: ReservationRecord[] = [];
-        for(const localTx of localTxs) {
-            const reservation = this.obtainReservationFromTx(localTx);
-            if(reservation) {
-                reservations.push(reservation);
-            }
-        }
-        return reservations;        
+    public async getReservationsByTxs(network: Network, address: Address, auxVaultPassword: string) {
+        const localTxs = await this.txHistory.getAddressOnNetworkLocalTxs(network, address, auxVaultPassword);
+        return ReservationsFromTxsResolver.resolveFromTxs(localTxs);
     }
-
     /* /reservations by transactions */
 }

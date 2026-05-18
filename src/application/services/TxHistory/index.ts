@@ -50,6 +50,12 @@ export class TxHistory {
         return allLocalTxs;
     }
 
+    private async getAllLocalTxs(auxVaultPassword: string) {
+        await this.auxiliaryVault.unlock(auxVaultPassword);
+        const auxVaultTxs = Array.from(this.auxiliaryVault.transactions.values());
+        await this.auxiliaryVault.lock(auxVaultPassword);
+        return auxVaultTxs;
+    }
     /**
      * filters and removes transactions from local vault that are no longer needed
      * @returns updated all transactions from auxilliary vault
@@ -195,6 +201,10 @@ export class TxHistory {
         const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address, network.name);
         const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter, network));
         return filteredLocalTxs;
+    }
+    public async getAddressOnNetworkLocalTxs(network: Network, address: Address, auxVaultPassword: string): Promise<Transaction[]> {
+        const allLocalTxs = await this.getAllLocalTxs(auxVaultPassword);
+        return this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address, network.name);
     }
     public async getFilteredTxs(
         network: Network,

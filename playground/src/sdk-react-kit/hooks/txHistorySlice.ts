@@ -15,6 +15,7 @@ export interface TxHistorySlice {
     setAddress: React.Dispatch<Address>,
     setFilter: React.Dispatch<TransactionFilter>,
     stats: TransactionStats;
+    allLocalTxs: Transaction[];
     transactions: Transaction[];
     loadTransactions: (...args: any) => Promise<any>; //TODO: any
     downloadTransactions: (...args: any) => Promise<any>;
@@ -100,6 +101,7 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
             setAllLocalTxs,
             setIndexerTransactions
         },
+        allLocalTxs,
         transactions,
         stats,
         loadTransactions,
