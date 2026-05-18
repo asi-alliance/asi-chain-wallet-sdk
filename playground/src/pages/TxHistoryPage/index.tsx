@@ -26,7 +26,7 @@ const TxHistoryPage = (): ReactElement => {
     }, [txHistory]);
     const onWalletChange = useCallback((wallet: Wallet) => {
         setWallet(wallet);
-        txHistory.setAddress(wallet.getAddress())
+        txHistory.setAddress(wallet?.getAddress() ?? null);
     }, [txHistory]);
 
     return (

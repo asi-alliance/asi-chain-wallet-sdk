@@ -7,4 +7,5 @@ export interface IUiEventDispatcher {
   onLocalTxHistoryChanged: UiCallback;
   onCurrentNetworkChanged: UiCallback;
   onNetworksChanged: UiCallback;
+  onReservationsChanged: UiCallback;
 }

@@ -197,7 +197,6 @@ export class TxHistory {
      * @returns filtered by address and filter txs from auxiliary vault
      */
     public filterLocalTxs(allLocalTxs: Transaction[], address: Address, filter: TransactionFilter | null, network: Network) {
-        console.log(allLocalTxs, network);
         const filteredByAddressLocalTxs = this.filterAndMapAuxVaultTxsWithAddress(allLocalTxs, address, network.name);
         const filteredLocalTxs = this.sortTxsByTimestamp(applyTransactionFilter(filteredByAddressLocalTxs, filter, network));
         return filteredLocalTxs;

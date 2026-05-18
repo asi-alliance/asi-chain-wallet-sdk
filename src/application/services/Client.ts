@@ -1,11 +1,10 @@
 import { GasFeeVO, IKeyManager, Network, NetworkName } from "@/domain";
 import Wallet, { Address } from "@/domain/aggregates/Wallet";
 import AssetsService from "./AssetsService";
-import { TxHistory } from "./TxHistory";
+import { TransactionFilter, TxHistory } from "./TxHistory";
 import { IAuxiliaryVault } from "../ports/outbound/IAuxiliaryVault";
 import { IVault } from "../ports/outbound/IVault";
 import { IUiEventDispatcher } from "../ports/outbound/IUiEventDispatcher";
-import { UiEventDispatcher } from "@/uiAdapters/UiEventDispatcher";
 import { IFileSaver } from "../ports/outbound/IFileSaver";
 import { NetworkProvider } from "./NetworkProvider";
 import { loadNetworksFromEnv } from "@/infrastructure/adapters/loadNetworksFromEnv";
@@ -15,14 +14,15 @@ import { Secp256k1KeysManagerAdapter } from "@/infrastructure";
 import { BlockchainGateway} from "@/infrastructure/adapters/BlockchainGateway";
 import { ClientConfiguration, defaultClientConfiguration } from "../configuration";
 import FundsReservationService from "./FundsReservation";
+import { Pagination } from "../common/QueryOptions";
 
 export type ClientOptions  = {
     vault: IVault;
     auxiliaryVault: IAuxiliaryVault;
     fileSaver?: IFileSaver;
-    uiEventDispatcher?: IUiEventDispatcher;
+    uiEventDispatcher: IUiEventDispatcher;
     clientConfiguration?: ClientConfiguration;
-} | {} & {fileSaver?: IFileSaver; clientConfiguration?: ClientConfiguration, uiEventDispatcher?: IUiEventDispatcher};
+} | {} & {fileSaver?: IFileSaver; clientConfiguration?: ClientConfiguration, uiEventDispatcher: IUiEventDispatcher};
 
 export class Client {
     /* infrastructure adapters */
@@ -53,7 +53,7 @@ export class Client {
      */
     private configuration: ClientConfiguration;
 
-    private constructor(vault?: IVault, auxiliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver, uiEventDispatcher?: IUiEventDispatcher, configuration?: Partial<ClientConfiguration>) {
+    private constructor(uiEventDispatcher: IUiEventDispatcher, vault?: IVault, auxiliaryVault?: IAuxiliaryVault, vaultsPassword?: string, fileSaver?: IFileSaver, configuration?: Partial<ClientConfiguration>) {
         this.configuration = {
             ...defaultClientConfiguration,
             ...configuration,
@@ -74,7 +74,7 @@ export class Client {
         
         this.txHistory = new TxHistory(this.blockchainGateway, this._auxiliaryVault, this._fileSaver);
         this.fundsReservation = new FundsReservationService(this.txHistory);
-        this.uiEventDispatcher = uiEventDispatcher ?? new UiEventDispatcher();
+        this.uiEventDispatcher = uiEventDispatcher;
         this.vault.uiEventDispatcher = this.uiEventDispatcher;
         
         this.uiEventDispatcher.onCurrentNetworkChanged?.(this.networkProvider.getCurrentNetwork());
@@ -123,7 +123,7 @@ export class Client {
         await this.auxiliaryVault.lock(this.vaultsPassword);
     }
 
-    static async create(options: ClientOptions = {}): Promise<Client> {
+    static async create(options: ClientOptions): Promise<Client> {
         let vault;
         let auxiliaryVault;
         let vaultsPassword;
@@ -131,7 +131,7 @@ export class Client {
             vault = options.vault;
             auxiliaryVault = options.auxiliaryVault;
         }
-        return new Client(vault, auxiliaryVault, vaultsPassword, options.fileSaver, options.uiEventDispatcher, options.clientConfiguration);
+        return new Client(options.uiEventDispatcher, vault, auxiliaryVault, vaultsPassword, options.fileSaver, options.clientConfiguration);
     }
 
     async createWallet(name: string, privateKey: Uint8Array, password: string): Promise<Wallet> {
@@ -173,8 +173,9 @@ export class Client {
         const localTxs = await this.txHistory.storeTxInAuxVault(deployId, network, amount, fromAddress, toAddress, this.vaultsPassword);
         this.uiEventDispatcher.onLocalTxHistoryChanged?.(localTxs);
 
-        const addressReservations = this.fundsReservation.getReservationsByTxs(network, fromAddress, this.vaultsPassword);
+        const addressReservations = await this.fundsReservation.getReservationsByTxs(network, fromAddress, this.vaultsPassword);
         console.log("addressReservations=", addressReservations);
+        this.uiEventDispatcher.onReservationsChanged?.(addressReservations);
 
         return deployId;
     }
@@ -197,6 +198,15 @@ export class Client {
 
         this.uiEventDispatcher.onCurrentNetworkChanged?.(updatedNetwork);
         return updatedNetwork;
+    }
+
+    public async getFilteredTxs(address: Address, filter: TransactionFilter, pagination: Pagination) {
+        const network = this.networkProvider.currentNetwork;
+        const auxVaultPassword = this.vaultsPassword;
+        const result = await this.txHistory.getFilteredTxs(network, address, filter, pagination, auxVaultPassword);
+        const addressReservations = await this.fundsReservation.getReservationsByTxs(network, address, this.vaultsPassword);
+        this.uiEventDispatcher.onReservationsChanged?.(addressReservations);
+        return result;
     }
 
     public async getReservationsByTxs(address: Address) {

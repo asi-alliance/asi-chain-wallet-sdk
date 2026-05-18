@@ -35,10 +35,10 @@ const useSdk = ({
     const network = networkSlice(sdkClient);
     const wallets = walletsSlice(sdkClient);
     const txHistory = txHistorySlice(sdkClient, currentPassword, network);
-    const reservation = reservationSlice(sdkClient, txHistory.transactions);
+    const reservation = reservationSlice(sdkClient, network.currentNetwork, txHistory.address);
 
     // ///////
-    const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters);
+    const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters, reservation.reservationSetters);
     // ///////
 
     useEffect(() => {
