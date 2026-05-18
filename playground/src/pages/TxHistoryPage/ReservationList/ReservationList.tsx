@@ -30,7 +30,6 @@ const reservationListContent = (reservations: ViewReservation[] | null): ReactEl
 
 export const ReservationList = (): ReactElement => {
     const {reservation} = useSdkContext();
-    console.log("ReservationList: reservation=", reservation);
     return (
     <section className="section">
         <h2>ReservationList</h2>

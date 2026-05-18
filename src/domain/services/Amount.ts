@@ -1,6 +1,6 @@
 import { GasFeeVO, ReservationRecord } from "..";
 import { FeeService } from "@/application/services/Fee";
-import { Reservation } from "./Reservation/Reservation";
+import { ReservationDomainService } from "./Reservation/ReservationDomainService";
 
 export class Amount {
     /**
@@ -21,7 +21,7 @@ export class Amount {
      * @returns the balance that remains available after all reservations have been taken into account
      */
     public static getAvailableBalance(balance: bigint, reservations: ReservationRecord[]) {
-        const totalReserved = Reservation.getTotalReserved(reservations);
+        const totalReserved = ReservationDomainService.getTotalReserved(reservations);
         return balance - totalReserved;
     }
 }

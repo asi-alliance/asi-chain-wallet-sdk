@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
-import { Amount, Reservation } from "asi-wallet-sdk";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Amount, ReservationDomainService } from "asi-wallet-sdk";
 
 const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
 
-type WalletBalance = {
-    totalBalance: bigint;
-    totalReserved: bigint;
-    availableBalance: bigint;
-    reservationCount: number;
+export type WalletBalance = {
+    walletBalance: {
+        totalBalance: bigint;
+        totalReserved: bigint;
+        availableBalance: bigint;
+        reservationCount: number;
+    },
+    updateReservationStatus: any;
 }
 
-export const useWalletBalance = (sdkClient, address) => {
-    const [walletBalance, setWalletBalance] = useState<WalletBalance>({
+export const useWalletBalance = (sdkClient, network, address) => {
+    const [walletBalance, setWalletBalance] = useState<WalletBalance["walletBalance"]>({
         totalBalance: null,
         totalReserved: null,
         availableBalance: null,
@@ -23,7 +26,7 @@ export const useWalletBalance = (sdkClient, address) => {
         const reservations = await sdkClient.getReservationsByTxs(address); //INFO/TODO: use it for reservations
         const allReservations = reservations.map(reservationRecord => reservationRecord.toObject());
         const availableBalance = Amount.getAvailableBalance(balance, reservations);
-        const totalReserved = Reservation.getTotalReserved(reservations);
+        const totalReserved = ReservationDomainService.getTotalReserved(reservations);
 
         setWalletBalance({
             totalBalance: balance,
@@ -33,17 +36,21 @@ export const useWalletBalance = (sdkClient, address) => {
         });
     }, [sdkClient, address]);
 
-
     useEffect(() => {
         updateReservationStatus();
-    }, [updateReservationStatus]);
+    }, [updateReservationStatus, network]);
 
     useEffect(() => {
         const interval = setInterval(() => {
             updateReservationStatus();
         }, AUTO_UPDATE_INTERVAL);
         return () => clearInterval(interval);
-    }, [updateReservationStatus]); 
+    }, [updateReservationStatus, network]); 
 
-    return walletBalance;
+    const value = useMemo(() => ({
+        walletBalance,
+        updateReservationStatus
+    }), [walletBalance, updateReservationStatus]); 
+
+    return value;
 }
