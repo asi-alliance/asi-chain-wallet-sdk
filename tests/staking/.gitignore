@@ -7,3 +7,14 @@ coverage/
 *.log
 .DS_Store
 .idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+*.tmp
+*.pid
+*.seed
+*.pid.lock

@@ -1,7 +1,7 @@
 const http = require("http");
 const https = require("https");
 
-const { PROTOCOL, TEST_TIMEOUT_MS, NODE_HOST } = require("../../config/env");
+const { TEST_TIMEOUT_MS } = require("../../config/env");
 
 const HttpMethods = {
     GET: "GET",

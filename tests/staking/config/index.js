@@ -30,21 +30,27 @@ const ENABLED_TESTS = [
     "Error Handling - Non-existent Validator",
     "Error Handling - Malformed Request",
     "Error Handling - Invalid Deploy Request",
-];
 
-const REQUIRED_ENV_VARIABLES = [
-    "NODE_HOST",
-    "REST_PORT",
-    "ADMIN_PORT",
-    "PROTOCOL",
+    "Error Handling - Invalid Deploy Request",
+
+    "Watch Blocks - WebSocket Connection",
 ];
 
 const DEFAULT_SEPARATOR = "=";
 const DEFAULT_CONSOLE_LOG_LENGTH = 80;
+const DEFAULT_INFO_LOG_LENGTH = 60;
+
+const DEFAULT_ENDPOINT_LOG_LENGTH = 80;
+
+const ENABLE_REQUEST_LOGS = true;
+const ENABLE_RESPONSE_LOGS = true;
 
 module.exports = {
     ENABLED_TESTS,
-    REQUIRED_ENV_VARIABLES,
     DEFAULT_SEPARATOR,
     DEFAULT_CONSOLE_LOG_LENGTH,
+    DEFAULT_ENDPOINT_LOG_LENGTH,
+    DEFAULT_INFO_LOG_LENGTH,
+    ENABLE_REQUEST_LOGS,
+    ENABLE_RESPONSE_LOGS,
 };

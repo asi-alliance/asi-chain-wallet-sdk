@@ -1,22 +1,60 @@
+const { TEST_TIMEOUT_MS, WEBSOCKET_TIMEOUT_MS } = require("../../config/env");
+const { HttpMethods, makeGet, makePost } = require("../helpers/request");
 const { write, printSeparator, LogFormats } = require("../helpers/log");
 const { formatCompactJSON } = require("../helpers/wrap-text");
-const { ENABLED_TESTS } = require("../../config");
+const { findValueByKey } = require("../helpers/extractors");
+const { BLOCK_HASH_KEY } = require("../constants");
 const {
-    PROTOCOL,
-    NODE_HOST,
-    REST_PORT,
-    ADMIN_PORT,
-    TEST_TIMEOUT_MS,
-    WEBSOCKET_TIMEOUT_MS,
-} = require("../../config/env");
+    ENABLED_TESTS,
+    DEFAULT_ENDPOINT_LOG_LENGTH,
+    ENABLE_REQUEST_LOGS,
+    ENABLE_RESPONSE_LOGS,
+    DEFAULT_INFO_LOG_LENGTH,
+} = require("../../config");
 
-function testWrapper(testName, timeout = TEST_TIMEOUT_MS) {
-    const testWrapperFunction = ENABLED_TESTS.includes(testName)
+function testSuiteWrapper(suiteName, callback) {
+    describe(suiteName, () => {
+        callback({
+            suiteName,
+        });
+    });
+}
+
+function testWrapper(
+    suiteName,
+    testName,
+    { url, method, request, timeout = TEST_TIMEOUT_MS } = {},
+) {
+    const fullTestName = `${suiteName} - ${testName}`;
+
+    const testFunction = ENABLED_TESTS.includes(fullTestName)
         ? test
         : test.skip;
 
-    return (description, testFunction) =>
-        testWrapperFunction(description, testFunction, timeout);
+    const requestByMethod = {
+        [HttpMethods.GET]: makeGet,
+        [HttpMethods.POST]: makePost,
+    };
+
+    const requestFunction = request || requestByMethod[method];
+
+    return (description, callback) =>
+        testFunction(
+            description,
+            (done) => {
+                const flow = createTestFlow(fullTestName);
+
+                callback({
+                    done,
+                    flow,
+                    testName: fullTestName,
+                    url,
+                    method,
+                    request: requestFunction,
+                });
+            },
+            timeout,
+        );
 }
 
 function printTestHeader() {
@@ -25,48 +63,18 @@ function printTestHeader() {
     write("");
 
     write(
-        `${LogFormats.info("•")} Node: ${NODE_HOST} | ${PROTOCOL.toUpperCase()}`,
-    );
-    write(`${LogFormats.info("•")} REST: ${REST_PORT} | ADMIN: ${ADMIN_PORT}`);
-    write(
         `${LogFormats.info("•")} Timeout: ${TEST_TIMEOUT_MS}ms | WS: ${WEBSOCKET_TIMEOUT_MS}ms`,
     );
 
     write("");
 }
 
-function logTestRequest(testName, action, details = {}) {
-    const { method, endpoint, body } = details;
-
-    write(
-        LogFormats.title(
-            `${testName} (${method} ${endpoint.substring(0, 40)})`,
-        ),
-    );
-
-    // if (body) {
-    //     write(LogFormats.muted("BODY:"));
-    //     write(LogFormats.muted(formatCompactJSON(body, 60)));
-    // }
-}
-
-function logTestResult(testName, action, details = {}) {
-    const timestamp = new Date().toLocaleString();
-
-    const icon = details.success
-        ? LogFormats.success("✓")
-        : LogFormats.error("✗");
-
-    const status = details.status ?? "UNKNOWN";
-
-    write(`${icon} - ${action} ${status} (${timestamp})`);
-
-    if (details.response) {
-        write(LogFormats.muted("RESPONSE:"));
-        write(LogFormats.muted(formatCompactJSON(details.response, 60)));
+function buildFullUrlLog(url, length = DEFAULT_ENDPOINT_LOG_LENGTH) {
+    if (url.length <= length) {
+        return url;
     }
 
-    write("");
+    return url.substring(0, length) + "...";
 }
 
 function createTestFlow(testName) {
@@ -74,27 +82,34 @@ function createTestFlow(testName) {
 
     return {
         step(action, details = {}) {
-            const { method, endpoint, port, host, body } = details;
+            const { method, endpoint, host, body, info } = details;
 
             const methodEndpoint =
                 method && endpoint
-                    ? `(${method} ${endpoint.substring(0, 60)})`
+                    ? `(${method} ${buildFullUrlLog(endpoint)})`
                     : "";
 
             write(`${LogFormats.info("•")} ${action} ${methodEndpoint}`);
 
-            if (host || port) {
-                write(`HOST: ${host ?? NODE_HOST}:${port ?? ""}`);
+            if (host) {
+                write(`HOST: ${host}`);
             }
 
-            if (body) {
-                write(LogFormats.muted("BODY:"));
-                write(LogFormats.muted(formatCompactJSON(body, 70)));
+            if (ENABLE_REQUEST_LOGS && body) {
+                write(LogFormats.muted("REQUEST BODY:"));
+                write(
+                    LogFormats.muted(
+                        formatCompactJSON(body, DEFAULT_INFO_LOG_LENGTH),
+                    ),
+                );
+            }
+
+            if (info) {
+                write(LogFormats.muted(info));
             }
 
             write("");
         },
-
         result(action, success, status, extra = {}) {
             const icon = success
                 ? LogFormats.success("✓")
@@ -104,9 +119,33 @@ function createTestFlow(testName) {
 
             write(`${icon} - ${action} ${status} (${time})`);
 
-            if (extra.response) {
+            const withBlockHash = extra.responseLoggerConfig?.withBlockHash;
+
+            if (ENABLE_RESPONSE_LOGS && extra.response) {
                 write(LogFormats.muted("RESPONSE:"));
-                write(LogFormats.muted(formatCompactJSON(extra.response, 70)));
+                write(
+                    LogFormats.muted(
+                        formatCompactJSON(
+                            extra.response,
+                            DEFAULT_INFO_LOG_LENGTH,
+                        ),
+                    ),
+                );
+
+                if (withBlockHash) {
+                    const blockHash = findValueByKey(
+                        extra.response,
+                        BLOCK_HASH_KEY,
+                    );
+
+                    write("");
+
+                    write(
+                        LogFormats.muted(
+                            `Block Hash: ${blockHash ?? "NOT_FOUND"}`,
+                        ),
+                    );
+                }
             }
 
             if (extra.error) {
@@ -119,9 +158,8 @@ function createTestFlow(testName) {
 }
 
 module.exports = {
+    testSuiteWrapper,
     testWrapper,
     printTestHeader,
-    logTestRequest,
-    logTestResult,
     createTestFlow,
 };

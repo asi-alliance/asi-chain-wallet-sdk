@@ -41,8 +41,11 @@ const Endpoints = {
     WS_EVENTS: "/ws/events",
 };
 
+const BLOCK_HASH_KEY = "blockHash";
+
 module.exports = {
     HttpStatus,
     AcceptedStatusCodes,
     Endpoints,
+    BLOCK_HASH_KEY,
 };

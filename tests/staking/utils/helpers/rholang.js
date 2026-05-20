@@ -5,7 +5,7 @@ function escapeRholangString(value) {
         .replace(/\n/g, "\\n")
         .replace(/\r/g, "\\r")
         .replace(/\t/g, "\\t");
-}
+};
 
 function createDevCheckBalanceDeploy(address) {
     const escapedAddress = escapeRholangString(address);
@@ -31,7 +31,7 @@ function createDevCheckBalanceDeploy(address) {
             }
         }
     `;
-}
+};
 
 module.exports = {
     createDevCheckBalanceDeploy,

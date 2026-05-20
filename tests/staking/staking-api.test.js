@@ -1,45 +1,22 @@
-/**
- * Staking API Test Suite
- * Tests for the F1R3Node staking and validator operations
- *
- * API Endpoints tested:
- * - bond-validator: POST /admin/api/propose (admin API)
- * - bonds: GET /api/validators
- * - active-validators: GET /api/validators
- * - bond-status: GET /api/bond-status/{pubkey}
- * - validator-status: GET /api/validator/{pubkey}
- * - epoch-info: GET /api/epoch
- * - epoch-rewards: GET /api/epoch/rewards
- * - wallet-balance: GET /api/balance/{address}
- * - exploratory-deploy: POST /api/exploratory-deploy
- * - watch-blocks: WS /ws/events
- */
-
 const WebSocket = require("ws");
 const {
-    PROTOCOL,
-    NODE_HOST,
-    READ_NODE_HOST,
-
-    REST_PORT,
-    ADMIN_PORT,
-    READ_REST_PORT,
-
     TEST_TIMEOUT_MS,
     WEBSOCKET_TIMEOUT_MS,
 
     TEST_DATA,
-    BOND_VALIDATOR_BOND_AMOUNT,
+    VALIDATOR_URL,
 } = require("./config/env");
 const {
     HttpStatus,
     AcceptedStatusCodes,
     Endpoints,
+    BLOCK_HASH_KEY,
 } = require("./utils/constants");
 const { ENABLED_TESTS } = require("./config");
 const { HttpMethods, makeGet, makePost } = require("./utils/helpers/request");
-const { RequestClientTypes, buildUrl } = require("./utils/helpers/url-builder");
+const { RequestTo, buildUrl } = require("./utils/helpers/url-builder");
 const {
+    testSuiteWrapper,
     testWrapper,
     printTestHeader,
     logTestRequest,
@@ -47,35 +24,34 @@ const {
     createTestFlow,
 } = require("./utils/test");
 const { createDevCheckBalanceDeploy } = require("./utils/helpers/rholang");
+const { write, LogFormats } = require("./utils/helpers/log");
+const { findValueByKey } = require("./utils/helpers/extractors");
 
 printTestHeader();
 
 describe("Staking API", () => {
-    describe("API Health Check", () => {
-        testWrapper("API Health Check - Node Status")(
+    testSuiteWrapper("API Health Check", ({ suiteName }) => {
+        testWrapper(suiteName, "Node Status", {
+            method: HttpMethods.GET,
+            url: buildUrl(Endpoints.STATUS, RequestTo.VALIDATOR),
+        })(
             "should return node status",
-            (done) => {
-                const testName = "API Health Check - Node Status";
-                logTestRequest(testName, "Fetching node status", {
-                    port: REST_PORT,
-                    method: HttpMethods.GET,
-                    endpoint: Endpoints.STATUS,
+            ({ done, flow, url, method, request }) => {
+                flow.step("Get node status", {
+                    method,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(
-                    Endpoints.STATUS,
-                    RequestClientTypes.MAIN_REST,
-                );
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
-                        const success = response.status === HttpStatus.SUCCESS;
-
-                        logTestResult(testName, "Response received", {
-                            success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                        flow.result(
+                            "Validate node status response",
+                            response.status === HttpStatus.SUCCESS,
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                            },
+                        );
 
                         expect(response.status).toBe(HttpStatus.SUCCESS);
                         expect(response.body).toHaveProperty("version");
@@ -83,6 +59,7 @@ describe("Staking API", () => {
                         expect(response.body).toHaveProperty("networkId");
                         expect(response.body).toHaveProperty("isValidator");
                         expect(response.body).toHaveProperty("nativeTokenName");
+
                         done();
                     })
                     .catch(done);
@@ -90,36 +67,35 @@ describe("Staking API", () => {
         );
     });
 
-    describe("bond-validator", () => {
-        testWrapper("Bond Validator - Propose Transaction")(
+    testSuiteWrapper("Bond Validator", ({ suiteName }) => {
+        testWrapper(suiteName, "Propose Transaction", {
+            method: HttpMethods.POST,
+            url: buildUrl(Endpoints.ADMIN_PROPOSE, RequestTo.ADMIN_VALIDATOR),
+        })(
             "should propose bond validator transaction",
-            (done) => {
-                const testName = "Bond Validator - Propose Transaction";
-
-                logTestRequest(testName, "Proposing bond validator", {
-                    port: ADMIN_PORT,
-                    method: HttpMethods.POST,
-                    endpoint: Endpoints.ADMIN_PROPOSE,
+            ({ done, flow, url, method, request }) => {
+                flow.step("Propose bond validator transaction", {
+                    method,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(
-                    Endpoints.ADMIN_PROPOSE,
-                    RequestClientTypes.ADMIN,
-                );
-
-                makePost(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.BOND_VALIDATOR.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate bond validator response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                            // TODO Something went wrong: Failure: Proposal failed: NoNewDeploys. No unprocessed deploys in pool.
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                // TODO Something went wrong: Failure: Proposal failed: NoNewDeploys. No unprocessed deploys in pool. If you just deployed, the deploy may have already been included by the auto-proposer. (seqNum 7557)* Connection #0 to host 202.181.159.96:40415 left intact
+                                // but test says body is null
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.BOND_VALIDATOR).toContain(
                             response.status,
@@ -132,85 +108,98 @@ describe("Staking API", () => {
         );
     });
 
-    describe("bonds / active-validators", () => {
-        testWrapper("Bonds - Retrieve Active Validators")(
+    testSuiteWrapper("Bonds", ({ suiteName }) => {
+        testWrapper(suiteName, "Retrieve Active Validators", {
+            method: HttpMethods.GET,
+            url: buildUrl(Endpoints.VALIDATORS, RequestTo.OBSERVER),
+        })(
             "should retrieve active validators with stakes",
-            (done) => {
-                const testName = "Bonds - Retrieve Active Validators";
-                logTestRequest(testName, "Fetching active validators", {
-                    port: READ_REST_PORT,
-                    method: HttpMethods.GET,
-                    endpoint: Endpoints.VALIDATORS,
+            ({ done, flow, url, method, request }) => {
+                flow.step("Get active validators", {
+                    method,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(
-                    Endpoints.VALIDATORS,
-                    RequestClientTypes.READ_REST,
-                );
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success = response.status === HttpStatus.SUCCESS;
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate validators response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify({
-                                validators: response.body.validators?.length,
-                                totalStake: response.body.totalStake,
-                            }),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify({
+                                    validators:
+                                        response.body.validators?.length,
+                                    totalStake: response.body.totalStake,
+                                }),
+                            },
+                        );
 
                         expect(response.status).toBe(HttpStatus.SUCCESS);
                         expect(response.body).toHaveProperty("validators");
                         expect(Array.isArray(response.body.validators)).toBe(
                             true,
                         );
+
                         if (response.body.validators.length > 0) {
                             const validator = response.body.validators[0];
+
                             expect(validator).toHaveProperty("publicKey");
                             expect(validator).toHaveProperty("stake");
                         }
+
                         expect(response.body).toHaveProperty("totalStake");
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Bonds - Support Block Hash Parameter")(
+        testWrapper(suiteName, "Support Block Hash Parameter", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.VALIDATORS}?block_hash=${TEST_DATA.blockHash}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should support block_hash parameter for validators",
-            (done) => {
-                const testName = "Bonds - Support Block Hash Parameter";
-                const endpoint = `${Endpoints.VALIDATORS}?block_hash=${TEST_DATA.blockHash}`;
+            ({ done, flow, url, method, request }) => {
+                flow.step("Get validators with block hash", {
+                    method,
+                    endpoint: url,
+                });
 
-                logTestRequest(
-                    testName,
-                    "Fetching validators with block hash",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint,
-                    },
-                );
-
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.STATUS_CHECK.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        const responseBlockHash = findValueByKey(
+                            response,
+                            BLOCK_HASH_KEY,
+                        );
+
+                        flow.result(
+                            "Validate validators block hash response",
                             success,
-                            status: response.status,
-                        });
+                            response.status,
+                            {
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.STATUS_CHECK).toContain(
                             response.status,
                         );
+                        expect(responseBlockHash).toBe(TEST_DATA.blockHash);
+
                         done();
                     })
                     .catch(done);
@@ -218,36 +207,39 @@ describe("Staking API", () => {
         );
     });
 
-    describe("bond-status", () => {
-        testWrapper("Bond Status - Check Public Key")(
+    testSuiteWrapper("Bond Status", ({ suiteName }) => {
+        testWrapper(suiteName, "Check Public Key", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.BOND_STATUS}/${TEST_DATA.validatorPubKey}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should check if public key is bonded",
-            (done) => {
-                const testName = "Bond Status - Check Public Key";
-                const endpoint = `${Endpoints.BOND_STATUS}/${TEST_DATA.validatorPubKey}`;
-
-                logTestRequest(testName, "Checking if public key is bonded", {
-                    port: READ_REST_PORT,
-                    method: HttpMethods.GET,
-                    endpoint,
+            ({ done, flow, url, method, request }) => {
+                flow.step("Check if public key is bonded", {
+                    method,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.STATUS_CHECK.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate bond status response",
                             success,
-                            status: response.status,
-                            response:
-                                response.status === HttpStatus.SUCCESS
-                                    ? JSON.stringify(response.body)
-                                    : "",
-                        });
+                            response.status,
+                            {
+                                response:
+                                    response.status === HttpStatus.SUCCESS
+                                        ? JSON.stringify(response.body)
+                                        : "",
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.STATUS_CHECK).toContain(
                             response.status,
@@ -256,7 +248,7 @@ describe("Staking API", () => {
                         if (response.status === HttpStatus.SUCCESS) {
                             expect(typeof response.body.isBonded).toBe(
                                 "boolean",
-                            );
+                            ); // TODO docs fix
                         }
 
                         done();
@@ -266,37 +258,44 @@ describe("Staking API", () => {
         );
     });
 
-    describe("validator-status", () => {
-        testWrapper("Validator Status - Retrieve Status and Bond")(
+    testSuiteWrapper("Validator Status", ({ suiteName }) => {
+        testWrapper(suiteName, "Retrieve Status and Bond", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.VALIDATOR}/${TEST_DATA.validatorPubKey}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should retrieve specific validator status and bond",
-            (done) => {
-                const testName = "Validator Status - Retrieve Status and Bond";
-                const endpoint = `${Endpoints.VALIDATOR}/${TEST_DATA.validatorPubKey}`;
-
-                logTestRequest(testName, "Retrieving validator status", {
-                    port: READ_REST_PORT,
-                    method: HttpMethods.GET,
-                    endpoint,
+            ({ done, flow, url, method, request }) => {
+                flow.step("Get validator status", {
+                    method,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.STATUS_CHECK.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate validator status response",
                             success,
-                            status: response.status,
-                            response: response.body,
-                        });
+                            response.status,
+                            {
+                                response: response.body,
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.STATUS_CHECK).toContain(
                             response.status,
                         );
+
                         if (response.status === HttpStatus.SUCCESS) {
                             expect(response.body).toHaveProperty("publicKey");
                             expect(response.body).toHaveProperty("isBonded");
@@ -310,45 +309,56 @@ describe("Staking API", () => {
                                 );
                             }
                         }
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Validator Status - Support Block Hash")(
+        testWrapper(suiteName, "Support Block Hash", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.VALIDATOR}/${TEST_DATA.validatorPubKey}?block_hash=${TEST_DATA.blockHash}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
+            // TODO IS /api/validator/{pubkey}?block_hash=... in docs?
             "should support block_hash parameter for validator status",
-            (done) => {
-                const testName = "Validator Status - Support Block Hash";
-                const endpoint = `${Endpoints.VALIDATOR}/${TEST_DATA.validatorPubKey}?block_hash=${TEST_DATA.blockHash}`;
+            ({ done, flow, url, method, request }) => {
+                flow.step("Get validator status with block hash", {
+                    method,
+                    endpoint: url,
+                });
 
-                logTestRequest(
-                    testName,
-                    "Retrieving validator status with block hash",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint,
-                    },
-                );
-
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.STATUS_CHECK.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        const responseBlockHash = findValueByKey(
+                            response,
+                            BLOCK_HASH_KEY,
+                        );
+
+                        flow.result(
+                            "Validate validator block hash response",
                             success,
-                            status: response.status,
-                        });
+                            response.status,
+                            {
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.STATUS_CHECK).toContain(
                             response.status,
                         );
+                        expect(responseBlockHash).toBe(TEST_DATA.blockHash);
+
                         done();
                     })
                     .catch(done);
@@ -356,34 +366,33 @@ describe("Staking API", () => {
         );
     });
 
-    describe("epoch-info", () => {
-        testWrapper("Epoch Info - Retrieve Current Epoch")(
+    testSuiteWrapper("Epoch Info", ({ suiteName }) => {
+        testWrapper(suiteName, "Retrieve Current Epoch", {
+            method: HttpMethods.GET,
+            url: buildUrl(Endpoints.EPOCH, RequestTo.OBSERVER),
+        })(
             "should retrieve current epoch information",
-            (done) => {
-                const testName = "Epoch Info - Retrieve Current Epoch";
-                logTestRequest(testName, "Fetching current epoch information", {
-                    port: READ_REST_PORT,
+            ({ done, flow, request, url }) => {
+                flow.step("Fetch current epoch information", {
                     method: HttpMethods.GET,
-                    endpoint: Endpoints.EPOCH,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(
-                    Endpoints.EPOCH,
-                    RequestClientTypes.READ_REST,
-                );
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success = response.status === HttpStatus.SUCCESS;
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate current epoch response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body).substring(
-                                0,
-                                150,
-                            ),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(response.status).toBe(HttpStatus.SUCCESS);
                         expect(response.body).toHaveProperty("currentEpoch");
@@ -398,45 +407,45 @@ describe("Staking API", () => {
                             "number",
                         );
                         expect(typeof response.body.epochLength).toBe("number");
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Epoch Info - Include Quarantine Length")(
+        testWrapper(suiteName, "Include Quarantine Length", {
+            method: HttpMethods.GET,
+            url: buildUrl(Endpoints.EPOCH, RequestTo.OBSERVER),
+        })(
             "should include quarantine length in epoch info",
-            (done) => {
-                const testName = "Epoch Info - Include Quarantine Length";
-                logTestRequest(
-                    testName,
-                    "Fetching epoch info with quarantine length",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint: Endpoints.EPOCH,
-                    },
-                );
+            ({ done, flow, request, url }) => {
+                flow.step("Fetch epoch info with quarantine length", {
+                    method: HttpMethods.GET,
+                    endpoint: url,
+                });
 
-                const url = buildUrl(
-                    Endpoints.EPOCH,
-                    RequestClientTypes.READ_REST,
-                );
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success = response.status === HttpStatus.SUCCESS;
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate quarantine length response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(response.status).toBe(HttpStatus.SUCCESS);
                         expect(response.body).toHaveProperty(
                             "quarantineLength",
                         );
+
                         done();
                     })
                     .catch(done);
@@ -444,35 +453,36 @@ describe("Staking API", () => {
         );
     });
 
-    describe("epoch-rewards", () => {
-        testWrapper("Epoch Rewards - Retrieve Current Rewards")(
+    testSuiteWrapper("Epoch Rewards", ({ suiteName }) => {
+        testWrapper(suiteName, "Retrieve Current Rewards", {
+            method: HttpMethods.GET,
+            url: buildUrl(Endpoints.EPOCH_REWARDS, RequestTo.OBSERVER),
+        })(
             "should retrieve current epoch rewards",
-            (done) => {
-                const testName = "Epoch Rewards - Retrieve Current Rewards";
-
-                logTestRequest(testName, "Fetching current epoch rewards", {
-                    port: READ_REST_PORT,
+            ({ done, flow, request, url }) => {
+                flow.step("Fetch current epoch rewards", {
                     method: HttpMethods.GET,
-                    endpoint: Endpoints.EPOCH_REWARDS,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(
-                    Endpoints.EPOCH_REWARDS,
-                    RequestClientTypes.READ_REST,
-                );
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.EPOCH_REWARDS.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate epoch rewards response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.EPOCH_REWARDS).toContain(
                             response.status,
@@ -482,46 +492,55 @@ describe("Staking API", () => {
                             // TODO might not have property in this case (Communicating with developers now) --- IGNORE ---
                             expect(response.body).toHaveProperty("rewards");
                         }
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Epoch Rewards - Support Block Hash Parameter")(
+        testWrapper(suiteName, "Support Block Hash Parameter", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.EPOCH_REWARDS}?block_hash=${TEST_DATA.blockHash}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should support block_hash parameter for epoch rewards",
-            (done) => {
-                const testName = "Epoch Rewards - Support Block Hash Parameter";
-                const endpoint = `${Endpoints.EPOCH_REWARDS}?block_hash=${TEST_DATA.blockHash}`;
+            ({ done, flow, request, url }) => {
+                flow.step("Fetch epoch rewards with block hash", {
+                    method: HttpMethods.GET,
+                    endpoint: url,
+                });
 
-                logTestRequest(
-                    testName,
-                    "Fetching epoch rewards with block hash",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint,
-                    },
-                );
-
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.EPOCH_REWARDS_WITH_HASH.includes(
                                 response.status,
                             );
+                        const responseBlockHash = findValueByKey(
+                            response,
+                            BLOCK_HASH_KEY,
+                        );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate block hash rewards response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(
                             AcceptedStatusCodes.EPOCH_REWARDS_WITH_HASH,
                         ).toContain(response.status);
+                        expect(responseBlockHash).toBe(TEST_DATA.blockHash);
+
                         done();
                     })
                     .catch(done);
@@ -529,33 +548,39 @@ describe("Staking API", () => {
         );
     });
 
-    describe("wallet-balance", () => {
-        testWrapper("Wallet Balance - Retrieve Balance")(
+    testSuiteWrapper("Wallet Balance", ({ suiteName }) => {
+        testWrapper(suiteName, "Retrieve Balance", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.BALANCE}/${TEST_DATA.walletAddress}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should retrieve wallet balance for address",
-            (done) => {
-                const testName = "Wallet Balance - Retrieve Balance";
-                const endpoint = `${Endpoints.BALANCE}/${TEST_DATA.walletAddress}`;
-
-                logTestRequest(testName, "Fetching wallet balance", {
-                    port: READ_REST_PORT,
+            ({ done, flow, request, url }) => {
+                flow.step("Fetch wallet balance", {
                     method: HttpMethods.GET,
-                    endpoint,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.STATUS_CHECK.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate wallet balance response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(AcceptedStatusCodes.STATUS_CHECK).toContain(
                             response.status,
@@ -568,42 +593,44 @@ describe("Staking API", () => {
                             expect(response.body).toHaveProperty("blockHash");
                             expect(typeof response.body.balance).toBe("number");
                         }
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Wallet Balance - Invalid Address Format")(
+        testWrapper(suiteName, "Invalid Address Format", {
+            method: HttpMethods.GET,
+            url: buildUrl(
+                `${Endpoints.BALANCE}/invalid-address`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should return 404 for invalid address format",
-            (done) => {
-                const testName = "Wallet Balance - Invalid Address Format";
-                const invalidAddress = "invalid-address";
-                const endpoint = `${Endpoints.BALANCE}/${invalidAddress}`;
-
-                logTestRequest(testName, "Testing invalid address rejection", {
-                    port: REST_PORT,
+            ({ done, flow, request, url }) => {
+                flow.step("Test invalid address rejection", {
                     method: HttpMethods.GET,
-                    endpoint,
+                    endpoint: url,
                 });
 
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makeGet(url)
+                request(url)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.BALANCE_INVALID.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate invalid address response",
                             success,
-                            status: response.status,
-                        });
+                            response.status,
+                        );
 
                         expect(AcceptedStatusCodes.BALANCE_INVALID).toContain(
                             response.status,
                         );
+
                         done();
                     })
                     .catch(done);
@@ -611,43 +638,41 @@ describe("Staking API", () => {
         );
     });
 
-    describe("exploratory-deploy", () => {
-        testWrapper("Exploratory Deploy - Execute Rholang")(
+    testSuiteWrapper("Exploratory Deploy", ({ suiteName }) => {
+        testWrapper(suiteName, "Execute Rholang", {
+            method: HttpMethods.POST,
+            url: buildUrl(Endpoints.EXPLORATORY_DEPLOY, RequestTo.OBSERVER),
+        })(
             "should execute read-only Rholang code",
-            (done) => {
-                const testName = "Exploratory Deploy - Execute Rholang";
+            ({ done, flow, request, url }) => {
                 const deploy = {
                     term: createDevCheckBalanceDeploy(TEST_DATA.walletAddress),
                 };
 
-                logTestRequest(
-                    testName,
-                    "Executing exploratory Rholang deploy",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.POST,
-                        endpoint: Endpoints.EXPLORATORY_DEPLOY,
-                        body: deploy,
-                    },
-                );
+                flow.step("Execute exploratory Rholang deploy", {
+                    method: HttpMethods.POST,
+                    endpoint: url,
+                    body: deploy,
+                });
 
-                const url = buildUrl(
-                    Endpoints.EXPLORATORY_DEPLOY,
-                    RequestClientTypes.READ_REST,
-                );
-
-                makePost(url, deploy)
+                request(url, deploy)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate exploratory deploy response",
                             success,
-                            status: response.status,
-                            response: JSON.stringify(response.body),
-                        });
+                            response.status,
+                            {
+                                response: JSON.stringify(response.body),
+                                responseLoggerConfig: {
+                                    withBlockHash: true,
+                                },
+                            },
+                        );
 
                         expect(
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY,
@@ -665,219 +690,132 @@ describe("Staking API", () => {
                                 typeof response.body.expr[0].ExprInt.data,
                             ).toBe("number");
                         }
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Exploratory Deploy - Support Block Hash")(
+        testWrapper(suiteName, "Support Block Hash", {
+            method: HttpMethods.POST,
+            url: buildUrl(
+                `${Endpoints.EXPLORATORY_DEPLOY}?block_hash=${TEST_DATA.blockHash}`,
+                RequestTo.OBSERVER,
+            ),
+        })(
             "should support block_hash parameter for exploratory deploy",
-            (done) => {
-                const testName = "Exploratory Deploy - Support Block Hash";
-                const endpoint = `${Endpoints.EXPLORATORY_DEPLOY}?block_hash=${TEST_DATA.blockHash}`;
+            ({ done, flow, request, url }) => {
                 const deploy = {
                     term: createDevCheckBalanceDeploy(TEST_DATA.walletAddress),
                 };
 
-                logTestRequest(
-                    testName,
-                    "Executing exploratory deploy with block hash",
-                    {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.POST,
-                        endpoint,
-                        body: deploy,
-                    },
-                );
+                flow.step("Execute exploratory deploy with block hash", {
+                    method: HttpMethods.POST,
+                    endpoint: url,
+                    body: deploy,
+                });
 
-                const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-                makePost(url, deploy)
+                request(url, deploy)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        const responseBlockHash = findValueByKey(
+                            response,
+                            BLOCK_HASH_KEY,
+                        );
+
+                        flow.result(
+                            "Validate block hash exploratory deploy response",
                             success,
-                            status: response.status,
-                        });
+                            response.status,
+                        );
 
                         expect(
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY,
                         ).toContain(response.status);
+                        expect(responseBlockHash).toBe(TEST_DATA.blockHash);
+
                         done();
                     })
                     .catch(done);
             },
         );
 
-        testWrapper("Exploratory Deploy - Invalid Rholang Error")(
+        testWrapper(suiteName, "Invalid Rholang Error", {
+            method: HttpMethods.POST,
+            url: buildUrl(Endpoints.EXPLORATORY_DEPLOY, RequestTo.VALIDATOR),
+        })(
             "should return proper error for invalid Rholang",
-            (done) => {
-                const testName = "Exploratory Deploy - Invalid Rholang Error";
-                const invalidDeploy = { term: "invalid rholang code !!!" };
+            ({ done, flow, request, url }) => {
+                const invalidDeploy = {
+                    term: "invalid rholang code !!!",
+                };
 
-                logTestRequest(testName, "Testing invalid Rholang rejection", {
-                    port: REST_PORT,
+                flow.step("Test invalid Rholang rejection", {
                     method: HttpMethods.POST,
-                    endpoint: Endpoints.EXPLORATORY_DEPLOY,
+                    endpoint: url,
                     body: invalidDeploy,
                 });
 
-                const url = buildUrl(
-                    Endpoints.EXPLORATORY_DEPLOY,
-                    RequestClientTypes.MAIN_REST,
-                );
-
-                makePost(url, invalidDeploy)
+                request(url, invalidDeploy)
                     .then((response) => {
                         const success =
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY_ERROR.includes(
                                 response.status,
                             );
 
-                        logTestResult(testName, "Response received", {
+                        flow.result(
+                            "Validate invalid Rholang response",
                             success,
-                            status: response.status,
-                        });
+                            response.status,
+                        );
 
                         expect(
                             AcceptedStatusCodes.EXPLORATORY_DEPLOY_ERROR,
                         ).toContain(response.status);
+
                         done();
                     })
                     .catch(done);
             },
         );
     });
-
-    // describe(
-    //   "watch-blocks",
-    //   () => {
-    //     test("should connect to WebSocket events endpoint", (done) => {
-    //       const testName = "Watch Blocks - WebSocket Connection";
-    //       const wsUrl = `${PROTOCOL === "https" ? "wss" : "ws"}://${NODE_HOST}:${REST_PORT}${ENDPOINT_WS_EVENTS}`;
-
-    //       logTest(testName, "Connecting to WebSocket events", {
-    //         type: "request",
-    //         port: REST_PORT,
-    //         method: "WS",
-    //         endpoint: ENDPOINT_WS_EVENTS,
-    //       });
-
-    //       const ws = new WebSocket(wsUrl, { timeout: WEBSOCKET_TIMEOUT_MS });
-    //       const events = [];
-    //       let timeoutHandle;
-
-    //       ws.on("open", () => {
-    //         console.log("  ACTION: WebSocket connection established");
-    //       });
-
-    //       ws.on("message", (data) => {
-    //         try {
-    //           const event = JSON.parse(data);
-    //           events.push(event);
-
-    //           const validTypes = [
-    //             "block-created",
-    //             "block-added",
-    //             "block-finalised",
-    //             "sent-unapproved-block",
-    //             "block-approval-received",
-    //             "sent-approved-block",
-    //             "approved-block-received",
-    //             "entered-running-state",
-    //             "node-started",
-    //           ];
-
-    //           console.log(`  ACTION: Received event type: ${event.type}`);
-
-    //           if (event.type && validTypes.includes(event.type)) {
-    //             console.log("  ACTION: Valid event received, closing connection");
-    //             ws.close();
-    //           }
-    //         } catch (e) {
-    //           ws.close();
-    //         }
-    //       });
-
-    //       ws.on("error", (error) => {
-    //         clearTimeout(timeoutHandle);
-    //         logTest(testName, "WebSocket error", {
-    //           type: "result",
-    //           success: false,
-    //           status: "ERROR",
-    //           error: error.message,
-    //         });
-    //         ws.close();
-    //         done(error);
-    //       });
-
-    //       ws.on("close", () => {
-    //         clearTimeout(timeoutHandle);
-    //         const success = events.length > 0;
-    //         logTest(testName, "WebSocket closed", {
-    //           type: "result",
-    //           success,
-    //           status: success ? 200 : 202,
-    //           response: JSON.stringify({ eventsReceived: events.length }),
-    //         });
-    //         done();
-    //       });
-
-    //       timeoutHandle = setTimeout(() => {
-    //         if (ws.readyState === WebSocket.OPEN) {
-    //           console.log(
-    //             "  ACTION: WebSocket timeout reached, closing connection",
-    //           );
-    //           ws.close();
-    //         }
-    //       }, WEBSOCKET_TIMEOUT_MS);
-    //     });
-
-    //     return undefined;
-    //   },
-    //   TEST_TIMEOUT_MS,
-    // );
 });
 
-describe("Integration Tests", () => {
-    testWrapper("Integration - Epoch and Validators")(
+testSuiteWrapper("Integration", ({ suiteName }) => {
+    testWrapper(suiteName, "Epoch and Validators", {
+        method: HttpMethods.GET,
+        url: buildUrl(Endpoints.EPOCH, RequestTo.OBSERVER),
+    })(
         "should retrieve epoch info and active validators together",
-        (done) => {
-            const testName = "Integration - Epoch and Validators";
-            const logFlow = createTestFlow(testName);
-
-            logFlow.step("Fetching epoch info", {
-                port: READ_REST_PORT,
+        ({ flow, done, request, url }) => {
+            flow.step("Fetching epoch info", {
                 method: HttpMethods.GET,
-                endpoint: Endpoints.EPOCH,
+                endpoint: url,
             });
 
-            const url = buildUrl(Endpoints.EPOCH, RequestClientTypes.READ_REST);
-
-            makeGet(url)
+            request(url)
                 .then((epochResponse) => {
-                    logFlow.step("Fetching active validators", {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint: Endpoints.VALIDATORS,
-                    });
-
-                    const url = buildUrl(
+                    const validatorsUrl = buildUrl(
                         Endpoints.VALIDATORS,
-                        RequestClientTypes.READ_REST,
+                        RequestTo.OBSERVER,
                     );
 
-                    return makeGet(url).then((validatorsResponse) => {
+                    flow.step("Fetching active validators", {
+                        method: HttpMethods.GET,
+                        endpoint: validatorsUrl,
+                    });
+
+                    return makeGet(validatorsUrl).then((validatorsResponse) => {
                         const success =
                             epochResponse.status === HttpStatus.SUCCESS &&
                             validatorsResponse.status === HttpStatus.SUCCESS;
 
-                        logFlow.result(
+                        flow.result(
                             "Integration test complete",
                             success,
                             `epoch: ${epochResponse.status}, validators: ${validatorsResponse.status}`,
@@ -894,6 +832,7 @@ describe("Integration Tests", () => {
                         expect(
                             validatorsResponse.body.totalStake,
                         ).toBeDefined();
+
                         done();
                     });
                 })
@@ -901,42 +840,35 @@ describe("Integration Tests", () => {
         },
     );
 
-    testWrapper("Integration - Block Hash Consistency")(
+    testWrapper(suiteName, "Block Hash Consistency", {
+        method: HttpMethods.GET,
+        url: buildUrl(Endpoints.STATUS, RequestTo.OBSERVER),
+    })(
         "should verify block hash consistency across Endpoints",
-        (done) => {
-            const testName = "Integration - Block Hash Consistency";
-            const logFlow = createTestFlow(testName);
-
-            logFlow.step("Fetching status", {
-                port: READ_REST_PORT,
+        ({ flow, done, request, url }) => {
+            flow.step("Fetching status", {
                 method: HttpMethods.GET,
-                endpoint: Endpoints.STATUS,
+                endpoint: url,
             });
 
-            const url = buildUrl(
-                Endpoints.STATUS,
-                RequestClientTypes.READ_REST,
-            );
-
-            makeGet(url)
+            request(url)
                 .then((statusResponse) => {
-                    logFlow.step("Fetching epoch info", {
-                        port: READ_REST_PORT,
-                        method: HttpMethods.GET,
-                        endpoint: Endpoints.EPOCH,
-                    });
-
-                    const url = buildUrl(
+                    const epochUrl = buildUrl(
                         Endpoints.EPOCH,
-                        RequestClientTypes.READ_REST,
+                        RequestTo.OBSERVER,
                     );
 
-                    return makeGet(url).then((epochResponse) => {
+                    flow.step("Fetching epoch info", {
+                        method: HttpMethods.GET,
+                        endpoint: epochUrl,
+                    });
+
+                    return makeGet(epochUrl).then((epochResponse) => {
                         const success =
                             statusResponse.status === HttpStatus.SUCCESS &&
                             epochResponse.status === HttpStatus.SUCCESS;
 
-                        logFlow.result(
+                        flow.result(
                             "Consistency check complete",
                             success,
                             `status: ${statusResponse.status}, epoch: ${epochResponse.status}`,
@@ -947,6 +879,7 @@ describe("Integration Tests", () => {
                         expect(
                             statusResponse.body.lastFinalizedBlockNumber,
                         ).toBe(epochResponse.body.lastFinalizedBlockNumber);
+
                         done();
                     });
                 })
@@ -955,120 +888,216 @@ describe("Integration Tests", () => {
     );
 });
 
-describe("Error Handling", () => {
-    testWrapper("Error Handling - Non-existent Validator")(
+testSuiteWrapper("Error Handling", ({ suiteName }) => {
+    testWrapper(suiteName, "Non-existent Validator", {
+        method: HttpMethods.GET,
+        url: buildUrl(
+            `${Endpoints.VALIDATOR}/invalid0000000000000000000000000000000000000`,
+            RequestTo.OBSERVER,
+        ),
+    })(
         "should handle non-existent validator gracefully",
-        (done) => {
-            const testName = "Error Handling - Non-existent Validator";
-            const invalidPubKey =
-                "invalid0000000000000000000000000000000000000";
-            const endpoint = `${Endpoints.VALIDATOR}/${invalidPubKey}`;
+        ({ flow, done, request, url }) => {
+            flow.step("Testing non-existent validator rejection", {
+                method: HttpMethods.GET,
+                endpoint: url,
+            });
 
-            logTestRequest(
-                testName,
-                "Testing non-existent validator rejection",
-                {
-                    port: READ_REST_PORT,
-                    method: HttpMethods.GET,
-                    endpoint,
-                },
-            );
-
-            const url = buildUrl(endpoint, RequestClientTypes.READ_REST);
-
-            makeGet(url)
+            request(url)
                 .then((response) => {
                     const success =
                         AcceptedStatusCodes.VALIDATOR_NOT_FOUND.includes(
                             response.status,
                         );
 
-                    logTestResult(testName, "Response received", {
-                        success,
-                        status: response.status,
+                    flow.result("Response received", success, response.status, {
                         response: JSON.stringify(response.body),
+                        responseLoggerConfig: {
+                            withBlockHash: true,
+                        },
                     });
 
                     expect(AcceptedStatusCodes.VALIDATOR_NOT_FOUND).toContain(
                         response.status, // TODO sends 200 (Communicating with developers now) --- IGNORE ---
                     );
+
                     done();
                 })
                 .catch(done);
         },
     );
 
-    testWrapper("Error Handling - Malformed Request")(
-        "should handle malformed requests",
-        (done) => {
-            const testName = "Error Handling - Malformed Request";
-            const endpoint = `${Endpoints.BALANCE}/invalid`;
+    testWrapper(suiteName, "Malformed Request", {
+        method: HttpMethods.GET,
+        url: buildUrl(`${Endpoints.BALANCE}/invalid`, RequestTo.VALIDATOR),
+    })("should handle malformed requests", ({ flow, done, request, url }) => {
+        flow.step("Testing malformed request rejection", {
+            method: HttpMethods.GET,
+            endpoint: url,
+        });
 
-            logTestRequest(testName, "Testing malformed request rejection", {
-                port: REST_PORT,
-                method: HttpMethods.GET,
-                endpoint,
-            });
+        request(url)
+            .then((response) => {
+                const success = AcceptedStatusCodes.ERROR.includes(
+                    response.status,
+                );
 
-            const url = buildUrl(endpoint, RequestClientTypes.MAIN_REST);
+                flow.result("Response received", success, response.status);
 
-            makeGet(url)
-                .then((response) => {
-                    const success = AcceptedStatusCodes.ERROR.includes(
-                        response.status,
-                    );
+                expect(AcceptedStatusCodes.ERROR).toContain(response.status);
 
-                    logTestResult(testName, "Response received", {
-                        success,
-                        status: response.status,
-                    });
+                done();
+            })
+            .catch(done);
+    });
 
-                    expect(AcceptedStatusCodes.ERROR).toContain(
-                        response.status,
-                    );
-                    done();
-                })
-                .catch(done);
-        },
-    );
-
-    testWrapper("Error Handling - Invalid Deploy Request")(
+    testWrapper(suiteName, "Invalid Deploy Request", {
+        method: HttpMethods.POST,
+        url: buildUrl(Endpoints.EXPLORATORY_DEPLOY, RequestTo.OBSERVER),
+    })(
         "should reject invalid exploratory deploy requests",
-        (done) => {
-            const testName = "Error Handling - Invalid Deploy Request";
+        ({ flow, done, request, url }) => {
             const invalidRequest = { term: null };
 
-            logTestRequest(testName, "Testing invalid deploy rejection", {
-                port: READ_REST_PORT,
+            flow.step("Testing invalid deploy rejection", {
                 method: HttpMethods.POST,
-                endpoint: Endpoints.EXPLORATORY_DEPLOY,
+                endpoint: url,
                 body: invalidRequest,
             });
 
-            const url = buildUrl(
-                Endpoints.EXPLORATORY_DEPLOY,
-                RequestClientTypes.READ_REST,
-            );
-
-            makePost(url, invalidRequest)
+            request(url, invalidRequest)
                 .then((response) => {
                     const success =
                         AcceptedStatusCodes.EXPLORATORY_DEPLOY_INVALID.includes(
                             response.status,
                         );
 
-                    logTestResult(testName, "Response received", {
-                        success,
-                        status: response.status,
+                    flow.result("Response received", success, response.status, {
                         response: JSON.stringify(response.body),
                     });
 
                     expect(
                         AcceptedStatusCodes.EXPLORATORY_DEPLOY_INVALID,
                     ).toContain(response.status);
+
                     done();
                 })
                 .catch(done);
         },
     );
+});
+
+testSuiteWrapper("Watch Blocks", ({ suiteName }) => {
+    testWrapper(
+        suiteName,
+        "WebSocket Connection",
+        WEBSOCKET_TIMEOUT_MS,
+    )("should connect to WebSocket events endpoint", async ({ flow, done }) => {
+        const wsUrl = buildUrl(
+            Endpoints.WS_EVENTS,
+            RequestTo.WEBSOCKET_VALIDATOR,
+        );
+
+        const ws = new WebSocket(wsUrl, {
+            timeout: WEBSOCKET_TIMEOUT_MS,
+        });
+
+        const events = [];
+        let timeoutHandle;
+
+        flow.step("Connect to WebSocket", {
+            method: "WS",
+            endpoint: wsUrl,
+        });
+
+        const validTypes = new Set([
+            "block-created",
+            "block-added",
+            "block-finalised",
+            "sent-unapproved-block",
+            "block-approval-received",
+            "sent-approved-block",
+            "approved-block-received",
+            "entered-running-state",
+            "node-started",
+        ]);
+
+        let finished = false;
+
+        const finish = (success, status = success ? 200 : 202) => {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+
+            clearTimeout(timeoutHandle);
+
+            flow.result("WebSocket test completed", success, status, {
+                response: JSON.stringify({
+                    eventsReceived: events.length,
+                }),
+            });
+
+            ws.removeAllListeners();
+            ws.close();
+
+            done();
+        };
+
+        ws.on("open", () => {
+            flow.step("WebSocket connection established");
+        });
+
+        ws.on("message", (data) => {
+            if (finished) {
+                return;
+            }
+
+            try {
+                const event = JSON.parse(data);
+                events.push(event);
+
+                flow.step("Received event", {
+                    method: "WS",
+                    endpoint: event.type,
+                    info: `Event Type: ${event.event}`,
+                });
+
+                if (event.event && validTypes.has(event.event)) {
+                    flow.step("Valid event received, closing connection");
+                    finish(true, 200);
+                }
+            } catch (error) {
+                flow.step("Invalid WS message received, closing");
+                finish(false, 500);
+            }
+        });
+
+        ws.on("error", (error) => {
+            if (finished) {
+                return;
+            }
+
+            flow.result("WebSocket error", false, "ERROR", {
+                error: error.message,
+            });
+
+            finish(false, 500);
+        });
+
+        ws.on("close", () => {
+            finish(events.length > 0);
+        });
+
+        timeoutHandle = setTimeout(() => {
+            if (finished) {
+                return;
+            }
+
+            flow.step("WebSocket timeout reached");
+
+            finish(events.length > 0);
+        }, WEBSOCKET_TIMEOUT_MS);
+    });
 });
