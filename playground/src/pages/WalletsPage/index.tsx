@@ -5,30 +5,8 @@ import { useSdkContext } from "../../sdk-react-kit/SdkContext";
 import { createWalletPageHandlers } from "./helpers";
 import "./style.css";
 import NetworkSelector from "@components/NetworkSelector";
-// import { BlockchainGateway } from "asi-wallet-sdk";
-// import {Networks} from "@config/index";
-import {NetworkName } from "asi-wallet-sdk";
-
-const SELECTED_NETWORK_KEY = "asi_selected_network";
-
 
 const WalletsPage = (): ReactElement => {
-    
-    // Network state
-    const [currentNetwork, setCurrentNetwork] = useState<NetworkName>(() => { 
-        const saved = localStorage.getItem(SELECTED_NETWORK_KEY) as NetworkName; //INFO/TODO: use NetworkProvider via useNetwork instead
-        return saved || "DevNet" satisfies NetworkName;
-    });
-        const handleNetworkChange = (networkName: NetworkName) => {
-        withLoader(async () => {
-            //INFO/TODO: set network in client
-            
-            localStorage.setItem(SELECTED_NETWORK_KEY, networkName); //INFO/TODO: manage storage in client
-            setCurrentNetwork(networkName); //INFO/TODO: get from useSdkContext instead
-        });
-    };
-
-
     const { setModalState, withLoader } = useAppContext();
     const {sdkClient, saveVault, currentPassword, wallets} = useSdkContext();
     const {

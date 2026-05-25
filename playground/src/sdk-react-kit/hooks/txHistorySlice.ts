@@ -8,12 +8,15 @@ import { NetworkSlice } from "./networkSlice";
 // }
 export interface TxHistorySlice {
     txHistorySetters: {
-
+        setAllLocalTxs: React.Dispatch<any>,
+        setIndexerTransactions: React.Dispatch<any>,
     }
 
     setAddress: React.Dispatch<Address>,
+    address: Address,
     setFilter: React.Dispatch<TransactionFilter>,
     stats: TransactionStats;
+    allLocalTxs: Transaction[];
     transactions: Transaction[];
     loadTransactions: (...args: any) => Promise<any>; //TODO: any
     downloadTransactions: (...args: any) => Promise<any>;
@@ -70,12 +73,10 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
         setError(null);
         try {
             // const publicKey = wallet.getPublicKey();
-            const { localTxs, indexerTxs } = await sdkClient.txHistory.getFilteredTxs(
-                sdkClient.networkProvider.currentNetwork,
+            const { localTxs, indexerTxs } = await sdkClient.getFilteredTxs(
                 address,
                 filter,
                 pagination,
-                password
             );
 
             // setLocalTransactions
@@ -99,6 +100,7 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
             setAllLocalTxs,
             setIndexerTransactions
         },
+        allLocalTxs,
         transactions,
         stats,
         loadTransactions,
@@ -106,6 +108,7 @@ export const txHistorySlice = (sdkClient: Client, password: string, network: Net
         error,
         downloadTransactions,
         setAddress,
+        address,
         setFilter,
     }
 }

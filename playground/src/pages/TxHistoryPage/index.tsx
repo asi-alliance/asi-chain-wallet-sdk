@@ -12,9 +12,10 @@ import { TxHistoryPrerequisites } from "./TxHistoryPrerequisites";
 import { Wallet, type TransactionFilter } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
 import NetworkSelector from "@components/NetworkSelector";
+import { ReservationList } from "./ReservationList/ReservationList";
 
 const TxHistoryPage = (): ReactElement => {
-    const [wallet, setWallet] = useState(null);
+    const [wallet, setWallet] = useState<Wallet>(null);
     const [filter, setFilter] = useState<TransactionFilter>({});
 
     const {txHistory, network} = useSdkContext();
@@ -25,7 +26,7 @@ const TxHistoryPage = (): ReactElement => {
     }, [txHistory]);
     const onWalletChange = useCallback((wallet: Wallet) => {
         setWallet(wallet);
-        txHistory.setAddress(wallet.getAddress())
+        txHistory.setAddress(wallet?.getAddress() ?? null);
     }, [txHistory]);
 
     return (
@@ -49,6 +50,7 @@ const TxHistoryPage = (): ReactElement => {
                 transactions={txHistory.transactions}
                 selectedAccount={wallet}
             />
+            <ReservationList />
         </main>
     );
 };

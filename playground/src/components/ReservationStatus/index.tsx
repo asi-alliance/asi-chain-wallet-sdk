@@ -1,10 +1,14 @@
 import {
     Address,
+    Amount,
     FundsReservationService,
+    Reservation,
     fromAtomicAmount,
 } from "asi-wallet-sdk";
 import { useEffect, useState, type ReactElement } from "react";
 import "./style.css";
+import { useSdkContext } from "../../sdk-react-kit";
+import { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IReservationStatusProps {
     address: Address;
@@ -14,50 +18,27 @@ export interface IReservationStatusProps {
         string,
         { amount: bigint; timestamp: number; toAddress: string }
     >;
+    walletBalance: WalletBalance;
 }
 
 interface ReservationInfo {
     totalReserved: bigint;
     availableBalance: bigint;
     reservationCount: number;
-    pendingDeployCount: number;
 }
 
 const ReservationStatus = ({
     address,
     balance,
     isBalanceFetching = false,
-    pendingDeploys,
+    walletBalance,
 }: IReservationStatusProps): ReactElement => {
-    const [reservations, setReservations] = useState<ReservationInfo | null>(
-        null,
-    );
 
-    useEffect(() => {
-        const updateReservationStatus = () => {
-            console.log("Balance");
-            const reservationService = FundsReservationService.getInstance();
-            const totalReserved = reservationService.getTotalReserved(address);
-            const availableBalance = balance - totalReserved;
-            const allReservations = reservationService.getReservations(address);
-            const pendingDeployCount = pendingDeploys ? pendingDeploys.size : 0;
-
-            setReservations({
-                totalReserved,
-                availableBalance,
-                reservationCount: allReservations.length,
-                pendingDeployCount,
-            });
-        };
-
-        updateReservationStatus();
-    }, [address, balance, pendingDeploys]);
-
-    if (!reservations) {
+    if (!walletBalance) {
         return <div className="reservation-status loading">Loading...</div>;
     }
 
-    const hasReservations = reservations.totalReserved > 0n;
+    const hasReservations = Boolean(walletBalance.walletBalance.reservationCount);
 
     return (
         <div
@@ -73,7 +54,7 @@ const ReservationStatus = ({
                     <span className="reservation-status__value">
                         {isBalanceFetching
                             ? "updating..."
-                            : `${fromAtomicAmount(balance)} ASI`}
+                            : `${fromAtomicAmount(balance ?? 0n)} ASI`}
                     </span>
                 </div>
 
@@ -84,7 +65,7 @@ const ReservationStatus = ({
                                 Reserved:
                             </span>
                             <span className="reservation-status__value reserved">
-                                {fromAtomicAmount(reservations.totalReserved)}{" "}
+                                {fromAtomicAmount(walletBalance.walletBalance.totalReserved)}{" "}
                                 ASI
                             </span>
                         </div>
@@ -96,7 +77,7 @@ const ReservationStatus = ({
                         Available:
                     </span>
                     <span className="reservation-status__value">
-                        {fromAtomicAmount(reservations.availableBalance)} ASI
+                        {fromAtomicAmount(walletBalance.walletBalance.availableBalance ?? 0n)} ASI
                     </span>
                 </div>
 
@@ -106,7 +87,7 @@ const ReservationStatus = ({
                             Active Transfers:
                         </span>
                         <span className="reservation-status__value">
-                            {reservations.pendingDeployCount}
+                            {walletBalance.walletBalance.reservationCount}
                         </span>
                     </div>
                 )}
@@ -115,9 +96,9 @@ const ReservationStatus = ({
             {hasReservations && (
                 <div className="reservation-status__info">
                     <p>
-                        {reservations.pendingDeployCount} active transfer
-                        {reservations.pendingDeployCount !== 1 ? "s" : ""}
-                        {reservations.pendingDeployCount > 0
+                        {walletBalance.walletBalance.reservationCount} active transfer
+                        {walletBalance.walletBalance.reservationCount !== 1 ? "s" : ""}
+                        {walletBalance.walletBalance.reservationCount > 0
                             ? " in progress. Reserved funds will be freed once confirmed."
                             : ""}
                     </p>

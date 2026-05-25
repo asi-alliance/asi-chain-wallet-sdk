@@ -1,13 +1,10 @@
 import type { ReactElement } from "react";
-import type {
-    Account,
-    Transaction,
-} from "../fixtures/txHistory.fixture";
 import TxListItem from "./TxListItem";
+import { Transaction, Wallet } from "asi-wallet-sdk";
 
 interface TxListProps {
     transactions: Transaction[] | null;
-    selectedAccount: Account | null;
+    selectedAccount: Wallet | null;
 }
 
 const TxContent = (transactions: TxListProps["transactions"]): ReactElement => {

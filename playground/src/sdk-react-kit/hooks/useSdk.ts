@@ -5,6 +5,7 @@ import { walletsSlice } from "./walletsSlice";
 import { txHistorySlice } from "./txHistorySlice";
 import { networkSlice } from "./networkSlice";
 import { useUiEventDispatcher } from "./uiEventDispatcher.ts/useUiEventDispatcher";
+import { reservationSlice } from "./reservationSlice";
 
 interface IPasswordSubmitHandler {
     (password: string): (void | Promise<void>);
@@ -34,10 +35,10 @@ const useSdk = ({
     const network = networkSlice(sdkClient);
     const wallets = walletsSlice(sdkClient);
     const txHistory = txHistorySlice(sdkClient, currentPassword, network);
-    
+    const reservation = reservationSlice(sdkClient, network.currentNetwork, txHistory.address);
 
     // ///////
-    const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters);
+    const uiEventDispatcher = useUiEventDispatcher(wallets.walletsSetters, txHistory.txHistorySetters, network.networkSetters, reservation.reservationSetters);
     // ///////
 
     useEffect(() => {
@@ -126,9 +127,10 @@ const useSdk = ({
         unlockVault,
         createVaultPassword,
         clearSdkData,
+        network,
         wallets,
         txHistory,
-        network,
+        reservation,
     };
 };
 

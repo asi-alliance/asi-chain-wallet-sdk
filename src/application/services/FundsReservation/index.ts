@@ -1,6 +1,9 @@
 import ReservationRecord from "@/domain/aggregates/Reservation";
 import { Address } from "@/domain/aggregates/Wallet";
 import { ReservationStatus } from "@/domain/aggregates/Reservation/types";
+import { Network, toAtomicAmount, Transaction } from "@domain/";
+import { TxHistory } from "../TxHistory";
+import { ReservationsFromTxsResolver } from "@domain/services/Reservation/ReservationsFromTxsResolver";
 
 export interface ReservationError {
     code:
@@ -17,11 +20,11 @@ export default class FundsReservationService {
     private reservations: Map<string, ReservationRecord> = new Map();
     private addressReservations: Map<Address, Set<string>> = new Map();
 
-    private constructor() {}
+    public constructor(private txHistory: TxHistory) {}
 
     static getInstance(): FundsReservationService {
         if (!FundsReservationService.instance) {
-            FundsReservationService.instance = new FundsReservationService();
+            FundsReservationService.instance = new FundsReservationService(null as unknown as TxHistory);
         }
         return FundsReservationService.instance;
     }
@@ -254,4 +257,14 @@ export default class FundsReservationService {
         }
         return result;
     }
+
+    /* reservations by transactions */
+    /**
+     * Application layer service. Orchestrates the retrieval of reservations from transactions.
+     */
+    public async getReservationsByTxs(network: Network, address: Address, auxVaultPassword: string) {
+        const localTxs = await this.txHistory.getAddressOnNetworkLocalTxs(network, address, auxVaultPassword);
+        return ReservationsFromTxsResolver.resolveFromTxs(localTxs);
+    }
+    /* /reservations by transactions */
 }

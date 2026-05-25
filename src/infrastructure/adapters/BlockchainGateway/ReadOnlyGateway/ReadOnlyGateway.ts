@@ -1,19 +1,12 @@
 import { Network, NetworkName } from "@/domain/aggregates/Network";
 import { IHttpClient } from "@/application/ports/outbound/IHttpClient";
-import { getGatewayErrorMessage } from "./common";
+import { getGatewayErrorMessage } from "../common";
 import { FAULT_TOLERANCE_THRESHOLD, INVALID_BLOCK_NUMBER } from "@/domain/constants";
-
-export enum DeployStatus {
-    DEPLOYING = "Deploying",
-    INCLUDED_IN_BLOCK = "IncludedInBlock",
-    FINALIZED = "Finalized",
-
-    CHECK_ERROR = "CheckingError",
-}
+import { ReadOnlyTxStatus } from "./types";
 
 export type DeployStatusResult =
-    | { status: Exclude<DeployStatus, DeployStatus.CHECK_ERROR> }
-    | { status: DeployStatus.CHECK_ERROR; errorMessage: string };
+    | { status: Exclude<ReadOnlyTxStatus, ReadOnlyTxStatus.CHECK_ERROR> }
+    | { status: ReadOnlyTxStatus.CHECK_ERROR; errorMessage: string };
 
 export class ReadOnlyGateway {
     private httpClient: IHttpClient;
@@ -62,17 +55,17 @@ export class ReadOnlyGateway {
 
             deploy = await this.getDeploy(deployHash);
             if (!deploy?.blockHash) {
-                return { status: DeployStatus.DEPLOYING };
+                return { status: ReadOnlyTxStatus.DEPLOYING };
             }
 
             const isFinalized = await this.isDeployFinalized(deploy);
             return {
-                status: isFinalized ? DeployStatus.FINALIZED : DeployStatus.INCLUDED_IN_BLOCK
+                status: isFinalized ? ReadOnlyTxStatus.FINALIZED : ReadOnlyTxStatus.INCLUDED_IN_BLOCK
             };
         } catch (error) {
             const message = "BlockchainGateway.getDeployStatus: " + getGatewayErrorMessage(error);
             return {
-                status: DeployStatus.CHECK_ERROR,
+                status: ReadOnlyTxStatus.CHECK_ERROR,
                 errorMessage: message,
             };
         }

@@ -9,21 +9,20 @@ import {
     FeeService,
     GasFeeVO,
     Client,
-    DeployStatus,
+    ReadOnlyTxStatus,
 } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import { ITransferModalProps } from "@components/TransferModal";
 import { IPasswordModalProps } from "@components/PasswordModal";
 import { useSdkContext } from "../../sdk-react-kit";
+import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IWalletCardProps {
     sdkClient: Client;
     wallet: Wallet;
     removeWallet: (id: Address) => void;
 }
-
-const AUTO_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const WalletCard = ({
     sdkClient,
@@ -32,42 +31,15 @@ const WalletCard = ({
 }: IWalletCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
     const {network} = useSdkContext();
-
-    const reservationService = useMemo(
-        () => FundsReservationService.getInstance(),
-        [],
-    );
+    const walletBalanceValue = useWalletBalance(sdkClient, network, wallet.getAddress());
 
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
-    const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false);
-    const [balance, setBalance] = useState<bigint>(BigInt(0));
-
-    const pendingDeploys = useMemo(
-        () =>
-            new Map<
-                string,
-                { amount: bigint; timestamp: number; toAddress: string }
-            >(),
-        [],
-    );
+    const [isBalanceFetching, setIsBalanceFetching] = useState<boolean>(false); //TODO:
 
     const index = wallet.getIndex();
     const address = wallet.getAddress();
-    const canSend = balance > 0n;
-
-    const fetchBalance = async () => {
-        try {
-            setIsBalanceFetching(true);
-            const balance = await sdkClient.getASIBalance(address);
-
-            setBalance(balance);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setIsBalanceFetching(false);
-        }
-    };
+    const canSend = walletBalanceValue.walletBalance.availableBalance > 0n; //INFO/TODO: to domain
 
     const handlePrepareSend = (toAddress?, amount?) => {
         setModalState({
@@ -77,7 +49,7 @@ const WalletCard = ({
                 toAddress: toAddress ?? "",
                 amount: amount ?? 0n,
                 gasFee: FeeService.getGasFeeVO(),
-                currentBalance: balance,
+                currentBalance: walletBalanceValue.walletBalance.totalBalance,
                 onConfirm: handleSend,
                 onClose: () => {
                     setModalState({ type: null });
@@ -116,13 +88,8 @@ const WalletCard = ({
                     wallet,
                 );
                 // alert("Transfer successful!");
+                await walletBalanceValue.updateReservationStatus();
 
-                registerPendingDeploy(data, amount, toAddress); //TODO: use common vault for txHistory txs and wallets deploys 
-
-                await fetchBalance();
-
-                // Check for completed deploys
-                await releaseCompletedReservations();
 
                 setModalState({
                     type: Modals.TRANSFER_COMPLETED_MODAL,
@@ -141,7 +108,6 @@ const WalletCard = ({
                 );
                 handlePrepareSend(toAddress, amount);
             } finally {
-                console.log("Refreshing reservations after transfer...");
                 setIsSending(false);
             }
         });
@@ -159,129 +125,6 @@ const WalletCard = ({
             console.error("Error copying text: ", error);
         }
     };
-
-    const releaseCompletedReservations = async () => {
-        try {
-            if (pendingDeploys.size === 0) {
-                return;
-            }
-
-            const completedDeployIds: string[] = [];
-            const reservations = reservationService.getReservations(address);
-
-            console.info("reservations", reservations);
-
-            for (const [deployId, deployInfo] of pendingDeploys.entries()) {
-                // Find reservation associated with this deploy ID
-                const matchingReservation = reservations.find(
-                    (r) => r.deployId === deployId,
-                );
-
-                if (!matchingReservation) {
-                    console.log(
-                        `Deploy ${deployId} not found in reservations (may have completed)`,
-                    );
-                    completedDeployIds.push(deployId);
-                    continue;
-                }
-
-                console.log(
-                    `Tracking deploy ${deployId}: amount=${deployInfo.amount}, status=${matchingReservation.status}, toAddress=${deployInfo.toAddress}`,
-                );
-
-                // Check if deploy is actually finalized on the blockchain
-                try {
-                    const deployStatus =
-                        await sdkClient.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
-
-                    if (deployStatus.status === DeployStatus.FINALIZED) {
-                        console.log(
-                            `Deploy ${deployId} is FINALIZED on blockchain - transaction complete`,
-                        );
-
-                        // Finalize the committed reservation to free up the funds
-                        if (matchingReservation.status === "COMMITTED") {
-                            try {
-                                reservationService.finalize(
-                                    matchingReservation.id,
-                                );
-                                console.log(
-                                    `Finalized committed reservation ${matchingReservation.id} for deploy ${deployId}`,
-                                );
-                            } catch (error) {
-                                console.warn(
-                                    `Could not finalize committed reservation ${matchingReservation.id}:`,
-                                    error,
-                                );
-                            }
-                        }
-
-                        completedDeployIds.push(deployId);
-                    } else {
-                        console.log(
-                            `Deploy ${deployId} status: ${deployStatus.status} (not yet finalized)`,
-                        );
-                    }
-                } catch (error) {
-                    console.warn(
-                        `Error checking deploy status for ${deployId}:`,
-                        error,
-                    );
-                }
-            }
-
-            // Remove completed deploys from tracking
-            for (const deployId of completedDeployIds) {
-                pendingDeploys.delete(deployId);
-                console.log(
-                    `Removed completed deploy ${deployId} from tracking`,
-                );
-            }
-        } catch (error) {
-            console.error("Error releasing completed reservations:", error);
-        }
-    };
-
-    const registerPendingDeploy = (
-        deployId: string,
-        amount: bigint,
-        toAddress: string,
-    ) => {
-        pendingDeploys.set(deployId, {
-            amount,
-            timestamp: Date.now(),
-            toAddress,
-        });
-        console.log(
-            `Registered pending deploy ${deployId} for amount ${amount} to ${toAddress}`,
-        );
-    };
-
-    useEffect(() => {
-        fetchBalance();
-
-        // Single interval for both balance updates and reservation checking
-        const autoUpdateInterval = setInterval(async () => {
-            fetchBalance();
-            // Check for completed deploys independently of balance updates
-            await releaseCompletedReservations();
-        }, AUTO_UPDATE_INTERVAL);
-
-        return () => clearInterval(autoUpdateInterval);
-    }, []);
-
-    useEffect(() => {
-        fetchBalance();
-    }, [network.currentNetwork]);
-
-    useEffect(() => {
-        console.log("Balance updated, refreshing reservations...");
-        
-        // Check if any pending deploys have completed
-        (async () => {
-            await releaseCompletedReservations();
-        })();
-    }, [balance]);
 
     return (
         <div className="wallet-card">
@@ -319,14 +162,13 @@ const WalletCard = ({
                     balance:{" "}
                     {isBalanceFetching
                         ? "loading balance ..."
-                        : `${fromAtomicAmount(balance)} ASI`}
+                        : `${fromAtomicAmount(walletBalanceValue.walletBalance.totalBalance ?? 0n)} ASI`}
                 </div>
                 <ReservationStatus
-                    key={pendingDeploys.size}
                     address={address}
-                    balance={balance}
-                    isBalanceFetching={isBalanceFetching}
-                    pendingDeploys={pendingDeploys}
+                    balance={walletBalanceValue.walletBalance.totalBalance}
+                    isBalanceFetching={false} //INFO/TODO:
+                    walletBalance={walletBalanceValue}
                 />
                 <div className="buttons">
                     <button
@@ -338,7 +180,7 @@ const WalletCard = ({
                     </button>
                     <button
                         className="wallet-card-button"
-                        onClick={fetchBalance}
+                        onClick={walletBalanceValue.updateReservationStatus}
                         disabled={isBalanceFetching || isSending}
                     >
                         Reload balance

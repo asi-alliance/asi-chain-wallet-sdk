@@ -18,7 +18,7 @@ import { NetworkProvider } from "../NetworkProvider";
 import { Network } from "@domain/";
 
 export default class AssetsService {
-    constructor(private blockchaingGateway: BlockchainGateway) {
+    constructor(private blockchainGateway: BlockchainGateway) {
 
     }
 
@@ -49,7 +49,7 @@ export default class AssetsService {
                 `Transfer to ${toAddress}`,
             );
 
-            const gateway = this.blockchaingGateway;
+            const gateway = this.blockchainGateway;
 
             const transferRho = createTransferDeploy(
                 network,
@@ -114,7 +114,7 @@ export default class AssetsService {
             );
         }
 
-        const gateway = this.blockchaingGateway;
+        const gateway = this.blockchainGateway;
         const checkBalanceRho = createCheckBalanceDeploy(network, address);
 
         try {

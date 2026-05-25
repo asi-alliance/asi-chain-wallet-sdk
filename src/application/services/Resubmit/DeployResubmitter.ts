@@ -10,7 +10,8 @@ import { DeployData } from "../../common/DeployData";
 import { INVALID_BLOCK_NUMBER } from "@domain/constants";
 import { DEFAULT_PHLO_LIMIT } from "@/infrastructure/configuration";
 import { DeploymentErrorHandler, FatalDeployErrors } from "@domain/";
-import { DeployStatus, DeployStatusResult } from "@/infrastructure/adapters/BlockchainGateway/ReadOnlyGateway";
+import { DeployStatusResult } from "@/infrastructure/adapters/BlockchainGateway/ReadOnlyGateway/ReadOnlyGateway";
+import { ReadOnlyTxStatus } from "@/infrastructure/adapters/BlockchainGateway";
 import { BlockchainGateway } from "@/infrastructure/adapters/BlockchainGateway";
 
 export default class DeployResubmitter {
@@ -164,9 +165,9 @@ export default class DeployResubmitter {
         while (!this.isDeployExpired()) {
             const checkDeployResult: DeployStatusResult =
                 await this.blockchainGateway.readOnlyGateway.getDeployStatus(deployId);
-            const deployStatus: DeployStatus = checkDeployResult.status;
+            const deployStatus: ReadOnlyTxStatus = checkDeployResult.status;
 
-            if (deployStatus === DeployStatus.CHECK_ERROR) {
+            if (deployStatus === ReadOnlyTxStatus.CHECK_ERROR) {
                 const errorMessage = `DeployResubmitter.pollDeployStatus: ${
                     "errorMessage" in checkDeployResult
                         ? checkDeployResult.errorMessage
@@ -188,7 +189,7 @@ export default class DeployResubmitter {
                 )
                     return {
                         success: false,
-                        deployStatus: DeployStatus.CHECK_ERROR,
+                        deployStatus: ReadOnlyTxStatus.CHECK_ERROR,
                         error: { blockchainError },
                     };
 
@@ -201,8 +202,8 @@ export default class DeployResubmitter {
             );
 
             if (
-                deployStatus == DeployStatus.INCLUDED_IN_BLOCK ||
-                deployStatus == DeployStatus.FINALIZED
+                deployStatus == ReadOnlyTxStatus.INCLUDED_IN_BLOCK ||
+                deployStatus == ReadOnlyTxStatus.FINALIZED
             )
                 return {
                     success: true,
@@ -215,8 +216,8 @@ export default class DeployResubmitter {
         return {
             success: false,
             deployStatus: last_error
-                ? DeployStatus.CHECK_ERROR
-                : DeployStatus.DEPLOYING,
+                ? ReadOnlyTxStatus.CHECK_ERROR
+                : ReadOnlyTxStatus.DEPLOYING,
             error: {
                 ...last_error,
                 exceededTimeout: FatalDeployErrors.BLOCK_INCLUSION_TIMEOUT,
