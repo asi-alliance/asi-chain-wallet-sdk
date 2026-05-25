@@ -1,0 +1,48 @@
+const fs = require("fs");
+const path = require("path");
+const { write, printSeparator, LogFormats } = require("./log");
+const { REQUIRED_ENV_VARIABLES } = require("../../config");
+
+function loadEnvFile() {
+    const envPath = path.join(__dirname, "../../.env");
+
+    write(`${LogFormats.title("[PREPARE]")} Loading environment`);
+
+    write(`PATH: ${envPath}`);
+
+    if (!fs.existsSync(envPath)) {
+        write(`${LogFormats.warn("[SKIP]")} .env file not found`);
+
+        return;
+    }
+
+    const envContent = fs.readFileSync(envPath, "utf-8");
+    const lines = envContent.split("\n");
+
+    let loadedCount = 0;
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (!trimmedLine || trimmedLine.startsWith("#")) {
+            continue;
+        }
+
+        const [key, ...valueParts] = trimmedLine.split("=");
+        const value = valueParts.join("=");
+
+        if (!key || !value || process.env[key.trim()]) {
+            continue;
+        }
+
+        process.env[key.trim()] = value.trim();
+        loadedCount++;
+    }
+
+    write(`${LogFormats.success("✓ ENV LOADED")} variables=${loadedCount}`);
+    write("");
+}
+
+module.exports = {
+    loadEnvFile,
+};
