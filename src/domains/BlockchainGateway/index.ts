@@ -26,6 +26,7 @@ type GatewayClientConfig = {
 export interface BlockchainGatewayConfig {
     validator: GatewayClientConfig;
     observer: GatewayClientConfig;
+    indexer: GatewayClientConfig;
 }
 
 export default class BlockchainGateway {
@@ -33,13 +34,16 @@ export default class BlockchainGateway {
 
     private validatorClient: HttpClient;
     private observerClient: HttpClient;
+    private indexerClient: HttpClient;
 
     private constructor(
         validatorClient: HttpClient,
         observerClient: HttpClient,
+        indexerClient: HttpClient,
     ) {
         this.validatorClient = validatorClient;
         this.observerClient = observerClient;
+        this.indexerClient = indexerClient;
     }
 
     private static createHttpClient(config: GatewayClientConfig): HttpClient {
@@ -56,8 +60,13 @@ export default class BlockchainGateway {
         return this;
     }
 
-    public changeIndexer(config: GatewayClientConfig): this {
+    public changeObserver(config: GatewayClientConfig): this {
         this.observerClient = BlockchainGateway.createHttpClient(config);
+        return this;
+    }
+
+    public changeIndexer(config: GatewayClientConfig): this {
+        this.indexerClient = BlockchainGateway.createHttpClient(config);
         return this;
     }
 
@@ -65,6 +74,7 @@ export default class BlockchainGateway {
         BlockchainGateway.instance = new BlockchainGateway(
             this.createHttpClient(config.validator),
             this.createHttpClient(config.observer),
+            this.createHttpClient(config.indexer),
         );
         return BlockchainGateway.instance;
     }

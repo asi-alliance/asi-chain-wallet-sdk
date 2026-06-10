@@ -44,6 +44,10 @@ export const init = (config, setVault, setAssetsService) => {
                 baseUrl: config.ReadOnlyURL,
                 axiosConfig: {},
             },
+            indexer: {
+                baseUrl: config.IndexerURL,
+                axiosConfig: {},
+            },
         });
 
         const assetsService = new AssetsService();
