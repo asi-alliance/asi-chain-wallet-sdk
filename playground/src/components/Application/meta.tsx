@@ -40,8 +40,12 @@ export const init = (config, setVault, setAssetsService) => {
                 baseUrl: config.ValidatorURL,
                 axiosConfig: {},
             },
-            indexer: {
+            observer: {
                 baseUrl: config.ReadOnlyURL,
+                axiosConfig: {},
+            },
+            indexer: {
+                baseUrl: config.IndexerURL,
                 axiosConfig: {},
             },
         });

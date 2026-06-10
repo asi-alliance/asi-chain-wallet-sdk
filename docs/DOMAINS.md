@@ -174,7 +174,7 @@ Core methods:
 
 ```ts
 changeValidator(config: GatewayClientConfig): BlockchainGateway
-changeIndexer(config: GatewayClientConfig): BlockchainGateway
+changeObserver(config: GatewayClientConfig): BlockchainGateway
 submitDeploy(deployData: SignedResult): Promise<string | undefined>
 submitExploratoryDeploy(rholangCode: string): Promise<any>
 exploreDeployData(rholangCode: string): Promise<any>
@@ -215,9 +215,13 @@ HTTP abstraction used by `BlockchainGateway`.
 
 ```ts
 interface HttpClient {
-  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
-  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
-  getBaseUrl(): string | undefined
+    get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>;
+    post<T = any>(
+        url: string,
+        data?: any,
+        config?: AxiosRequestConfig,
+    ): Promise<T>;
+    getBaseUrl(): string | undefined;
 }
 ```
 
@@ -233,18 +237,18 @@ new AxiosHttpClient(client: AxiosInstance)
 
 ```ts
 interface SigningRequest {
-  wallet: Wallet;
-  data: any;
+    wallet: Wallet;
+    data: any;
 }
 
 interface SignedResult {
-  data: any;
-  deployer: string;
-  signature: string;
-  sigAlgorithm: string;
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
 }
 
-type PasswordProvider = () => Promise<string>
+type PasswordProvider = () => Promise<string>;
 ```
 
 ---
@@ -273,21 +277,25 @@ Methods:
 ```ts
 createWallet(name: string, privateKey: Uint8Array, password: string): Promise<Wallet>
 ```
+
 Creates and adds a wallet to the vault.
 
 ```ts
 selectActiveWallet(walletAddress: Address): boolean
 ```
+
 Selects the currently active wallet. Returns `true` if wallet exists in vault.
 
 ```ts
 getActiveWallet(): Wallet | undefined
 ```
+
 Returns the currently active wallet or `undefined`.
 
 ```ts
 getWallets(): Wallet[]
 ```
+
 Returns all wallets stored in the vault.
 
 ---
@@ -314,6 +322,7 @@ Factory helpers (`src/domains/Deploy/factory/index.ts`):
 ```ts
 createCheckBalanceDeploy(address: Address): string
 ```
+
 Generates RhoLang code for balance queries on the specified address.
 
 ```ts
@@ -323,11 +332,13 @@ createTransferDeploy(
     amount: bigint
 ): string
 ```
+
 Generates RhoLang code for ASI token transfers. Throws if amount ≤ 0.
 
 ```ts
 escapeRholangString(value: string): string
 ```
+
 Escapes special characters in strings for safe use in RhoLang code.
 
 ---
