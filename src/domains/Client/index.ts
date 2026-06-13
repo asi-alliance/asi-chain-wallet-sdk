@@ -14,6 +14,7 @@ import { IAuxiliaryVault } from "@domains/WebAuxiliaryVault/IAuxiliaryVault";
 import { IFileSaver } from "@services/FileSaver";
 import AssetsService from "@services/AssetsService";
 import BlockchainGateway from "@domains/BlockchainGateway";
+import { TPasswordProvider } from "@domains/PasswordProvider";
 
 export interface ClientOptions {
     vault?: Vault;
@@ -138,10 +139,28 @@ export default class Client {
 
     async createWallet(
         name: string,
-        privateKey: Uint8Array,
+        passwordProvider: TPasswordProvider,
         password: string,
     ): Promise<Wallet> {
-        const wallet = await Wallet.fromPrivateKey(name, privateKey, password);
+        const wallet = await Wallet.fromPrivateKey(
+            name,
+            passwordProvider,
+            password,
+        );
+        this.vault.addWallet(wallet);
+        return wallet;
+    }
+
+    async createMnemonicWallet(
+        name: string,
+        passwordProvider: TPasswordProvider,
+        password: string,
+    ): Promise<Wallet> {
+        const wallet = await Wallet.fromPrivateKey(
+            name,
+            passwordProvider,
+            password,
+        );
         this.vault.addWallet(wallet);
         return wallet;
     }
