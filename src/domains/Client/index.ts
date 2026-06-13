@@ -14,7 +14,13 @@ import { IAuxiliaryVault } from "@domains/WebAuxiliaryVault/IAuxiliaryVault";
 import { IFileSaver } from "@services/FileSaver";
 import AssetsService from "@services/AssetsService";
 import BlockchainGateway from "@domains/BlockchainGateway";
-import { TPasswordProvider } from "@domains/PasswordProvider";
+import {
+    TPasswordProvider,
+    TPasswordProviderWithPrivateKey,
+} from "@domains/PasswordProvider";
+import Seed from "@domains/Seed";
+import MnemonicService from "@services/Mnemonic";
+import StoreManager from "@services/StoreManager";
 
 export interface ClientOptions {
     vault?: Vault;
@@ -139,7 +145,7 @@ export default class Client {
 
     async createWallet(
         name: string,
-        passwordProvider: TPasswordProvider,
+        passwordProvider: TPasswordProviderWithPrivateKey,
         password: string,
     ): Promise<Wallet> {
         const wallet = await Wallet.fromPrivateKey(
@@ -151,19 +157,33 @@ export default class Client {
         return wallet;
     }
 
-    async createMnemonicWallet(
-        name: string,
+    public async createSeed(
+        mnemonicWords: string[],
         passwordProvider: TPasswordProvider,
-        password: string,
-    ): Promise<Wallet> {
-        const wallet = await Wallet.fromPrivateKey(
-            name,
+        customHDPath?: string,
+    ): Promise<Seed> {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicWords);
+
+        const seed = new Seed(mnemonic);
+
+        StoreManager.saveSeed(
+            seed.getId(),
+            mnemonic,
             passwordProvider,
-            password,
+            customHDPath,
         );
-        this.vault.addWallet(wallet);
-        return wallet;
+
+        return seed;
     }
+
+    // public async createMnemonicWallet(
+    //     name: string,
+    //     passwordProvider: TPasswordProviderWithPrivateKey,
+    // ): Promise<Wallet> {
+    //     const wallet = await Wallet.fromEncryptedData(name, passwordProvider);
+    //     this.vault.addWallet(wallet);
+    //     return wallet;
+    // }
 
     selectActiveWallet(walletAddress: Address): boolean {
         if (this.vault.hasWallet(walletAddress)) {

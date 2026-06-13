@@ -4,7 +4,7 @@ import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
 import { sign } from "@noble/secp256k1";
-import { TPasswordProvider } from "@domains/PasswordProvider";
+import { TPasswordProviderWithPrivateKey } from "@domains/PasswordProvider";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -61,12 +61,11 @@ export default class Wallet {
 
     public static async fromPrivateKey(
         name: string,
-        passwordProvider: TPasswordProvider,
-        password: string,
+        passwordProvider: TPasswordProviderWithPrivateKey,
         masterNodeId: string | null = null,
         index: number | null = null,
     ): Promise<Wallet> {
-        const privateKey: Uint8Array = await passwordProvider();
+        const { privateKey, password } = await passwordProvider();
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);

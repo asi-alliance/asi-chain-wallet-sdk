@@ -1,18 +1,21 @@
+import EncryptedRecord from "@domains/EncryptedRecord";
 import IndexedDBTableStore from "@domains/IDBStorage";
 import { ITableRecord } from "@domains/IDBStorage/meta";
+import { EncryptedData } from "@services/Crypto";
 
 const STORE_KEY: string = "ASI_STORE";
 const SEEDS_DATA_KEY: string = "SEEDS";
 const PK_WALLETS_DATA_KEY: string = "PK-WALLETS";
 
-export interface SeedRecord extends ITableRecord {
+export interface ISeedRecord extends ITableRecord {
     id: string;
-    encryptedPhrase: string;
+    encryptedData: string;
+
     createdAt: number;
     updatedAt?: number;
 }
 
-export interface PKWalletRecord extends ITableRecord {
+export interface IPKWalletRecord extends ITableRecord {
     id: string;
     encryptedPrivateKey: string;
     publicKey?: string;
@@ -146,27 +149,27 @@ export class IDBStorageController {
 
     public async saveSeed(
         seedId: string,
-        encryptedPhrase: string,
+        encryptedData: EncryptedData,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.db.insert(SEEDS_DATA_KEY, {
             id: seedId,
-            encryptedPhrase: encryptedPhrase,
+            ...encryptedData,
             createdAt: Date.now(),
         });
     }
 
-    public async getSeed(seedId: string): Promise<SeedRecord | null> {
+    public async getSeed(seedId: string): Promise<ISeedRecord | null> {
         await this.ensureInitialized();
         return this.db.getById(
             SEEDS_DATA_KEY,
             seedId,
-        ) as Promise<SeedRecord | null>;
+        ) as Promise<ISeedRecord | null>;
     }
 
-    public async getAllSeeds(): Promise<SeedRecord[]> {
+    public async getAllSeeds(): Promise<ISeedRecord[]> {
         await this.ensureInitialized();
-        return this.db.getAll(SEEDS_DATA_KEY) as Promise<SeedRecord[]>;
+        return this.db.getAll(SEEDS_DATA_KEY) as Promise<ISeedRecord[]>;
     }
 
     public async updateSeed(
@@ -206,22 +209,24 @@ export class IDBStorageController {
         });
     }
 
-    public async getPKWallet(address: string): Promise<PKWalletRecord | null> {
+    public async getPKWallet(address: string): Promise<IPKWalletRecord | null> {
         await this.ensureInitialized();
         return this.db.getById(
             PK_WALLETS_DATA_KEY,
             address,
-        ) as Promise<PKWalletRecord | null>;
+        ) as Promise<IPKWalletRecord | null>;
     }
 
-    public async getAllPKWallets(): Promise<PKWalletRecord[]> {
+    public async getAllPKWallets(): Promise<IPKWalletRecord[]> {
         await this.ensureInitialized();
-        return this.db.getAll(PK_WALLETS_DATA_KEY) as Promise<PKWalletRecord[]>;
+        return this.db.getAll(PK_WALLETS_DATA_KEY) as Promise<
+            IPKWalletRecord[]
+        >;
     }
 
     public async updatePKWallet(
         address: string,
-        updates: Partial<PKWalletRecord>,
+        updates: Partial<IPKWalletRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.db.update(PK_WALLETS_DATA_KEY, address, updates);
