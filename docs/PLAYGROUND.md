@@ -193,7 +193,7 @@ Props (`IWalletCardProps`):
 
 Behavior & methods:
 
-- `fetchBalance()` — fetches ASI balance via `assetsService.getASIBalance(address)`.
+- `fetchBalance()` — fetches ASI balance via `assetsService.getBalance(address)`.
 - `handlePrepareSend()` — opens transfer modal via `ApplicationContext`.
 - `handleSend()` — prompts `PasswordModal` then calls `transfer()`.
 - `transfer(toAddress, amount, password)` — unlocks wallet, calls `assetsService.transfer` with wallet and password provider, locks wallet and shows `TransferCompletedModal` on success.

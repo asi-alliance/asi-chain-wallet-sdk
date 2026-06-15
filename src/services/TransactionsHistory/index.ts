@@ -8,6 +8,7 @@ import { Transaction } from "@domains/aggregates/Transaction";
 import { Order, Pagination } from "@services/GraphqlParser/queryOptions";
 import BlockchainGateway from "@domains/BlockchainGateway";
 import { fromAtomicAmount, toAtomicAmount } from "@utils";
+import Asset from "@domains/Asset";
 export * from "./types";
 export { hasActiveTransactionFilters } from "./helpers";
 
@@ -41,13 +42,14 @@ export class TransactionsHistory {
         deployId: string,
         network: Network,
         amount: bigint,
+        asset: Asset,
         fromAddress: string,
         toAddress: string,
         auxVaultPassword: string,
     ) {
         const tx: Transaction = {
             deployId,
-            amount: fromAtomicAmount(amount),
+            amount: fromAtomicAmount(amount, asset.getDecimals()),
             from: fromAddress,
             to: toAddress,
             timestamp: new Date(),
@@ -168,10 +170,14 @@ export class TransactionsHistory {
     }
 
     /* calcStatistics helpers */
-    private addAmount(total: string, amount: string): string {
+    private addAmount(total: string, amount: string, asset: Asset): string {
         try {
+            const currentDecimals: number = asset.getDecimals();
+
             return fromAtomicAmount(
-                toAtomicAmount(total) + toAtomicAmount(amount),
+                toAtomicAmount(total, currentDecimals) +
+                    toAtomicAmount(amount, currentDecimals),
+                currentDecimals,
             );
         } catch (error) {
             console.error(error);
@@ -179,7 +185,10 @@ export class TransactionsHistory {
         }
     }
     /* /calcStatistics helpers */
-    private calcStatistics(transactions: Transaction[]): TransactionStats {
+    private calcStatistics(
+        transactions: Transaction[],
+        asset: Asset,
+    ): TransactionStats {
         const stats = {
             total: transactions.length,
             sent: 0,
@@ -207,17 +216,23 @@ export class TransactionsHistory {
                     stats.totalSent = this.addAmount(
                         stats.totalSent,
                         tx.amount,
+                        asset,
                     );
                 } else if (tx.type === "receive") {
                     stats.totalReceived = this.addAmount(
                         stats.totalReceived,
                         tx.amount,
+                        asset,
                     );
                 }
             }
 
             if (tx.gasCost) {
-                stats.totalGas = this.addAmount(stats.totalGas, tx.gasCost);
+                stats.totalGas = this.addAmount(
+                    stats.totalGas,
+                    tx.gasCost,
+                    asset,
+                );
             }
         });
 
@@ -239,9 +254,10 @@ export class TransactionsHistory {
     public buildTransactionsHistoryWithStats(
         localTxs: Transaction[],
         indexerTxs: Transaction[],
+        asset: Asset,
     ) {
         const mixexTxs = this.getMixedTxsByParts(localTxs, indexerTxs);
-        return { txs: mixexTxs, stats: this.calcStatistics(mixexTxs) };
+        return { txs: mixexTxs, stats: this.calcStatistics(mixexTxs, asset) };
     }
     /**
      * @param allLocalTxs all txs in auxiliary vault

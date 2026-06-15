@@ -2,6 +2,7 @@ import { Network } from "@domains/aggregates/Network";
 import ReservationRecord from "@domains/aggregates/Reservation";
 import { ReservationsFromTxsResolver } from "@domains/aggregates/Reservation/ReservationsFromTxsResolver";
 import { ReservationStatus } from "@domains/aggregates/Reservation/types";
+import Asset from "@domains/Asset";
 import { Address } from "@domains/Wallet";
 import { TransactionsHistory } from "@services/TransactionsHistory";
 
@@ -271,6 +272,7 @@ export default class FundsReservationService {
         network: Network,
         address: Address,
         auxVaultPassword: string,
+        asset: Asset,
     ) {
         const localTxs =
             await this.transactionsHistory.getAddressOnNetworkLocalTxs(
@@ -278,7 +280,7 @@ export default class FundsReservationService {
                 address,
                 auxVaultPassword,
             );
-        return ReservationsFromTxsResolver.resolveFromTxs(localTxs);
+        return ReservationsFromTxsResolver.resolveFromTxs(localTxs, asset);
     }
     /* /reservations by transactions */
 }

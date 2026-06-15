@@ -21,6 +21,7 @@ import {
 import Seed from "@domains/Seed";
 import MnemonicService from "@services/Mnemonic";
 import StoreManager from "@services/StoreManager";
+import Asset from "@domains/Asset";
 
 export interface ClientOptions {
     vault?: Vault;
@@ -222,6 +223,7 @@ export default class Client {
         address: Address,
         filter: TransactionFilter,
         pagination: Pagination,
+        asset: Asset,
     ) {
         const network = this.networkProvider.currentNetwork;
         const auxVaultPassword = this.vaultsPassword;
@@ -237,18 +239,20 @@ export default class Client {
                 network,
                 address,
                 this.vaultsPassword,
+                asset,
             );
         this.uiEventDispatcher.onReservationsChanged?.(addressReservations);
         return result;
     }
 
-    public async getReservationsByTxs(address: Address) {
+    public async getReservationsByTxs(address: Address, asset: Asset) {
         const network = this.networkProvider.currentNetwork;
         const auxWalletPassword = this.vaultsPassword;
         return await this.fundsReservation.getReservationsByTxs(
             network,
             address,
             auxWalletPassword,
+            asset,
         );
     }
 }

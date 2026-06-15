@@ -1,4 +1,6 @@
+import Asset from "@domains/Asset";
 import { ResubmitConfig } from "@services/Resubmit/types";
+import { generateRandomId } from "@utils/functions";
 
 export interface WalletClientConfig {
     mode: string;
@@ -22,6 +24,12 @@ const MAX_WALLETS_PER_ACCOUNT: number = 20;
 const DEFAULT_DECIMALS_AMOUNT: number = 8;
 const DEFAULT_PHLO_LIMIT: number = 500000;
 
+export const defaultAsset: Asset = new Asset(
+    generateRandomId(),
+    "ASI",
+    DEFAULT_DECIMALS_AMOUNT,
+);
+
 export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
     phloPrice: 1,
 
@@ -29,11 +37,10 @@ export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
     deployValiditySeconds: 80,
     nodeSelectionAttempts: 3,
     deployRetries: 3,
-      
+
     deployIntervalSeconds: 5,
     pollingIntervalSeconds: 3,
 };
-
 
 export {
     DEFAULT_DECIMALS_AMOUNT,
