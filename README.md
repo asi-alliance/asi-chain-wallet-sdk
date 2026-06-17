@@ -72,7 +72,7 @@ console.log("Public Key:", wallet.publicKey);
 
 // Create wallet from mnemonic
 const mnemonic = MnemonicService.generateMnemonic();
-const derivedWallet = await WalletsService.createWalletFromMnemonic(
+const derivedWallet = await WalletsService.createFirstWalletWithMnemonic(
     mnemonic,
     0,
 );

@@ -5,21 +5,21 @@ import { EncryptedData } from "@services/Crypto";
 
 const STORE_KEY: string = "ASI_STORE";
 const SEEDS_DATA_KEY: string = "SEEDS";
-const PK_WALLETS_DATA_KEY: string = "PK-WALLETS";
+const WALLETS_DATA_KEY: string = "WALLETS";
 
 export interface ISeedRecord extends ITableRecord {
     id: string;
-    encryptedData: string;
+    encryptedData: EncryptedData;
 
     createdAt: number;
     updatedAt?: number;
 }
 
-export interface IPKWalletRecord extends ITableRecord {
+export interface IWalletRecord extends ITableRecord {
     id: string;
-    encryptedPrivateKey: string;
-    publicKey?: string;
-    network?: string;
+    encryptedData: EncryptedData;
+    networkId: string;
+
     createdAt: number;
     updatedAt?: number;
 }
@@ -83,24 +83,20 @@ export class IDBStorageController {
                 console.log(`Seeds table ${SEEDS_DATA_KEY} already exists`);
             }
 
-            const pkWalletsTableExists =
-                await this.db.tableExists(PK_WALLETS_DATA_KEY);
+            const walletsTableExists =
+                await this.db.tableExists(WALLETS_DATA_KEY);
 
-            if (!pkWalletsTableExists) {
-                console.log(
-                    `Creating PK wallets table: ${PK_WALLETS_DATA_KEY}`,
-                );
-                await this.db.createTable(PK_WALLETS_DATA_KEY, "id");
+            if (!walletsTableExists) {
+                console.log(`Creating wallets table: ${WALLETS_DATA_KEY}`);
+                await this.db.createTable(WALLETS_DATA_KEY, "id");
             } else {
-                console.log(
-                    `PK wallets table ${PK_WALLETS_DATA_KEY} already exists`,
-                );
+                console.log(`Wallets table ${WALLETS_DATA_KEY} already exists`);
             }
 
             this.isInitialized = true;
             console.log("Storage controller initialized successfully");
             console.log(
-                `Active tables: ${STORE_KEY}, ${SEEDS_DATA_KEY}, ${PK_WALLETS_DATA_KEY}`,
+                `Active tables: ${STORE_KEY}, ${SEEDS_DATA_KEY}, ${WALLETS_DATA_KEY}`,
             );
         } catch (error) {
             console.error("Failed to initialize storage controller:", error);
@@ -174,11 +170,13 @@ export class IDBStorageController {
 
     public async updateSeed(
         seedId: string,
-        encryptedPhrase: string,
+        encryptedData: EncryptedData,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.db.update(SEEDS_DATA_KEY, seedId, {
-            encryptedPhrase: encryptedPhrase,
+            id: seedId,
+            ...encryptedData,
+            createdAt: Date.now(),
         });
     }
 
@@ -193,64 +191,60 @@ export class IDBStorageController {
         return seed !== null;
     }
 
-    public async savePKWallet(
-        address: string,
-        encryptedPrivateKey: string,
-        publicKey?: string,
-        network?: string,
+    public async saveWallet(
+        walletId: string,
+        encryptedData: EncryptedData,
+        networkId: string,
     ): Promise<void> {
         await this.ensureInitialized();
-        await this.db.insert(PK_WALLETS_DATA_KEY, {
-            id: address,
-            encryptedPrivateKey: encryptedPrivateKey,
-            publicKey: publicKey,
-            network: network || "ethereum",
+        await this.db.insert(WALLETS_DATA_KEY, {
+            id: walletId,
+            encryptedData,
+            networkId: networkId,
             createdAt: Date.now(),
         });
     }
 
-    public async getPKWallet(address: string): Promise<IPKWalletRecord | null> {
+    public async getWallet(id: string): Promise<IWalletRecord | null> {
         await this.ensureInitialized();
         return this.db.getById(
-            PK_WALLETS_DATA_KEY,
-            address,
-        ) as Promise<IPKWalletRecord | null>;
+            WALLETS_DATA_KEY,
+            id,
+        ) as Promise<IWalletRecord | null>;
     }
 
-    public async getAllPKWallets(): Promise<IPKWalletRecord[]> {
+    public async getAllWallets(): Promise<IWalletRecord[]> {
         await this.ensureInitialized();
-        return this.db.getAll(PK_WALLETS_DATA_KEY) as Promise<
-            IPKWalletRecord[]
-        >;
+        return this.db.getAll(WALLETS_DATA_KEY) as Promise<IWalletRecord[]>;
     }
 
-    public async updatePKWallet(
+    public async updateWallet(
         address: string,
-        updates: Partial<IPKWalletRecord>,
+        updates: Partial<IWalletRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
-        await this.db.update(PK_WALLETS_DATA_KEY, address, updates);
+        await this.db.update(WALLETS_DATA_KEY, address, updates);
     }
 
-    public async deletePKWallet(address: string): Promise<void> {
+    public async deleteWallet(address: string): Promise<void> {
         await this.ensureInitialized();
-        await this.db.delete(PK_WALLETS_DATA_KEY, address);
+        await this.db.delete(WALLETS_DATA_KEY, address);
     }
 
-    public async deleteMultiplePKWallets(addresses: string[]): Promise<void> {
+    public async deleteMultipleWallets(addresses: string[]): Promise<void> {
         await this.ensureInitialized();
-        await this.db.deleteMany(PK_WALLETS_DATA_KEY, addresses);
+        await this.db.deleteMany(WALLETS_DATA_KEY, addresses);
     }
 
-    public async hasPKWallet(address: string): Promise<boolean> {
+    public async hasWallet(address: string): Promise<boolean> {
         await this.ensureInitialized();
-        const wallet = await this.getPKWallet(address);
+        const wallet = await this.getWallet(address);
         return wallet !== null;
     }
 
-    public async getPKWalletsCount(): Promise<number> {
+    public async getWalletsCount(): Promise<number> {
         await this.ensureInitialized();
-        const wallets = await this.getAllPKWallets();
+        const wallets = await this.getAllWallets();
         return wallets.length;
     }
 
@@ -261,7 +255,7 @@ export class IDBStorageController {
 
         await this.db.clearTable(STORE_KEY);
         await this.db.clearTable(SEEDS_DATA_KEY);
-        await this.db.clearTable(PK_WALLETS_DATA_KEY);
+        await this.db.clearTable(WALLETS_DATA_KEY);
 
         console.log("All data cleared successfully");
     }
@@ -270,9 +264,7 @@ export class IDBStorageController {
         await this.ensureInitialized();
 
         if (
-            ![STORE_KEY, SEEDS_DATA_KEY, PK_WALLETS_DATA_KEY].includes(
-                tableName,
-            )
+            ![STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY].includes(tableName)
         ) {
             throw new Error(`Invalid table name: ${tableName}`);
         }
@@ -287,7 +279,7 @@ export class IDBStorageController {
 
     public async getTablesList(): Promise<string[]> {
         await this.ensureInitialized();
-        return [STORE_KEY, SEEDS_DATA_KEY, PK_WALLETS_DATA_KEY];
+        return [STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY];
     }
 
     public close(): void {
@@ -297,4 +289,4 @@ export class IDBStorageController {
     }
 }
 
-export { STORE_KEY, SEEDS_DATA_KEY, PK_WALLETS_DATA_KEY };
+export { STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY };

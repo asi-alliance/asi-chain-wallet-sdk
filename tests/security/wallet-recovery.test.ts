@@ -4,16 +4,19 @@ import test from "node:test";
 import MnemonicService from "../../src/services/Mnemonic";
 import WalletsService from "../../src/services/Wallets";
 
-test("createWalletFromMnemonic returns generated mnemonic when omitted", async () => {
-    const wallet = await WalletsService.createWalletFromMnemonic();
+test("createFirstWalletWithMnemonic returns generated mnemonic when omitted", async () => {
+    const wallet = await WalletsService.createFirstWalletWithMnemonic();
 
     assert.ok(wallet.mnemonic);
     assert.equal(MnemonicService.isMnemonicValid(wallet.mnemonic), true);
 });
 
 test("generated mnemonic can deterministically recover wallet keys", async () => {
-    const generated = await WalletsService.createWalletFromMnemonic(undefined, 3);
-    const recovered = await WalletsService.createWalletFromMnemonic(
+    const generated = await WalletsService.createFirstWalletWithMnemonic(
+        undefined,
+        3,
+    );
+    const recovered = await WalletsService.createFirstWalletWithMnemonic(
         generated.mnemonic,
         3,
     );
@@ -27,7 +30,7 @@ test("generated mnemonic can deterministically recover wallet keys", async () =>
 
 test("provided mnemonic is normalized in output", async () => {
     const mnemonic = MnemonicService.generateMnemonic();
-    const wallet = await WalletsService.createWalletFromMnemonic(
+    const wallet = await WalletsService.createFirstWalletWithMnemonic(
         ` ${mnemonic} `,
         0,
     );
@@ -35,14 +38,14 @@ test("provided mnemonic is normalized in output", async () => {
     assert.equal(wallet.mnemonic, mnemonic);
 });
 
-test("createWalletFromMnemonic rejects missing or invalid recovery data", async () => {
+test("createFirstWalletWithMnemonic rejects missing or invalid recovery data", async () => {
     await assert.rejects(
-        WalletsService.createWalletFromMnemonic("   ", 0),
+        WalletsService.createFirstWalletWithMnemonic("   ", 0),
         /Recovery mnemonic is missing or invalid/,
     );
 
     await assert.rejects(
-        WalletsService.createWalletFromMnemonic("invalid words", 0),
+        WalletsService.createFirstWalletWithMnemonic("invalid words", 0),
         /Recovery mnemonic is missing or invalid/,
     );
 });

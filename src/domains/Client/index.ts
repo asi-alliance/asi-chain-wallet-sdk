@@ -15,12 +15,13 @@ import { IFileSaver } from "@services/FileSaver";
 import AssetsService from "@services/AssetsService";
 import BlockchainGateway from "@domains/BlockchainGateway";
 import {
+    THDWalletPasswordProvider,
     TPasswordProvider,
-    TPasswordProviderWithPrivateKey,
+    TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
 import Seed from "@domains/Seed";
 import MnemonicService from "@services/Mnemonic";
-import StoreManager from "@services/StoreManager";
+import StoreManager, { IHDWalletData } from "@services/StoreManager";
 import Asset from "@domains/Asset";
 
 export interface ClientOptions {
@@ -146,14 +147,20 @@ export default class Client {
 
     async createWallet(
         name: string,
-        passwordProvider: TPasswordProviderWithPrivateKey,
-        password: string,
+        passwordProvider:
+            | TPrivateKeyPasswordProvider
+            | THDWalletPasswordProvider,
+        networkId: string,
     ): Promise<Wallet> {
-        const wallet = await Wallet.fromPrivateKey(
+        const wallet = await Wallet.fromPrivateKey(name, passwordProvider);
+
+        StoreManager.saveWallet(
+            wallet.getId(),
             name,
             passwordProvider,
-            password,
+            networkId,
         );
+
         this.vault.addWallet(wallet);
         return wallet;
     }
@@ -177,16 +184,43 @@ export default class Client {
         return seed;
     }
 
-    // public async createMnemonicWallet(
-    //     name: string,
-    //     passwordProvider: TPasswordProviderWithPrivateKey,
-    // ): Promise<Wallet> {
-    //     const wallet = await Wallet.fromEncryptedData(name, passwordProvider);
-    //     this.vault.addWallet(wallet);
-    //     return wallet;
-    // }
+    public async createMnemonicWallet(
+        seedId: string,
+        mnemonic: string,
+        name: string,
+        passwordProvider: THDWalletPasswordProvider,
+        networkId: string,
+        lastIndex: number,
+    ): Promise<Wallet> {
+        const wallet = await Wallet.fromHD(
+            seedId,
+            mnemonic,
+            name,
+            passwordProvider,
+            lastIndex,
+        );
 
-    selectActiveWallet(walletAddress: Address): boolean {
+        StoreManager.saveWallet(
+            wallet.getId(),
+            name,
+            passwordProvider,
+            networkId,
+            seedId,
+        );
+
+        this.vault.addWallet(wallet);
+        return wallet;
+    }
+
+    public async unlockWallet(
+        id: string,
+        passwordProvider: TPasswordProvider,
+        hdWalletData?: IHDWalletData,
+    ): Promise<Wallet> {
+        return StoreManager.getWallet(id, passwordProvider, hdWalletData);
+    }
+
+    public selectActiveWallet(walletAddress: Address): boolean {
         if (this.vault.hasWallet(walletAddress)) {
             this.activeWalletAddress = walletAddress;
             return true;
@@ -194,14 +228,14 @@ export default class Client {
         return false;
     }
 
-    getActiveWallet(): Wallet | undefined {
+    public getActiveWallet(): Wallet | undefined {
         if (this.activeWalletAddress) {
             return this.vault.getWallet(this.activeWalletAddress);
         }
         return undefined;
     }
 
-    getWallets(): Wallet[] {
+    public getWallets(): Wallet[] {
         return this.vault.getWallets();
     }
 

@@ -3,7 +3,7 @@ import KeyDerivationService from "@services/KeyDerivation";
 import KeysManager, { type KeyPair } from "@services/KeysManager";
 import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "@utils/constants";
 import { decodeBase16, encodeBase58 } from "@utils/codec";
-import { Address } from "@domains/Wallet";
+import Wallet, { Address } from "@domains/Wallet";
 import blakejs from "blakejs";
 import sha3 from "js-sha3";
 
@@ -44,7 +44,7 @@ export default class WalletsService {
         };
     }
 
-    public static async createWalletFromMnemonic(
+    public static async createFirstWalletWithMnemonic(
         mnemonic?: string,
         index?: number,
     ): Promise<WalletMeta> {
@@ -53,9 +53,12 @@ export default class WalletsService {
             : MnemonicService.generateMnemonicArray();
         const normalizedMnemonic =
             MnemonicService.wordArrayToMnemonic(mnemonicToUse);
-        if (!normalizedMnemonic || !MnemonicService.isMnemonicValid(normalizedMnemonic)) {
+        if (
+            !normalizedMnemonic ||
+            !MnemonicService.isMnemonicValid(normalizedMnemonic)
+        ) {
             throw new Error(
-                "WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid",
+                "WalletsService.createFirstWalletWithMnemonic: Recovery mnemonic is missing or invalid",
             );
         }
 
