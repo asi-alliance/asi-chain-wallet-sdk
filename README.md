@@ -12,7 +12,7 @@
 
 Part of the [**Artificial Superintelligence Alliance**](https://superintelligence.io) ecosystem
 
-*Uniting Fetch.ai, SingularityNET, and CUDOS*
+_Uniting Fetch.ai, SingularityNET, and CUDOS_
 
 </div>
 
@@ -63,17 +63,20 @@ npm install @asichain/asi-wallet-sdk
 ### Create a New Wallet
 
 ```typescript
-import { WalletsService, MnemonicService } from '@asichain/asi-wallet-sdk';
+import { WalletsService, MnemonicService } from "@asichain/asi-wallet-sdk";
 
 // Generate a new wallet with random keys
 const wallet = WalletsService.createWallet();
-console.log('Address:', wallet.address);
-console.log('Public Key:', wallet.publicKey);
+console.log("Address:", wallet.address);
+console.log("Public Key:", wallet.publicKey);
 
 // Create wallet from mnemonic
 const mnemonic = MnemonicService.generateMnemonic();
-const derivedWallet = await WalletsService.createWalletFromMnemonic(mnemonic, 0);
-console.log('Derived Address:', derivedWallet.address);
+const derivedWallet = await WalletsService.createWalletFromMnemonic(
+    mnemonic,
+    0,
+);
+console.log("Derived Address:", derivedWallet.address);
 ```
 
 See [WalletsService](docs/SERVICES.md) and [MnemonicService](docs/SERVICES.md) for full API reference.
@@ -81,17 +84,21 @@ See [WalletsService](docs/SERVICES.md) and [MnemonicService](docs/SERVICES.md) f
 ### Manage Wallets with Vault
 
 ```typescript
-import { Vault, Wallet } from '@asichain/asi-wallet-sdk';
+import { Vault, Wallet } from "@asichain/asi-wallet-sdk";
 
 // Create vault and add wallet
 const vault = new Vault();
 
 // Add wallet to vault
-const wallet = await Wallet.fromPrivateKey('My Wallet', privateKey, 'wallet-password');
+const wallet = await Wallet.fromPrivateKey(
+    "My Wallet",
+    privateKey,
+    "wallet-password",
+);
 vault.addWallet(wallet);
 
 // Save vault to localStorage
-await vault.lock('vault-password');
+await vault.lock("vault-password");
 vault.save();
 ```
 
@@ -100,25 +107,25 @@ See [Vault](docs/DOMAINS.md) and [Wallet](docs/DOMAINS.md) for full API referenc
 ### Check Balance and Transfer
 
 ```typescript
-import { AssetsService, BlockchainGateway } from '@asichain/asi-wallet-sdk';
+import { AssetsService, BlockchainGateway } from "@asichain/asi-wallet-sdk";
 
 BlockchainGateway.init({
-  validator: { baseUrl: 'http://validator-node:40403' },
-  indexer: { baseUrl: 'http://observer-node:40403' },
+    validator: { baseUrl: "http://validator-node:40403" },
+    indexer: { baseUrl: "http://observer-node:40403" },
 });
 const assetsService = new AssetsService();
 
 // Get ASI balance
-const balance = await assetsService.getASIBalance(address);
-console.log('Balance:', balance.toString());
+const balance = await assetsService.getBalance(address);
+console.log("Balance:", balance.toString());
 
 // Transfer tokens
 const deployId = await assetsService.transfer(
-  fromAddress,
-  toAddress,
-  BigInt(1000000000), // 10 ASI in atomic units
-  wallet,
-  passwordProvider
+    fromAddress,
+    toAddress,
+    BigInt(1000000000), // 10 ASI in atomic units
+    wallet,
+    passwordProvider,
 );
 ```
 
@@ -228,33 +235,33 @@ asi-chain-wallet-sdk/
 
 ### SDK Reference
 
-| Document | Description |
-|----------|-------------|
-| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain models (`Wallet`, `Vault`, `Asset`, `BlockchainGateway`, and related types) |
-| [docs/SERVICES.md](docs/SERVICES.md) | Service layer (`WalletsService`, `CryptoService`, `KeysManager`, `KeyDerivationService`, `SignerService`, `AssetsService`, `DeployResubmitter`) |
-| [docs/UTILS.md](docs/UTILS.md) | Utility helpers (`codec`, `constants`, `validators`, `functions`, `polyfills`) |
-| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components and usage examples |
+| Document                                 | Description                                                                                                                                     |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models (`Wallet`, `Vault`, `Asset`, `BlockchainGateway`, and related types)                                                              |
+| [docs/SERVICES.md](docs/SERVICES.md)     | Service layer (`WalletsService`, `CryptoService`, `KeysManager`, `KeyDerivationService`, `SignerService`, `AssetsService`, `DeployResubmitter`) |
+| [docs/UTILS.md](docs/UTILS.md)           | Utility helpers (`codec`, `constants`, `validators`, `functions`, `polyfills`)                                                                  |
+| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components and usage examples                                                                                                        |
 
 ### Related Resources
 
-| Resource | Link |
-|----------|------|
-| ASI Chain Documentation | https://docs.asichain.io |
-| ASI Chain Node | [github.com/asi-alliance/asi-chain](https://github.com/asi-alliance/asi-chain) |
-| ASI Chain Wallet | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet) |
-| ASI Chain Explorer | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
-| ASI Chain Faucet | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet) |
+| Resource                | Link                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| ASI Chain Documentation | https://docs.asichain.io                                                                         |
+| ASI Chain Node          | [github.com/asi-alliance/asi-chain](https://github.com/asi-alliance/asi-chain)                   |
+| ASI Chain Wallet        | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet)     |
+| ASI Chain Explorer      | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
+| ASI Chain Faucet        | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet)     |
 
 ---
 
 ## Security
 
-| Document | Description |
-|----------|-------------|
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting policy, disclosure process, and supported versions |
-| [THREAT_MODEL.md](THREAT_MODEL.md) | Threat assumptions, trust boundaries, adversary model, and mitigations |
-| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees |
-| [CRYPTO_PROFILE.md](CRYPTO_PROFILE.md) | Versioned crypto parameters, key-handling profile, and migration notes |
+| Document                                         | Description                                                                |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| [SECURITY.md](SECURITY.md)                       | Vulnerability reporting policy, disclosure process, and supported versions |
+| [THREAT_MODEL.md](THREAT_MODEL.md)               | Threat assumptions, trust boundaries, adversary model, and mitigations     |
+| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees       |
+| [CRYPTO_PROFILE.md](CRYPTO_PROFILE.md)           | Versioned crypto parameters, key-handling profile, and migration notes     |
 
 ---
 
@@ -301,23 +308,23 @@ Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/P
 
 **SDK** ([package.json](package.json)):
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [axios](https://github.com/axios/axios) | 1.13.2 | HTTP client for node communication |
-| [bip32](https://github.com/bitcoinjs/bip32) | 4.0.0 | BIP-32 hierarchical deterministic wallets |
-| [bip39](https://github.com/bitcoinjs/bip39) | 3.1.0 | BIP-39 mnemonic generation |
-| [blakejs](https://github.com/dcposch/blakejs) | 1.2.1 | BLAKE2b hashing for addresses |
-| [bs58](https://github.com/cryptocoinjs/bs58) | 6.0.0 | Base58 encoding |
-| [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.6.0 | Cryptographic hash helpers |
-| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0 | secp256k1 key generation and signing |
-| [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
+| Package                                                          | Version | Purpose                                   |
+| ---------------------------------------------------------------- | ------- | ----------------------------------------- |
+| [axios](https://github.com/axios/axios)                          | 1.13.2  | HTTP client for node communication        |
+| [bip32](https://github.com/bitcoinjs/bip32)                      | 4.0.0   | BIP-32 hierarchical deterministic wallets |
+| [bip39](https://github.com/bitcoinjs/bip39)                      | 3.1.0   | BIP-39 mnemonic generation                |
+| [blakejs](https://github.com/dcposch/blakejs)                    | 1.2.1   | BLAKE2b hashing for addresses             |
+| [bs58](https://github.com/cryptocoinjs/bs58)                     | 6.0.0   | Base58 encoding                           |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes)       | 1.6.0   | Cryptographic hash helpers                |
+| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0   | secp256k1 key generation and signing      |
+| [js-sha3](https://github.com/nicknisi/js-sha3)                   | 0.9.3   | keccak256 hashing                         |
 
 **Playground** ([playground/package.json](playground/package.json)):
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [react](https://react.dev) | 18.2.0 | UI framework |
-| [vite](https://vite.dev) | 7.2.6 | Build tool and dev server |
+| Package                    | Version | Purpose                   |
+| -------------------------- | ------- | ------------------------- |
+| [react](https://react.dev) | 18.2.0  | UI framework              |
+| [vite](https://vite.dev)   | 7.2.6   | Build tool and dev server |
 
 ---
 

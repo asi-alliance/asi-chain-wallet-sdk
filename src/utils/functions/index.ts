@@ -1,12 +1,25 @@
-import { ASI_BASE_UNIT } from "@utils/constants";
+import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+
+export const genRandomHex = (size: number) =>
+    [...Array(size)]
+        .map(() => Math.floor(Math.random() * 16).toString(16))
+        .join("");
+
+export const generateRandomId = (): string => {
+    return `res_${Date.now()}_${genRandomHex(8)}`;
+};
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
-export const toAtomicAmount = (amount: number | string): bigint => {
-    const decimals: number = ASI_BASE_UNIT.toString().length - 1;
+export const toAtomicAmount = (
+    amount: number | string,
+    decimals: number,
+): bigint => {
+    const baseUnit: BigInt = BigInt(POWER_BASE) ** BigInt(decimals);
+    const currentDecimals: number = baseUnit.toString().length - 1;
 
     if (typeof amount === "number") {
         if (!Number.isFinite(amount)) {
@@ -40,15 +53,15 @@ export const toAtomicAmount = (amount: number | string): bigint => {
 
     let fraction: string = fractionRaw;
 
-    if (fraction.length > decimals) {
+    if (fraction.length > currentDecimals) {
         console.warn(
             `Fraction ${fraction} has more than allowed decimals; truncating`,
         );
 
-        fraction = fraction.slice(0, decimals);
+        fraction = fraction.slice(0, currentDecimals);
     }
 
-    fraction = fraction.padEnd(decimals, "0");
+    fraction = fraction.padEnd(currentDecimals, "0");
 
     const result: bigint =
         BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
@@ -56,43 +69,52 @@ export const toAtomicAmount = (amount: number | string): bigint => {
     return isNegative ? -result : result;
 };
 
-export const fromAtomicAmountToString = (atomicAmount: bigint): string => {
-    const integerPart: bigint = atomicAmount / ASI_BASE_UNIT;
-    const remainder: bigint = atomicAmount % ASI_BASE_UNIT;
+const fromAtomicAmountToString = (
+    atomicAmount: bigint,
+    decimals: number,
+): string => {
+    const isNegative: boolean = atomicAmount < 0n;
+    const normalizedAtomicAmount: bigint = isNegative
+        ? -atomicAmount
+        : atomicAmount;
 
-    const baseString: string = ASI_BASE_UNIT.toString();
-    const decimals: number = baseString.length - 1;
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
 
-    const fraction: string = remainder.toString().padStart(decimals, "0");
-    const resultSting: string = `${integerPart.toString()}.${fraction}`;
+    const integerPart: bigint = normalizedAtomicAmount / baseUnit;
+    const remainder: bigint = normalizedAtomicAmount % baseUnit;
+
+    const baseString: string = baseUnit.toString();
+    const currentDecimals: number = baseString.length - 1;
+
+    const fraction: string = remainder
+        .toString()
+        .padStart(currentDecimals, "0");
+    const sign: string = isNegative ? "-" : "";
+    const resultSting: string = `${sign}${integerPart.toString()}.${fraction}`;
 
     return resultSting
         .replace(REGEX_TRIM_TRAILING_ZEROS, "$1")
         .replace(REGEX_DOT_ZERO, "");
 };
 
-export const fromAtomicAmountToNumber = (atomicAmount: bigint): number => {
-    const integerPart: bigint = atomicAmount / ASI_BASE_UNIT;
-    const remainder: bigint = atomicAmount % ASI_BASE_UNIT;
+export const fromAtomicAmountToNumber = (
+    atomicAmount: bigint,
+    decimals: number,
+): number => {
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
+
+    const integerPart: bigint = atomicAmount / baseUnit;
+    const remainder: bigint = atomicAmount % baseUnit;
 
     if (integerPart > BigInt(Number.MAX_SAFE_INTEGER)) {
         console.warn(
             "Integer part exceeds Number.MAX_SAFE_INTEGER; returning imprecise Number",
         );
 
-        return Number(fromAtomicAmountToString(atomicAmount));
+        return Number(fromAtomicAmountToString(atomicAmount, decimals));
     }
 
-    return Number(integerPart) + Number(remainder) / Number(ASI_BASE_UNIT);
+    return Number(integerPart) + Number(remainder) / Number(baseUnit);
 };
 
 export const fromAtomicAmount = fromAtomicAmountToString;
-
-export const genRandomHex = (size: number) =>
-    [...Array(size)]
-        .map(() => Math.floor(Math.random() * 16).toString(16))
-        .join("");
-
-export const generateRandomId = (): string => {
-    return `res_${Date.now()}_${genRandomHex(8)}`;
-};

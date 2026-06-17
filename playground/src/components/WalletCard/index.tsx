@@ -35,7 +35,7 @@ const WalletCard = ({
     const fetchBalance = async () => {
         try {
             setIsBalanceFetching(true);
-            const balance = await assetsService.getASIBalance(address);
+            const balance = await assetsService.getBalance(address);
 
             setBalance(balance);
         } catch (error) {
@@ -89,7 +89,7 @@ const WalletCard = ({
                     toAddress,
                     amount,
                     wallet,
-                    () => Promise.resolve(password)
+                    () => Promise.resolve(password),
                 );
                 // alert("Transfer successful!");
 
@@ -108,7 +108,7 @@ const WalletCard = ({
             } catch (error) {
                 console.error(error);
                 alert(
-                    `${error?.message || "Transfer failed"}, aborting transfer.`
+                    `${error?.message || "Transfer failed"}, aborting transfer.`,
                 );
                 handlePrepareSend(toAddress, amount);
             } finally {

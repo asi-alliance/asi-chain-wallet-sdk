@@ -11,16 +11,19 @@ Password-based encryption/decryption using WebCrypto.
 ```ts
 encryptWithPassword(data: string, password: string): Promise<EncryptedData>
 ```
+
 Encrypts plaintext with `PBKDF2(SHA-256)` derived key + `AES-GCM`.
 
 ```ts
 decryptWithPassword(payload: EncryptedData, passphrase: string): Promise<string>
 ```
+
 Decrypts ciphertext payload. Throws on unsupported version or invalid credentials.
 
 ```ts
 deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 ```
+
 Derives the `AES-GCM` key from password + salt.
 
 Current profile highlights:
@@ -40,11 +43,13 @@ Wallet creation and address derivation.
 ```ts
 createWallet(privateKey?: Uint8Array, options?: CreateWalletOptions): WalletMeta
 ```
+
 Creates wallet metadata from an existing or generated secp256k1 private key.
 
 ```ts
 createWalletFromMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
 ```
+
 Builds wallet from BIP-39 mnemonic + BIP-44 path. Always returns normalized mnemonic in output.
 
 Validation behavior:
@@ -54,11 +59,13 @@ Validation behavior:
 ```ts
 deriveAddressFromPrivateKey(privateKey: Uint8Array): Address
 ```
+
 Derives address from private key.
 
 ```ts
 deriveAddressFromPublicKey(publicKey: Uint8Array): Address
 ```
+
 Derives address from public key (`keccak256` + chain prefix + `blake2b` checksum + base58).
 
 ---
@@ -70,22 +77,26 @@ BIP-39 helpers.
 ```ts
 generateMnemonic(strength?: MnemonicStrength): string
 ```
+
 Generates mnemonic phrase (`12` or `24` words).
 
 ```ts
 generateMnemonicArray(strength?: MnemonicStrength): string[]
 ```
+
 Generates and splits mnemonic into words.
 
 ```ts
 isMnemonicValid(mnemonic: string): boolean
 ```
+
 Validates mnemonic.
 
 ```ts
 mnemonicToWordArray(mnemonic: string): string[]
 wordArrayToMnemonic(words: string[]): string
 ```
+
 Conversion helpers.
 
 ---
@@ -97,27 +108,32 @@ BIP-32/BIP-44 derivation helpers.
 ```ts
 buildBip44Path(options: Bip44PathOptions): string
 ```
+
 Builds path `m/44'/coinType'/account'/change/index`.
 
 ```ts
 derivePrivateKey(masterNode: BIP32Interface, path: string): Uint8Array
 ```
+
 Derives private key bytes from master node and path.
 
 ```ts
 mnemonicToSeed(mnemonicWords: string[] | string, passphrase?: string): Promise<Uint8Array>
 ```
+
 Converts mnemonic to seed.
 
 ```ts
 seedToMasterNode(seed: Uint8Array): BIP32Interface
 ```
+
 Builds BIP32 master node using `tiny-secp256k1` + `bip32` factory.
 
 ```ts
 deriveKeyFromMnemonic(...)
 deriveNextKeyFromMnemonic(...)
 ```
+
 Convenience derivation helpers.
 
 ---
@@ -183,7 +199,7 @@ Validation behavior:
 - Rejects non-positive amounts.
 
 ```ts
-getASIBalance(address: Address): Promise<bigint>
+getBalance(address: Address): Promise<bigint>
 ```
 
 - Validates address before exploration deploy.

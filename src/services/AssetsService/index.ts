@@ -7,10 +7,16 @@ import {
 } from "@domains/Deploy/factory";
 import { INVALID_BLOCK_NUMBER } from "@utils/constants";
 import { PasswordProvider } from "@domains/Signer";
-import { DEFAULT_PHLO_LIMIT } from "@config";
+import { DEFAULT_PHLO_LIMIT, defaultAsset } from "@config";
 import { DeployData } from "@domains/Deploy";
 import { validateAddress } from "@utils/validators";
 import { RequireBlockchainGateway } from "@utils/decorators";
+import Asset from "@domains/Asset";
+
+export interface IBalanceData {
+    amount: bigint;
+    asset: Asset;
+}
 
 export default class AssetsService {
     private getBlockchainGateway(): BlockchainGateway {
@@ -23,6 +29,7 @@ export default class AssetsService {
         toAddress: Address,
         amount: bigint,
         wallet: Wallet,
+        _asset: Asset,
         passwordProvider: PasswordProvider,
         phloLimit: number = DEFAULT_PHLO_LIMIT,
     ): Promise<string | undefined> {
@@ -92,11 +99,13 @@ export default class AssetsService {
     }
 
     @RequireBlockchainGateway
-    async getASIBalance(address: Address): Promise<bigint> {
+    async getBalance(address: Address, asset: Asset): Promise<IBalanceData> {
+        const currentAsset: Asset = asset;
+
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(
-                `AssetsService.getASIBalance: Invalid address: ${validation.errorCode ?? "UNKNOWN"}`,
+                `AssetsService.getBalance: Invalid address: ${validation.errorCode ?? "UNKNOWN"}`,
             );
         }
 
@@ -111,7 +120,10 @@ export default class AssetsService {
                 const firstExpr = result[0];
 
                 if (firstExpr?.ExprInt?.data) {
-                    return BigInt(firstExpr.ExprInt.data);
+                    return {
+                        amount: BigInt(firstExpr.ExprInt.data),
+                        asset: currentAsset,
+                    };
                 }
 
                 if (firstExpr?.ExprString?.data) {
@@ -119,9 +131,9 @@ export default class AssetsService {
                 }
             }
 
-            return BigInt(0);
+            return { amount: BigInt(0), asset: currentAsset };
         } catch (error) {
-            return BigInt(0);
+            return { amount: BigInt(0), asset: currentAsset };
         }
     }
 }

@@ -5,8 +5,8 @@ import { IDBStorageController } from "@domains/IDBStorageController";
 import { TPasswordProvider } from "@domains/PasswordProvider";
 import Seed from "@domains/Seed";
 import CryptoService from "@services/Crypto";
+import KeyDerivationService from "@services/KeyDerivation";
 import { ASI_COIN_TYPE } from "@utils/constants";
-import { KeyDerivationService } from "asi-wallet-sdk";
 
 class StoreManager {
     public static saveSeed = async (
