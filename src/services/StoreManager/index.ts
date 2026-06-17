@@ -1,21 +1,36 @@
 import {
     IDBStorageController,
     ISeedRecord,
+    IWalletRecord,
 } from "@domains/IDBStorageController";
 import {
     THDWalletPasswordProvider,
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
+import Wallet from "@domains/Wallet";
 import CryptoService from "@services/Crypto";
 import KeyDerivationService from "@services/KeyDerivation";
+import { stringifyPrivateKeyToUnitArray } from "@utils";
 import { ASI_COIN_TYPE } from "@utils/constants";
 import { isHDWalletPasswordData } from "@utils/guards";
+import { TPasswordProviderWithPrivateKey } from "../../../dist/domains/PasswordProvider";
 
 export interface ISeedStoreData {
     mnemonic: string;
     HDPath: string;
     depth: number;
+}
+
+export interface IWalletStoredData {
+    name: string;
+    privateKey: string;
+}
+
+export interface IHDWalletData {
+    seedId: string;
+    index: number;
+    seedPasswordProvider: TPasswordProvider;
 }
 
 class StoreManager {
@@ -48,6 +63,28 @@ class StoreManager {
         IDBStorageController.getInstance().saveSeed(id, encryptedData);
     };
 
+    public static getSeed = async (
+        seedId: string,
+        passwordProvider: TPasswordProvider,
+    ): Promise<ISeedStoreData> => {
+        const { password } = await passwordProvider();
+
+        const seedRecord: ISeedRecord | null =
+            await IDBStorageController.getInstance().getSeed(seedId);
+
+        if (!seedRecord) {
+            throw new Error("You cannot create HD wallet for undefined seed");
+        }
+
+        const seedDataInString: string =
+            await CryptoService.decryptWithPassword(
+                seedRecord.encryptedData,
+                password,
+            );
+
+        return JSON.parse(seedDataInString) as ISeedStoreData;
+    };
+
     private static updateSeed = async (
         id: string,
         seedStoreData: ISeedStoreData,
@@ -67,22 +104,10 @@ class StoreManager {
         seedId: string,
         passwordProvider: THDWalletPasswordProvider,
     ): Promise<void> => {
-        const { seedPassword } = await passwordProvider();
-
-        const seedRecord: ISeedRecord | null =
-            await IDBStorageController.getInstance().getSeed(seedId);
-
-        if (!seedRecord) {
-            throw new Error("You cannot create HD wallet for undefined seed");
-        }
-
-        const seedDataInString: string =
-            await CryptoService.decryptWithPassword(
-                seedRecord.encryptedData,
-                seedPassword,
-            );
-
-        const seedData: ISeedStoreData = JSON.parse(seedDataInString);
+        const seedData: ISeedStoreData = await StoreManager.getSeed(
+            seedId,
+            passwordProvider,
+        );
 
         seedData.depth++;
 
@@ -128,6 +153,91 @@ class StoreManager {
             seedId,
             passwordProvider as THDWalletPasswordProvider,
         );
+    };
+
+    public static getPKWallet = async (
+        id: string,
+        passwordProvider: TPasswordProvider,
+    ): Promise<Wallet> => {
+        const { password } = await passwordProvider();
+
+        const walletRecord: IWalletRecord | null =
+            await IDBStorageController.getInstance().getWallet(id);
+
+        if (!walletRecord) {
+            throw new Error("Wallet with this id not found");
+        }
+
+        const walletDataInString: string =
+            await CryptoService.decryptWithPassword(
+                walletRecord.encryptedData,
+                password,
+            );
+
+        const { name, privateKey: stringifyPrivateKey } = JSON.parse(
+            walletDataInString,
+        ) as IWalletStoredData;
+
+        const privateKey: Uint8Array =
+            stringifyPrivateKeyToUnitArray(stringifyPrivateKey);
+
+        const updatedPKPasswordProvider: TPasswordProviderWithPrivateKey =
+            async () => {
+                return {
+                    password,
+                    privateKey,
+                };
+            };
+
+        return Wallet.fromPrivateKey(name, updatedPKPasswordProvider);
+    };
+
+    public static getHDWallet = async (
+        id: string,
+        passwordProvider: TPasswordProvider,
+        hdWalletData: IHDWalletData,
+    ): Promise<Wallet> => {
+        const { password } = await passwordProvider();
+
+        const walletRecord: IWalletRecord | null =
+            await IDBStorageController.getInstance().getWallet(id);
+
+        if (!walletRecord) {
+            throw new Error("Wallet with this id not found");
+        }
+
+        const walletDataInString: string =
+            await CryptoService.decryptWithPassword(
+                walletRecord.encryptedData,
+                password,
+            );
+
+        const { name } = JSON.parse(walletDataInString) as IWalletStoredData;
+
+        const seedStoredData: ISeedStoreData = await StoreManager.getSeed(
+            hdWalletData.seedId,
+            hdWalletData.seedPasswordProvider,
+        );
+
+        return Wallet.fromHD(
+            hdWalletData.seedId,
+            seedStoredData.mnemonic,
+            name,
+            passwordProvider,
+            hdWalletData.index,
+        );
+    };
+
+    public static getWallet = async (
+        id: string,
+        passwordProvider: TPasswordProvider,
+        hdWalletData?: IHDWalletData,
+    ): Promise<Wallet> => {
+        if (!hdWalletData) {
+            return StoreManager.getPKWallet(id, passwordProvider);
+        }
+
+        return StoreManager.getHDWallet(id, passwordProvider, hdWalletData);
     };
 }
 

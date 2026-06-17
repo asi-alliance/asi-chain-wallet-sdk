@@ -21,7 +21,7 @@ import {
 } from "@domains/PasswordProvider";
 import Seed from "@domains/Seed";
 import MnemonicService from "@services/Mnemonic";
-import StoreManager from "@services/StoreManager";
+import StoreManager, { IHDWalletData } from "@services/StoreManager";
 import Asset from "@domains/Asset";
 
 export interface ClientOptions {
@@ -152,13 +152,7 @@ export default class Client {
             | THDWalletPasswordProvider,
         networkId: string,
     ): Promise<Wallet> {
-        const { password } = await passwordProvider();
-
-        const wallet = await Wallet.fromPrivateKey(
-            name,
-            passwordProvider,
-            password,
-        );
+        const wallet = await Wallet.fromPrivateKey(name, passwordProvider);
 
         StoreManager.saveWallet(
             wallet.getId(),
@@ -218,7 +212,15 @@ export default class Client {
         return wallet;
     }
 
-    selectActiveWallet(walletAddress: Address): boolean {
+    public async unlockWallet(
+        id: string,
+        passwordProvider: TPasswordProvider,
+        hdWalletData?: IHDWalletData,
+    ): Promise<Wallet> {
+        return StoreManager.getWallet(id, passwordProvider, hdWalletData);
+    }
+
+    public selectActiveWallet(walletAddress: Address): boolean {
         if (this.vault.hasWallet(walletAddress)) {
             this.activeWalletAddress = walletAddress;
             return true;
@@ -226,14 +228,14 @@ export default class Client {
         return false;
     }
 
-    getActiveWallet(): Wallet | undefined {
+    public getActiveWallet(): Wallet | undefined {
         if (this.activeWalletAddress) {
             return this.vault.getWallet(this.activeWalletAddress);
         }
         return undefined;
     }
 
-    getWallets(): Wallet[] {
+    public getWallets(): Wallet[] {
         return this.vault.getWallets();
     }
 

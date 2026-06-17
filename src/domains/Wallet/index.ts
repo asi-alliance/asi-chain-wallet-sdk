@@ -5,7 +5,7 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
 import { sign } from "@noble/secp256k1";
 import {
-    THDWalletPasswordProvider,
+    TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
 import { generateRandomId } from "@utils";
@@ -69,8 +69,6 @@ export default class Wallet {
     public static async fromPrivateKey(
         name: string,
         passwordProvider: TPrivateKeyPasswordProvider,
-        masterNodeId: string | null = null,
-        index: number | null = null,
     ): Promise<Wallet> {
         const { privateKey, password } = await passwordProvider();
 
@@ -82,14 +80,14 @@ export default class Wallet {
             password,
         );
 
-        return new Wallet(name, address, encrypted, masterNodeId, index);
+        return new Wallet(name, address, encrypted, null, null);
     }
 
     public static async fromHD(
         seedId: string,
         mnemonic: string,
         name: string,
-        passwordProvider: THDWalletPasswordProvider,
+        passwordProvider: TPasswordProvider,
         lastIndex: number,
     ): Promise<Wallet> {
         const { password } = await passwordProvider();

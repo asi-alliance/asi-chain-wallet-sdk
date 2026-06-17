@@ -205,11 +205,11 @@ export class IDBStorageController {
         });
     }
 
-    public async getWallet(address: string): Promise<IWalletRecord | null> {
+    public async getWallet(id: string): Promise<IWalletRecord | null> {
         await this.ensureInitialized();
         return this.db.getById(
             WALLETS_DATA_KEY,
-            address,
+            id,
         ) as Promise<IWalletRecord | null>;
     }
 
