@@ -5,6 +5,13 @@ import {
     INVALID_BLOCK_NUMBER,
 } from "@utils/constants";
 import { SignedResult } from "@domains/Signer";
+import { Network } from "@domains/aggregates/Network";
+import { Pagination } from "@services/GraphqlParser/queryOptions";
+import { Transaction } from "@domains/aggregates/Transaction";
+import {
+    GraphqlParser,
+    TransactionHistoryQueryData,
+} from "@services/GraphqlParser";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",
@@ -31,19 +38,29 @@ export interface BlockchainGatewayConfig {
 
 export default class BlockchainGateway {
     private static instance: BlockchainGateway;
+    private static config: any;
 
     private validatorClient: HttpClient;
     private observerClient: HttpClient;
     private indexerClient: HttpClient;
 
+    private network!: Network;
+
     private constructor(
         validatorClient: HttpClient,
         observerClient: HttpClient,
         indexerClient: HttpClient,
+        currentNetwork?: Network,
     ) {
         this.validatorClient = validatorClient;
         this.observerClient = observerClient;
         this.indexerClient = indexerClient;
+
+        if (!currentNetwork) {
+            return;
+        }
+
+        this.setNetwork(currentNetwork);
     }
 
     private static createHttpClient(config: GatewayClientConfig): HttpClient {
@@ -53,6 +70,35 @@ export default class BlockchainGateway {
         });
 
         return new AxiosHttpClient(axiosInstance);
+    }
+
+    public setNetwork(network: Network) {
+        if (!network.endpoints.validatorUrl) {
+            throw new Error(
+                `BlockchainGateway: validatorUrl for ${network.name} network is not provided! Check .env file`,
+            );
+        }
+        if (!network.endpoints.readOnlyUrl) {
+            throw new Error(
+                `BlockchainGateway: readOnlyUrl for ${network.name} network is not provided! Check .env file`,
+            );
+        }
+        if (!network.endpoints.indexerUrl) {
+            throw new Error(
+                `BlockchainGateway: indexerUrl for ${network.name} network is not provided! Check .env file`,
+            );
+        }
+        this.validatorClient = BlockchainGateway.createHttpClient(
+            BlockchainGateway.config.validator,
+        );
+        this.observerClient = BlockchainGateway.createHttpClient(
+            BlockchainGateway.config.observer,
+        );
+        this.indexerClient = BlockchainGateway.createHttpClient(
+            BlockchainGateway.config.indexer,
+        );
+
+        this.network = network;
     }
 
     public changeValidator(config: GatewayClientConfig): this {
@@ -76,6 +122,9 @@ export default class BlockchainGateway {
             this.createHttpClient(config.observer),
             this.createHttpClient(config.indexer),
         );
+
+        this.config = config;
+
         return BlockchainGateway.instance;
     }
 
@@ -200,6 +249,10 @@ export default class BlockchainGateway {
         }
     }
 
+    public getIndexerClient(): HttpClient {
+        return this.indexerClient;
+    }
+
     public async getBlock(blockHash: string): Promise<any> {
         const response = await this.observerClient.get(
             `/api/block/${blockHash}`,
@@ -262,5 +315,50 @@ export default class BlockchainGateway {
         this.validateBlocksResponse(blocks);
 
         return blocks[0];
+    }
+
+    public async fetchTransactionHistory(
+        address: string,
+        pagination: Pagination = {},
+    ): Promise<Transaction[]> {
+        try {
+            const response = await BlockchainGateway.getInstance()
+                .getIndexerClient()
+                .post(
+                    "",
+                    GraphqlParser.createTransactionHistoryRequest(
+                        address,
+                        pagination,
+                    ),
+                );
+            const envelope =
+                GraphqlParser.unwrapGraphqlEnvelope<TransactionHistoryQueryData>(
+                    response,
+                );
+
+            if (envelope.errors?.length) {
+                console.error("[GraphQL] GraphQL errors:", envelope.errors);
+                throw envelope.errors;
+            }
+
+            return GraphqlParser.mapTransactionHistory(
+                envelope.data,
+                address,
+                this.network.name,
+            );
+        } catch (error: any) {
+            if (GraphqlParser.isRecoverableNetworkError(error)) {
+                console.warn(
+                    "[GraphQL] Network error while loading transaction history. Returning an empty history.",
+                );
+                return [];
+            }
+
+            console.error(
+                "Error fetching transaction history from indexer:",
+                error,
+            );
+            return [];
+        }
     }
 }
