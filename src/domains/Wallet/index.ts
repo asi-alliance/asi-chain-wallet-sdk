@@ -4,7 +4,12 @@ import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
 import { sign } from "@noble/secp256k1";
-import { TPasswordProviderWithPrivateKey } from "@domains/PasswordProvider";
+import {
+    THDWalletPasswordProvider,
+    TPrivateKeyPasswordProvider,
+} from "@domains/PasswordProvider";
+import { generateRandomId } from "@utils";
+import KeyDerivationService from "@services/KeyDerivation";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -35,6 +40,7 @@ export interface SigningCapability {
 
 export default class Wallet {
     private static unsafeRawKeyExportEnabled = false;
+    private id: string;
     private name: string;
     private address: Address;
     private privateKey: EncryptedData;
@@ -50,6 +56,7 @@ export default class Wallet {
         masterNodeId: string | null,
         index: number | null,
     ) {
+        this.id = generateRandomId();
         this.name = name;
         this.index = index;
         this.masterNodeId = masterNodeId;
@@ -61,7 +68,7 @@ export default class Wallet {
 
     public static async fromPrivateKey(
         name: string,
-        passwordProvider: TPasswordProviderWithPrivateKey,
+        passwordProvider: TPrivateKeyPasswordProvider,
         masterNodeId: string | null = null,
         index: number | null = null,
     ): Promise<Wallet> {
@@ -76,6 +83,49 @@ export default class Wallet {
         );
 
         return new Wallet(name, address, encrypted, masterNodeId, index);
+    }
+
+    public static async fromHD(
+        seedId: string,
+        mnemonic: string,
+        name: string,
+        passwordProvider: THDWalletPasswordProvider,
+        lastIndex: number,
+    ): Promise<Wallet> {
+        const { password } = await passwordProvider();
+
+        const nextIndex: number = lastIndex++;
+
+        const path: string = KeyDerivationService.buildBip44Path({
+            coinType: 60,
+            account: 0,
+            change: 0,
+            index: nextIndex,
+        });
+
+        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+        const privateKey = KeyDerivationService.derivePrivateKey(
+            masterNode,
+            path,
+        );
+
+        const address: Address =
+            WalletsService.deriveAddressFromPrivateKey(privateKey);
+
+        const encryptedPrivateKey: EncryptedData = await this.encryptPrivateKey(
+            privateKey,
+            password,
+        );
+
+        return new Wallet(
+            name,
+            address,
+            encryptedPrivateKey,
+            seedId,
+            nextIndex,
+        );
     }
 
     public static fromEncryptedData(
@@ -194,6 +244,10 @@ export default class Wallet {
 
     public registerAsset(asset: Asset): void {
         this.assets.set(asset.getId(), asset);
+    }
+
+    public getId(): string {
+        return this.id;
     }
 
     public getAddress(): Address {

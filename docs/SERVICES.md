@@ -47,14 +47,14 @@ createWallet(privateKey?: Uint8Array, options?: CreateWalletOptions): WalletMeta
 Creates wallet metadata from an existing or generated secp256k1 private key.
 
 ```ts
-createWalletFromMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
+createFirstWalletWithMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
 ```
 
 Builds wallet from BIP-39 mnemonic + BIP-44 path. Always returns normalized mnemonic in output.
 
 Validation behavior:
 
-- Throws `WalletsService.createWalletFromMnemonic: Recovery mnemonic is missing or invalid` when mnemonic is blank/invalid.
+- Throws `WalletsService.createFirstWalletWithMnemonic: Recovery mnemonic is missing or invalid` when mnemonic is blank/invalid.
 
 ```ts
 deriveAddressFromPrivateKey(privateKey: Uint8Array): Address

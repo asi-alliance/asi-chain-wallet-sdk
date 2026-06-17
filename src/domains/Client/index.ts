@@ -15,8 +15,9 @@ import { IFileSaver } from "@services/FileSaver";
 import AssetsService from "@services/AssetsService";
 import BlockchainGateway from "@domains/BlockchainGateway";
 import {
+    THDWalletPasswordProvider,
     TPasswordProvider,
-    TPasswordProviderWithPrivateKey,
+    TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
 import Seed from "@domains/Seed";
 import MnemonicService from "@services/Mnemonic";
@@ -146,14 +147,26 @@ export default class Client {
 
     async createWallet(
         name: string,
-        passwordProvider: TPasswordProviderWithPrivateKey,
-        password: string,
+        passwordProvider:
+            | TPrivateKeyPasswordProvider
+            | THDWalletPasswordProvider,
+        networkId: string,
     ): Promise<Wallet> {
+        const { password } = await passwordProvider();
+
         const wallet = await Wallet.fromPrivateKey(
             name,
             passwordProvider,
             password,
         );
+
+        StoreManager.saveWallet(
+            wallet.getId(),
+            name,
+            passwordProvider,
+            networkId,
+        );
+
         this.vault.addWallet(wallet);
         return wallet;
     }
@@ -177,14 +190,33 @@ export default class Client {
         return seed;
     }
 
-    // public async createMnemonicWallet(
-    //     name: string,
-    //     passwordProvider: TPasswordProviderWithPrivateKey,
-    // ): Promise<Wallet> {
-    //     const wallet = await Wallet.fromEncryptedData(name, passwordProvider);
-    //     this.vault.addWallet(wallet);
-    //     return wallet;
-    // }
+    public async createMnemonicWallet(
+        seedId: string,
+        mnemonic: string,
+        name: string,
+        passwordProvider: THDWalletPasswordProvider,
+        networkId: string,
+        lastIndex: number,
+    ): Promise<Wallet> {
+        const wallet = await Wallet.fromHD(
+            seedId,
+            mnemonic,
+            name,
+            passwordProvider,
+            lastIndex,
+        );
+
+        StoreManager.saveWallet(
+            wallet.getId(),
+            name,
+            passwordProvider,
+            networkId,
+            seedId,
+        );
+
+        this.vault.addWallet(wallet);
+        return wallet;
+    }
 
     selectActiveWallet(walletAddress: Address): boolean {
         if (this.vault.hasWallet(walletAddress)) {

@@ -1,10 +1,15 @@
-export interface IPasswordData {
+export interface IPasswordCredentials {
     password: string;
 }
 
-export interface IFullPasswordData extends IPasswordData {
+export interface IPrivateKeyCredentials extends IPasswordCredentials {
     privateKey: Uint8Array;
 }
 
-export type TPasswordProvider = () => Promise<IPasswordData>;
-export type TPasswordProviderWithPrivateKey = () => Promise<IFullPasswordData>;
+export interface IHDWalletCredentials extends IPrivateKeyCredentials {
+    seedPassword: string;
+}
+
+export type TPasswordProvider = () => Promise<IPasswordCredentials>;
+export type TPrivateKeyPasswordProvider = () => Promise<IPrivateKeyCredentials>;
+export type THDWalletPasswordProvider = () => Promise<IHDWalletCredentials>;
