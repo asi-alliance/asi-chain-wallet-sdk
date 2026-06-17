@@ -15,10 +15,10 @@ const pkg = JSON.parse(
 const external = [...Object.keys(pkg.dependencies || {}), ...builtinModules];
 
 const aliasEntries = {
-    "@services": path.resolve("src/services"),
-    "@domains": path.resolve("src/domains"),
-    "@config": path.resolve("src/config"),
-    "@utils": path.resolve("src/utils"),
+    "@services": path.resolve("src_new/services"),
+    "@domains": path.resolve("src_new/domains"),
+    "@config": path.resolve("src_new/config"),
+    "@utils": path.resolve("src_new/utils"),
 };
 
 export default [
