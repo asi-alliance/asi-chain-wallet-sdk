@@ -14,6 +14,13 @@ import { IAuxiliaryVault } from "@domains/WebAuxiliaryVault/IAuxiliaryVault";
 import { IFileSaver } from "@services/FileSaver";
 import AssetsService from "@services/AssetsService";
 import BlockchainGateway from "@domains/BlockchainGateway";
+import {
+    TPasswordProvider,
+    TPasswordProviderWithPrivateKey,
+} from "@domains/PasswordProvider";
+import Seed from "@domains/Seed";
+import MnemonicService from "@services/Mnemonic";
+import StoreManager from "@services/StoreManager";
 
 export interface ClientOptions {
     vault?: Vault;
@@ -138,13 +145,45 @@ export default class Client {
 
     async createWallet(
         name: string,
-        privateKey: Uint8Array,
+        passwordProvider: TPasswordProviderWithPrivateKey,
         password: string,
     ): Promise<Wallet> {
-        const wallet = await Wallet.fromPrivateKey(name, privateKey, password);
+        const wallet = await Wallet.fromPrivateKey(
+            name,
+            passwordProvider,
+            password,
+        );
         this.vault.addWallet(wallet);
         return wallet;
     }
+
+    public async createSeed(
+        mnemonicWords: string[],
+        passwordProvider: TPasswordProvider,
+        customHDPath?: string,
+    ): Promise<Seed> {
+        const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicWords);
+
+        const seed = new Seed(mnemonic);
+
+        StoreManager.saveSeed(
+            seed.getId(),
+            mnemonic,
+            passwordProvider,
+            customHDPath,
+        );
+
+        return seed;
+    }
+
+    // public async createMnemonicWallet(
+    //     name: string,
+    //     passwordProvider: TPasswordProviderWithPrivateKey,
+    // ): Promise<Wallet> {
+    //     const wallet = await Wallet.fromEncryptedData(name, passwordProvider);
+    //     this.vault.addWallet(wallet);
+    //     return wallet;
+    // }
 
     selectActiveWallet(walletAddress: Address): boolean {
         if (this.vault.hasWallet(walletAddress)) {

@@ -4,6 +4,7 @@ import Asset, { Assets } from "@domains/Asset";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
 import { sign } from "@noble/secp256k1";
+import { TPasswordProviderWithPrivateKey } from "@domains/PasswordProvider";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -60,11 +61,12 @@ export default class Wallet {
 
     public static async fromPrivateKey(
         name: string,
-        privateKey: Uint8Array,
-        password: string,
+        passwordProvider: TPasswordProviderWithPrivateKey,
         masterNodeId: string | null = null,
         index: number | null = null,
     ): Promise<Wallet> {
+        const { privateKey, password } = await passwordProvider();
+
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
@@ -76,7 +78,13 @@ export default class Wallet {
         return new Wallet(name, address, encrypted, masterNodeId, index);
     }
 
-    public static fromEncryptedData(name: string, address: Address, encryptedPrivateKey: EncryptedData, masterNodeId: string | null, index: number | null): Wallet {
+    public static fromEncryptedData(
+        name: string,
+        address: Address,
+        encryptedPrivateKey: EncryptedData,
+        masterNodeId: string | null,
+        index: number | null,
+    ): Wallet {
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(
@@ -127,7 +135,11 @@ export default class Wallet {
             );
 
             const parsed = JSON.parse(decrypted);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            if (
+                parsed &&
+                typeof parsed === "object" &&
+                !Array.isArray(parsed)
+            ) {
                 // convert to sorted array of numbers
                 const values: number[] = Object.keys(parsed)
                     .sort((a, b) => Number(a) - Number(b))
@@ -220,6 +232,9 @@ export default class Wallet {
         privateKey: Uint8Array,
         password: string,
     ) {
-        return await CryptoService.encryptWithPassword(JSON.stringify(privateKey), password);
+        return await CryptoService.encryptWithPassword(
+            JSON.stringify(privateKey),
+            password,
+        );
     }
 }
