@@ -32,6 +32,24 @@ export interface ClientOptions {
     fileSaver?: IFileSaver;
 }
 
+enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
+    MPC = "mpc",
+}
+
+interface IPublicWalletRecord {
+    id: string;
+    name: string;
+    type: WalletTypes;
+}
+
+interface IFullWalletRecord extends IPublicWalletRecord {
+    keyData: string;
+    depth: number | null;
+    HDPath: string | null;
+}
+
 export default class Client {
     private readonly _vault: Vault;
 
