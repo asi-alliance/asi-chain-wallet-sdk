@@ -1,5 +1,6 @@
 import {
     IFullWalletRecord,
+    IWalletEncryptedFields,
     WalletsStorageController,
     WalletTypes,
 } from "@domains/WalletsStorageController";
@@ -9,8 +10,6 @@ import {
 } from "@domains/PasswordProvider";
 import Wallet from "@domains/Wallet";
 import CryptoService from "@services/Crypto";
-import KeyDerivationService from "@services/KeyDerivation";
-import { ASI_COIN_TYPE } from "@utils/constants";
 import { stringifyPrivateKeyToUnitArray } from "@utils/index";
 import { isPrivateKeyPasswordData } from "@utils/guards";
 
@@ -32,86 +31,6 @@ export interface IHDWalletData {
 }
 
 class StoreManager {
-    // public static saveSeed = async (
-    //     id: string,
-    //     mnemonic: string,
-    //     passwordProvider: TPasswordProvider,
-    //     customHDPath?: string,
-    // ): Promise<void> => {
-    //     const { password } = await passwordProvider();
-
-    //     const HDPath =
-    //         customHDPath ??
-    //         KeyDerivationService.buildBip44Path({
-    //             coinType: ASI_COIN_TYPE,
-    //             account: 0,
-    //             change: 0,
-    //             index: 0,
-    //         });
-
-    //     const encryptedData = await CryptoService.encryptWithPassword(
-    //         JSON.stringify({
-    //             mnemonic,
-    //             HDPath,
-    //             depth: 0,
-    //         }),
-    //         password,
-    //     );
-
-    //     WalletsStorageController.getInstance().saveSeed(id, encryptedData);
-    // };
-
-    // public static getSeed = async (
-    //     seedId: string,
-    //     passwordProvider: TPasswordProvider,
-    // ): Promise<ISeedStoreData> => {
-    //     const { password } = await passwordProvider();
-
-    //     const seedRecord: ISeedRecord | null =
-    //         await WalletsStorageController.getInstance().getSeed(seedId);
-
-    //     if (!seedRecord) {
-    //         throw new Error("You cannot create HD wallet for undefined seed");
-    //     }
-
-    //     const seedDataInString: string =
-    //         await CryptoService.decryptWithPassword(
-    //             seedRecord.encryptedData,
-    //             password,
-    //         );
-
-    //     return JSON.parse(seedDataInString) as ISeedStoreData;
-    // };
-
-    // private static updateSeed = async (
-    //     id: string,
-    //     seedStoreData: ISeedStoreData,
-    //     passwordProvider: THDWalletPasswordProvider,
-    // ) => {
-    //     const { seedPassword } = await passwordProvider();
-
-    //     const encryptedData = await CryptoService.encryptWithPassword(
-    //         JSON.stringify(seedStoreData),
-    //         seedPassword,
-    //     );
-
-    //     WalletsStorageController.getInstance().updateSeed(id, encryptedData);
-    // };
-
-    // private static increaseSeedDepth = async (
-    //     seedId: string,
-    //     passwordProvider: THDWalletPasswordProvider,
-    // ): Promise<void> => {
-    //     const seedData: ISeedStoreData = await StoreManager.getSeed(
-    //         seedId,
-    //         passwordProvider,
-    //     );
-
-    //     seedData.depth++;
-
-    //     await StoreManager.updateSeed(seedId, seedData, passwordProvider);
-    // };
-
     public static saveWallet = async (
         id: string,
         name: string,
@@ -164,7 +83,8 @@ class StoreManager {
         return;
     };
 
-    public static getPKWallet = async (
+    public static getWallet = async (
+        //TODO: Save id in Wallet entity, give in constructor
         id: string,
         passwordProvider: TPasswordProvider,
     ): Promise<Wallet> => {
@@ -182,71 +102,31 @@ class StoreManager {
                 walletRecord.encryptedData,
                 password,
             );
-
-        const { name, privateKey: stringifyPrivateKey } = JSON.parse(
+        const walletData = JSON.parse(
             walletDataInString,
-        ) as IWalletStoredData;
+        ) as IWalletEncryptedFields;
 
-        const privateKey: Uint8Array =
-            stringifyPrivateKeyToUnitArray(stringifyPrivateKey);
+        const keyData: Uint8Array = stringifyPrivateKeyToUnitArray(
+            walletData.keyData,
+        );
 
-        const updatedPKPasswordProvider: TPrivateKeyPasswordProvider =
-            async () => {
-                return {
-                    password,
-                    privateKey,
-                };
+        if (walletRecord.type === WalletTypes.PRIVATE_KEY) {
+            const passwordProvider: TPrivateKeyPasswordProvider = async () => {
+                return { privateKey: keyData, password };
             };
 
-        return Wallet.fromPrivateKey(name, updatedPKPasswordProvider);
-    };
-
-    public static getHDWallet = async (
-        id: string,
-        passwordProvider: TPasswordProvider,
-        hdWalletData: IHDWalletData,
-    ): Promise<Wallet> => {
-        const { password } = await passwordProvider();
-
-        const walletRecord: IFullWalletRecord | null =
-            await WalletsStorageController.getInstance().getWallet(id);
-
-        if (!walletRecord) {
-            throw new Error("Wallet with this id not found");
+            return Wallet.fromPrivateKey(walletRecord.name, passwordProvider);
         }
 
-        const walletDataInString: string =
-            await CryptoService.decryptWithPassword(
-                walletRecord.encryptedData,
-                password,
-            );
-
-        const { name } = JSON.parse(walletDataInString) as IWalletStoredData;
-
-        const seedStoredData: ISeedStoreData = await StoreManager.getSeed(
-            hdWalletData.seedId,
-            hdWalletData.seedPasswordProvider,
-        );
-
-        return Wallet.fromHD(
-            hdWalletData.seedId,
-            seedStoredData.mnemonic,
-            name,
+        const { wallet } = await Wallet.fromSeed(
+            keyData,
+            walletRecord.name,
             passwordProvider,
-            hdWalletData.index,
+            walletData.depth!,
+            walletData.HDPath,
         );
-    };
 
-    public static getWallet = async (
-        id: string,
-        passwordProvider: TPasswordProvider,
-        hdWalletData?: IHDWalletData,
-    ): Promise<Wallet> => {
-        if (!hdWalletData) {
-            return StoreManager.getPKWallet(id, passwordProvider);
-        }
-
-        return StoreManager.getHDWallet(id, passwordProvider, hdWalletData);
+        return wallet;
     };
 }
 

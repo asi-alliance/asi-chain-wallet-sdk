@@ -8,9 +8,7 @@ import {
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
 import Asset, { Assets } from "@domains/Asset";
-import KeyDerivationService from "@services/KeyDerivation";
 import { generateRandomId } from "@utils/index";
-import MnemonicService from "@services/Mnemonic";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -25,7 +23,6 @@ export interface StoredWalletMeta {
 
 export interface ICreatedHDWalletData {
     wallet: Wallet;
-    index: number;
     path: string;
 }
 
@@ -90,21 +87,19 @@ export default class Wallet {
         return new Wallet(name, address, encrypted, null, null);
     }
 
-    public static async fromHD(
+    public static async fromMnemonic(
         mnemonic: string,
         name: string,
         passwordProvider: TPasswordProvider,
-        lastIndex: number,
-        customHDPath?: string,
+        index: number,
+        customHDPath?: string | null,
     ): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
-
-        const nextIndex: number = lastIndex++;
 
         const { privateKey, seed, path } =
             await KeysManager.getPrivateDataFromMnemonic(
                 mnemonic,
-                nextIndex,
+                index,
                 customHDPath,
             );
 
@@ -117,14 +112,36 @@ export default class Wallet {
         );
 
         return {
-            wallet: new Wallet(
-                name,
-                address,
-                encryptedPrivateKey,
-                seed,
-                nextIndex,
-            ),
-            index: nextIndex,
+            wallet: new Wallet(name, address, encryptedPrivateKey, seed, index),
+            path,
+        };
+    }
+
+    public static async fromSeed(
+        seed: Uint8Array,
+        name: string,
+        passwordProvider: TPasswordProvider,
+        index: number,
+        customHDPath?: string | null,
+    ): Promise<ICreatedHDWalletData> {
+        const { password } = await passwordProvider();
+
+        const { privateKey, path } = await KeysManager.getPrivateDataFromSeed(
+            seed,
+            index,
+            customHDPath,
+        );
+
+        const address: Address =
+            WalletsService.deriveAddressFromPrivateKey(privateKey);
+
+        const encryptedPrivateKey: EncryptedData = await this.encryptPrivateKey(
+            privateKey,
+            password,
+        );
+
+        return {
+            wallet: new Wallet(name, address, encryptedPrivateKey, seed, index),
             path,
         };
     }

@@ -16,10 +16,14 @@ export interface IPublicWalletRecord extends ITableRecord {
     type: WalletTypes;
 }
 
-export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
+export interface IWalletEncryptedFields {
     keyData: string;
     depth: number | null;
     HDPath: string | null;
+}
+
+export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
+    encryptedData: EncryptedData;
 
     createdAt: number;
     updatedAt?: number;

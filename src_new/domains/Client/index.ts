@@ -3,9 +3,7 @@ import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
-import MnemonicService from "@services/Mnemonic";
-import StoreManager, { IHDWalletData } from "@services/StoreManager";
-import Asset from "@domains/Asset";
+import StoreManager from "@services/StoreManager";
 import Vault from "@domains/Vault";
 
 export interface ClientOptions {
@@ -60,37 +58,19 @@ export default class Client {
         return wallet;
     }
 
-    // public async createSeed(
-    //     mnemonicWords: string[],
-    //     passwordProvider: TPasswordProvider,
-    //     customHDPath?: string,
-    // ): Promise<Seed> {
-    //     const mnemonic = MnemonicService.wordArrayToMnemonic(mnemonicWords);
-
-    //     const seed = new Seed(mnemonic);
-
-    //     StoreManager.saveSeed(
-    //         seed.getId(),
-    //         mnemonic,
-    //         passwordProvider,
-    //         customHDPath,
-    //     );
-
-    //     return seed;
-    // }
 
     public async createMnemonicWallet(
         mnemonic: string,
         name: string,
         passwordProvider: TPasswordProvider,
-        lastIndex: number,
+        index: number,
         customHDPath?: string,
     ): Promise<Wallet> {
-        const { wallet, index, path } = await Wallet.fromHD(
+        const { wallet, path } = await Wallet.fromMnemonic(
             mnemonic,
             name,
             passwordProvider,
-            lastIndex,
+            index,
             customHDPath,
         );
 
@@ -107,9 +87,8 @@ export default class Client {
     public async unlockWallet(
         id: string,
         passwordProvider: TPasswordProvider,
-        hdWalletData?: IHDWalletData,
     ): Promise<Wallet> {
-        return StoreManager.getWallet(id, passwordProvider, hdWalletData);
+        return StoreManager.getWallet(id, passwordProvider);
     }
 
     public selectActiveWallet(walletAddress: Address): boolean {

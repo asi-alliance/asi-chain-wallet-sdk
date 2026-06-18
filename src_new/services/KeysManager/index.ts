@@ -11,11 +11,13 @@ export interface KeyPair {
     privateKey: Uint8Array;
     publicKey: Uint8Array;
 }
-
-export interface IHDWalletPrivateKeyData {
-    seed: Uint8Array;
+export interface IHDWalletPrivateKeyDataFromSeed {
     path: string;
     privateKey: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromMnemonic extends IHDWalletPrivateKeyDataFromSeed {
+    seed: Uint8Array;
 }
 
 export default class KeysManager {
@@ -71,8 +73,8 @@ export default class KeysManager {
     public static async getPrivateDataFromMnemonic(
         mnemonic: string,
         index: number,
-        customHDPath?: string,
-    ): Promise<IHDWalletPrivateKeyData> {
+        customHDPath?: string | null,
+    ): Promise<IHDWalletPrivateKeyDataFromMnemonic> {
         const customHdPathWithIndex: string | undefined = !customHDPath
             ? undefined
             : MnemonicService.replaceIndex(customHDPath, index);
@@ -93,6 +95,32 @@ export default class KeysManager {
             privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
             path,
             seed,
+        };
+    }
+
+    public static async getPrivateDataFromSeed(
+        seed: Uint8Array,
+        index: number,
+        customHDPath?: string | null,
+    ): Promise<IHDWalletPrivateKeyDataFromSeed> {
+        const customHdPathWithIndex: string | undefined = !customHDPath
+            ? undefined
+            : MnemonicService.replaceIndex(customHDPath, index);
+
+        const path: string =
+            customHdPathWithIndex ??
+            KeyDerivationService.buildBip44Path({
+                coinType: 60,
+                account: 0,
+                change: 0,
+                index: index,
+            });
+
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+        return {
+            privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
+            path,
         };
     }
 
