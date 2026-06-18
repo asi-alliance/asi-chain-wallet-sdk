@@ -84,7 +84,6 @@ class StoreManager {
     };
 
     public static getWallet = async (
-        //TODO: Save id in Wallet entity, give in constructor
         id: string,
         passwordProvider: TPasswordProvider,
     ): Promise<Wallet> => {
@@ -115,16 +114,21 @@ class StoreManager {
                 return { privateKey: keyData, password };
             };
 
-            return Wallet.fromPrivateKey(walletRecord.name, passwordProvider);
+            return Wallet.fromPrivateKey(
+                walletRecord.name,
+                passwordProvider,
+                id,
+            );
         }
 
-        const { wallet } = await Wallet.fromSeed(
-            keyData,
-            walletRecord.name,
+        const { wallet } = await Wallet.fromSeed({
+            id,
+            seed: keyData,
+            name: walletRecord.name,
             passwordProvider,
-            walletData.depth!,
-            walletData.HDPath,
-        );
+            index: walletData.depth!,
+            customHDPath: walletData.HDPath,
+        });
 
         return wallet;
     };

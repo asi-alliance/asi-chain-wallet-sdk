@@ -21,6 +21,31 @@ export interface StoredWalletMeta {
     index: string | null;
 }
 
+export interface IWalletOptions {
+    name: string;
+    address: Address;
+    encryptedPrivateKey: EncryptedData;
+    seed?: Uint8Array;
+    index?: number;
+    id?: string;
+}
+
+export interface ICreateHDWalletDefaultOptions {
+    id?: string;
+    name: string;
+    passwordProvider: TPasswordProvider;
+    index: number;
+    customHDPath?: string | null;
+}
+
+export interface ICreateWalletFromMnemonicPayload extends ICreateHDWalletDefaultOptions {
+    mnemonic: string;
+}
+
+export interface ICreateWalletFromSeedPayload extends ICreateHDWalletDefaultOptions {
+    seed: Uint8Array;
+}
+
 export interface ICreatedHDWalletData {
     wallet: Wallet;
     path: string;
@@ -53,17 +78,18 @@ export default class Wallet {
     private seed: Uint8Array | null;
     private index: number | null;
 
-    private constructor(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        seed: Uint8Array | null,
-        index: number | null,
-    ) {
-        this.id = generateRandomId();
+    private constructor({
+        name,
+        address,
+        encryptedPrivateKey,
+        seed,
+        index,
+        id,
+    }: IWalletOptions) {
+        this.id = id ?? generateRandomId();
         this.name = name;
-        this.index = index;
-        this.seed = seed;
+        this.index = index ?? null;
+        this.seed = seed ?? null;
         this.address = address;
         this.privateKey = encryptedPrivateKey;
         this.assets = new Map();
@@ -73,6 +99,7 @@ export default class Wallet {
     public static async fromPrivateKey(
         name: string,
         passwordProvider: TPrivateKeyPasswordProvider,
+        id?: string,
     ): Promise<Wallet> {
         const { privateKey, password } = await passwordProvider();
 
@@ -84,16 +111,22 @@ export default class Wallet {
             password,
         );
 
-        return new Wallet(name, address, encrypted, null, null);
+        return new Wallet({
+            id,
+            name,
+            address,
+            encryptedPrivateKey: encrypted,
+        });
     }
 
-    public static async fromMnemonic(
-        mnemonic: string,
-        name: string,
-        passwordProvider: TPasswordProvider,
-        index: number,
-        customHDPath?: string | null,
-    ): Promise<ICreatedHDWalletData> {
+    public static async fromMnemonic({
+        mnemonic,
+        name,
+        passwordProvider,
+        index,
+        customHDPath,
+        id,
+    }: ICreateWalletFromMnemonicPayload): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
 
         const { privateKey, seed, path } =
@@ -112,18 +145,26 @@ export default class Wallet {
         );
 
         return {
-            wallet: new Wallet(name, address, encryptedPrivateKey, seed, index),
+            wallet: new Wallet({
+                id,
+                name,
+                address,
+                encryptedPrivateKey,
+                seed,
+                index,
+            }),
             path,
         };
     }
 
-    public static async fromSeed(
-        seed: Uint8Array,
-        name: string,
-        passwordProvider: TPasswordProvider,
-        index: number,
-        customHDPath?: string | null,
-    ): Promise<ICreatedHDWalletData> {
+    public static async fromSeed({
+        seed,
+        name,
+        passwordProvider,
+        index,
+        customHDPath,
+        id,
+    }: ICreateWalletFromSeedPayload): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
 
         const { privateKey, path } = await KeysManager.getPrivateDataFromSeed(
@@ -141,18 +182,26 @@ export default class Wallet {
         );
 
         return {
-            wallet: new Wallet(name, address, encryptedPrivateKey, seed, index),
+            wallet: new Wallet({
+                id,
+                name,
+                address,
+                encryptedPrivateKey,
+                seed,
+                index,
+            }),
             path,
         };
     }
 
-    public static fromEncryptedData(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        seed: Uint8Array | null,
-        index: number | null,
-    ): Wallet {
+    public static fromEncryptedData({
+        id,
+        name,
+        address,
+        encryptedPrivateKey,
+        seed,
+        index,
+    }: IWalletOptions): Wallet {
         const validation = validateAddress(address);
         if (!validation.isValid) {
             throw new Error(
@@ -160,7 +209,14 @@ export default class Wallet {
             );
         }
 
-        return new Wallet(name, address, encryptedPrivateKey, seed, index);
+        return new Wallet({
+            id,
+            name,
+            address,
+            encryptedPrivateKey,
+            seed,
+            index,
+        });
     }
 
     /**

@@ -58,7 +58,6 @@ export default class Client {
         return wallet;
     }
 
-
     public async createMnemonicWallet(
         mnemonic: string,
         name: string,
@@ -66,13 +65,13 @@ export default class Client {
         index: number,
         customHDPath?: string,
     ): Promise<Wallet> {
-        const { wallet, path } = await Wallet.fromMnemonic(
+        const { wallet, path } = await Wallet.fromMnemonic({
             mnemonic,
             name,
             passwordProvider,
             index,
             customHDPath,
-        );
+        });
 
         StoreManager.saveWallet(wallet.getId(), name, passwordProvider, {
             seed: wallet.getSeed()!,
