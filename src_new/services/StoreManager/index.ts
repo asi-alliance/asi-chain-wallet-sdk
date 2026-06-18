@@ -1,5 +1,5 @@
 import {
-    IDBStorageController,
+    WalletsStorageController,
     ISeedRecord,
     IWalletRecord,
 } from "@domains/WalletsStorageController";
@@ -60,7 +60,7 @@ class StoreManager {
             password,
         );
 
-        IDBStorageController.getInstance().saveSeed(id, encryptedData);
+        WalletsStorageController.getInstance().saveSeed(id, encryptedData);
     };
 
     public static getSeed = async (
@@ -70,7 +70,7 @@ class StoreManager {
         const { password } = await passwordProvider();
 
         const seedRecord: ISeedRecord | null =
-            await IDBStorageController.getInstance().getSeed(seedId);
+            await WalletsStorageController.getInstance().getSeed(seedId);
 
         if (!seedRecord) {
             throw new Error("You cannot create HD wallet for undefined seed");
@@ -97,7 +97,7 @@ class StoreManager {
             seedPassword,
         );
 
-        IDBStorageController.getInstance().updateSeed(id, encryptedData);
+        WalletsStorageController.getInstance().updateSeed(id, encryptedData);
     };
 
     private static increaseSeedDepth = async (
@@ -135,7 +135,7 @@ class StoreManager {
             password,
         );
 
-        IDBStorageController.getInstance().saveWallet(
+        WalletsStorageController.getInstance().saveWallet(
             id,
             encryptedData,
             networkId,
@@ -162,7 +162,7 @@ class StoreManager {
         const { password } = await passwordProvider();
 
         const walletRecord: IWalletRecord | null =
-            await IDBStorageController.getInstance().getWallet(id);
+            await WalletsStorageController.getInstance().getWallet(id);
 
         if (!walletRecord) {
             throw new Error("Wallet with this id not found");
@@ -200,7 +200,7 @@ class StoreManager {
         const { password } = await passwordProvider();
 
         const walletRecord: IWalletRecord | null =
-            await IDBStorageController.getInstance().getWallet(id);
+            await WalletsStorageController.getInstance().getWallet(id);
 
         if (!walletRecord) {
             throw new Error("Wallet with this id not found");
