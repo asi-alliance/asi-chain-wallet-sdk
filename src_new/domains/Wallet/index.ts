@@ -10,6 +10,7 @@ import {
 import Asset, { Assets } from "@domains/Asset";
 import KeyDerivationService from "@services/KeyDerivation";
 import { generateRandomId } from "@utils/index";
+import MnemonicService from "@services/Mnemonic";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -18,8 +19,14 @@ export interface StoredWalletMeta {
     name: string;
     address: Address;
     encryptedPrivateKey: string;
-    masterNodeId: string | null;
+    seed: Uint8Array | null;
     index: string | null;
+}
+
+export interface ICreatedHDWalletData {
+    wallet: Wallet;
+    index: number;
+    path: string;
 }
 
 export type StringifiedWalletMeta = string;
@@ -46,20 +53,20 @@ export default class Wallet {
     private privateKey: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
-    private masterNodeId: string | null;
+    private seed: Uint8Array | null;
     private index: number | null;
 
     private constructor(
         name: string,
         address: Address,
         encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
+        seed: Uint8Array | null,
         index: number | null,
     ) {
         this.id = generateRandomId();
         this.name = name;
         this.index = index;
-        this.masterNodeId = masterNodeId;
+        this.seed = seed;
         this.address = address;
         this.privateKey = encryptedPrivateKey;
         this.assets = new Map();
@@ -84,30 +91,22 @@ export default class Wallet {
     }
 
     public static async fromHD(
-        seedId: string,
         mnemonic: string,
         name: string,
         passwordProvider: TPasswordProvider,
         lastIndex: number,
-    ): Promise<Wallet> {
+        customHDPath?: string,
+    ): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
 
         const nextIndex: number = lastIndex++;
 
-        const path: string = KeyDerivationService.buildBip44Path({
-            coinType: 60,
-            account: 0,
-            change: 0,
-            index: nextIndex,
-        });
-
-        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-        const masterNode = KeyDerivationService.seedToMasterNode(seed);
-
-        const privateKey = KeyDerivationService.derivePrivateKey(
-            masterNode,
-            path,
-        );
+        const { privateKey, seed, path } =
+            await KeysManager.getPrivateDataFromMnemonic(
+                mnemonic,
+                nextIndex,
+                customHDPath,
+            );
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
@@ -117,20 +116,24 @@ export default class Wallet {
             password,
         );
 
-        return new Wallet(
-            name,
-            address,
-            encryptedPrivateKey,
-            seedId,
-            nextIndex,
-        );
+        return {
+            wallet: new Wallet(
+                name,
+                address,
+                encryptedPrivateKey,
+                seed,
+                nextIndex,
+            ),
+            index: nextIndex,
+            path,
+        };
     }
 
     public static fromEncryptedData(
         name: string,
         address: Address,
         encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
+        seed: Uint8Array | null,
         index: number | null,
     ): Wallet {
         const validation = validateAddress(address);
@@ -140,13 +143,7 @@ export default class Wallet {
             );
         }
 
-        return new Wallet(
-            name,
-            address,
-            encryptedPrivateKey,
-            masterNodeId,
-            index,
-        );
+        return new Wallet(name, address, encryptedPrivateKey, seed, index);
     }
 
     /**
@@ -256,6 +253,10 @@ export default class Wallet {
         return this.name;
     }
 
+    public getSeed(): Uint8Array | null {
+        return this.seed;
+    }
+
     public getIndex(): number | null {
         return this.index;
     }
@@ -273,7 +274,7 @@ export default class Wallet {
             name: this.name,
             address: this.address,
             encryptedPrivateKey: JSON.stringify(this.privateKey),
-            masterNodeId: this.masterNodeId ?? "",
+            seed: this.seed ?? null,
             index: this.index?.toString() ?? "",
         };
 

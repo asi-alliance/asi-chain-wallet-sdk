@@ -1,10 +1,10 @@
 import {
+    IPasswordCredentials,
     IPrivateKeyCredentials,
-    IHDWalletCredentials,
 } from "@domains/PasswordProvider";
 
-export const isHDWalletPasswordData = (
-    data: IHDWalletCredentials | IPrivateKeyCredentials,
-): data is IHDWalletCredentials => {
-    return "seedPassword" in data;
+export const isPrivateKeyPasswordData = (
+    data: IPasswordCredentials | IPrivateKeyCredentials,
+): data is IPrivateKeyCredentials => {
+    return "privateKey" in data;
 };

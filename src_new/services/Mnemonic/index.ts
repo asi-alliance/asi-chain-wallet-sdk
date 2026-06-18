@@ -32,4 +32,12 @@ export default class MnemonicService {
     public static wordArrayToMnemonic(words: string[]): string {
         return words.join(" ");
     }
+
+    public static replaceIndex(path: string, index: number): string {
+        const parts = path.split("/");
+
+        parts[parts.length - 1] = String(index);
+
+        return parts.join("/");
+    }
 }

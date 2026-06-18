@@ -3,21 +3,23 @@ import { storageFabric } from "@fabrics/Storage";
 import { EncryptedData } from "@services/Crypto";
 
 const STORE_KEY: string = "ASI_STORE";
-const SEEDS_DATA_KEY: string = "SEEDS";
 const WALLETS_DATA_KEY: string = "WALLETS";
 
-export interface ISeedRecord extends ITableRecord {
-    id: string;
-    encryptedData: EncryptedData;
-
-    createdAt: number;
-    updatedAt?: number;
+export enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
+    MPC = "mpc",
 }
 
-export interface IWalletRecord extends ITableRecord {
-    id: string;
-    encryptedData: EncryptedData;
-    networkId: string;
+export interface IPublicWalletRecord extends ITableRecord {
+    name: string;
+    type: WalletTypes;
+}
+
+export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
+    keyData: string;
+    depth: number | null;
+    HDPath: string | null;
 
     createdAt: number;
     updatedAt?: number;
@@ -73,15 +75,6 @@ export class WalletsStorageController {
                 console.log(`Main table ${STORE_KEY} already exists`);
             }
 
-            const seedsTableExists = await this.db.tableExists(SEEDS_DATA_KEY);
-
-            if (!seedsTableExists) {
-                console.log(`Creating seeds table: ${SEEDS_DATA_KEY}`);
-                await this.db.createTable(SEEDS_DATA_KEY, "id");
-            } else {
-                console.log(`Seeds table ${SEEDS_DATA_KEY} already exists`);
-            }
-
             const walletsTableExists =
                 await this.db.tableExists(WALLETS_DATA_KEY);
 
@@ -94,9 +87,7 @@ export class WalletsStorageController {
 
             this.isInitialized = true;
             console.log("Storage controller initialized successfully");
-            console.log(
-                `Active tables: ${STORE_KEY}, ${SEEDS_DATA_KEY}, ${WALLETS_DATA_KEY}`,
-            );
+            console.log(`Active tables: ${STORE_KEY}, ${WALLETS_DATA_KEY}`);
         } catch (error) {
             console.error("Failed to initialize Storage controller:", error);
             throw error;
@@ -142,84 +133,38 @@ export class WalletsStorageController {
         }));
     }
 
-    public async saveSeed(
-        seedId: string,
-        encryptedData: EncryptedData,
-    ): Promise<void> {
-        await this.ensureInitialized();
-        await this.db.insert(SEEDS_DATA_KEY, {
-            id: seedId,
-            ...encryptedData,
-            createdAt: Date.now(),
-        });
-    }
-
-    public async getSeed(seedId: string): Promise<ISeedRecord | null> {
-        await this.ensureInitialized();
-        return this.db.getById(
-            SEEDS_DATA_KEY,
-            seedId,
-        ) as Promise<ISeedRecord | null>;
-    }
-
-    public async getAllSeeds(): Promise<ISeedRecord[]> {
-        await this.ensureInitialized();
-        return this.db.getAll(SEEDS_DATA_KEY) as Promise<ISeedRecord[]>;
-    }
-
-    public async updateSeed(
-        seedId: string,
-        encryptedData: EncryptedData,
-    ): Promise<void> {
-        await this.ensureInitialized();
-        await this.db.update(SEEDS_DATA_KEY, seedId, {
-            id: seedId,
-            ...encryptedData,
-            createdAt: Date.now(),
-        });
-    }
-
-    public async deleteSeed(seedId: string): Promise<void> {
-        await this.ensureInitialized();
-        await this.db.delete(SEEDS_DATA_KEY, seedId);
-    }
-
-    public async hasSeed(seedId: string): Promise<boolean> {
-        await this.ensureInitialized();
-        const seed = await this.getSeed(seedId);
-        return seed !== null;
-    }
-
     public async saveWallet(
         walletId: string,
+        name: string,
+        type: WalletTypes,
         encryptedData: EncryptedData,
-        networkId: string,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.db.insert(WALLETS_DATA_KEY, {
             id: walletId,
+            name,
+            type,
             encryptedData,
-            networkId: networkId,
             createdAt: Date.now(),
         });
     }
 
-    public async getWallet(id: string): Promise<IWalletRecord | null> {
+    public async getWallet(id: string): Promise<IFullWalletRecord | null> {
         await this.ensureInitialized();
         return this.db.getById(
             WALLETS_DATA_KEY,
             id,
-        ) as Promise<IWalletRecord | null>;
+        ) as Promise<IFullWalletRecord | null>;
     }
 
-    public async getAllWallets(): Promise<IWalletRecord[]> {
+    public async getAllWallets(): Promise<IFullWalletRecord[]> {
         await this.ensureInitialized();
-        return this.db.getAll(WALLETS_DATA_KEY) as Promise<IWalletRecord[]>;
+        return this.db.getAll(WALLETS_DATA_KEY) as Promise<IFullWalletRecord[]>;
     }
 
     public async updateWallet(
         address: string,
-        updates: Partial<IWalletRecord>,
+        updates: Partial<IFullWalletRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.db.update(WALLETS_DATA_KEY, address, updates);
@@ -253,7 +198,6 @@ export class WalletsStorageController {
         console.log("Clearing all data from Storage...");
 
         await this.db.clearTable(STORE_KEY);
-        await this.db.clearTable(SEEDS_DATA_KEY);
         await this.db.clearTable(WALLETS_DATA_KEY);
 
         console.log("All data cleared successfully");
@@ -262,9 +206,7 @@ export class WalletsStorageController {
     public async clearTable(tableName: string): Promise<void> {
         await this.ensureInitialized();
 
-        if (
-            ![STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY].includes(tableName)
-        ) {
+        if (![STORE_KEY, WALLETS_DATA_KEY].includes(tableName)) {
             throw new Error(`Invalid table name: ${tableName}`);
         }
 
@@ -278,7 +220,7 @@ export class WalletsStorageController {
 
     public async getTablesList(): Promise<string[]> {
         await this.ensureInitialized();
-        return [STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY];
+        return [STORE_KEY, WALLETS_DATA_KEY];
     }
 
     public close(): void {
@@ -288,4 +230,4 @@ export class WalletsStorageController {
     }
 }
 
-export { STORE_KEY, SEEDS_DATA_KEY, WALLETS_DATA_KEY };
+export { STORE_KEY, WALLETS_DATA_KEY };

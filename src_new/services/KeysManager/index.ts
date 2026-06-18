@@ -3,12 +3,19 @@ import KeyDerivationService, {
 } from "@services/KeyDerivation";
 import { PRIVATE_KEY_LENGTH } from "@utils/constants";
 import { utils, getPublicKey } from "@noble/secp256k1";
+import MnemonicService from "@services/Mnemonic";
 
 const { randomBytes, bytesToHex } = utils;
 
 export interface KeyPair {
     privateKey: Uint8Array;
     publicKey: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyData {
+    seed: Uint8Array;
+    path: string;
+    privateKey: Uint8Array;
 }
 
 export default class KeysManager {
@@ -59,6 +66,34 @@ export default class KeysManager {
             mnemonicWords,
             options,
         );
+    }
+
+    public static async getPrivateDataFromMnemonic(
+        mnemonic: string,
+        index: number,
+        customHDPath?: string,
+    ): Promise<IHDWalletPrivateKeyData> {
+        const customHdPathWithIndex: string | undefined = !customHDPath
+            ? undefined
+            : MnemonicService.replaceIndex(customHDPath, index);
+
+        const path: string =
+            customHdPathWithIndex ??
+            KeyDerivationService.buildBip44Path({
+                coinType: 60,
+                account: 0,
+                change: 0,
+                index: index,
+            });
+
+        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+        return {
+            privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
+            path,
+            seed,
+        };
     }
 
     public static generateMpcKeyPair(): any {
