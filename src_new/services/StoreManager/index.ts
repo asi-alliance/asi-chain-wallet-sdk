@@ -1,5 +1,6 @@
 import {
     IFullWalletRecord,
+    IPublicWalletRecord,
     IWalletEncryptedFields,
     WalletsStorageController,
     WalletTypes,
@@ -131,6 +132,17 @@ class StoreManager {
         });
 
         return wallet;
+    };
+
+    public static getWallets = async (): Promise<IPublicWalletRecord[]> => {
+        const walletRecords: IFullWalletRecord[] =
+            await WalletsStorageController.getInstance().getAllWallets();
+
+        return walletRecords.map((fullWalletRecord: IFullWalletRecord) => ({
+            id: fullWalletRecord.id,
+            name: fullWalletRecord.name,
+            type: fullWalletRecord.type,
+        }));
     };
 }
 
