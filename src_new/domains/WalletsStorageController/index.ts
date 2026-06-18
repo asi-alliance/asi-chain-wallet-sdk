@@ -1,5 +1,5 @@
-import Storage from "@domains/IDBStorage";
-import { ITableRecord } from "@domains/IDBStorage/meta";
+import { ITableRecord, ITableService } from "@domains/TableService";
+import { storageFabric } from "@fabrics/Storage";
 import { EncryptedData } from "@services/Crypto";
 
 const STORE_KEY: string = "ASI_STORE";
@@ -25,12 +25,12 @@ export interface IWalletRecord extends ITableRecord {
 
 export class WalletsStorageController {
     private static instance: WalletsStorageController;
-    private db: Storage;
+    private db: ITableService<ITableRecord>;
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
     private constructor() {
-        this.db = new Storage("CryptoAppDatabase", 1);
+        this.db = storageFabric();
     }
 
     public static getInstance(): WalletsStorageController {
@@ -61,7 +61,7 @@ export class WalletsStorageController {
     }
 
     private async doInitialize(): Promise<void> {
-        console.log("Initializing storage controller...");
+        console.log("Initializing Storage controller...");
 
         try {
             const asiStoreExists = await this.db.tableExists(STORE_KEY);
@@ -98,7 +98,7 @@ export class WalletsStorageController {
                 `Active tables: ${STORE_KEY}, ${SEEDS_DATA_KEY}, ${WALLETS_DATA_KEY}`,
             );
         } catch (error) {
-            console.error("Failed to initialize storage controller:", error);
+            console.error("Failed to initialize Storage controller:", error);
             throw error;
         }
     }
@@ -109,7 +109,7 @@ export class WalletsStorageController {
         }
     }
 
-    public getRawDB(): Storage {
+    public getRawDB(): ITableService<ITableRecord> {
         return this.db;
     }
 
@@ -250,7 +250,7 @@ export class WalletsStorageController {
     public async clearAllData(): Promise<void> {
         await this.ensureInitialized();
 
-        console.log("Clearing all data from storage...");
+        console.log("Clearing all data from Storage...");
 
         await this.db.clearTable(STORE_KEY);
         await this.db.clearTable(SEEDS_DATA_KEY);

@@ -11,10 +11,9 @@ import {
 import Wallet from "@domains/Wallet";
 import CryptoService from "@services/Crypto";
 import KeyDerivationService from "@services/KeyDerivation";
-import { stringifyPrivateKeyToUnitArray } from "@utils";
 import { ASI_COIN_TYPE } from "@utils/constants";
 import { isHDWalletPasswordData } from "@utils/guards";
-import { TPasswordProviderWithPrivateKey } from "../../../dist/domains/PasswordProvider";
+import { stringifyPrivateKeyToUnitArray } from "@utils/index";
 
 export interface ISeedStoreData {
     mnemonic: string;
@@ -181,7 +180,7 @@ class StoreManager {
         const privateKey: Uint8Array =
             stringifyPrivateKeyToUnitArray(stringifyPrivateKey);
 
-        const updatedPKPasswordProvider: TPasswordProviderWithPrivateKey =
+        const updatedPKPasswordProvider: TPrivateKeyPasswordProvider =
             async () => {
                 return {
                     password,

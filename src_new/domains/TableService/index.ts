@@ -19,4 +19,5 @@ export interface ITableService<T extends ITableRecord> {
     clearTable(tableName: string): Promise<void>;
     dropTable(tableName: string): Promise<void>;
     tableExists(tableName: string): Promise<boolean>;
+    close: () => Promise<void>;
 }

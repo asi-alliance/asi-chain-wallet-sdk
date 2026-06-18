@@ -7,9 +7,9 @@ import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
-import { generateRandomId } from "@utils";
 import Asset, { Assets } from "@domains/Asset";
 import KeyDerivationService from "@services/KeyDerivation";
+import { generateRandomId } from "@utils/index";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;

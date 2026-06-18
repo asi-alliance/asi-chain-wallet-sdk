@@ -8,18 +8,6 @@
             "asi-wallet-sdk": [
                 "./dist"
             ],
-            "@services/": [
-                "./src_new/services"
-            ],
-            "@domains/": [
-                "./src_new/domains"
-            ],
-            "@config": [
-                "./src_new/config"
-            ],
-            "@utils": [
-                "./src_new/utils"
-            ],
             "@services/*": [
                 "./src_new/services/*"
             ],
@@ -31,6 +19,12 @@
             ],
             "@utils/*": [
                 "./src_new/utils/*"
+            ],
+            "@scripts/*": [
+                "./src_new/scripts/*"
+            ],
+            "@fabrics/*": [
+                "./src_new/fabrics/*"
             ]
         }
     }

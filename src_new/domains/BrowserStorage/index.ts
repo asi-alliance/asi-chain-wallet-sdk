@@ -1,6 +1,6 @@
-import { ITableRecord, ITableService } from "./meta";
+import { ITableRecord, ITableService } from "@domains/TableService";
 
-export default class Storage implements ITableService<ITableRecord> {
+export default class BrowserStorage implements ITableService<ITableRecord> {
     private readonly dbName: string;
     private readonly version: number;
     private db: IDBDatabase | null = null;
@@ -325,7 +325,7 @@ export default class Storage implements ITableService<ITableRecord> {
         return this.tables.has(tableName);
     }
 
-    close(): void {
+    async close(): Promise<void> {
         if (this.db) {
             this.db.close();
             this.db = null;
