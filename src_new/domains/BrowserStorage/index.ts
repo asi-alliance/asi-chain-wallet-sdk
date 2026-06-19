@@ -4,7 +4,7 @@ function EnsureDatabaseInitialized<
     This extends BrowserStorage,
     Args extends any[],
     Return,
->(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return async function (
         this: This,
         ...args: Args
@@ -19,7 +19,7 @@ function EnsureTableExists<
     This extends BrowserStorage,
     Args extends any[],
     Return,
->(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return async function (
         this: This,
         ...args: Args
@@ -92,6 +92,8 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
     ): Promise<void> {
         const currentVersion: number = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
+
+        await this.close();
 
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
@@ -243,6 +245,8 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         const currentVersion = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
 
+        await this.close();
+
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
                 this.name,
@@ -260,6 +264,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
             openDatabaseRequest.onsuccess = () => {
                 this.storageInterface = openDatabaseRequest.result;
+
                 resolve();
             };
 
