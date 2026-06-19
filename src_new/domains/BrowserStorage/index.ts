@@ -1,46 +1,8 @@
 import { ITableRecord, ITableService } from "@domains/TableService";
-
-function EnsureDatabaseInitialized<
-    This extends BrowserStorage,
-    Args extends any[],
-    Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return async function (
-        this: This,
-        ...args: Args
-    ): Promise<Awaited<Return>> {
-        await this.init();
-
-        return await target.apply(this, args);
-    };
-}
-
-function EnsureTableExists<
-    This extends BrowserStorage,
-    Args extends any[],
-    Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return async function (
-        this: This,
-        ...args: Args
-    ): Promise<Awaited<Return>> {
-        const tableName = args[0];
-
-        if (typeof tableName !== "string") {
-            throw new Error(
-                `Table name must be a string and should be the first argument of the method. Received: ${typeof args[0]}`,
-            );
-        }
-
-        if (!(await this.tableExists(tableName))) {
-            throw new Error(
-                `Table '${tableName}' does not exist. Use createTable() first.`,
-            );
-        }
-
-        return await target.apply(this, args);
-    };
-}
+import {
+    EnsureDatabaseInitialized,
+    EnsureTableExists,
+} from "@utils/decorators";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private readonly name: string;
@@ -342,6 +304,10 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
                 reject(new Error("Transaction aborted"));
             };
         });
+    }
+
+    public isInitialized(): boolean {
+        return !!this.storageInterface;
     }
 
     public async close(): Promise<void> {

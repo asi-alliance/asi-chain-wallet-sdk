@@ -1,97 +1,74 @@
 import storage, { LocalStorage } from "node-persist";
 import { ITableRecord, ITableService } from "@domains/TableService";
+import {
+    EnsureDatabaseInitialized,
+    EnsureTableExists,
+    SkipIfDatabaseNotInitialized,
+    SkipIfTableExists,
+} from "@utils/decorators";
 
 export default class NodeStorage implements ITableService<ITableRecord> {
     private readonly storageDir: string;
 
-    private store: LocalStorage | null = null;
-
-    private tables: Set<string> = new Set();
+    private storageInterface: LocalStorage | null = null;
 
     constructor(storageDir: string = "./storage") {
         this.storageDir = storageDir;
     }
 
-    private async init(): Promise<void> {
-        if (this.store) {
+    public async init(): Promise<void> {
+        if (this.storageInterface) {
             return;
         }
 
-        this.store = await storage.create({
+        this.storageInterface = storage.create({
             dir: this.storageDir,
         });
 
-        await this.store.init();
-
-        const tables = (await this.store.getItem("__tables__")) || [];
-
-        this.tables = new Set<string>(tables);
-    }
-
-    private async saveTables(): Promise<void> {
-        if (!this.store) {
-            throw new Error("Storage not initialized");
-        }
-
-        await this.store.setItem("__tables__", Array.from(this.tables));
-    }
-
-    private async ensureTable(tableName: string): Promise<void> {
-        await this.init();
-
-        if (!this.tables.has(tableName)) {
-            throw new Error(
-                `Table '${tableName}' does not exist. Use createTable() first.`,
-            );
-        }
+        await this.storageInterface.init();
     }
 
     private getTableKey(tableName: string): string {
         return `table:${tableName}`;
     }
 
+    @EnsureDatabaseInitialized
+    @EnsureTableExists
     private async getTable(
         tableName: string,
     ): Promise<Record<string, ITableRecord>> {
-        await this.ensureTable(tableName);
-
-        if (!this.store) {
-            throw new Error("Storage not initialized");
-        }
-
-        return (await this.store.getItem(this.getTableKey(tableName))) || {};
+        return (
+            (await this.storageInterface!.getItem(
+                this.getTableKey(tableName),
+            )) || {}
+        );
     }
 
+    @EnsureDatabaseInitialized
     private async saveTable(
         tableName: string,
         table: Record<string, ITableRecord>,
     ): Promise<void> {
-        if (!this.store) {
-            throw new Error("Storage not initialized");
-        }
-
-        await this.store.setItem(this.getTableKey(tableName), table);
+        await this.storageInterface!.setItem(
+            this.getTableKey(tableName),
+            table,
+        );
     }
 
+    @EnsureDatabaseInitialized
+    @SkipIfTableExists
     async createTable(
         tableName: string,
         _keyPath: string = "id",
     ): Promise<void> {
-        await this.init();
+        await this.storageInterface!.setItem(this.getTableKey(tableName), {});
 
-        if (!this.store) {
-            throw new Error("Storage not initialized");
-        }
+        const tables =
+            (await this.storageInterface!.getItem("__tables__")) ?? [];
 
-        if (this.tables.has(tableName)) {
-            return;
-        }
+        tables.push(tableName);
 
-        this.tables.add(tableName);
-
-        await this.store.setItem(this.getTableKey(tableName), {});
-
-        await this.saveTables();
+        await this.storageInterface!.setItem("__tables__", tables);
     }
 
     async insert(tableName: string, record: ITableRecord): Promise<void> {
@@ -188,38 +165,45 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         await this.saveTable(tableName, table);
     }
 
+    @EnsureTableExists
     async clearTable(tableName: string): Promise<void> {
-        await this.ensureTable(tableName);
-
         await this.saveTable(tableName, {});
     }
 
+    @EnsureDatabaseInitialized
+    @EnsureTableExists
     async dropTable(tableName: string): Promise<void> {
-        await this.ensureTable(tableName);
+        await this.storageInterface!.removeItem(this.getTableKey(tableName));
 
-        if (!this.store) {
-            throw new Error("Storage not initialized");
-        }
+        const tables: any[] =
+            await this.storageInterface!.getItem("__tables__");
 
-        await this.store.removeItem(this.getTableKey(tableName));
-
-        this.tables.delete(tableName);
-
-        await this.saveTables();
+        await this.storageInterface!.setItem(
+            "__tables__",
+            tables.filter((name) => name !== tableName),
+        );
     }
 
+    public isInitialized(): boolean {
+        return !!this.storageInterface;
+    }
+
+    @EnsureDatabaseInitialized
+    public getKeys(): Promise<string[]> {
+        return this.storageInterface!.keys();
+    }
+
+    @EnsureDatabaseInitialized
     async tableExists(tableName: string): Promise<boolean> {
-        await this.init();
+        const tableKeys = await this.storageInterface!.keys(
+            (item) => item.key === this.getTableKey(tableName),
+        );
 
-        return this.tables.has(tableName);
+        return tableKeys.length > 0;
     }
 
+    @SkipIfDatabaseNotInitialized
     async close(): Promise<void> {
-        if (!this.store) {
-            return;
-        }
-
-        this.store = null;
-        this.tables.clear();
+        this.storageInterface = null;
     }
 }
