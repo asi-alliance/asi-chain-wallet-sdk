@@ -7,12 +7,16 @@ import {
     SkipIfTableExists,
 } from "@utils/decorators";
 
+const DEFAULT_STORAGE_DIR: string = "./storage";
+const TABLES_FOLDER_KEY: string = "__tables__";
+const TABLES_KEY_PREFIX: string = "table";
+
 export default class NodeStorage implements ITableService<ITableRecord> {
     private readonly storageDir: string;
 
     private storageInterface: LocalStorage | null = null;
 
-    constructor(storageDir: string = "./storage") {
+    constructor(storageDir: string = DEFAULT_STORAGE_DIR) {
         this.storageDir = storageDir;
     }
 
@@ -29,7 +33,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     }
 
     private getTableKey(tableName: string): string {
-        return `table:${tableName}`;
+        return `${TABLES_KEY_PREFIX}:${tableName}`;
     }
 
     @EnsureDatabaseInitialized
@@ -37,11 +41,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     private async getTable(
         tableName: string,
     ): Promise<Record<string, ITableRecord>> {
-        return (
-            (await this.storageInterface!.getItem(
-                this.getTableKey(tableName),
-            )) || {}
-        );
+        return this.storageInterface!.getItem(this.getTableKey(tableName));
     }
 
     @EnsureDatabaseInitialized
@@ -57,18 +57,15 @@ export default class NodeStorage implements ITableService<ITableRecord> {
 
     @EnsureDatabaseInitialized
     @SkipIfTableExists
-    async createTable(
-        tableName: string,
-        _keyPath: string = "id",
-    ): Promise<void> {
+    async createTable(tableName: string): Promise<void> {
         await this.storageInterface!.setItem(this.getTableKey(tableName), {});
 
         const tables =
-            (await this.storageInterface!.getItem("__tables__")) ?? [];
+            (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ?? [];
 
         tables.push(tableName);
 
-        await this.storageInterface!.setItem("__tables__", tables);
+        await this.storageInterface!.setItem(TABLES_FOLDER_KEY, tables);
     }
 
     async insert(tableName: string, record: ITableRecord): Promise<void> {
@@ -91,7 +88,8 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         tableName: string,
         records: ITableRecord[],
     ): Promise<void> {
-        const table = await this.getTable(tableName);
+        const table: Record<string, ITableRecord> =
+            await this.getTable(tableName);
 
         for (const record of records) {
             table[String(record.id)] = {
@@ -176,10 +174,10 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         await this.storageInterface!.removeItem(this.getTableKey(tableName));
 
         const tables: any[] =
-            await this.storageInterface!.getItem("__tables__");
+            await this.storageInterface!.getItem(TABLES_FOLDER_KEY);
 
         await this.storageInterface!.setItem(
-            "__tables__",
+            TABLES_FOLDER_KEY,
             tables.filter((name) => name !== tableName),
         );
     }
