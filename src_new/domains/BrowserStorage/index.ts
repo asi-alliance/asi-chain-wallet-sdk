@@ -4,10 +4,7 @@ function EnsureDatabaseInitialized<
     This extends BrowserStorage,
     Args extends any[],
     Return,
->(
-    target: (...args: Args) => Return,
-    context: ClassMethodDecoratorContext,
-) {
+>(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
     return async function (
         this: This,
         ...args: Args
@@ -22,19 +19,20 @@ function EnsureTableExists<
     This extends BrowserStorage,
     Args extends any[],
     Return,
->(
-    target: (...args: Args) => Return,
-    context: ClassMethodDecoratorContext,
-) {
-    return async function (this: This, ...args: Args): Promise<Awaited<Return>> {
+>(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
+    return async function (
+        this: This,
+        ...args: Args
+    ): Promise<Awaited<Return>> {
         const tableName = args[0];
 
         if (typeof tableName !== "string") {
             throw new Error(
                 `Table name must be a string and should be the first argument of the method. Received: ${typeof args[0]}`,
-            )
+            );
         }
-        if (!this.tableExists(tableName)) {
+
+        if (!(await this.tableExists(tableName))) {
             throw new Error(
                 `Table '${tableName}' does not exist. Use createTable() first.`,
             );
@@ -46,46 +44,35 @@ function EnsureTableExists<
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private readonly name: string;
-    private readonly version: number;
-    private storage: IDBDatabase | null = null;
-    private tableNames: Set<string> = new Set();
+    private storageInterface: IDBDatabase | null = null;
 
-    constructor(name: string = "AppDatabase", version: number = 1) {
+    constructor(name: string = "AppDatabase") {
         this.name = name;
-        this.version = version;
     }
 
     public async init(): Promise<IDBDatabase> {
-        if (this.storage) {
-            return this.storage;
+        if (this.storageInterface) {
+            return this.storageInterface;
         }
 
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
                 this.name,
-                this.version,
             );
 
-            openDatabaseRequest.onupgradeneeded = (
-                event: IDBVersionChangeEvent,
-            ) => {
-                const storage = openDatabaseRequest.result;
-                const oldVersion = event.oldVersion;
-
-                this.updateTablesList(storage);
-            };
-
             openDatabaseRequest.onsuccess = () => {
-                this.storage = openDatabaseRequest.result;
+                this.storageInterface = openDatabaseRequest.result;
 
-                this.updateTablesList();
-
-                this.storage.onclose = () => {
-                    this.storage = null;
-                    this.tableNames.clear();
+                this.storageInterface.onclose = () => {
+                    this.storageInterface = null;
                 };
 
-                resolve(this.storage);
+                this.storageInterface.onversionchange = () => {
+                    this.storageInterface?.close();
+                    this.storageInterface = null;
+                };
+
+                resolve(this.storageInterface);
             };
 
             openDatabaseRequest.onerror = () => {
@@ -98,33 +85,13 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         });
     }
 
-    private async updateTablesList(
-        storage: IDBDatabase | null = this.storage,
-    ): Promise<void> {
-        if (!storage) {
-            return;
-        }
-
-        this.tableNames.clear();
-
-        for (let i = 0; i < storage.objectStoreNames.length; i++) {
-            this.tableNames.add(storage.objectStoreNames[i]);
-        }
-    }
-
     @EnsureDatabaseInitialized
     public async createTable(
         tableName: string,
         keyPath: string = "id",
     ): Promise<void> {
-        if (!this.storage) {
-            throw new Error("Database not initialized");
-        }
-
-        this.storage.close();
-        this.storage = null;
-
-        const newVersion = this.version + 1;
+        const currentVersion: number = this.storageInterface!.version;
+        const newVersion: number = currentVersion + 1;
 
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
@@ -135,10 +102,10 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             openDatabaseRequest.onupgradeneeded = (
                 event: IDBVersionChangeEvent,
             ) => {
-                const database = openDatabaseRequest.result;
+                const storage: IDBDatabase = openDatabaseRequest.result;
 
-                if (!database.objectStoreNames.contains(tableName)) {
-                    const objectStore = database.createObjectStore(tableName, {
+                if (!storage.objectStoreNames.contains(tableName)) {
+                    const objectStore = storage.createObjectStore(tableName, {
                         keyPath: keyPath,
                     });
 
@@ -149,11 +116,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             };
 
             openDatabaseRequest.onsuccess = () => {
-                this.storage = openDatabaseRequest.result;
-                this.tableNames.add(tableName);
-
-                (this as any).version = newVersion;
-
+                this.storageInterface = openDatabaseRequest.result;
                 resolve();
             };
 
@@ -277,9 +240,8 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
     @EnsureDatabaseInitialized
     @EnsureTableExists
     public async dropTable(tableName: string): Promise<void> {
-        this.closeConnection();
-
-        const newVersion: number = this.version + 1;
+        const currentVersion = this.storageInterface!.version;
+        const newVersion: number = currentVersion + 1;
 
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
@@ -288,17 +250,16 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             );
 
             openDatabaseRequest.onupgradeneeded = (event) => {
-                const storage: IDBDatabase = openDatabaseRequest.result;
+                const storageInterface: IDBDatabase =
+                    openDatabaseRequest.result;
 
-                if (storage.objectStoreNames.contains(tableName)) {
-                    storage.deleteObjectStore(tableName);
+                if (storageInterface.objectStoreNames.contains(tableName)) {
+                    storageInterface.deleteObjectStore(tableName);
                 }
             };
 
             openDatabaseRequest.onsuccess = () => {
-                this.storage: IDBDatabase = openDatabaseRequest.result;
-                this.tableNames.delete(tableName);
-                (this as any).version = newVersion;
+                this.storageInterface = openDatabaseRequest.result;
                 resolve();
             };
 
@@ -312,17 +273,29 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         });
     }
 
+    @EnsureDatabaseInitialized
     public async tableExists(tableName: string): Promise<boolean> {
-        return this.tableNames.has(tableName);
+        return (
+            this.storageInterface?.objectStoreNames.contains(tableName) ?? false
+        );
+    }
+
+    public getVersion(): number {
+        return this.storageInterface?.version ?? 0;
+    }
+
+    public getDatabaseName(): string {
+        return this.name;
     }
 
     public getTableNamesList(): string[] {
-        return Array.from(this.tableNames);
-    }
+        if (!this.storageInterface) {
+            return [];
+        }
 
-    public async close(): Promise<void> {
-        this.closeConnection();
-        this.tableNames.clear();
+        const names: string[] = [];
+
+        return Array.from(this.storageInterface.objectStoreNames);
     }
 
     @EnsureDatabaseInitialized
@@ -333,18 +306,23 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         operation: (store: IDBObjectStore) => IDBRequest<T> | void,
     ): Promise<T> {
         return new Promise((resolve, reject) => {
-            if (!this.storage) {
+            if (!this.storageInterface) {
                 reject(new Error("Database not initialized"));
                 return;
             }
 
-            const transaction: IDBTransaction = this.storage.transaction(tableName, mode);
+            const transaction: IDBTransaction =
+                this.storageInterface.transaction(tableName, mode);
             const table: IDBObjectStore = transaction.objectStore(tableName);
 
             const request = operation(table);
 
             transaction.oncomplete = () => {
-                resolve((request && "result" in request ? request.result : undefined) as T);
+                resolve(
+                    (request && "result" in request
+                        ? request.result
+                        : undefined) as T,
+                );
             };
 
             transaction.onerror = () => {
@@ -361,9 +339,12 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         });
     }
 
-    @EnsureDatabaseInitialized
-    private closeConnection(): void {
-        this.storage!.close();
-        this.storage = null;
+    public async close(): Promise<void> {
+        if (!this.storageInterface) {
+            return;
+        }
+
+        this.storageInterface.close();
+        this.storageInterface = null;
     }
 }
