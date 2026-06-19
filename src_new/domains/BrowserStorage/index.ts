@@ -293,8 +293,6 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             return [];
         }
 
-        const names: string[] = [];
-
         return Array.from(this.storageInterface.objectStoreNames);
     }
 
