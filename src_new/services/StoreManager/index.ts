@@ -83,15 +83,17 @@ class StoreManager {
         return;
     };
 
-    public static saveWallets = async (wallets: Wallet[]): Promise<void> => {
-        wallets.forEach(async (wallet: Wallet) => {
-            await WalletsStorageRepository.getInstance().saveWallet(
-                wallet.getId(),
-                wallet.getName(),
-                wallet.getType(),
-                wallet.getEncryptedPrivateData(),
-            );
-        });
+    public static saveWallets = async (wallets: Wallet[]): Promise<void[]> => {
+        return Promise.all(
+            wallets.map((wallet: Wallet) =>
+                WalletsStorageRepository.getInstance().saveWallet(
+                    wallet.getId(),
+                    wallet.getName(),
+                    wallet.getType(),
+                    wallet.getEncryptedPrivateData(),
+                ),
+            ),
+        );
     };
 
     public static getWallet = async (

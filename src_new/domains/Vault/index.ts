@@ -1,10 +1,10 @@
+import StoreManager from "@services/StoreManager";
 import CryptoService, { type EncryptedData } from "@services/Crypto";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
     StoredWalletMeta,
 } from "@domains/Wallet";
-import StoreManager from "@services/StoreManager";
 
 export type Wallets = Map<Address, Wallet>;
 
@@ -15,8 +15,6 @@ export type StoredWalletsMetaRecords = Record<Address, StringifiedWalletMeta>;
 export const DEFAULT_STORAGE_KEY = "0";
 
 export default class Vault {
-    private static vaultPrefix: string = `ASI_WALLETS_VAULT`;
-
     private isLocked: boolean;
     private wallets: Wallets;
     private encryptedVaultData: EncryptedData | null;
