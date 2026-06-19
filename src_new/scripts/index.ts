@@ -1,9 +1,9 @@
-import { WalletsStorageController } from "@domains/WalletsStorageController";
+import { WalletsStorageRepository } from "@domains/WalletsStorageRepository";
 
 export const createStorage = () => {
-    return WalletsStorageController.getInstance();
+    return WalletsStorageRepository.getInstance();
 };
 
 export const initializeStorage = async (): Promise<void> => {
-    await WalletsStorageController.getInstance().initialize();
+    await WalletsStorageRepository.getInstance().initialize();
 };

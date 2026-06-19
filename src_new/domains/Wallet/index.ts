@@ -1,22 +1,24 @@
+import Asset, { Assets } from "@domains/Asset";
 import WalletsService from "@services/Wallets";
 import KeysManager from "@services/KeysManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
+import { generateRandomId, stringifyPrivateKeyToUnitArray } from "@utils/index";
 import { sign } from "@noble/secp256k1";
 import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
-import Asset, { Assets } from "@domains/Asset";
-import { generateRandomId } from "@utils/index";
+import { WalletTypes } from "@domains/WalletsStorageRepository";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
 
 export interface StoredWalletMeta {
+    id: string;
     name: string;
     address: Address;
-    encryptedPrivateKey: string;
+    encryptedData: string;
     seed: Uint8Array | null;
     index: string | null;
 }
@@ -24,9 +26,9 @@ export interface StoredWalletMeta {
 export interface IWalletOptions {
     name: string;
     address: Address;
-    encryptedPrivateKey: EncryptedData;
-    seed?: Uint8Array;
-    index?: number;
+    encryptedData: EncryptedData;
+    seed?: Uint8Array | null;
+    index?: number | null;
     id?: string;
 }
 
@@ -36,6 +38,12 @@ export interface ICreateHDWalletDefaultOptions {
     passwordProvider: TPasswordProvider;
     index: number;
     customHDPath?: string | null;
+}
+
+export interface IWalletEncryptedFields {
+    keyData: Uint8Array;
+    depth: number | null;
+    HDPath: string | null;
 }
 
 export interface ICreateWalletFromMnemonicPayload extends ICreateHDWalletDefaultOptions {
@@ -72,7 +80,8 @@ export default class Wallet {
     private id: string;
     private name: string;
     private address: Address;
-    private privateKey: EncryptedData;
+    private type: WalletTypes;
+    private encryptedData: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
     private seed: Uint8Array | null;
@@ -81,7 +90,7 @@ export default class Wallet {
     private constructor({
         name,
         address,
-        encryptedPrivateKey,
+        encryptedData,
         seed,
         index,
         id,
@@ -91,9 +100,10 @@ export default class Wallet {
         this.index = index ?? null;
         this.seed = seed ?? null;
         this.address = address;
-        this.privateKey = encryptedPrivateKey;
+        this.encryptedData = encryptedData;
         this.assets = new Map();
         this.isLocked = true;
+        this.type = seed && index ? WalletTypes.HD : WalletTypes.PRIVATE_KEY;
     }
 
     public static async fromPrivateKey(
@@ -106,8 +116,8 @@ export default class Wallet {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        const encrypted: EncryptedData = await this.encryptPrivateKey(
-            privateKey,
+        const encrypted: EncryptedData = await this.encryptPrivateData(
+            { keyData: privateKey, HDPath: null, depth: null },
             password,
         );
 
@@ -115,7 +125,7 @@ export default class Wallet {
             id,
             name,
             address,
-            encryptedPrivateKey: encrypted,
+            encryptedData: encrypted,
         });
     }
 
@@ -139,8 +149,8 @@ export default class Wallet {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        const encryptedPrivateKey: EncryptedData = await this.encryptPrivateKey(
-            privateKey,
+        const encryptedData: EncryptedData = await this.encryptPrivateData(
+            { keyData: seed, HDPath: path, depth: index },
             password,
         );
 
@@ -149,7 +159,7 @@ export default class Wallet {
                 id,
                 name,
                 address,
-                encryptedPrivateKey,
+                encryptedData,
                 seed,
                 index,
             }),
@@ -176,8 +186,8 @@ export default class Wallet {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        const encryptedPrivateKey: EncryptedData = await this.encryptPrivateKey(
-            privateKey,
+        const encryptedData: EncryptedData = await this.encryptPrivateData(
+            { keyData: seed, HDPath: path, depth: index },
             password,
         );
 
@@ -186,7 +196,7 @@ export default class Wallet {
                 id,
                 name,
                 address,
-                encryptedPrivateKey,
+                encryptedData,
                 seed,
                 index,
             }),
@@ -198,7 +208,7 @@ export default class Wallet {
         id,
         name,
         address,
-        encryptedPrivateKey,
+        encryptedData,
         seed,
         index,
     }: IWalletOptions): Wallet {
@@ -213,7 +223,7 @@ export default class Wallet {
             id,
             name,
             address,
-            encryptedPrivateKey,
+            encryptedData,
             seed,
             index,
         });
@@ -223,14 +233,16 @@ export default class Wallet {
      * @deprecated Raw key export is disabled by default. Prefer `withSigningCapability()`.
      * Enable only for legacy migration by calling `Wallet.enableUnsafeRawKeyExportForLegacyInterop()`.
      */
-    public async decrypt(password: string): Promise<Uint8Array> {
+    public async decrypt(
+        passwordProvider: TPasswordProvider,
+    ): Promise<Uint8Array> {
         if (!Wallet.unsafeRawKeyExportEnabled) {
             throw new Error(
                 "Wallet.decrypt is disabled by default for security. Use withSigningCapability() instead.",
             );
         }
 
-        return await this.decryptPrivateKey(password);
+        return await this.decryptPrivateKey(passwordProvider);
     }
 
     public static enableUnsafeRawKeyExportForLegacyInterop(): void {
@@ -245,40 +257,50 @@ export default class Wallet {
         return Wallet.unsafeRawKeyExportEnabled;
     }
 
-    private async decryptPrivateKey(password: string): Promise<Uint8Array> {
+    private async decryptPrivateKey(
+        passwordProvider: TPasswordProvider,
+    ): Promise<Uint8Array> {
+        const { password } = await passwordProvider();
+
         try {
             const decrypted = await CryptoService.decryptWithPassword(
-                this.privateKey,
+                this.encryptedData,
                 password,
             );
 
-            const parsed = JSON.parse(decrypted);
-            if (
-                parsed &&
-                typeof parsed === "object" &&
-                !Array.isArray(parsed)
-            ) {
-                // convert to sorted array of numbers
-                const values: number[] = Object.keys(parsed)
-                    .sort((a, b) => Number(a) - Number(b))
-                    .map((k) => {
-                        const v = parsed[k];
-                        const num = typeof v === "string" ? Number(v) : v;
-                        return typeof num === "number" && !isNaN(num) ? num : 0;
-                    });
-                return new Uint8Array(values);
+            const {
+                keyData: stringifyKeyData,
+                depth,
+                HDPath,
+            } = JSON.parse(decrypted) as Omit<
+                IWalletEncryptedFields,
+                "keyData"
+            > & { keyData: string };
+
+            const keyData: Uint8Array =
+                stringifyPrivateKeyToUnitArray(stringifyKeyData);
+
+            if (!depth && !HDPath) {
+                return keyData;
             }
-            return new Uint8Array(parsed);
+
+            const { privateKey } = await KeysManager.getPrivateDataFromSeed(
+                keyData,
+                depth ?? 0,
+                HDPath,
+            );
+
+            return privateKey;
         } catch (error: any) {
             throw new Error("Unlock Failed: " + error?.message);
         }
     }
 
     public async withSigningCapability<T>(
-        password: string,
+        passwordProvider: TPasswordProvider,
         callback: (signingCapability: SigningCapability) => Promise<T> | T,
     ): Promise<T> {
-        const privateKey = await this.decryptPrivateKey(password);
+        const privateKey = await this.decryptPrivateKey(passwordProvider);
         let expired = false;
 
         const signingCapability: SigningCapability = {
@@ -306,8 +328,8 @@ export default class Wallet {
         }
     }
 
-    public getEncryptedPrivateKey(): EncryptedData {
-        return this.privateKey;
+    public getEncryptedPrivateData(): EncryptedData {
+        return this.encryptedData;
     }
 
     public registerAsset(asset: Asset): void {
@@ -320,6 +342,10 @@ export default class Wallet {
 
     public getAddress(): Address {
         return this.address;
+    }
+
+    public getType(): WalletTypes {
+        return this.type;
     }
 
     public getName(): string {
@@ -344,9 +370,10 @@ export default class Wallet {
 
     public toString(): StringifiedWalletMeta {
         const meta: StoredWalletMeta = {
+            id: this.id,
             name: this.name,
             address: this.address,
-            encryptedPrivateKey: JSON.stringify(this.privateKey),
+            encryptedData: JSON.stringify(this.encryptedData),
             seed: this.seed ?? null,
             index: this.index?.toString() ?? "",
         };
@@ -354,12 +381,12 @@ export default class Wallet {
         return JSON.stringify(meta);
     }
 
-    private static async encryptPrivateKey(
-        privateKey: Uint8Array,
+    private static async encryptPrivateData(
+        privateData: IWalletEncryptedFields,
         password: string,
     ) {
         return await CryptoService.encryptWithPassword(
-            JSON.stringify(privateKey),
+            JSON.stringify(privateData),
             password,
         );
     }

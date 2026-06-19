@@ -1,31 +1,24 @@
-import EncryptedRecord from "@domains/EncryptedRecord";
 import CryptoService, { type EncryptedData } from "@services/Crypto";
 import Wallet, {
     type StringifiedWalletMeta,
     type Address,
     StoredWalletMeta,
 } from "@domains/Wallet";
+import StoreManager from "@services/StoreManager";
 
 export type Wallets = Map<Address, Wallet>;
-
-export type Seeds = Map<string, EncryptedRecord>;
 
 export type VaultRawData = string;
 
 export type StoredWalletsMetaRecords = Record<Address, StringifiedWalletMeta>;
 
-export type StoredSeedsMetaRecords = Record<string, string>;
-
 export const DEFAULT_STORAGE_KEY = "0";
-
-const DEFAULT_SEED_ID_LENGTH: number = 16;
 
 export default class Vault {
     private static vaultPrefix: string = `ASI_WALLETS_VAULT`;
 
     private isLocked: boolean;
     private wallets: Wallets;
-    private seeds: Seeds;
     private encryptedVaultData: EncryptedData | null;
 
     constructor(VaultData?: VaultRawData) {
@@ -37,7 +30,6 @@ export default class Vault {
 
         this.isLocked = false;
         this.wallets = new Map();
-        this.seeds = new Map();
         this.encryptedVaultData = null;
 
         if (!VaultData) {
@@ -48,30 +40,6 @@ export default class Vault {
 
         this.encryptedVaultData = parsedData;
         this.isLocked = true;
-    }
-
-    public static getSavedVaultKeys(): string[] {
-        this.ensureBrowserEnvironment();
-
-        const keys: string[] = [];
-
-        for (let i = 0; i < localStorage.length; i++) {
-            const key: string | null = localStorage.key(i);
-
-            if (key && key.startsWith(this.vaultPrefix)) {
-                keys.push(key);
-            }
-        }
-
-        return keys;
-    }
-
-    public static getVaultDataFromStorage(
-        vaultKey: string,
-    ): VaultRawData | null {
-        this.ensureBrowserEnvironment();
-
-        return localStorage.getItem(vaultKey);
     }
 
     public isVaultLocked(): boolean {
@@ -85,12 +53,14 @@ export default class Vault {
             throw new Error("Cannot save an unlocked vault");
         }
 
-        const storageKey: string = `${Vault.vaultPrefix}_${vaultKey}`;
+        // const storageKey: string = `${Vault.vaultPrefix}_${vaultKey}`;
 
-        localStorage.setItem(
-            storageKey,
-            JSON.stringify(this.encryptedVaultData),
-        );
+        // localStorage.setItem(
+        //     storageKey,
+        //     JSON.stringify(this.encryptedVaultData),
+        // );
+
+        StoreManager.saveWallets(this.getWallets());
     }
 
     public async lock(password: string): Promise<void> {
@@ -104,7 +74,6 @@ export default class Vault {
         );
 
         this.wallets = new Map();
-        this.seeds = new Map();
         this.isLocked = true;
     }
 
@@ -124,10 +93,9 @@ export default class Vault {
             password,
         );
 
-        const { wallets, seeds } = JSON.parse(decryptedData);
+        const { wallets } = JSON.parse(decryptedData);
 
         this.metaToWallets(wallets);
-        this.metaToSeeds(seeds);
 
         this.isLocked = false;
     }
@@ -178,12 +146,6 @@ export default class Vault {
         return this.wallets.has(address);
     }
 
-    public hasSeed(seedId: string): boolean {
-        this.ensureUnlocked();
-
-        return this.seeds.has(seedId);
-    }
-
     private metaToWallets(meta: StoredWalletsMetaRecords): void {
         const wallets: Wallets = new Map();
         const addresses: Address[] = Object.keys(meta) as Address[];
@@ -191,13 +153,14 @@ export default class Vault {
         addresses.forEach((address: Address) => {
             const walletMeta: StoredWalletMeta = JSON.parse(meta[address]);
 
-            const wallet = Wallet.fromEncryptedData(
-                walletMeta.name,
-                walletMeta.address,
-                JSON.parse(walletMeta.encryptedPrivateKey),
-                walletMeta.masterNodeId,
-                !walletMeta.index ? null : +walletMeta.index,
-            );
+            const wallet = Wallet.fromEncryptedData({
+                id: walletMeta.id,
+                name: walletMeta.name,
+                address: walletMeta.address,
+                encryptedData: JSON.parse(walletMeta.encryptedData),
+                seed: walletMeta.seed ?? null,
+                index: Number(walletMeta.index) ?? null,
+            });
 
             wallets.set(address, wallet);
         });
@@ -205,59 +168,12 @@ export default class Vault {
         this.wallets = wallets;
     }
 
-    private metaToSeeds(meta: StoredSeedsMetaRecords): void {
-        const seeds: Seeds = new Map();
-        const ids: string[] = Object.keys(meta);
-
-        ids.forEach((id: string) => {
-            const seed = EncryptedRecord.createFromStringifiedEncryptedData(
-                meta[id],
-            );
-
-            seeds.set(id, seed);
-        });
-
-        this.seeds = seeds;
-    }
-
-    public getSeeds(): EncryptedRecord[] {
-        this.ensureUnlocked();
-
-        return Array.from(this.seeds.values());
-    }
-
-    public getSeed(id: string): EncryptedRecord | undefined {
-        this.ensureUnlocked();
-
-        return this.seeds.get(id);
-    }
-
-    public addSeed(id: string, seed: EncryptedRecord): void {
-        this.ensureUnlocked();
-
-        this.seeds.set(id, seed);
-    }
-
-    public removeSeed(id: string): void {
-        this.ensureUnlocked();
-
-        this.seeds.delete(id);
-    }
-
-    public getSeedsIds(): string[] {
-        this.ensureUnlocked();
-
-        return Array.from(this.seeds.keys());
-    }
-
     public toString(): string {
-        const seedsMeta: StoredSeedsMetaRecords = {};
         const walletsMeta: StoredWalletsMetaRecords = {};
 
         this.ensureUnlocked();
 
         const addresses: Address[] = this.getWalletAddresses();
-        const seedsIds: string[] = this.getSeedsIds();
 
         addresses.forEach((address: Address) => {
             const wallet: Wallet | undefined = this.getWallet(address);
@@ -269,19 +185,8 @@ export default class Vault {
             walletsMeta[address] = wallet.toString();
         });
 
-        seedsIds.forEach((seedId: string) => {
-            const seed: EncryptedRecord | undefined = this.getSeed(seedId);
-
-            if (!seed) {
-                return;
-            }
-
-            seedsMeta[seedId] = seed.toString();
-        });
-
         return JSON.stringify({
             wallets: walletsMeta,
-            seeds: seedsMeta,
         });
     }
 

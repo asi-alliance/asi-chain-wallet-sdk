@@ -1,10 +1,10 @@
 import {
     IFullWalletRecord,
     IPublicWalletRecord,
-    IWalletEncryptedFields,
-    WalletsStorageController,
+    IWalletRecordEncryptedFields,
+    WalletsStorageRepository,
     WalletTypes,
-} from "@domains/WalletsStorageController";
+} from "@domains/WalletsStorageRepository";
 import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
@@ -50,7 +50,7 @@ class StoreManager {
                 passwordData.password,
             );
 
-            await WalletsStorageController.getInstance().saveWallet(
+            await WalletsStorageRepository.getInstance().saveWallet(
                 id,
                 name,
                 WalletTypes.HD,
@@ -66,7 +66,6 @@ class StoreManager {
 
         const encryptedData = await CryptoService.encryptWithPassword(
             JSON.stringify({
-                name,
                 keyData: privateKey,
                 depth: null,
                 HDPath: null,
@@ -74,7 +73,7 @@ class StoreManager {
             password,
         );
 
-        await WalletsStorageController.getInstance().saveWallet(
+        await WalletsStorageRepository.getInstance().saveWallet(
             id,
             name,
             WalletTypes.PRIVATE_KEY,
@@ -84,6 +83,17 @@ class StoreManager {
         return;
     };
 
+    public static saveWallets = async (wallets: Wallet[]): Promise<void> => {
+        wallets.forEach(async (wallet: Wallet) => {
+            await WalletsStorageRepository.getInstance().saveWallet(
+                wallet.getId(),
+                wallet.getName(),
+                wallet.getType(),
+                wallet.getEncryptedPrivateData(),
+            );
+        });
+    };
+
     public static getWallet = async (
         id: string,
         passwordProvider: TPasswordProvider,
@@ -91,7 +101,7 @@ class StoreManager {
         const { password } = await passwordProvider();
 
         const walletRecord: IFullWalletRecord | null =
-            await WalletsStorageController.getInstance().getWallet(id);
+            await WalletsStorageRepository.getInstance().getWallet(id);
 
         if (!walletRecord) {
             throw new Error("Wallet with this id not found");
@@ -104,7 +114,7 @@ class StoreManager {
             );
         const walletData = JSON.parse(
             walletDataInString,
-        ) as IWalletEncryptedFields;
+        ) as IWalletRecordEncryptedFields;
 
         const keyData: Uint8Array = stringifyPrivateKeyToUnitArray(
             walletData.keyData,
@@ -136,7 +146,7 @@ class StoreManager {
 
     public static getWallets = async (): Promise<IPublicWalletRecord[]> => {
         const walletRecords: IFullWalletRecord[] =
-            await WalletsStorageController.getInstance().getAllWallets();
+            await WalletsStorageRepository.getInstance().getAllWallets();
 
         return walletRecords.map((fullWalletRecord: IFullWalletRecord) => ({
             id: fullWalletRecord.id,

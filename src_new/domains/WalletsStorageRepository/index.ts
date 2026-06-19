@@ -2,7 +2,7 @@ import { ITableRecord, ITableService } from "@domains/TableService";
 import { storageFabric } from "@fabrics/Storage";
 import { EncryptedData } from "@services/Crypto";
 
-const STORE_KEY: string = "ASI_STORE";
+const STORE_KEY: string = "SDK_STORE";
 const WALLETS_DATA_KEY: string = "WALLETS";
 
 export enum WalletTypes {
@@ -16,7 +16,7 @@ export interface IPublicWalletRecord extends ITableRecord {
     type: WalletTypes;
 }
 
-export interface IWalletEncryptedFields {
+export interface IWalletRecordEncryptedFields {
     keyData: string;
     depth: number | null;
     HDPath: string | null;
@@ -29,8 +29,8 @@ export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
     updatedAt?: number;
 }
 
-export class WalletsStorageController {
-    private static instance: WalletsStorageController;
+export class WalletsStorageRepository {
+    private static instance: WalletsStorageRepository;
     private db: ITableService<ITableRecord>;
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
@@ -39,11 +39,11 @@ export class WalletsStorageController {
         this.db = storageFabric();
     }
 
-    public static getInstance(): WalletsStorageController {
-        if (!WalletsStorageController.instance) {
-            WalletsStorageController.instance = new WalletsStorageController();
+    public static getInstance(): WalletsStorageRepository {
+        if (!WalletsStorageRepository.instance) {
+            WalletsStorageRepository.instance = new WalletsStorageRepository();
         }
-        return WalletsStorageController.instance;
+        return WalletsStorageRepository.instance;
     }
 
     public async initialize(): Promise<void> {
@@ -108,7 +108,7 @@ export class WalletsStorageController {
         return this.db;
     }
 
-    public async setToASIStore<T = any>(key: string, value: T): Promise<void> {
+    public async setToSDKStore<T = any>(key: string, value: T): Promise<void> {
         await this.ensureInitialized();
         await this.db.insert(STORE_KEY, {
             id: key,
@@ -117,18 +117,18 @@ export class WalletsStorageController {
         });
     }
 
-    public async getFromASIStore<T = any>(key: string): Promise<T | null> {
+    public async getFromSDKStore<T = any>(key: string): Promise<T | null> {
         await this.ensureInitialized();
         const record = await this.db.getById(STORE_KEY, key);
         return record?.value || null;
     }
 
-    public async deleteFromASIStore(key: string): Promise<void> {
+    public async deleteFromSDKStore(key: string): Promise<void> {
         await this.ensureInitialized();
         await this.db.delete(STORE_KEY, key);
     }
 
-    public async getAllFromASIStore(): Promise<any[]> {
+    public async getAllFromSDKStore(): Promise<any[]> {
         await this.ensureInitialized();
         const records = await this.db.getAll(STORE_KEY);
         return records.map((record) => ({
