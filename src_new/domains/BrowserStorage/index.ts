@@ -26,10 +26,6 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
                 for (let i = 0; i < database.objectStoreNames.length; i++) {
                     this.tables.add(database.objectStoreNames[i]);
                 }
-
-                console.log(
-                    `Database upgraded from version ${oldVersion} to ${this.version}`,
-                );
             };
 
             request.onsuccess = () => {
@@ -143,12 +139,6 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
                     objectStore.createIndex("createdAt", "createdAt", {
                         unique: false,
                     });
-
-                    console.log(
-                        `Table '${tableName}' created with keyPath '${keyPath}'`,
-                    );
-                } else {
-                    console.log(`Table '${tableName}' already exists`);
                 }
             };
 
@@ -299,7 +289,6 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
                 if (database.objectStoreNames.contains(tableName)) {
                     database.deleteObjectStore(tableName);
-                    console.log(`Table '${tableName}' dropped`);
                 }
             };
 

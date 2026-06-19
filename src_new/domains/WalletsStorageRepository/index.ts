@@ -48,12 +48,10 @@ export class WalletsStorageRepository {
 
     public async initialize(): Promise<void> {
         if (this.isInitialized) {
-            console.log("Storage already initialized");
             return;
         }
 
         if (this.initPromise) {
-            console.log("Storage initialization in progress, waiting...");
             return this.initPromise;
         }
 
@@ -67,33 +65,22 @@ export class WalletsStorageRepository {
     }
 
     private async doInitialize(): Promise<void> {
-        console.log("Initializing Storage controller...");
-
         try {
             const asiStoreExists = await this.db.tableExists(STORE_KEY);
 
             if (!asiStoreExists) {
-                console.log(`Creating main table: ${STORE_KEY}`);
                 await this.db.createTable(STORE_KEY, "id");
-            } else {
-                console.log(`Main table ${STORE_KEY} already exists`);
             }
 
             const walletsTableExists =
                 await this.db.tableExists(WALLETS_DATA_KEY);
 
             if (!walletsTableExists) {
-                console.log(`Creating wallets table: ${WALLETS_DATA_KEY}`);
                 await this.db.createTable(WALLETS_DATA_KEY, "id");
-            } else {
-                console.log(`Wallets table ${WALLETS_DATA_KEY} already exists`);
             }
 
             this.isInitialized = true;
-            console.log("Storage controller initialized successfully");
-            console.log(`Active tables: ${STORE_KEY}, ${WALLETS_DATA_KEY}`);
         } catch (error) {
-            console.error("Failed to initialize Storage controller:", error);
             throw error;
         }
     }
@@ -199,12 +186,8 @@ export class WalletsStorageRepository {
     public async clearAllData(): Promise<void> {
         await this.ensureInitialized();
 
-        console.log("Clearing all data from Storage...");
-
         await this.db.clearTable(STORE_KEY);
         await this.db.clearTable(WALLETS_DATA_KEY);
-
-        console.log("All data cleared successfully");
     }
 
     public async clearTable(tableName: string): Promise<void> {
@@ -215,7 +198,6 @@ export class WalletsStorageRepository {
         }
 
         await this.db.clearTable(tableName);
-        console.log(`Table ${tableName} cleared`);
     }
 
     public isReady(): boolean {
@@ -230,7 +212,6 @@ export class WalletsStorageRepository {
     public close(): void {
         this.db.close();
         this.isInitialized = false;
-        console.log("Storage connection closed");
     }
 }
 
