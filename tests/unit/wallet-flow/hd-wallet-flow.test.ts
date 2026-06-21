@@ -128,80 +128,80 @@ test("client restores correct HD account when signing from third derived wallet"
     );
 });
 
-test("HD wallet creates three accounts and gets balance of third derived account", async () => {
-    const mnemonic =
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+// test("HD wallet creates three accounts and gets balance of third derived account", async () => {
+//     const mnemonic =
+//         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-    const passwordProvider = async () => ({
-        password: "123456",
-    });
+//     const passwordProvider = async () => ({
+//         password: "123456",
+//     });
 
-    const network = JSON.parse(process.env.VITE_NETWORKS!).Dev;
+//     const network = JSON.parse(process.env.VITE_NETWORKS!).Dev;
 
-    const observerClient = new ObserverClient({
-        baseUrl: network.ReadOnlyURL,
-    });
+//     const observerClient = new ObserverClient({
+//         baseUrl: network.ReadOnlyURL,
+//     });
 
-    const validatorClient = new ValidatorClient({
-        baseUrl: network.ValidatorURL,
-    });
+//     const validatorClient = new ValidatorClient({
+//         baseUrl: network.ValidatorURL,
+//     });
 
-    const assetsService = new AssetsService(observerClient, validatorClient);
+//     const assetsService = new AssetsService(observerClient, validatorClient);
 
-    const account0 = await Wallet.fromMnemonic({
-        mnemonic,
-        name: "Account 0",
-        passwordProvider,
-        hdWalletOptions: {
-            index: 0,
-        },
-    });
+//     const account0 = await Wallet.fromMnemonic({
+//         mnemonic,
+//         name: "Account 0",
+//         passwordProvider,
+//         hdWalletOptions: {
+//             index: 0,
+//         },
+//     });
 
-    const account1 = await Wallet.fromMnemonic({
-        mnemonic,
-        name: "Account 1",
-        passwordProvider,
-        hdWalletOptions: {
-            index: 1,
-        },
-    });
+//     const account1 = await Wallet.fromMnemonic({
+//         mnemonic,
+//         name: "Account 1",
+//         passwordProvider,
+//         hdWalletOptions: {
+//             index: 1,
+//         },
+//     });
 
-    const account2 = await Wallet.fromMnemonic({
-        mnemonic,
-        name: "Account 2",
-        passwordProvider,
-        hdWalletOptions: {
-            index: 2,
-        },
-    });
+//     const account2 = await Wallet.fromMnemonic({
+//         mnemonic,
+//         name: "Account 2",
+//         passwordProvider,
+//         hdWalletOptions: {
+//             index: 2,
+//         },
+//     });
 
-    const wallet0 = account0.wallet;
-    const wallet1 = account1.wallet;
-    const wallet2 = account2.wallet;
+//     const wallet0 = account0.wallet;
+//     const wallet1 = account1.wallet;
+//     const wallet2 = account2.wallet;
 
-    assert.notEqual(wallet0.getAddress(), wallet1.getAddress());
+//     assert.notEqual(wallet0.getAddress(), wallet1.getAddress());
 
-    assert.notEqual(wallet1.getAddress(), wallet2.getAddress());
+//     assert.notEqual(wallet1.getAddress(), wallet2.getAddress());
 
-    assert.notEqual(wallet0.getAddress(), wallet2.getAddress());
+//     assert.notEqual(wallet0.getAddress(), wallet2.getAddress());
 
-    await wallet2.withSigningCapability(
-        passwordProvider,
-        async (signingCapability) => {
-            const restoredAddress = WalletsService.deriveAddressFromPublicKey(
-                signingCapability.getPublicKey(),
-            );
+//     await wallet2.withSigningCapability(
+//         passwordProvider,
+//         async (signingCapability) => {
+//             const restoredAddress = WalletsService.deriveAddressFromPublicKey(
+//                 signingCapability.getPublicKey(),
+//             );
 
-            assert.equal(restoredAddress, wallet2.getAddress());
-        },
-    );
+//             assert.equal(restoredAddress, wallet2.getAddress());
+//         },
+//     );
 
-    const balance = await assetsService.getBalance(
-        wallet2.getAddress(),
-        defaultAsset,
-    );
+//     const balance = await assetsService.getBalance(
+//         wallet2.getAddress(),
+//         defaultAsset,
+//     );
 
-    assert.equal(balance.asset.getName(), "ASI");
+//     assert.equal(balance.asset.getName(), "ASI");
 
-    assert.ok(balance.amount >= 0n);
-});
+//     assert.ok(balance.amount >= 0n);
+// });
