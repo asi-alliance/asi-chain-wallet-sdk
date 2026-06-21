@@ -15,4 +15,8 @@ export default class ValidatorClient extends BaseHttpClient {
     }) {
         return this.post("/api/transfer", payload);
     }
+
+    public getStatus() {
+        return this.get("/status");
+    }
 }

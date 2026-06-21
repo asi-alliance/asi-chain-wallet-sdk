@@ -4,6 +4,11 @@ export interface IBalanceResponse {
     balance: number;
 }
 
+export interface IBlockDto {
+    blockInfo: string;
+    blockNumber?: number;
+}
+
 export default class ObserverClient extends BaseHttpClient {
     public getBalance(address: string): Promise<IBalanceResponse> {
         return this.get(`/api/balance/${address}`);
@@ -13,11 +18,11 @@ export default class ObserverClient extends BaseHttpClient {
         return this.get(`/api/deploy/${deployHash}`);
     }
 
-    public getBlock(blockHash: string) {
+    public getBlock(blockHash: string): Promise<IBlockDto> {
         return this.get(`/api/block/${blockHash}`);
     }
 
-    public getLatestBlock() {
+    public getLatestBlock(): Promise<IBlockDto> {
         return this.get("/api/block/latest");
     }
 }
