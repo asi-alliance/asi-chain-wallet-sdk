@@ -1,7 +1,11 @@
 import BaseHttpClient from "@domains/BaseHttpClient";
 
+export interface IBalanceResponse {
+    balance: number;
+}
+
 export default class ObserverClient extends BaseHttpClient {
-    public getBalance(address: string) {
+    public getBalance(address: string): Promise<IBalanceResponse> {
         return this.get(`/api/balance/${address}`);
     }
 
