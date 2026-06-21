@@ -20,12 +20,6 @@ export default class Vault {
     private encryptedVaultData: EncryptedData | null;
 
     constructor(VaultData?: VaultRawData) {
-        if (typeof window === "undefined") {
-            throw new Error(
-                "getVault can only be called in a browser environment",
-            );
-        }
-
         this.isLocked = false;
         this.wallets = new Map();
         this.encryptedVaultData = null;
@@ -45,8 +39,6 @@ export default class Vault {
     }
 
     public save(vaultKey: string = DEFAULT_STORAGE_KEY): void {
-        Vault.ensureBrowserEnvironment();
-
         if (!this.isLocked) {
             throw new Error("Cannot save an unlocked vault");
         }
@@ -156,7 +148,6 @@ export default class Vault {
                 name: walletMeta.name,
                 address: walletMeta.address,
                 encryptedData: JSON.parse(walletMeta.encryptedData),
-                seed: walletMeta.seed ?? null,
                 index: Number(walletMeta.index) ?? null,
             });
 
@@ -191,14 +182,6 @@ export default class Vault {
     private ensureUnlocked(): void {
         if (this.isLocked) {
             throw new Error("Attempted to access locked vault");
-        }
-    }
-
-    private static ensureBrowserEnvironment(): void {
-        if (typeof window === "undefined") {
-            throw new Error(
-                "getVault can only be called in a browser environment",
-            );
         }
     }
 }

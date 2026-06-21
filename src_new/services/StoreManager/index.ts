@@ -59,6 +59,8 @@ class StoreManager {
                 WalletTypes.HD,
                 encryptedData,
             );
+
+            return;
         }
 
         if (!isPrivateKeyPasswordData(passwordData)) {

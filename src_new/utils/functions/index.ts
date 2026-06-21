@@ -119,16 +119,10 @@ export const fromAtomicAmountToNumber = (
 
 export const fromAtomicAmount = fromAtomicAmountToString;
 
-export const stringifyPrivateKeyToUnitArray = (
-    stringifyPrivateKey: any,
-): Uint8Array => {
-    const values: number[] = Object.keys(stringifyPrivateKey)
-        .sort((a, b) => Number(a) - Number(b))
-        .map((k: string) => {
-            const v = stringifyPrivateKey[k];
-            const num = typeof v === "string" ? Number(v) : v;
-            return typeof num === "number" && !isNaN(num) ? num : 0;
-        });
+export const stringifyPrivateKeyToUnitArray = (value: any): Uint8Array => {
+    if (value?.type === "Buffer") {
+        return Uint8Array.from(value.data);
+    }
 
-    return new Uint8Array(values);
+    return Uint8Array.from(value);
 };

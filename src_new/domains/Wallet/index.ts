@@ -112,7 +112,7 @@ export default class Wallet {
         this.encryptedData = encryptedData;
         this.assets = new Map();
         this.isLocked = true;
-        this.type = index ? WalletTypes.HD : WalletTypes.PRIVATE_KEY;
+        this.type = index !== null ? WalletTypes.HD : WalletTypes.PRIVATE_KEY;
     }
 
     public static async fromPrivateKey(
@@ -293,7 +293,7 @@ export default class Wallet {
             const keyData: Uint8Array =
                 stringifyPrivateKeyToUnitArray(stringifyKeyData);
 
-            if (!depth && !HDPath) {
+            if (depth === null && HDPath === null) {
                 return keyData;
             }
 

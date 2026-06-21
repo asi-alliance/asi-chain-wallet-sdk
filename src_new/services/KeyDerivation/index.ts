@@ -52,7 +52,7 @@ export default class KeyDerivationService {
     }
 
     public static seedToMasterNode(seed: any): BIP32Interface {
-        return BIP32Factory(ECC).fromSeed(seed);
+        return BIP32Factory(ECC).fromSeed(Buffer.from(seed));
     }
 
     public static async deriveKeyFromMnemonic(
