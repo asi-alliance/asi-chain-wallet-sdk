@@ -57,7 +57,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
 
     @EnsureDatabaseInitialized
     @SkipIfTableExists
-    async createTable(tableName: string): Promise<void> {
+    async createTable(tableName: string, _keyPath: string): Promise<void> {
         await this.storageInterface!.setItem(this.getTableKey(tableName), {});
 
         const tables =

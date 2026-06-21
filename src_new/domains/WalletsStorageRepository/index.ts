@@ -31,12 +31,12 @@ export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
 
 export class WalletsStorageRepository {
     private static instance: WalletsStorageRepository;
-    private db: ITableService<ITableRecord>;
+    private storageInterface: ITableService<ITableRecord>;
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
     private constructor() {
-        this.db = storageFabric();
+        this.storageInterface = storageFabric();
     }
 
     public static getInstance(): WalletsStorageRepository {
@@ -66,17 +66,17 @@ export class WalletsStorageRepository {
 
     private async doInitialize(): Promise<void> {
         try {
-            const asiStoreExists = await this.db.tableExists(STORE_KEY);
+            const asiStoreExists = await this.storageInterface.tableExists(STORE_KEY);
 
             if (!asiStoreExists) {
-                await this.db.createTable(STORE_KEY, "id");
+                await this.storageInterface.createTable(STORE_KEY, "id");
             }
 
             const walletsTableExists =
-                await this.db.tableExists(WALLETS_DATA_KEY);
+                await this.storageInterface.tableExists(WALLETS_DATA_KEY);
 
             if (!walletsTableExists) {
-                await this.db.createTable(WALLETS_DATA_KEY, "id");
+                await this.storageInterface.createTable(WALLETS_DATA_KEY, "id");
             }
 
             this.isInitialized = true;
@@ -92,12 +92,12 @@ export class WalletsStorageRepository {
     }
 
     public getRawDB(): ITableService<ITableRecord> {
-        return this.db;
+        return this.storageInterface;
     }
 
     public async setToSDKStore<T = any>(key: string, value: T): Promise<void> {
         await this.ensureInitialized();
-        await this.db.insert(STORE_KEY, {
+        await this.storageInterface.insert(STORE_KEY, {
             id: key,
             value: value,
             createdAt: Date.now(),
@@ -106,18 +106,18 @@ export class WalletsStorageRepository {
 
     public async getFromSDKStore<T = any>(key: string): Promise<T | null> {
         await this.ensureInitialized();
-        const record = await this.db.getById(STORE_KEY, key);
+        const record = await this.storageInterface.getById(STORE_KEY, key);
         return record?.value || null;
     }
 
     public async deleteFromSDKStore(key: string): Promise<void> {
         await this.ensureInitialized();
-        await this.db.delete(STORE_KEY, key);
+        await this.storageInterface.delete(STORE_KEY, key);
     }
 
     public async getAllFromSDKStore(): Promise<any[]> {
         await this.ensureInitialized();
-        const records = await this.db.getAll(STORE_KEY);
+        const records = await this.storageInterface.getAll(STORE_KEY);
         return records.map((record) => ({
             key: record.id,
             value: record.value,
@@ -131,7 +131,7 @@ export class WalletsStorageRepository {
         encryptedData: EncryptedData,
     ): Promise<void> {
         await this.ensureInitialized();
-        await this.db.insert(WALLETS_DATA_KEY, {
+        await this.storageInterface.insert(WALLETS_DATA_KEY, {
             id: walletId,
             name,
             type,
@@ -142,7 +142,7 @@ export class WalletsStorageRepository {
 
     public async getWallet(id: string): Promise<IFullWalletRecord | null> {
         await this.ensureInitialized();
-        return this.db.getById(
+        return this.storageInterface.getById(
             WALLETS_DATA_KEY,
             id,
         ) as Promise<IFullWalletRecord | null>;
@@ -150,7 +150,7 @@ export class WalletsStorageRepository {
 
     public async getAllWallets(): Promise<IFullWalletRecord[]> {
         await this.ensureInitialized();
-        return this.db.getAll(WALLETS_DATA_KEY) as Promise<IFullWalletRecord[]>;
+        return this.storageInterface.getAll(WALLETS_DATA_KEY) as Promise<IFullWalletRecord[]>;
     }
 
     public async updateWallet(
@@ -158,17 +158,17 @@ export class WalletsStorageRepository {
         updates: Partial<IFullWalletRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
-        await this.db.update(WALLETS_DATA_KEY, address, updates);
+        await this.storageInterface.update(WALLETS_DATA_KEY, address, updates);
     }
 
     public async deleteWallet(address: string): Promise<void> {
         await this.ensureInitialized();
-        await this.db.delete(WALLETS_DATA_KEY, address);
+        await this.storageInterface.delete(WALLETS_DATA_KEY, address);
     }
 
     public async deleteMultipleWallets(addresses: string[]): Promise<void> {
         await this.ensureInitialized();
-        await this.db.deleteMany(WALLETS_DATA_KEY, addresses);
+        await this.storageInterface.deleteMany(WALLETS_DATA_KEY, addresses);
     }
 
     public async hasWallet(address: string): Promise<boolean> {
@@ -186,8 +186,8 @@ export class WalletsStorageRepository {
     public async clearAllData(): Promise<void> {
         await this.ensureInitialized();
 
-        await this.db.clearTable(STORE_KEY);
-        await this.db.clearTable(WALLETS_DATA_KEY);
+        await this.storageInterface.clearTable(STORE_KEY);
+        await this.storageInterface.clearTable(WALLETS_DATA_KEY);
     }
 
     public async clearTable(tableName: string): Promise<void> {
@@ -197,7 +197,7 @@ export class WalletsStorageRepository {
             throw new Error(`Invalid table name: ${tableName}`);
         }
 
-        await this.db.clearTable(tableName);
+        await this.storageInterface.clearTable(tableName);
     }
 
     public isReady(): boolean {
@@ -210,7 +210,7 @@ export class WalletsStorageRepository {
     }
 
     public close(): void {
-        this.db.close();
+        this.storageInterface.close();
         this.isInitialized = false;
     }
 }
