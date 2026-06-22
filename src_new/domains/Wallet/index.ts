@@ -3,13 +3,18 @@ import WalletsService from "@services/Wallets";
 import KeysManager from "@services/KeysManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { validateAddress } from "@utils/validators";
-import { generateRandomId, stringifyPrivateKeyToUnitArray } from "@utils/index";
+import {
+    generateRandomId,
+    getHDWalletOptions,
+    stringifyPrivateKeyToUnitArray,
+} from "@utils/index";
 import { sign } from "@noble/secp256k1";
 import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
 } from "@domains/PasswordProvider";
 import { WalletTypes } from "@domains/WalletsStorageRepository";
+import { isCustomCreateHDWalletOptions } from "@utils/guards";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -19,7 +24,6 @@ export interface StoredWalletMeta {
     name: string;
     address: Address;
     encryptedData: string;
-    seed: Uint8Array | null;
     index: string | null;
 }
 
@@ -27,7 +31,6 @@ export interface IWalletOptions {
     name: string;
     address: Address;
     encryptedData: EncryptedData;
-    seed?: Uint8Array | null;
     index?: number | null;
     id?: string;
 }
@@ -36,8 +39,7 @@ export interface ICreateHDWalletDefaultOptions {
     id?: string;
     name: string;
     passwordProvider: TPasswordProvider;
-    index: number;
-    customHDPath?: string | null;
+    hdWalletOptions: TCreateHDWalletOptions;
 }
 
 export interface IWalletEncryptedFields {
@@ -45,6 +47,14 @@ export interface IWalletEncryptedFields {
     depth: number | null;
     HDPath: string | null;
 }
+
+export type TCreateHDWalletOptions =
+    | {
+          customHDPath: string;
+      }
+    | {
+          index: number;
+      };
 
 export interface ICreateWalletFromMnemonicPayload extends ICreateHDWalletDefaultOptions {
     mnemonic: string;
@@ -57,6 +67,8 @@ export interface ICreateWalletFromSeedPayload extends ICreateHDWalletDefaultOpti
 export interface ICreatedHDWalletData {
     wallet: Wallet;
     path: string;
+    index: number;
+    seed: Uint8Array;
 }
 
 export type StringifiedWalletMeta = string;
@@ -84,26 +96,23 @@ export default class Wallet {
     private encryptedData: EncryptedData;
     private isLocked: boolean;
     private assets: Assets;
-    private seed: Uint8Array | null;
     private index: number | null;
 
     private constructor({
         name,
         address,
         encryptedData,
-        seed,
         index,
         id,
     }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.name = name;
         this.index = index ?? null;
-        this.seed = seed ?? null;
         this.address = address;
         this.encryptedData = encryptedData;
         this.assets = new Map();
         this.isLocked = true;
-        this.type = seed && index ? WalletTypes.HD : WalletTypes.PRIVATE_KEY;
+        this.type = index !== null ? WalletTypes.HD : WalletTypes.PRIVATE_KEY;
     }
 
     public static async fromPrivateKey(
@@ -133,8 +142,7 @@ export default class Wallet {
         mnemonic,
         name,
         passwordProvider,
-        index,
-        customHDPath,
+        hdWalletOptions,
         id,
     }: ICreateWalletFromMnemonicPayload): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
@@ -142,15 +150,24 @@ export default class Wallet {
         const { privateKey, seed, path } =
             await KeysManager.getPrivateDataFromMnemonic(
                 mnemonic,
-                index,
-                customHDPath,
+                hdWalletOptions,
             );
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
+        const currentIndex: number = !isCustomCreateHDWalletOptions(
+            hdWalletOptions,
+        )
+            ? hdWalletOptions.index
+            : 0;
+
         const encryptedData: EncryptedData = await this.encryptPrivateData(
-            { keyData: seed, HDPath: path, depth: index },
+            {
+                keyData: seed,
+                HDPath: path,
+                depth: currentIndex,
+            },
             password,
         );
 
@@ -160,10 +177,11 @@ export default class Wallet {
                 name,
                 address,
                 encryptedData,
-                seed,
-                index,
+                index: currentIndex,
             }),
             path,
+            index: currentIndex,
+            seed,
         };
     }
 
@@ -171,17 +189,13 @@ export default class Wallet {
         seed,
         name,
         passwordProvider,
-        index,
-        customHDPath,
+        hdWalletOptions,
         id,
     }: ICreateWalletFromSeedPayload): Promise<ICreatedHDWalletData> {
         const { password } = await passwordProvider();
 
-        const { privateKey, path } = await KeysManager.getPrivateDataFromSeed(
-            seed,
-            index,
-            customHDPath,
-        );
+        const { privateKey, path, index } =
+            await KeysManager.getPrivateDataFromSeed(seed, hdWalletOptions);
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
@@ -197,10 +211,11 @@ export default class Wallet {
                 name,
                 address,
                 encryptedData,
-                seed,
                 index,
             }),
             path,
+            index,
+            seed,
         };
     }
 
@@ -209,7 +224,6 @@ export default class Wallet {
         name,
         address,
         encryptedData,
-        seed,
         index,
     }: IWalletOptions): Wallet {
         const validation = validateAddress(address);
@@ -224,7 +238,6 @@ export default class Wallet {
             name,
             address,
             encryptedData,
-            seed,
             index,
         });
     }
@@ -280,14 +293,13 @@ export default class Wallet {
             const keyData: Uint8Array =
                 stringifyPrivateKeyToUnitArray(stringifyKeyData);
 
-            if (!depth && !HDPath) {
+            if (depth === null && HDPath === null) {
                 return keyData;
             }
 
             const { privateKey } = await KeysManager.getPrivateDataFromSeed(
                 keyData,
-                depth ?? 0,
-                HDPath,
+                getHDWalletOptions(HDPath, depth),
             );
 
             return privateKey;
@@ -352,10 +364,6 @@ export default class Wallet {
         return this.name;
     }
 
-    public getSeed(): Uint8Array | null {
-        return this.seed;
-    }
-
     public getIndex(): number | null {
         return this.index;
     }
@@ -374,7 +382,6 @@ export default class Wallet {
             name: this.name,
             address: this.address,
             encryptedData: JSON.stringify(this.encryptedData),
-            seed: this.seed ?? null,
             index: this.index?.toString() ?? "",
         };
 

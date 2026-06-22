@@ -119,16 +119,29 @@ export const fromAtomicAmountToNumber = (
 
 export const fromAtomicAmount = fromAtomicAmountToString;
 
-export const stringifyPrivateKeyToUnitArray = (
-    stringifyPrivateKey: any,
-): Uint8Array => {
-    const values: number[] = Object.keys(stringifyPrivateKey)
-        .sort((a, b) => Number(a) - Number(b))
-        .map((k: string) => {
-            const v = stringifyPrivateKey[k];
-            const num = typeof v === "string" ? Number(v) : v;
-            return typeof num === "number" && !isNaN(num) ? num : 0;
-        });
+export const stringifyPrivateKeyToUnitArray = (value: unknown): Uint8Array => {
+    if (value instanceof Uint8Array) {
+        return value;
+    }
 
-    return new Uint8Array(values);
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "type" in value &&
+        value.type === "Buffer" &&
+        "data" in value &&
+        Array.isArray(value.data)
+    ) {
+        return Uint8Array.from(value.data);
+    }
+
+    if (Array.isArray(value)) {
+        return Uint8Array.from(value);
+    }
+
+    if (typeof value === "object" && value !== null) {
+        return Uint8Array.from(Object.values(value));
+    }
+
+    throw new Error("Unsupported private key format");
 };

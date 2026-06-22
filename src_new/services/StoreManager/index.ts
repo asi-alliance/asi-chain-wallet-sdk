@@ -11,7 +11,10 @@ import {
 } from "@domains/PasswordProvider";
 import Wallet from "@domains/Wallet";
 import CryptoService from "@services/Crypto";
-import { stringifyPrivateKeyToUnitArray } from "@utils/index";
+import {
+    getHDWalletOptions,
+    stringifyPrivateKeyToUnitArray,
+} from "@utils/index";
 import { isPrivateKeyPasswordData } from "@utils/guards";
 
 export interface ISeedStoreData {
@@ -56,6 +59,8 @@ class StoreManager {
                 WalletTypes.HD,
                 encryptedData,
             );
+
+            return;
         }
 
         if (!isPrivateKeyPasswordData(passwordData)) {
@@ -139,8 +144,10 @@ class StoreManager {
             seed: keyData,
             name: walletRecord.name,
             passwordProvider,
-            index: walletData.depth!,
-            customHDPath: walletData.HDPath,
+            hdWalletOptions: getHDWalletOptions(
+                walletData.HDPath,
+                walletData.depth,
+            ),
         });
 
         return wallet;

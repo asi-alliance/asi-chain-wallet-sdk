@@ -1,4 +1,4 @@
-import Wallet, { Address } from "@domains/Wallet";
+import Wallet, { Address, TCreateHDWalletOptions } from "@domains/Wallet";
 import {
     TPasswordProvider,
     TPrivateKeyPasswordProvider,
@@ -62,19 +62,17 @@ export default class Client {
         mnemonic: string,
         name: string,
         passwordProvider: TPasswordProvider,
-        index: number,
-        customHDPath?: string,
+        hdWalletOptions: TCreateHDWalletOptions,
     ): Promise<Wallet> {
-        const { wallet, path } = await Wallet.fromMnemonic({
+        const { wallet, path, index, seed } = await Wallet.fromMnemonic({
             mnemonic,
             name,
             passwordProvider,
-            index,
-            customHDPath,
+            hdWalletOptions,
         });
 
         StoreManager.saveWallet(wallet.getId(), name, passwordProvider, {
-            seed: wallet.getSeed()!,
+            seed,
             index,
             path,
         });

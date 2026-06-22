@@ -3,7 +3,8 @@ import KeyDerivationService, {
 } from "@services/KeyDerivation";
 import { PRIVATE_KEY_LENGTH } from "@utils/constants";
 import { utils, getPublicKey } from "@noble/secp256k1";
-import MnemonicService from "@services/Mnemonic";
+import { TCreateHDWalletOptions } from "@domains/Wallet";
+import { isCustomCreateHDWalletOptions } from "@utils/guards";
 
 const { randomBytes, bytesToHex } = utils;
 
@@ -11,13 +12,17 @@ export interface KeyPair {
     privateKey: Uint8Array;
     publicKey: Uint8Array;
 }
-export interface IHDWalletPrivateKeyDataFromSeed {
+export interface IBaseHDWalletPrivateKeyData {
     path: string;
     privateKey: Uint8Array;
 }
 
-export interface IHDWalletPrivateKeyDataFromMnemonic extends IHDWalletPrivateKeyDataFromSeed {
+export interface IHDWalletPrivateKeyDataFromMnemonic extends IBaseHDWalletPrivateKeyData {
     seed: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromSeed extends IBaseHDWalletPrivateKeyData {
+    index: number;
 }
 
 export default class KeysManager {
@@ -72,21 +77,16 @@ export default class KeysManager {
 
     public static async getPrivateDataFromMnemonic(
         mnemonic: string,
-        index: number,
-        customHDPath?: string | null,
+        hdWalletOptions: TCreateHDWalletOptions,
     ): Promise<IHDWalletPrivateKeyDataFromMnemonic> {
-        const customHdPathWithIndex: string | undefined = !customHDPath
-            ? undefined
-            : MnemonicService.replaceIndex(customHDPath, index);
-
-        const path: string =
-            customHdPathWithIndex ??
-            KeyDerivationService.buildBip44Path({
-                coinType: 60,
-                account: 0,
-                change: 0,
-                index: index,
-            });
+        const path: string = !isCustomCreateHDWalletOptions(hdWalletOptions)
+            ? KeyDerivationService.buildBip44Path({
+                  coinType: 60,
+                  account: 0,
+                  change: 0,
+                  index: hdWalletOptions.index,
+              })
+            : hdWalletOptions.customHDPath;
 
         const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
@@ -100,27 +100,29 @@ export default class KeysManager {
 
     public static async getPrivateDataFromSeed(
         seed: Uint8Array,
-        index: number,
-        customHDPath?: string | null,
+        hdWalletOptions: TCreateHDWalletOptions,
     ): Promise<IHDWalletPrivateKeyDataFromSeed> {
-        const customHdPathWithIndex: string | undefined = !customHDPath
-            ? undefined
-            : MnemonicService.replaceIndex(customHDPath, index);
+        const currentIndex: number = !isCustomCreateHDWalletOptions(
+            hdWalletOptions,
+        )
+            ? hdWalletOptions.index
+            : 0;
 
-        const path: string =
-            customHdPathWithIndex ??
-            KeyDerivationService.buildBip44Path({
-                coinType: 60,
-                account: 0,
-                change: 0,
-                index: index,
-            });
+        const path: string = !isCustomCreateHDWalletOptions(hdWalletOptions)
+            ? KeyDerivationService.buildBip44Path({
+                  coinType: 60,
+                  account: 0,
+                  change: 0,
+                  index: currentIndex,
+              })
+            : hdWalletOptions.customHDPath;
 
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
         return {
             privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
             path,
+            index: currentIndex,
         };
     }
 
