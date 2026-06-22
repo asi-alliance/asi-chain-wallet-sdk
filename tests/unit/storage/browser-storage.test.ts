@@ -8,5 +8,8 @@ import { runStorageContract } from "./storage.contract";
 
 runStorageContract(
     test,
-    () => new BrowserStorage(`test-browser-storage-${Date.now()}-${Math.random()}`),
+    () =>
+        new BrowserStorage(
+            `test-browser-storage-${Date.now()}-${Math.random()}`,
+        ),
 );

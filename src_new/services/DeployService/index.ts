@@ -1,10 +1,6 @@
-import ObserverClient, { IBlockDto } from "@domains/ObserverClient";
-import ValidatorClient from "@domains/ValidatorClient";
+import ObserverClient from "@domains/ObserverClient";
 
-import {
-    FAULT_TOLERANCE_THRESHOLD,
-    INVALID_BLOCK_NUMBER,
-} from "@utils/constants";
+import { FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
 
 export enum DeployStatus {
     DEPLOYING = "Deploying",
@@ -25,35 +21,15 @@ export type DeployStatusResult =
           errorMessage: string;
       };
 
-export default class BlockService {
-    constructor(
-        private readonly observerClient: ObserverClient,
-        private readonly validatorClient: ValidatorClient,
-    ) {}
+export default class DeployService {
+    private readonly observerClient: ObserverClient;
+
+    constructor(observerClient: ObserverClient) {
+        this.observerClient = observerClient;
+    }
 
     public async getDeploy(deployHash: string): Promise<any> {
         return this.observerClient.getDeploy(deployHash);
-    }
-
-    public async getBlock(blockHash: string): Promise<any> {
-        const response: IBlockDto =
-            await this.observerClient.getBlock(blockHash);
-
-        return response.blockInfo;
-    }
-
-    public async getLatestBlock(): Promise<any> {
-        return this.observerClient.getLatestBlock();
-    }
-
-    public async getLatestBlockNumber(): Promise<number> {
-        try {
-            const block: IBlockDto = await this.getLatestBlock();
-
-            return block.blockNumber ?? INVALID_BLOCK_NUMBER;
-        } catch {
-            return INVALID_BLOCK_NUMBER;
-        }
     }
 
     public async isDeployFinalized(deploy: any): Promise<boolean> {
@@ -85,16 +61,6 @@ export default class BlockService {
                 errorMessage:
                     error instanceof Error ? error.message : String(error),
             };
-        }
-    }
-
-    public async isValidatorActive(): Promise<boolean> {
-        try {
-            await this.validatorClient.getStatus();
-
-            return true;
-        } catch {
-            return false;
         }
     }
 }
