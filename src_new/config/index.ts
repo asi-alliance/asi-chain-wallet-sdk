@@ -1,5 +1,5 @@
 import Asset from "@domains/Asset";
-import { ResubmitConfig } from "@services/Resubmit/types";
+import { ResubmitConfig } from "@services/Resubmit";
 import { generateRandomId } from "@utils/functions";
 
 export interface WalletClientConfig {
