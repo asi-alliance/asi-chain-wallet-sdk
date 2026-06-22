@@ -85,10 +85,7 @@ test("validateAccountName covers required, length, char and success paths", () =
 
     const tooLong = validateAccountName("a".repeat(31));
     assert.equal(tooLong.isValid, false);
-    assert.equal(
-        tooLong.error,
-        "Account name must be 30 characters or less",
-    );
+    assert.equal(tooLong.error, "Account name must be 30 characters or less");
 
     const invalidChars = validateAccountName("bad/name");
     assert.equal(invalidChars.isValid, false);

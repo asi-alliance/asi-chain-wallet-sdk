@@ -2,7 +2,7 @@ import {
     IDBStorageController,
     ISeedRecord,
     IWalletRecord,
-} from "@domains/IDBStorageController";
+} from "@domains/WalletsStorageController";
 import {
     THDWalletPasswordProvider,
     TPasswordProvider,

@@ -19,11 +19,13 @@ const aliasEntries = {
     "@domains": path.resolve("src_new/domains"),
     "@config": path.resolve("src_new/config"),
     "@utils": path.resolve("src_new/utils"),
+    "@scripts": path.resolve("src_new/scripts"),
+    "@fabrics": path.resolve("src_new/fabrics"),
 };
 
 export default [
     {
-        input: "src/index.ts",
+        input: "src_new/index.ts",
         external,
         plugins: [
             alias({ entries: aliasEntries }),
@@ -47,7 +49,7 @@ export default [
         ],
     },
     {
-        input: "src/index.ts",
+        input: "src_new/index.ts",
         plugins: [alias({ entries: aliasEntries }), dts()],
         output: [{ file: "dist/index.d.ts", format: "es" }],
     },
