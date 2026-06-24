@@ -1,17 +1,16 @@
 import Signer, {
-    IHierarchicalDeterministicSignMessagePayload,
+    IPrivateKeySignMessagePayload,
     ISignMessageResponse,
-} from "../Signer";
+} from "..";
 import CryptoService from "@services/Crypto";
 import KeysManager from "@services/KeysManager";
 import { stringifyPrivateKeyToUnitArray } from "@utils/functions";
 import { TPasswordProvider } from "@domains/PasswordProvider";
 import { sign } from "@noble/secp256k1";
 
-export default class HierarchicalDeterministicSigner extends Signer {
-    private async derivePrivateKey(
+export default class PrivateKeySigner extends Signer {
+    private async getPrivateKey(
         passwordProvider: TPasswordProvider,
-        derivationPath: string,
     ): Promise<Uint8Array> {
         const { password } = await passwordProvider();
 
@@ -21,31 +20,17 @@ export default class HierarchicalDeterministicSigner extends Signer {
                 password,
             );
 
-            const seed: Uint8Array =
-                stringifyPrivateKeyToUnitArray(stringifyKeyData);
-
-            const { privateKey } = await KeysManager.getPrivateDataFromSeed(
-                seed,
-                {
-                    customHDPath: derivationPath,
-                },
-            );
-
-            return privateKey;
+            return stringifyPrivateKeyToUnitArray(stringifyKeyData);
         } catch (error: any) {
-            throw new Error("Derive Private Key Failed: " + error?.message);
+            throw new Error("Get Private Key Failed: " + error?.message);
         }
     }
 
     public async signMessage({
         passwordProvider,
         message,
-        derivationPath,
-    }: IHierarchicalDeterministicSignMessagePayload): Promise<ISignMessageResponse> {
-        const privateKey = await this.derivePrivateKey(
-            passwordProvider,
-            derivationPath,
-        );
+    }: IPrivateKeySignMessagePayload): Promise<ISignMessageResponse> {
+        const privateKey = await this.getPrivateKey(passwordProvider);
         const publicKey = KeysManager.getPublicKeyFromPrivateKey(privateKey);
 
         try {

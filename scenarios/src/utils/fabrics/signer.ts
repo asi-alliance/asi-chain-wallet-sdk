@@ -1,13 +1,13 @@
+import Signer from "../../domains/Signer";
+import CryptoService from "@services/Crypto";
+import HDSigner from "../../domains/Signer/HD";
+import PrivateKeySigner from "../../domains/Signer/PK";
+import { WalletTypes } from "@domains/WalletsStorageRepository";
 import {
     TPasswordProvider,
     THDSecretProvider,
     TPrivateKeyProvider,
 } from "@domains/PasswordProvider";
-import { WalletTypes } from "@domains/WalletsStorageRepository";
-import Signer from "../../domains/Signer";
-import HierarchicalDeterministicSigner from "../../domains/HierarchicalDeterministicSigner";
-import CryptoService from "@services/Crypto";
-import PrivateKeySigner from "../../domains/PrivateKeySigner";
 
 export type TCreateSignerPayload =
     | {
@@ -38,6 +38,6 @@ export const createSigner = async (
             return new PrivateKeySigner(encryptedSecret);
 
         case WalletTypes.HD:
-            return new HierarchicalDeterministicSigner(encryptedSecret);
+            return new HDSigner(encryptedSecret);
     }
 };

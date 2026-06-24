@@ -1,15 +1,13 @@
 import Signer from "../Signer";
 import Account, { IAccountOptions } from "../Account";
 import { WalletTypes } from "@domains/WalletsStorageRepository";
+import { createSigner } from "../../utils/fabrics/signer";
+import { generateRandomId } from "@utils/index";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
     TPasswordProvider,
 } from "@domains/PasswordProvider";
-import { generateRandomId } from "@utils/index";
-import HierarchicalDeterministicSigner from "../HierarchicalDeterministicSigner";
-import PrivateKeySigner from "../PrivateKeySigner";
-import { createSigner } from "../../utils/fabrics/signer";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -123,8 +121,7 @@ export default class Wallet {
         return this.activeAccount;
     }
 
-    public static async create(
-        type: WalletTypes.PRIVATE_KEY,
+    public static async createPk(
         accountOptions: IAccountOptions,
         passwordProvider: TPasswordProvider,
         secretData: IPrivateKeyCredentials,
@@ -132,17 +129,55 @@ export default class Wallet {
         const secretProvider = async () => {
             return secretData;
         };
+
         const signer: Signer = await createSigner({
-            type,
+            type: WalletTypes.PRIVATE_KEY,
             passwordProvider,
             secretProvider,
         });
+
+        const firstAccountId: string = generateRandomId();
+        const firstAccount: Account = new Account(accountOptions);
+
+        const accounts: Map<string, Account> = new Map([
+            [firstAccountId, firstAccount],
+        ]);
+
+        return new Wallet({
+            type: WalletTypes.PRIVATE_KEY,
+            signer,
+            accounts,
+            activeAccount: firstAccount,
+        });
     }
 
-    // public static async create(
-    //     type: WalletTypes.HD,
-    //     accountOptions: IAccountOptions,
-    //     passwordProvider: TPasswordProvider,
-    //     secretData: IHDSecret,
-    // ): Promise<Wallet> {}
+    public static async createHD(
+        accountOptions: IAccountOptions,
+        passwordProvider: TPasswordProvider,
+        secretData: IHDSecret,
+    ): Promise<Wallet> {
+        const secretProvider = async () => {
+            return secretData;
+        };
+
+        const signer: Signer = await createSigner({
+            type: WalletTypes.HD,
+            passwordProvider,
+            secretProvider,
+        });
+
+        const firstAccountId: string = generateRandomId();
+        const firstAccount: Account = new Account(accountOptions);
+
+        const accounts: Map<string, Account> = new Map([
+            [firstAccountId, firstAccount],
+        ]);
+
+        return new Wallet({
+            type: WalletTypes.HD,
+            signer,
+            accounts,
+            activeAccount: firstAccount,
+        });
+    }
 }
