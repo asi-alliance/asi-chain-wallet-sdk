@@ -3,19 +3,19 @@ import { EncryptedData } from "../../services/Crypto";
 
 export type TPKSigningContext = {
     passwordProvider: SecretsProvider;
-}
+};
 
 export type THDSigningContext = {
     passwordProvider: SecretsProvider;
     index: number;
-}
+};
 
 export type ISignMessageResponse = {
     signature: Uint8Array;
     publicKey: Uint8Array;
-}
+};
 
-export type TSigningContext = TPKSigningContext | THDSigningContext
+export type TSigningContext = TPKSigningContext | THDSigningContext;
 
 export default abstract class Signer {
     protected encryptedSecret: EncryptedData;
