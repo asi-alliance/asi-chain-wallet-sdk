@@ -1,6 +1,7 @@
 import KeyDerivationService, {
     Bip44PathOptions,
 } from "@services/KeyDerivation";
+import MnemonicService from "../Mnemonic";
 import { isCustomCreateHDWalletOptions } from "../../utils/guards";
 import { PRIVATE_KEY_LENGTH } from "../../utils/constants";
 import { utils, getPublicKey } from "@noble/secp256k1";
@@ -84,7 +85,7 @@ export default class KeysManager {
               })
             : hdWalletOptions.customHDPath;
 
-        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
+        const seed = await MnemonicService.mnemonicToSeed(mnemonic);
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
         return {
