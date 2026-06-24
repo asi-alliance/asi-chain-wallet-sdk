@@ -1,6 +1,5 @@
 import * as bip39 from "bip39";
 import { setupBufferPolyfill } from "../../utils/polyfills";
-import { mnemonicToSeed } from "bip39";
 
 setupBufferPolyfill();
 
@@ -35,15 +34,15 @@ export default class MnemonicService {
     }
 
     public static async mnemonicToSeed(
-        mnemonicWords: string[] | string,
+        mnemonic: string | string[],
         passphrase = "",
     ): Promise<Uint8Array> {
-        if (typeof mnemonicWords === "string") {
-            return await mnemonicToSeed(mnemonicWords, passphrase);
+        if (typeof mnemonic === "string") {
+            return await bip39.mnemonicToSeed(mnemonic, passphrase);
         }
 
-        return await mnemonicToSeed(
-            this.wordArrayToMnemonic(mnemonicWords),
+        return await bip39.mnemonicToSeed(
+            this.wordArrayToMnemonic(mnemonic),
             passphrase,
         );
     }

@@ -177,4 +177,15 @@ export default class Bip44Path {
             this.index + 1,
         );
     }
+
+    // public static replaceBip44Index(
+    //     path: string | Bip44Path,
+    //     index: number,
+    // ): Bip44Path {
+    //     const bip44Path: Bip44Path =
+    //         typeof path === "string" ? Bip44Path.parse(path) : path.clone();
+    //     bip44Path.setIndex(index);
+    //     return bip44Path;
+    // }
+
 }
