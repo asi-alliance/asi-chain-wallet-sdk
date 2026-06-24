@@ -63,6 +63,10 @@ export interface IHierarchicalDeterministicSignMessagePayload extends IPrivateKe
     derivationPath: string;
 }
 
+export type TSignMessagePayload =
+    | IPrivateKeySignMessagePayload
+    | IHierarchicalDeterministicSignMessagePayload;
+
 export default abstract class Signer {
     protected encryptedSecret: EncryptedData;
 
@@ -75,8 +79,6 @@ export default abstract class Signer {
     }
 
     public abstract signMessage(
-        payload:
-            | IPrivateKeySignMessagePayload
-            | IHierarchicalDeterministicSignMessagePayload,
+        payload: TSignMessagePayload,
     ): Promise<ISignMessageResponse>;
 }
