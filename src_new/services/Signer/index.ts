@@ -1,11 +1,23 @@
 import blakejs from "blakejs";
+import Wallet from "@domains/Wallet";
 import BinaryWriter from "@services/BinaryWriter";
-import { SignedResult, SigningRequest } from "@domains/Signer";
 import { TPasswordProvider } from "@domains/PasswordProvider";
 import { DeployData } from "@domains/Deploy";
 import { encodeBase16 } from "@utils/codec";
 
 const { blake2bHex } = blakejs;
+
+export interface SigningRequest {
+    wallet: Wallet;
+    data: any;
+}
+
+export interface SignedResult {
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
 
 export default class SignerService {
     public static async sign(
