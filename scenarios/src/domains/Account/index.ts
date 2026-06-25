@@ -1,34 +1,33 @@
 import Asset, { Assets } from "../Asset";
 import { DEFAULT_ASSET } from "../../config";
 
-export interface IAccountOptions {
-    name: string;
-    index: number | null;
-    address: string;
+export interface IPortfolioOptions {
     assets?: Assets;
     primaryAsset?: Asset;
 }
 
+export interface IAccountOptions {
+    name: string;
+    index: number | null;
+    address: string;
+    portfolioOptions?: IPortfolioOptions;
+}
+
 class Account {
-    private name: string;
-    private index: number | null;
+    private readonly name: string;
+    private readonly index: number | null;
+    private readonly address: string;
     private assets: Assets;
     private primaryAsset: Asset;
-    private address: string;
 
-    constructor({
-        name,
-        index,
-        address,
-        assets,
-        primaryAsset,
-    }: IAccountOptions) {
+    constructor({ name, index, address, portfolioOptions }: IAccountOptions) {
         this.name = name;
         this.index = index;
         this.address = address;
         this.assets =
-            assets ?? new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
-        this.primaryAsset = primaryAsset ?? DEFAULT_ASSET;
+            portfolioOptions?.assets ??
+            new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
+        this.primaryAsset = portfolioOptions?.primaryAsset ?? DEFAULT_ASSET;
     }
 
     public getName(): string {
@@ -53,6 +52,18 @@ class Account {
 
     public registerAsset(asset: Asset): void {
         this.assets.set(asset.getId(), asset);
+    }
+
+    public setPrimaryAsset(id: Asset["id"]): void {
+        const targetAsset: Asset | undefined = this.assets.get(id);
+
+        if (!targetAsset) {
+            console.error("Cannot set primary asset with incorrect id");
+
+            return;
+        }
+
+        this.primaryAsset = targetAsset;
     }
 }
 
