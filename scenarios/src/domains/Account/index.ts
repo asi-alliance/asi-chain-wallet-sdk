@@ -25,12 +25,16 @@ class Account {
         return this.index;
     }
 
-    public getAssets(): Assets {
+    public listAssets(): Assets {
         return this.assets;
     }
 
     public getAsset(id: Asset["id"]): Asset | null {
         return this.assets.get(id) ?? null;
+    }
+
+    public registerAsset(asset: Asset): void {
+        this.assets.set(asset.getId(), asset);
     }
 }
 
