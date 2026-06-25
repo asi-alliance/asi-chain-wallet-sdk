@@ -1,10 +1,9 @@
 import Asset from "../domains/Asset";
 import { generateRandomId } from "../utils";
 
-const DEFAULT_DECIMALS_AMOUNT: number = 8;
+export const DEFAULT_DECIMALS_AMOUNT: number = 8;
 
-export const defaultAsset: Asset = new Asset(
-    generateRandomId(),
-    "ASI",
-    DEFAULT_DECIMALS_AMOUNT,
-);
+export const DEFAULT_ASSET: Asset = new Asset({
+    id: generateRandomId(),
+    name: "ASI",
+});

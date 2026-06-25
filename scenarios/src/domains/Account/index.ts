@@ -1,9 +1,10 @@
 import Asset, { Assets } from "../Asset";
-import { defaultAsset } from "../../config";
+import { DEFAULT_ASSET } from "../../config";
 
 export interface IAccountOptions {
     name: string;
     index: number | null;
+    address: string;
     assets?: Assets;
     primaryAsset?: Asset;
 }
@@ -13,24 +14,37 @@ class Account {
     private index: number | null;
     private assets: Assets;
     private primaryAsset: Asset;
+    private address: string;
 
-    constructor({ name, index, assets, primaryAsset }: IAccountOptions) {
+    constructor({
+        name,
+        index,
+        address,
+        assets,
+        primaryAsset,
+    }: IAccountOptions) {
         this.name = name;
         this.index = index;
-        this.assets = assets ?? new Map([[defaultAsset.getId(), defaultAsset]]);
-        this.primaryAsset = primaryAsset ?? defaultAsset;
+        this.address = address;
+        this.assets =
+            assets ?? new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
+        this.primaryAsset = primaryAsset ?? DEFAULT_ASSET;
     }
 
     public getName(): string {
         return this.name;
     }
 
+    public getAddress(): string {
+        return this.address;
+    }
+
     public getIndex(): number | null {
         return this.index;
     }
 
-    public listAssets(): Assets {
-        return this.assets;
+    public listAssets(): Asset[] {
+        return Array.from(this.assets.values());
     }
 
     public getAsset(id: Asset["id"]): Asset | null {
