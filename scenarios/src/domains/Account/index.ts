@@ -1,20 +1,24 @@
-import Asset, { Assets } from "@domains/Asset";
+import Asset, { Assets } from "../Asset";
+import { defaultAsset } from "../../config";
 
 export interface IAccountOptions {
     name: string;
     index: number | null;
     assets?: Assets;
+    primaryAsset?: Asset;
 }
 
 class Account {
     private name: string;
     private index: number | null;
     private assets: Assets;
+    private primaryAsset: Asset;
 
-    constructor({ name, index, assets }: IAccountOptions) {
+    constructor({ name, index, assets, primaryAsset }: IAccountOptions) {
         this.name = name;
         this.index = index;
-        this.assets = assets ?? new Map();
+        this.assets = assets ?? new Map([[defaultAsset.getId(), defaultAsset]]);
+        this.primaryAsset = primaryAsset ?? defaultAsset;
     }
 
     public getName(): string {
