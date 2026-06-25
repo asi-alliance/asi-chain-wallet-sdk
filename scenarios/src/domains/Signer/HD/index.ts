@@ -1,37 +1,33 @@
 import CryptoService from "../../../services/Crypto";
 import KeysManager from "../../../services/KeysManager";
-import Signer, { ISignMessageResponse, THDSigningContext } from "..";
-import { toUint8Array } from "../../../utils/functions";
+import KeyDerivationService from "../../../services/KeyDerivation";
+import Signer, { ISignedMessageResponse, THDSigningContext } from "..";
 import { sign } from "@noble/secp256k1";
 
 export default class HDSigner extends Signer {
     public async sign(
         payload: string,
         signingContext: THDSigningContext,
-    ): Promise<ISignMessageResponse> {
+    ): Promise<ISignedMessageResponse> {
         const keyMaterial: string = await CryptoService.decryptWithPassword(
             this.encryptedSecret,
             await signingContext.passwordProvider.getSecret(),
         );
 
-        const seed: Uint8Array = toUint8Array(keyMaterial);
+        const privateKey: Uint8Array =
+            await KeyDerivationService.deriveKeyFromMnemonic(
+                keyMaterial,
+                signingContext.bip44path,
+            );
 
-        const { privateKey } = await KeysManager.getPrivateDataFromSeed(seed, {
-            customHDPath: derivationPath,
-        });
-
-        return privateKey;
-
-        const privateKey = await this.derivePrivateKey(
-            signingContext.passwordProvider,
-            derivationPath,
-        );
+        const publicKey: Uint8Array =
+            KeysManager.getPublicKeyFromPrivateKey(privateKey);
 
         try {
-            const messageResult = await sign(payload, privateKey);
+            const messageResult: Uint8Array = await sign(payload, privateKey);
 
             return {
-                messageResult,
+                signature: messageResult,
                 publicKey,
             };
         } finally {

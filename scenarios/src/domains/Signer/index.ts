@@ -1,3 +1,4 @@
+import Bip44Path from "../Bip44Path";
 import type SecretsProvider from "../SecretsProvider";
 import { EncryptedData } from "../../services/Crypto";
 
@@ -7,10 +8,10 @@ export type TPKSigningContext = {
 
 export type THDSigningContext = {
     passwordProvider: SecretsProvider;
-    index: number;
+    bip44path: string | Bip44Path;
 };
 
-export type ISignMessageResponse = {
+export type ISignedMessageResponse = {
     signature: Uint8Array;
     publicKey: Uint8Array;
 };
@@ -31,5 +32,5 @@ export default abstract class Signer {
     public abstract sign(
         payload: string,
         signingContext: TSigningContext,
-    ): Promise<ISignMessageResponse>;
+    ): Promise<ISignedMessageResponse>;
 }
