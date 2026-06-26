@@ -1,32 +1,32 @@
-import Signer from "../../domains/Signer";
-import CryptoService from "@services/Crypto";
+import Signer, { ISignerRecord } from "../../domains/Signer";
 import HDSigner from "../../domains/Signer/HD";
 import PrivateKeySigner from "../../domains/Signer/PK";
 import { WalletTypes } from "@domains/WalletsStorageRepository";
-import {
-    TPasswordProvider,
-    THDSecretProvider,
-    TPrivateKeyProvider,
-} from "@domains/PasswordProvider";
+import CryptoService from "../../services/Crypto";
+import SecretsProvider, {
+    IHDSecretRecord,
+    IPasswordCredentials,
+    IPrivateKeyCredentials,
+} from "../../domains/SecretsProvider";
 
 export type TCreateSignerPayload =
     | {
           type: WalletTypes.PRIVATE_KEY;
-          passwordProvider: TPasswordProvider;
-          secretProvider: TPrivateKeyProvider;
+          passwordProvider: SecretsProvider<IPasswordCredentials>;
+          secretProvider: SecretsProvider<IPrivateKeyCredentials>;
       }
     | {
           type: WalletTypes.HD;
-          passwordProvider: TPasswordProvider;
-          secretProvider: THDSecretProvider;
+          passwordProvider: SecretsProvider<IPasswordCredentials>;
+          secretProvider: SecretsProvider<IHDSecretRecord>;
       };
 
 export const createSigner = async (
     payload: TCreateSignerPayload,
 ): Promise<Signer> => {
-    const { password } = await payload.passwordProvider();
+    const { password } = payload.passwordProvider.getSecret();
 
-    const secret = await payload.secretProvider();
+    const secret = payload.secretProvider.getSecret();
 
     const encryptedSecret = await CryptoService.encryptWithPassword(
         JSON.stringify(secret),
@@ -39,5 +39,18 @@ export const createSigner = async (
 
         case WalletTypes.HD:
             return new HDSigner(encryptedSecret);
+    }
+};
+
+export const restoreSigner = ({
+    type,
+    encryptedData,
+}: Omit<ISignerRecord, "id">): Signer => {
+    switch (type) {
+        case WalletTypes.PRIVATE_KEY:
+            return new PrivateKeySigner(encryptedData);
+
+        case WalletTypes.HD:
+            return new HDSigner(encryptedData);
     }
 };

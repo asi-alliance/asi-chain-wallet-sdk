@@ -22,12 +22,12 @@ export default class Bip44Path {
     private change: number;
     private index: number;
 
-    constructor(
-        coinType: number,
-        account: number = 0,
-        change: number = 0,
-        index: number = 0,
-    ) {
+    constructor({
+        coinType,
+        account = 0,
+        change = 0,
+        index = 0,
+    }: IBip44PathOptions) {
         if (coinType < 0) {
             throw new Error("coinType must be non-negative");
         }
@@ -63,12 +63,21 @@ export default class Bip44Path {
             );
         }
 
-        const coinTypePart: string = parts[Bip44Path.COIN_TYPE_INDEX].replace("'", "");
-        const accountPart: string = parts[Bip44Path.ACCOUNT_INDEX].replace("'", "");
+        const coinTypePart: string = parts[Bip44Path.COIN_TYPE_INDEX].replace(
+            "'",
+            "",
+        );
+        const accountPart: string = parts[Bip44Path.ACCOUNT_INDEX].replace(
+            "'",
+            "",
+        );
         const changePart: string = parts[Bip44Path.CHANGE_INDEX];
         const indexPart: string = parts[Bip44Path.INDEX_COMPONENT_INDEX];
 
-        const coinType: number = parseInt(coinTypePart, Bip44Path.DECIMAL_RADIX);
+        const coinType: number = parseInt(
+            coinTypePart,
+            Bip44Path.DECIMAL_RADIX,
+        );
         const account: number = parseInt(accountPart, Bip44Path.DECIMAL_RADIX);
         const change: number = parseInt(changePart, Bip44Path.DECIMAL_RADIX);
         const index: number = parseInt(indexPart, Bip44Path.DECIMAL_RADIX);
@@ -88,7 +97,7 @@ export default class Bip44Path {
             throw new Error("BIP-44 path must use 44' as the purpose");
         }
 
-        return new Bip44Path(coinType, account, change, index);
+        return new Bip44Path({ coinType, account, change, index });
     }
 
     public toString(): string {
@@ -143,12 +152,12 @@ export default class Bip44Path {
     }
 
     public static fromOptions(options: IBip44PathOptions): Bip44Path {
-        return new Bip44Path(
-            options.coinType,
-            options.account ?? 0,
-            options.change ?? 0,
-            options.index ?? 0,
-        );
+        return new Bip44Path({
+            coinType: options.coinType,
+            account: options.account ?? 0,
+            change: options.change ?? 0,
+            index: options.index ?? 0,
+        });
     }
 
     public toOptions(): IBip44PathOptions {
@@ -161,21 +170,21 @@ export default class Bip44Path {
     }
 
     public clone(): Bip44Path {
-        return new Bip44Path(
-            this.coinType,
-            this.account,
-            this.change,
-            this.index,
-        );
+        return new Bip44Path({
+            coinType: this.coinType,
+            account: this.account,
+            change: this.change,
+            index: this.index,
+        });
     }
 
     public nextIndex(): Bip44Path {
-        return new Bip44Path(
-            this.coinType,
-            this.account,
-            this.change,
-            this.index + 1,
-        );
+        return new Bip44Path({
+            coinType: this.coinType,
+            account: this.account,
+            change: this.change,
+            index: this.index + 1,
+        });
     }
 
     // public static replaceBip44Index(
@@ -187,5 +196,4 @@ export default class Bip44Path {
     //     bip44Path.setIndex(index);
     //     return bip44Path;
     // }
-
 }

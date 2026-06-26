@@ -1,11 +1,16 @@
-import MnemonicService from "@services/Mnemonic";
-import KeyDerivationService from "@services/KeyDerivation";
-import KeysManager, { type KeyPair } from "@services/KeysManager";
-import { ASI_CHAIN_PREFIX, ASI_COIN_TYPE } from "@utils/constants";
-import { decodeBase16, encodeBase58 } from "@utils/codec";
-import Wallet, { Address } from "@domains/Wallet";
 import blakejs from "blakejs";
 import sha3 from "js-sha3";
+import { Address } from "../../domains/Wallet";
+import {
+    ASI_CHAIN_PREFIX,
+    ASI_COIN_TYPE,
+    decodeBase16,
+    encodeBase58,
+} from "../../utils";
+import MnemonicService from "../Mnemonic";
+import KeysManager, { KeyPair } from "../KeysManager";
+import KeyDerivationService from "../KeyDerivation";
+import Bip44Path from "../../domains/Bip44Path";
 
 const { blake2bHex } = blakejs;
 const { keccak256 } = sha3;
@@ -66,7 +71,7 @@ export default class WalletsService {
 
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
-        const path = KeyDerivationService.buildBip44Path({
+        const path = new Bip44Path({
             coinType: ASI_COIN_TYPE,
             account: 0,
             change: 0,
