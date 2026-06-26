@@ -12,12 +12,15 @@ export default class PrivateKeySigner extends Signer {
     public async decrypt(
         passwordProvider: SecretsProvider<IPasswordCredentials>,
     ): Promise<IPrivateKeyCredentials> {
-        const keyMaterial = await CryptoService.decryptWithPassword(
+        const stringifiedKeyMaterial = await CryptoService.decryptWithPassword(
             this.encryptedSecret,
             passwordProvider.getSecret().password,
         );
+        const keyMaterial: IPrivateKeyCredentials = JSON.parse(
+            stringifiedKeyMaterial,
+        );
 
-        const privateKey: Uint8Array = toUint8Array(keyMaterial);
+        const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
 
         return {
             privateKey,
@@ -28,12 +31,10 @@ export default class PrivateKeySigner extends Signer {
         payload: string,
         signingContext: TSigningContext,
     ): Promise<ISignedMessageResponse> {
-        const keyMaterial: string = await CryptoService.decryptWithPassword(
-            this.encryptedSecret,
-            signingContext.passwordProvider.getSecret().password,
+        const { privateKey } = await this.decrypt(
+            signingContext.passwordProvider,
         );
 
-        const privateKey: Uint8Array = toUint8Array(keyMaterial);
         const publicKey: Uint8Array =
             KeysManager.getPublicKeyFromPrivateKey(privateKey);
 

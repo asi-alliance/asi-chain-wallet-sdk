@@ -1,11 +1,11 @@
 import storage, { LocalStorage } from "node-persist";
-import { ITableRecord, ITableService } from "@domains/TableService";
+import { ITableRecord, ITableService } from "../TableService";
 import {
     EnsureDatabaseInitialized,
     EnsureTableExists,
     SkipIfDatabaseNotInitialized,
     SkipIfTableExists,
-} from "@utils/decorators";
+} from "../../utils/decorators";
 
 const DEFAULT_STORAGE_DIR: string = "./storage";
 const TABLES_FOLDER_KEY: string = "__tables__";

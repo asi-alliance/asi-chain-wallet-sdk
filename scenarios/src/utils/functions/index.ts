@@ -1,4 +1,4 @@
-import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+import { ASI_BASE_UNIT, POWER_BASE } from "../constants";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]

@@ -1,0 +1,291 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import SecretsProvider from "../../../scenarios/src/domains/SecretsProvider";
+import KeysManager from "../../../scenarios/src/services/KeysManager";
+import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
+import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
+import { ISignerRecord } from "../../../scenarios/src/domains/Signer";
+import { IAccountRecord } from "../../../scenarios/src/domains/Account";
+
+const MNEMONIC =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+const PASSWORD = "12345678";
+
+const passwordProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+}));
+
+const createPkProvider = () => {
+    const privateKey = KeysManager.generateRandomKey();
+
+    return {
+        provider: new SecretsProvider(() => ({
+            privateKey,
+        })),
+        privateKey,
+    };
+};
+
+const accountOptions = {
+    name: "Main account",
+};
+
+const createSignerRecord = (wallet: Wallet): ISignerRecord => ({
+    id: "signer-id",
+    type: wallet.getType(),
+    encryptedData: wallet.getSigner().getEncryptedSecret(),
+});
+
+const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>
+    Array.from(wallet.getAccounts()).map(([id, account]) => ({
+        id,
+        signerId: "signer-id",
+        name: account.getName(),
+        index: account.getIndex(),
+    }));
+
+const PAYLOAD =
+    "0102030405060708091011121314151617181920212223242526272829303132";
+
+test("should create PK wallet", async () => {
+    const { provider, privateKey } = createPkProvider();
+
+    const wallet = await Wallet.createPk(
+        accountOptions,
+        passwordProvider,
+        provider,
+    );
+
+    const activeAccount = wallet.getActiveAccount();
+
+    const decrypted = await wallet.getSigner().decrypt(passwordProvider);
+
+    console.log("\n[PK Wallet Creation]");
+    console.log("Wallet ID:", wallet.getId());
+    console.log("Wallet Type:", wallet.getType());
+    console.log("Accounts count:", wallet.getAccounts().size);
+    console.log("Account name:", activeAccount?.getName());
+    console.log("Account index:", activeAccount?.getIndex());
+    console.log("Account address:", activeAccount?.getAddress());
+    console.log(
+        "Private key restored:",
+        Buffer.from(decrypted.privateKey).equals(Buffer.from(privateKey)),
+    );
+
+    assert.equal(wallet.getType(), WalletTypes.PRIVATE_KEY);
+    assert.ok(wallet.getId());
+    assert.ok(wallet.getSigner());
+    assert.equal(wallet.getAccounts().size, 1);
+    assert.ok(activeAccount);
+    assert.equal(activeAccount?.getName(), "Main account");
+    assert.equal(activeAccount?.getIndex(), null);
+    assert.ok(activeAccount?.getAddress());
+    assert.deepEqual(decrypted.privateKey, privateKey);
+});
+
+test("should sign payload with PK wallet signer", async () => {
+    const { provider } = createPkProvider();
+
+    const wallet = await Wallet.createPk(
+        accountOptions,
+        passwordProvider,
+        provider,
+    );
+
+    const result = await wallet.getSigner().sign(PAYLOAD, {
+        passwordProvider,
+    });
+
+    console.log("\n[PK Signing]");
+    console.log("Payload:", PAYLOAD);
+    console.log("Signature length:", result.signature.length);
+    console.log("Public key length:", result.publicKey.length);
+    console.log("Signature:", Buffer.from(result.signature).toString("hex"));
+
+    assert.ok(result.signature instanceof Uint8Array);
+    assert.ok(result.publicKey instanceof Uint8Array);
+});
+
+test("should create HD wallet", async () => {
+    const wallet = await Wallet.createHD(
+        accountOptions,
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 0,
+        },
+    );
+
+    const account = wallet.getActiveAccount();
+
+    const secret = await wallet.getSigner().decrypt(passwordProvider);
+
+    console.log("\n[HD Wallet Creation]");
+    console.log("Wallet ID:", wallet.getId());
+    console.log("Wallet Type:", wallet.getType());
+    console.log("Account address:", account?.getAddress());
+    console.log("HD Path:", secret.rootHDPath.toString());
+    console.log("Seed length:", secret.seed.length);
+
+    assert.equal(wallet.getType(), WalletTypes.HD);
+    assert.equal(wallet.getAccounts().size, 1);
+    assert.ok(account);
+    assert.ok(account?.getAddress());
+    assert.ok(secret.seed instanceof Uint8Array);
+    assert.ok(secret.rootHDPath instanceof Bip44Path);
+});
+
+test("HD wallet should generate different addresses for different indexes", async () => {
+    const wallet0 = await Wallet.createHD(
+        accountOptions,
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 0,
+        },
+    );
+
+    const wallet1 = await Wallet.createHD(
+        accountOptions,
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 1,
+        },
+    );
+
+    const address0 = wallet0.getActiveAccount()?.getAddress();
+
+    const address1 = wallet1.getActiveAccount()?.getAddress();
+
+    console.log("\n[HD Address Derivation]");
+    console.log("Index 0 address:", address0);
+    console.log("Index 1 address:", address1);
+    console.log("Addresses different:", address0 !== address1);
+
+    assert.notEqual(address0, address1);
+});
+
+test("should restore PK wallet", async () => {
+    const { provider } = createPkProvider();
+
+    const original = await Wallet.createPk(
+        accountOptions,
+        passwordProvider,
+        provider,
+    );
+
+    const restored = await Wallet.restore(
+        passwordProvider,
+        createSignerRecord(original),
+        createAccountRecords(original),
+    );
+
+    const originalAddress = original.getActiveAccount()?.getAddress();
+
+    const restoredAddress = restored
+        .getAccounts()
+        .values()
+        .next()
+        .value?.getAddress();
+
+    console.log("\n[PK Wallet Restore]");
+    console.log("Original address:", originalAddress);
+    console.log("Restored address:", restoredAddress);
+    console.log(
+        "Address restored correctly:",
+        originalAddress === restoredAddress,
+    );
+
+    assert.equal(restored.getType(), WalletTypes.PRIVATE_KEY);
+    assert.equal(restored.getAccounts().size, 1);
+    assert.equal(restoredAddress, originalAddress);
+});
+
+test("should restore HD wallet", async () => {
+    const original = await Wallet.createHD(
+        accountOptions,
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 0,
+        },
+    );
+
+    const restored = await Wallet.restore(
+        passwordProvider,
+        createSignerRecord(original),
+        createAccountRecords(original),
+    );
+
+    const originalAddress = original.getActiveAccount()?.getAddress();
+
+    const restoredAddress = restored
+        .getAccounts()
+        .values()
+        .next()
+        .value?.getAddress();
+
+    console.log("\n[HD Wallet Restore]");
+    console.log("Original address:", originalAddress);
+    console.log("Restored address:", restoredAddress);
+    console.log("Restore successful:", originalAddress === restoredAddress);
+
+    assert.equal(restoredAddress, originalAddress);
+});
+
+test("should fail decrypt with wrong password", async () => {
+    const { provider } = createPkProvider();
+
+    const wallet = await Wallet.createPk(
+        accountOptions,
+        passwordProvider,
+        provider,
+    );
+
+    const wrongPassword = new SecretsProvider(() => ({
+        password: "wrong",
+    }));
+
+    let failed = false;
+
+    try {
+        await wallet.getSigner().decrypt(wrongPassword);
+    } catch (error) {
+        failed = true;
+    }
+
+    console.log("\n[Wrong Password]");
+    console.log("Decrypt failed correctly:", failed);
+
+    assert.equal(failed, true);
+});
+
+test("PK and HD wallet should generate independent addresses", async () => {
+    const pk = await Wallet.createPk(
+        accountOptions,
+        passwordProvider,
+        createPkProvider().provider,
+    );
+
+    const hd = await Wallet.createHD(
+        accountOptions,
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 0,
+        },
+    );
+
+    const pkAddress = pk.getActiveAccount()?.getAddress();
+
+    const hdAddress = hd.getActiveAccount()?.getAddress();
+
+    console.log("\n[Wallet Type Independence]");
+    console.log("PK address:", pkAddress);
+    console.log("HD address:", hdAddress);
+    console.log("Different:", pkAddress !== hdAddress);
+
+    assert.notEqual(pkAddress, hdAddress);
+});

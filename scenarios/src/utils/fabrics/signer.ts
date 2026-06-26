@@ -1,13 +1,13 @@
 import Signer, { ISignerRecord } from "../../domains/Signer";
 import HDSigner from "../../domains/Signer/HD";
 import PrivateKeySigner from "../../domains/Signer/PK";
-import { WalletTypes } from "@domains/WalletsStorageRepository";
 import CryptoService from "../../services/Crypto";
 import SecretsProvider, {
     IHDSecretRecord,
     IPasswordCredentials,
     IPrivateKeyCredentials,
 } from "../../domains/SecretsProvider";
+import { WalletTypes } from "../../domains/Wallet";
 
 export type TCreateSignerPayload =
     | {

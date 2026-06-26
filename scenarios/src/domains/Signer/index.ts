@@ -1,8 +1,8 @@
 import Bip44Path from "../Bip44Path";
 import type SecretsProvider from "../SecretsProvider";
 import { EncryptedData } from "../../services/Crypto";
-import { WalletTypes } from "@domains/WalletsStorageRepository";
 import { IPasswordCredentials } from "../SecretsProvider";
+import { WalletTypes } from "../Wallet";
 
 export type TPKSigningContext = {
     passwordProvider: SecretsProvider<IPasswordCredentials>;

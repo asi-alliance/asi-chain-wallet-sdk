@@ -34,11 +34,15 @@ export default class HDSigner extends Signer {
         payload: string,
         signingContext: THDSigningContext,
     ): Promise<ISignedMessageResponse> {
-        const keyMaterial: string = await CryptoService.decryptWithPassword(
-            this.encryptedSecret,
-            signingContext.passwordProvider.getSecret().password,
-        );
-        const seed: Uint8Array = toUint8Array(keyMaterial);
+        const stringifiedKeyMaterial: string =
+            await CryptoService.decryptWithPassword(
+                this.encryptedSecret,
+                signingContext.passwordProvider.getSecret().password,
+            );
+        const keyMaterial: IHDSecretRecord = JSON.parse(stringifiedKeyMaterial);
+
+        const seed: Uint8Array = toUint8Array(keyMaterial.seed);
+
         const path: Bip44Path =
             signingContext.bip44path instanceof Bip44Path
                 ? signingContext.bip44path

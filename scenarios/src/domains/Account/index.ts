@@ -21,6 +21,8 @@ export interface IAccountOptions {
     portfolioOptions?: IPortfolioOptions;
 }
 
+export type TCreateAccountPayload = Omit<IAccountOptions, "address" | "index">;
+
 export interface IAccountRecord {
     id: string;
     signerId: string;
@@ -82,7 +84,7 @@ class Account {
     }
 
     public static async create(
-        accountOptions: Omit<IAccountOptions, "address">,
+        accountOptions: TCreateAccountPayload,
         secretProvider: SecretsProvider<IPrivateKeyCredentials | IHDSecret>,
     ): Promise<Account> {
         const secretData: IPrivateKeyCredentials | IHDSecret =
@@ -95,11 +97,12 @@ class Account {
 
             return new Account({
                 ...accountOptions,
+                index: null,
                 address,
             });
         }
 
-        const { privateKey } = await KeysManager.getPrivateDataFromSeed(
+        const { privateKey, index } = await KeysManager.getPrivateDataFromSeed(
             secretData.seed,
             {
                 customHDPath: secretData.rootHDPath,
@@ -109,7 +112,7 @@ class Account {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        return new Account({ ...accountOptions, address });
+        return new Account({ ...accountOptions, index, address });
     }
 }
 

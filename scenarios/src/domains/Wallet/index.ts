@@ -1,6 +1,9 @@
 import Signer, { ISignerRecord } from "../Signer";
-import Account, { IAccountOptions, IAccountRecord } from "../Account";
-import { WalletTypes } from "@domains/WalletsStorageRepository";
+import Account, {
+    IAccountOptions,
+    IAccountRecord,
+    TCreateAccountPayload,
+} from "../Account";
 import { createSigner, restoreSigner } from "../../utils/fabrics/signer";
 import { generateRandomId } from "../../utils";
 import SecretsProvider, {
@@ -38,6 +41,11 @@ export type TCreateHDWalletOptions =
     | {
           index: number;
       };
+
+export enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
+}
 
 export default class Wallet {
     private id: string;
@@ -81,7 +89,7 @@ export default class Wallet {
     }
 
     public static async createPk(
-        accountOptions: Omit<IAccountOptions, "address">,
+        accountOptions: TCreateAccountPayload,
         passwordProvider: SecretsProvider<IPasswordCredentials>,
         secretProvider: SecretsProvider<IPrivateKeyCredentials>,
     ): Promise<Wallet> {
@@ -110,7 +118,7 @@ export default class Wallet {
     }
 
     public static async createHD(
-        accountOptions: Omit<IAccountOptions, "address">,
+        accountOptions: TCreateAccountPayload,
         passwordProvider: SecretsProvider<IPasswordCredentials>,
         mnemonic: string,
         hdWalletOptions: TCreateHDWalletOptions,
@@ -171,23 +179,24 @@ export default class Wallet {
             encryptedData: signerRecord.encryptedData,
         });
 
-        const secretProvider: SecretsProvider<
-            IPrivateKeyCredentials | IHDSecret
-        > = await signer.decrypt(passwordProvider);
+        const secretData: IPrivateKeyCredentials | IHDSecret =
+            await signer.decrypt(passwordProvider);
+        const secretProvider = new SecretsProvider(() => secretData);
 
-        const accountsMap: Map<string, Account> = new Map();
+        const accounts: [string, Account][] = await Promise.all(
+            accountRecords.map(async (record: IAccountRecord) => {
+                const account = await Account.create(
+                    {
+                        name: record.name,
+                    },
+                    secretProvider,
+                );
 
-        accountRecords.forEach(async (accountRecord: IAccountRecord) => {
-            const account: Account = await Account.create(
-                {
-                    name: accountRecord.name,
-                    index: accountRecord.index,
-                },
-                secretProvider,
-            );
+                return [record.id, account];
+            }),
+        );
 
-            accountsMap.set(accountRecord.id, account);
-        });
+        const accountsMap: Map<string, Account> = new Map(accounts);
 
         return new Wallet({
             type: signerRecord.type,

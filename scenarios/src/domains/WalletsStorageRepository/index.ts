@@ -1,6 +1,6 @@
-import { ITableRecord, ITableService } from "@domains/TableService";
-import { storageFabric } from "@fabrics/Storage";
-import { EncryptedData } from "@services/Crypto";
+import { storageFabric } from "../../fabrics/Storage";
+import { EncryptedData } from "../../services/Crypto";
+import { ITableRecord, ITableService } from "../TableService";
 
 const STORE_KEY: string = "SDK_STORE";
 const WALLETS_DATA_KEY: string = "WALLETS";
