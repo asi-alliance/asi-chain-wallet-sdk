@@ -113,13 +113,16 @@ class Account {
             secretData.rootHDPath.setIndex(accountOptions.index);
         }
 
-        const privateKey = await KeyDerivationService.deriveKeyFromMnemonic(
-            secretData.seed,
-            secretData.rootHDPath,
-        );
+        const privateKey: Uint8Array =
+            await KeyDerivationService.deriveKeyFromMnemonic(
+                secretData.seed,
+                secretData.rootHDPath,
+            );
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
+
+        privateKey.fill(0);
 
         return new Account({
             ...accountOptions,

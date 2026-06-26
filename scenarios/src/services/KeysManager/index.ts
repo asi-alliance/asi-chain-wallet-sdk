@@ -1,9 +1,9 @@
 import Bip44Path from "../../domains/Bip44Path";
-import { TCreateHDWalletOptions } from "../../domains/Wallet";
-import { PRIVATE_KEY_LENGTH } from "../../utils/constants";
-import { utils, getPublicKey } from "@noble/secp256k1";
 import KeyDerivationService from "../KeyDerivation";
+import { ASI_COIN_TYPE, PRIVATE_KEY_LENGTH } from "../../utils/constants";
 import { isCustomCreateHDWalletOptions } from "../../utils/guards";
+import { TCreateHDWalletOptions } from "../../domains/Wallet";
+import { utils, getPublicKey } from "@noble/secp256k1";
 
 const { randomBytes, bytesToHex } = utils;
 
@@ -66,7 +66,7 @@ export default class KeysManager {
     ): Promise<Bip44Path> {
         return !isCustomCreateHDWalletOptions(hdWalletOptions)
             ? new Bip44Path({
-                  coinType: 60,
+                  coinType: ASI_COIN_TYPE,
                   account: 0,
                   change: 0,
                   index: hdWalletOptions.index,
