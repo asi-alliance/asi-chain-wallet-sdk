@@ -32,16 +32,16 @@ export interface ICreateHDWalletPayload extends ISeedCredentials {
     customHDPath?: string;
 }
 
-export type TSecretsProviderInterface<T> = () => T;
+export type TSecretsProviderInterface = () => any;
 
-export default class SecretsProvider<T> {
-    #providerInterface: TSecretsProviderInterface<T>;
+export default class SecretsProvider {
+    #providerInterface: TSecretsProviderInterface;
 
-    constructor(providerInterface: TSecretsProviderInterface<T>) {
+    constructor(providerInterface: TSecretsProviderInterface) {
         this.#providerInterface = providerInterface;
     }
 
-    public getSecret(): T {
+    public getSecret(): any {
         return this.#providerInterface();
     }
 }

@@ -5,20 +5,20 @@ import { sign } from "@noble/secp256k1";
 import SecretsProvider, {
     IHDSecret,
     IHDSecretRecord,
-    IPasswordCredentials,
 } from "../../SecretsProvider";
 import Bip44Path from "../../Bip44Path";
 import KeyDerivationService from "../../../services/KeyDerivation";
 
 export default class HDSigner extends Signer {
     public async decrypt(
-        passwordProvider: SecretsProvider<IPasswordCredentials>,
+        passwordProvider: SecretsProvider,
     ): Promise<IHDSecret> {
         const stringifiedKeyMaterial: string =
             await CryptoService.decryptWithPassword(
                 this.encryptedSecret,
                 passwordProvider.getSecret().password,
             );
+
         const keyMaterial: IHDSecretRecord = JSON.parse(stringifiedKeyMaterial);
 
         const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);

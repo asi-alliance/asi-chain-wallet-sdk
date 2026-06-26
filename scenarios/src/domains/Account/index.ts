@@ -92,7 +92,7 @@ class Account {
 
     public static async create(
         accountOptions: TCreateAccountPayload,
-        secretProvider: SecretsProvider<IPrivateKeyCredentials | IHDSecret>,
+        secretProvider: SecretsProvider,
     ): Promise<Account> {
         const secretData: IPrivateKeyCredentials | IHDSecret =
             secretProvider.getSecret();

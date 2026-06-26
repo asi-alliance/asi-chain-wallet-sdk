@@ -3,14 +3,11 @@ import KeysManager from "../../../services/KeysManager";
 import Signer, { ISignedMessageResponse, TSigningContext } from "..";
 import { toUint8Array } from "../../../utils/functions";
 import { sign } from "@noble/secp256k1";
-import SecretsProvider, {
-    IPasswordCredentials,
-    IPrivateKeyCredentials,
-} from "../../SecretsProvider";
+import SecretsProvider, { IPrivateKeyCredentials } from "../../SecretsProvider";
 
 export default class PrivateKeySigner extends Signer {
     public async decrypt(
-        passwordProvider: SecretsProvider<IPasswordCredentials>,
+        passwordProvider: SecretsProvider,
     ): Promise<IPrivateKeyCredentials> {
         const stringifiedKeyMaterial = await CryptoService.decryptWithPassword(
             this.encryptedSecret,

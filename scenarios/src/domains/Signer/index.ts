@@ -1,15 +1,14 @@
 import Bip44Path from "../Bip44Path";
 import type SecretsProvider from "../SecretsProvider";
 import { EncryptedData } from "../../services/Crypto";
-import { IPasswordCredentials } from "../SecretsProvider";
 import { WalletTypes } from "../Wallet";
 
 export type TPKSigningContext = {
-    passwordProvider: SecretsProvider<IPasswordCredentials>;
+    passwordProvider: SecretsProvider;
 };
 
 export type THDSigningContext = {
-    passwordProvider: SecretsProvider<IPasswordCredentials>;
+    passwordProvider: SecretsProvider;
     bip44path: string | Bip44Path;
 };
 
@@ -37,9 +36,7 @@ export default abstract class Signer {
         return this.encryptedSecret;
     }
 
-    public abstract decrypt(
-        passwordProvider: SecretsProvider<IPasswordCredentials>,
-    ): Promise<any>;
+    public abstract decrypt(passwordProvider: SecretsProvider): Promise<any>;
 
     public abstract sign(
         payload: string,

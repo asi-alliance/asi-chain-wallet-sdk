@@ -74,9 +74,11 @@ test("PK wallet should not derive accounts", async () => {
             ...accountPayload,
             index: 0,
         },
-        passwordProvider,
         new SecretsProvider(() => ({
-            privateKey: KeysManager.generateRandomKey(),
+            secret: {
+                privateKey: KeysManager.generateRandomKey(),
+            },
+            password: PASSWORD,
         })),
     );
 
@@ -96,16 +98,12 @@ test("PK wallet should not derive accounts", async () => {
 });
 
 test("HD wallet should derive accounts with incremental indexes from zero", async () => {
-    const wallet = await Wallet.createHD(
-        {
-            ...accountPayload,
-        },
-        passwordProvider,
-        MNEMONIC,
-        {
+    const wallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
+        accountOptions: accountPayload,
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
     printWalletState("HD WALLET BEFORE DERIVATION", wallet);
 
@@ -154,17 +152,12 @@ test("HD wallet should derive accounts with incremental indexes from zero", asyn
 });
 
 test("HD wallet should derive accounts from custom HD path index", async () => {
-    const wallet = await Wallet.createHD(
-        {
-            ...accountPayload,
-            index: 9,
-        },
-        passwordProvider,
-        MNEMONIC,
-        {
+    const wallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
+        accountOptions: accountPayload,
+        pathOptions: {
             customHDPath: customPath,
         },
-    );
+    });
 
     printWalletState("CUSTOM HD WALLET BEFORE DERIVATION", wallet);
 
