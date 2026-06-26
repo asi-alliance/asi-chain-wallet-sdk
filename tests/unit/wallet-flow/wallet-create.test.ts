@@ -5,10 +5,7 @@ import KeysManager from "../../../scenarios/src/services/KeysManager";
 import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
 import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
 import { ISignerRecord } from "../../../scenarios/src/domains/Signer";
-import {
-    IAccountRecord,
-    TCreateAccountPayload,
-} from "../../../scenarios/src/domains/Account";
+import { IAccountRecord } from "../../../scenarios/src/domains/Account";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -19,12 +16,15 @@ const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
 }));
 
-const createPkProvider = () => {
+const createPkProvider = (password: string) => {
     const privateKey = KeysManager.generateRandomKey();
 
     return {
         provider: new SecretsProvider(() => ({
-            privateKey,
+            secret: {
+                privateKey,
+            },
+            password,
         })),
         privateKey,
     };
@@ -56,13 +56,9 @@ const accountPayload = {
 };
 
 test("should create PK wallet", async () => {
-    const { provider, privateKey } = createPkProvider();
+    const { provider, privateKey } = createPkProvider(PASSWORD);
 
-    const wallet = await Wallet.createPk(
-        accountOptions,
-        passwordProvider,
-        provider,
-    );
+    const wallet = await Wallet.createPk(accountOptions, provider);
 
     const activeAccount = wallet.getActiveAccount();
 
@@ -92,13 +88,9 @@ test("should create PK wallet", async () => {
 });
 
 test("should sign payload with PK wallet signer", async () => {
-    const { provider } = createPkProvider();
+    const { provider } = createPkProvider(PASSWORD);
 
-    const wallet = await Wallet.createPk(
-        accountOptions,
-        passwordProvider,
-        provider,
-    );
+    const wallet = await Wallet.createPk(accountOptions, provider);
 
     const result = await wallet.getSigner().sign(PAYLOAD, {
         passwordProvider,
@@ -115,14 +107,12 @@ test("should sign payload with PK wallet signer", async () => {
 });
 
 test("should create HD wallet", async () => {
-    const wallet = await Wallet.createHD(
+    const wallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
         accountOptions,
-        passwordProvider,
-        MNEMONIC,
-        {
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
     const account = wallet.getActiveAccount();
 
@@ -144,23 +134,19 @@ test("should create HD wallet", async () => {
 });
 
 test("HD wallet should generate different addresses for different indexes", async () => {
-    const wallet0 = await Wallet.createHD(
+    const wallet0 = await Wallet.createHD(MNEMONIC, passwordProvider, {
         accountOptions,
-        passwordProvider,
-        MNEMONIC,
-        {
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
-    const wallet1 = await Wallet.createHD(
+    const wallet1 = await Wallet.createHD(MNEMONIC, passwordProvider, {
         accountOptions,
-        passwordProvider,
-        MNEMONIC,
-        {
+        pathOptions: {
             index: 1,
         },
-    );
+    });
 
     const address0 = wallet0.getActiveAccount()?.getAddress();
 
@@ -175,13 +161,9 @@ test("HD wallet should generate different addresses for different indexes", asyn
 });
 
 test("should restore PK wallet", async () => {
-    const { provider } = createPkProvider();
+    const { provider } = createPkProvider(PASSWORD);
 
-    const original = await Wallet.createPk(
-        accountOptions,
-        passwordProvider,
-        provider,
-    );
+    const original = await Wallet.createPk(accountOptions, provider);
 
     const restored = await Wallet.restore(
         passwordProvider,
@@ -211,14 +193,12 @@ test("should restore PK wallet", async () => {
 });
 
 test("should restore HD wallet", async () => {
-    const original = await Wallet.createHD(
+    const original = await Wallet.createHD(MNEMONIC, passwordProvider, {
         accountOptions,
-        passwordProvider,
-        MNEMONIC,
-        {
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
     const restored = await Wallet.restore(
         passwordProvider,
@@ -243,13 +223,9 @@ test("should restore HD wallet", async () => {
 });
 
 test("should fail decrypt with wrong password", async () => {
-    const { provider } = createPkProvider();
+    const { provider } = createPkProvider(PASSWORD);
 
-    const wallet = await Wallet.createPk(
-        accountOptions,
-        passwordProvider,
-        provider,
-    );
+    const wallet = await Wallet.createPk(accountOptions, provider);
 
     const wrongPassword = new SecretsProvider(() => ({
         password: "wrong",
@@ -272,18 +248,15 @@ test("should fail decrypt with wrong password", async () => {
 test("PK and HD wallet should generate independent addresses", async () => {
     const pk = await Wallet.createPk(
         accountOptions,
-        passwordProvider,
-        createPkProvider().provider,
+        createPkProvider(PASSWORD).provider,
     );
 
-    const hd = await Wallet.createHD(
+    const hd = await Wallet.createHD(MNEMONIC, passwordProvider, {
         accountOptions,
-        passwordProvider,
-        MNEMONIC,
-        {
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
     const pkAddress = pk.getActiveAccount()?.getAddress();
 
@@ -298,16 +271,12 @@ test("PK and HD wallet should generate independent addresses", async () => {
 });
 
 test("HD wallet should update, remove account and reuse freed derivation index", async () => {
-    const wallet = await Wallet.createHD(
-        {
-            ...accountPayload,
-        },
-        passwordProvider,
-        MNEMONIC,
-        {
+    const wallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
+        accountOptions: accountPayload,
+        pathOptions: {
             index: 0,
         },
-    );
+    });
 
     console.log("\n=== INITIAL WALLET ===");
 

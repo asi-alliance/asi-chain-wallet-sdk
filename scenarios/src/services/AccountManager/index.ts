@@ -2,10 +2,7 @@ import Account, {
     TCreateAccountPayload,
     TEditableAccountOptions,
 } from "../../domains/Account";
-import SecretsProvider, {
-    IHDSecret,
-    IPrivateKeyCredentials,
-} from "../../domains/SecretsProvider";
+import SecretsProvider from "../../domains/SecretsProvider";
 import { generateRandomId } from "../../utils";
 
 export default class AccountManager {
@@ -22,9 +19,8 @@ export default class AccountManager {
 
     public async create(
         payload: TCreateAccountPayload,
-        secretProvider: SecretsProvider<IPrivateKeyCredentials | IHDSecret>,
+        secretProvider: SecretsProvider,
     ): Promise<Account> {
-        
         const account = await Account.create(payload, secretProvider);
 
         const id = generateRandomId();

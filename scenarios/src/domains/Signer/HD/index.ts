@@ -6,19 +6,19 @@ import { toUint8Array } from "../../../utils";
 import SecretsProvider, {
     IHDSecret,
     IHDSecretRecord,
-    IPasswordCredentials,
 } from "../../SecretsProvider";
 import Bip44Path from "../../Bip44Path";
 
 export default class HDSigner extends Signer {
     public async decrypt(
-        passwordProvider: SecretsProvider<IPasswordCredentials>,
+        passwordProvider: SecretsProvider,
     ): Promise<IHDSecret> {
         const stringifiedKeyMaterial: string =
             await CryptoService.decryptWithPassword(
                 this.encryptedSecret,
                 passwordProvider.getSecret().password,
             );
+
         const keyMaterial: IHDSecretRecord = JSON.parse(stringifiedKeyMaterial);
 
         const seed: Uint8Array = toUint8Array(keyMaterial.seed);
