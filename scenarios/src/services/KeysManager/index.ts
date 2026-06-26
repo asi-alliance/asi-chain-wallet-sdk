@@ -1,10 +1,9 @@
 import Bip44Path from "../../domains/Bip44Path";
-import { TCreateHDWalletOptions } from "../../domains/Wallet";
-import { PRIVATE_KEY_LENGTH } from "../../utils/constants";
-import { utils, getPublicKey } from "@noble/secp256k1";
 import KeyDerivationService from "../KeyDerivation";
+import { ASI_COIN_TYPE, PRIVATE_KEY_LENGTH } from "../../utils/constants";
 import { isCustomCreateHDWalletOptions } from "../../utils/guards";
-import MnemonicService from "../Mnemonic";
+import { TCreateHDWalletOptions } from "../../domains/Wallet";
+import { utils, getPublicKey } from "@noble/secp256k1";
 
 const { randomBytes, bytesToHex } = utils;
 
@@ -62,27 +61,17 @@ export default class KeysManager {
         return bytesToHex(key);
     }
 
-    public static async getPrivateDataFromMnemonic(
-        mnemonic: string,
+    public static async getInitialHDPathFromOptions(
         hdWalletOptions: TCreateHDWalletOptions,
-    ): Promise<IHDWalletPrivateKeyDataFromMnemonic> {
-        const path: Bip44Path = !isCustomCreateHDWalletOptions(hdWalletOptions)
+    ): Promise<Bip44Path> {
+        return !isCustomCreateHDWalletOptions(hdWalletOptions)
             ? new Bip44Path({
-                  coinType: 60,
+                  coinType: ASI_COIN_TYPE,
                   account: 0,
                   change: 0,
                   index: hdWalletOptions.index,
               })
             : hdWalletOptions.customHDPath;
-
-        const seed = await MnemonicService.mnemonicToSeed(mnemonic);
-        const masterNode = KeyDerivationService.seedToMasterNode(seed);
-
-        return {
-            privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
-            path,
-            seed,
-        };
     }
 
     public static async getPrivateDataFromSeed(

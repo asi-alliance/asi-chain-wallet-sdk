@@ -190,17 +190,16 @@ export default class Wallet {
         passwordProvider: SecretsProvider,
         options: ICreateHDWalletOptions,
     ): Promise<Wallet> {
-        const { pathOptions, accountOptions } = options;
-
-        const { seed, path: rootHDPath } =
-            await KeysManager.getPrivateDataFromMnemonic(mnemonic, pathOptions);
+        const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
+            options.pathOptions,
+        );
 
         const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
             () => {
                 return {
                     secret: {
                         rootHDPath: rootHDPath.toString(),
-                        seed,
+                        seed: mnemonic,
                     },
                     password: passwordProvider.getSecret().password,
                 };
@@ -216,14 +215,14 @@ export default class Wallet {
             () => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed,
+                    seed: mnemonic,
                 };
             },
         );
 
         const initialAccountId: string = generateRandomId();
         const initialAccount: Account = await Account.create(
-            accountOptions,
+            options.accountOptions,
             secretProviderFromAccount,
         );
 

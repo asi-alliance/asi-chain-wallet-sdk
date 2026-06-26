@@ -129,7 +129,7 @@ test("should create HD wallet", async () => {
     assert.equal(wallet.getAccounts().length, 1);
     assert.ok(account);
     assert.ok(account?.getAddress());
-    assert.ok(secret.seed instanceof Uint8Array);
+    assert.ok(typeof secret.seed === "string");
     assert.ok(secret.rootHDPath instanceof Bip44Path);
 });
 

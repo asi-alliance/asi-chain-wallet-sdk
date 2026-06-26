@@ -9,7 +9,7 @@ export interface IPrivateKeyCredentials {
 }
 
 export interface ISeedCredentials {
-    seed: Uint8Array;
+    seed: string;
 }
 
 export interface IPrivateKeyWithCredentials extends IPasswordCredentials {

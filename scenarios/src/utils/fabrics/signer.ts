@@ -29,8 +29,9 @@ export const createSigner = async (
         case WalletTypes.PRIVATE_KEY:
             return new PrivateKeySigner(encryptedSecret);
 
-        case WalletTypes.HD:
+        case WalletTypes.HD: {
             return new HDSigner(encryptedSecret);
+        }
     }
 };
 
