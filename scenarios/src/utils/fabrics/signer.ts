@@ -26,7 +26,8 @@ export const createSigner = async (
 ): Promise<Signer> => {
     const { password } = payload.passwordProvider.getSecret();
 
-    const secret = payload.secretProvider.getSecret();
+    const secret: IPrivateKeyCredentials | IHDSecretRecord =
+        payload.secretProvider.getSecret();
 
     const encryptedSecret = await CryptoService.encryptWithPassword(
         JSON.stringify(secret),
@@ -37,8 +38,9 @@ export const createSigner = async (
         case WalletTypes.PRIVATE_KEY:
             return new PrivateKeySigner(encryptedSecret);
 
-        case WalletTypes.HD:
+        case WalletTypes.HD: {
             return new HDSigner(encryptedSecret);
+        }
     }
 };
 

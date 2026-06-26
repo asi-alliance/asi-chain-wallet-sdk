@@ -7,7 +7,7 @@ import SecretsProvider, {
 import { Address } from "../Wallet";
 import WalletsService from "../../services/Wallets";
 import { isPrivateKeySecretData } from "../../utils/guards";
-import KeysManager from "../../services/KeysManager";
+import KeyDerivationService from "../../services/KeyDerivation";
 
 export interface IPortfolioOptions {
     assets?: Assets;
@@ -113,7 +113,7 @@ class Account {
             secretData.rootHDPath.setIndex(accountOptions.index);
         }
 
-        const { privateKey, index } = await KeysManager.getPrivateDataFromSeed(
+        const privateKey = await KeyDerivationService.deriveKeyFromMnemonic(
             secretData.seed,
             secretData.rootHDPath,
         );
@@ -121,7 +121,11 @@ class Account {
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
-        return new Account({ ...accountOptions, index, address });
+        return new Account({
+            ...accountOptions,
+            index: secretData.rootHDPath.getIndex(),
+            address,
+        });
     }
 
     public update(options: TEditableAccountOptions): void {

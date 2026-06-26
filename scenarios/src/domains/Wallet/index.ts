@@ -190,17 +190,14 @@ export default class Wallet {
         mnemonic: string,
         hdWalletOptions: TCreateHDWalletOptions,
     ): Promise<Wallet> {
-        const { seed, path: rootHDPath } =
-            await KeysManager.getPrivateDataFromMnemonic(
-                mnemonic,
-                hdWalletOptions,
-            );
+        const rootHDPath =
+            await KeysManager.getInitialHDPathFromOptions(hdWalletOptions);
 
         const secretProviderFromSigner: SecretsProvider<IHDSecretRecord> =
             new SecretsProvider(() => {
                 return {
                     rootHDPath: rootHDPath.toString(),
-                    seed,
+                    seed: mnemonic,
                 };
             });
 
@@ -214,7 +211,7 @@ export default class Wallet {
             new SecretsProvider(() => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed,
+                    seed: mnemonic,
                 };
             });
 
