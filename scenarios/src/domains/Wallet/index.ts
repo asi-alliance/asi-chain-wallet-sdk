@@ -1,8 +1,8 @@
 import Signer, { ISignerRecord } from "../Signer";
 import Account, {
-    IAccountOptions,
     IAccountRecord,
     TCreateAccountPayload,
+    TEditableAccountOptions,
 } from "../Account";
 import { createSigner, restoreSigner } from "../../utils/fabrics/signer";
 import { generateRandomId } from "../../utils";
@@ -14,6 +14,8 @@ import SecretsProvider, {
 } from "../SecretsProvider";
 import KeysManager from "../../services/KeysManager";
 import Bip44Path from "../Bip44Path";
+import AccountManager from "../../services/AccountManager";
+import { OnlyHDWallet } from "../../utils/decorators";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -48,11 +50,10 @@ export enum WalletTypes {
 }
 
 export default class Wallet {
-    private id: string;
-    private type: WalletTypes;
-    private signer: Signer;
-    private accounts: Map<string, Account>;
-    private activeAccount: Account | null;
+    private readonly id: string;
+    private readonly type: WalletTypes;
+    private readonly signer: Signer;
+    private readonly accountManager: AccountManager;
 
     private constructor({
         id,
@@ -64,8 +65,10 @@ export default class Wallet {
         this.id = id ?? generateRandomId();
         this.type = type;
         this.signer = signer;
-        this.accounts = accounts;
-        this.activeAccount = activeAccount ?? null;
+        this.accountManager = new AccountManager(
+            accounts,
+            activeAccount ?? null,
+        );
     }
 
     public getId(): string {
@@ -80,12 +83,76 @@ export default class Wallet {
         return this.signer;
     }
 
-    public getAccounts(): Map<string, Account> {
-        return this.accounts;
+    public getAccounts(): Account[] {
+        return this.accountManager.getAccounts();
+    }
+
+    public getAccountsMap(): Map<string, Account> {
+        return this.accountManager.getAccountsMap();
     }
 
     public getActiveAccount(): Account | null {
-        return this.activeAccount;
+        return this.accountManager.getActiveAccount();
+    }
+
+    public setActiveAccount(id: string): void {
+        this.accountManager.setActiveAccount(id);
+    }
+
+    private getDeriveIndex(initialHDPath: Bip44Path): number | null {
+        const firstAccountIndex = initialHDPath.getIndex();
+
+        const indexes = this.getAccounts()
+            .map((account: Account) => account.getIndex())
+            .filter((index: number | null): index is number => index !== null)
+            .sort((a, b) => a - b);
+
+        if (!indexes.length) {
+            return firstAccountIndex;
+        }
+
+        let expectedIndex = firstAccountIndex + 1;
+
+        for (const index of indexes) {
+            if (index === expectedIndex) {
+                expectedIndex++;
+
+                continue;
+            }
+
+            if (index > expectedIndex) {
+                return expectedIndex;
+            }
+        }
+
+        return expectedIndex;
+    }
+
+    @OnlyHDWallet
+    public async deriveAccount(
+        payload: Omit<TCreateAccountPayload, "index">,
+        passwordProvider: SecretsProvider<IPasswordCredentials>,
+    ): Promise<Account> {
+        const secretData: IHDSecret =
+            await this.signer.decrypt(passwordProvider);
+        const secretProvider = new SecretsProvider(() => secretData);
+
+        const derivationIndex: number | null = this.getDeriveIndex(
+            secretData.rootHDPath,
+        );
+
+        return this.accountManager.create(
+            { ...payload, index: derivationIndex ?? undefined },
+            secretProvider,
+        );
+    }
+
+    public removeAccount(id: string): boolean {
+        return this.accountManager.remove(id);
+    }
+
+    public updateAccount(id: string, payload: TEditableAccountOptions): void {
+        this.accountManager.update(id, payload);
     }
 
     public static async createPk(

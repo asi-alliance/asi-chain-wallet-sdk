@@ -87,29 +87,14 @@ export default class KeysManager {
 
     public static async getPrivateDataFromSeed(
         seed: Uint8Array,
-        hdWalletOptions: TCreateHDWalletOptions,
+        path: Bip44Path,
     ): Promise<IHDWalletPrivateKeyDataFromSeed> {
-        const currentIndex: number = !isCustomCreateHDWalletOptions(
-            hdWalletOptions,
-        )
-            ? hdWalletOptions.index
-            : 0;
-
-        const path: Bip44Path = !isCustomCreateHDWalletOptions(hdWalletOptions)
-            ? new Bip44Path({
-                  coinType: 60,
-                  account: 0,
-                  change: 0,
-                  index: currentIndex,
-              })
-            : hdWalletOptions.customHDPath;
-
         const masterNode = KeyDerivationService.seedToMasterNode(seed);
 
         return {
             privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
             path,
-            index: currentIndex,
+            index: path.getIndex(),
         };
     }
 }

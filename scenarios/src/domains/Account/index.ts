@@ -21,7 +21,14 @@ export interface IAccountOptions {
     portfolioOptions?: IPortfolioOptions;
 }
 
-export type TCreateAccountPayload = Omit<IAccountOptions, "address" | "index">;
+export type TEditableAccountOptions = Partial<Pick<IAccountOptions, "name">>;
+
+export type TCreateAccountPayload = Omit<
+    IAccountOptions,
+    "address" | "index"
+> & {
+    index?: number;
+};
 
 export interface IAccountRecord {
     id: string;
@@ -31,9 +38,9 @@ export interface IAccountRecord {
 }
 
 class Account {
-    private readonly name: string;
     private readonly index: number | null;
     private readonly address: string;
+    private name: string;
     private assets: Assets;
     private primaryAsset: Asset | null;
 
@@ -102,17 +109,27 @@ class Account {
             });
         }
 
+        if (accountOptions.index !== undefined) {
+            secretData.rootHDPath.setIndex(accountOptions.index);
+        }
+
         const { privateKey, index } = await KeysManager.getPrivateDataFromSeed(
             secretData.seed,
-            {
-                customHDPath: secretData.rootHDPath,
-            },
+            secretData.rootHDPath,
         );
 
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
         return new Account({ ...accountOptions, index, address });
+    }
+
+    public update(options: TEditableAccountOptions): void {
+        if (!options.name) {
+            return;
+        }
+
+        this.name = options.name;
     }
 }
 

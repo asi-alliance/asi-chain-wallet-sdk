@@ -1,4 +1,5 @@
-import { ITableRecord, ITableService } from "@domains/TableService";
+import { ITableRecord, ITableService } from "../../domains/TableService";
+import { WalletTypes } from "../../domains/Wallet";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -78,6 +79,27 @@ export function SkipIfTableExists<
 
         if (!!(await this.tableExists(tableName))) {
             return;
+        }
+
+        return await target.apply(this, args);
+    };
+}
+
+interface IWalletContext {
+    getType(): WalletTypes;
+}
+
+export function OnlyHDWallet<
+    This extends IWalletContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return async function (
+        this: This,
+        ...args: Args
+    ): Promise<Awaited<Return>> {
+        if (this.getType() !== WalletTypes.HD) {
+            throw new Error("This operation is available only for HD wallets");
         }
 
         return await target.apply(this, args);

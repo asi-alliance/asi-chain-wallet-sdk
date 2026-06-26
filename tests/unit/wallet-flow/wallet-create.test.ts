@@ -5,7 +5,10 @@ import KeysManager from "../../../scenarios/src/services/KeysManager";
 import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
 import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
 import { ISignerRecord } from "../../../scenarios/src/domains/Signer";
-import { IAccountRecord } from "../../../scenarios/src/domains/Account";
+import {
+    IAccountRecord,
+    TCreateAccountPayload,
+} from "../../../scenarios/src/domains/Account";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -38,7 +41,7 @@ const createSignerRecord = (wallet: Wallet): ISignerRecord => ({
 });
 
 const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>
-    Array.from(wallet.getAccounts()).map(([id, account]) => ({
+    Array.from(wallet.getAccountsMap()).map(([id, account]) => ({
         id,
         signerId: "signer-id",
         name: account.getName(),
@@ -47,6 +50,10 @@ const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>
 
 const PAYLOAD =
     "0102030405060708091011121314151617181920212223242526272829303132";
+
+const accountPayload = {
+    name: "Main account",
+};
 
 test("should create PK wallet", async () => {
     const { provider, privateKey } = createPkProvider();
@@ -64,7 +71,7 @@ test("should create PK wallet", async () => {
     console.log("\n[PK Wallet Creation]");
     console.log("Wallet ID:", wallet.getId());
     console.log("Wallet Type:", wallet.getType());
-    console.log("Accounts count:", wallet.getAccounts().size);
+    console.log("Accounts count:", wallet.getAccounts().length);
     console.log("Account name:", activeAccount?.getName());
     console.log("Account index:", activeAccount?.getIndex());
     console.log("Account address:", activeAccount?.getAddress());
@@ -76,7 +83,7 @@ test("should create PK wallet", async () => {
     assert.equal(wallet.getType(), WalletTypes.PRIVATE_KEY);
     assert.ok(wallet.getId());
     assert.ok(wallet.getSigner());
-    assert.equal(wallet.getAccounts().size, 1);
+    assert.equal(wallet.getAccounts().length, 1);
     assert.ok(activeAccount);
     assert.equal(activeAccount?.getName(), "Main account");
     assert.equal(activeAccount?.getIndex(), null);
@@ -129,7 +136,7 @@ test("should create HD wallet", async () => {
     console.log("Seed length:", secret.seed.length);
 
     assert.equal(wallet.getType(), WalletTypes.HD);
-    assert.equal(wallet.getAccounts().size, 1);
+    assert.equal(wallet.getAccounts().length, 1);
     assert.ok(account);
     assert.ok(account?.getAddress());
     assert.ok(secret.seed instanceof Uint8Array);
@@ -199,7 +206,7 @@ test("should restore PK wallet", async () => {
     );
 
     assert.equal(restored.getType(), WalletTypes.PRIVATE_KEY);
-    assert.equal(restored.getAccounts().size, 1);
+    assert.equal(restored.getAccounts().length, 1);
     assert.equal(restoredAddress, originalAddress);
 });
 
@@ -288,4 +295,151 @@ test("PK and HD wallet should generate independent addresses", async () => {
     console.log("Different:", pkAddress !== hdAddress);
 
     assert.notEqual(pkAddress, hdAddress);
+});
+
+test("HD wallet should update, remove account and reuse freed derivation index", async () => {
+    const wallet = await Wallet.createHD(
+        {
+            ...accountPayload,
+        },
+        passwordProvider,
+        MNEMONIC,
+        {
+            index: 0,
+        },
+    );
+
+    console.log("\n=== INITIAL WALLET ===");
+
+    console.log(
+        wallet.getAccounts().map((account) => ({
+            name: account.getName(),
+            index: account.getIndex(),
+            address: account.getAddress(),
+        })),
+    );
+
+    const account1 = await wallet.deriveAccount(
+        {
+            name: "Account 1",
+        },
+        passwordProvider,
+    );
+
+    const account2 = await wallet.deriveAccount(
+        {
+            name: "Account 2",
+        },
+        passwordProvider,
+    );
+
+    const account3 = await wallet.deriveAccount(
+        {
+            name: "Account 3",
+        },
+        passwordProvider,
+    );
+
+    console.log("\n=== AFTER DERIVATION ===");
+
+    console.log(
+        wallet.getAccounts().map((account) => ({
+            name: account.getName(),
+            index: account.getIndex(),
+            address: account.getAddress(),
+        })),
+    );
+
+    const accountsBeforeDelete = wallet
+        .getAccounts()
+        .map((account) => account.getIndex())
+        .sort((a, b) => a! - b!);
+
+    console.log("Indexes before delete:", accountsBeforeDelete);
+
+    assert.deepEqual(accountsBeforeDelete, [0, 1, 2, 3]);
+
+    //
+    // UPDATE ACCOUNT 2
+    //
+
+    const account2Entry = wallet
+        .getAccounts()
+        .find((account) => account.getIndex() === 2);
+
+    assert.ok(account2Entry);
+
+    const account2Id = Array.from(wallet.getAccountsMap().entries()).find(
+        ([, account]) => account === account2Entry,
+    )?.[0];
+
+    assert.ok(account2Id);
+
+    wallet.updateAccount(account2Id, {
+        name: "Updated Account 2",
+    });
+
+    console.log("\n=== AFTER UPDATE ACCOUNT 2 ===");
+
+    console.log(
+        wallet.getAccounts().map((account) => ({
+            name: account.getName(),
+            index: account.getIndex(),
+        })),
+    );
+
+    assert.equal(
+        wallet
+            .getAccounts()
+            .find((account) => account.getIndex() === 2)
+            ?.getName(),
+        "Updated Account 2",
+    );
+
+    //
+    // DELETE ACCOUNT INDEX 2
+    //
+
+    const removed = wallet.removeAccount(account2Id);
+
+    console.log("\nRemoved account:", removed);
+
+    assert.equal(removed, true);
+
+    const indexesAfterDelete = wallet
+        .getAccounts()
+        .map((account) => account.getIndex())
+        .sort((a, b) => a! - b!);
+
+    console.log("Indexes after delete:", indexesAfterDelete);
+
+    assert.deepEqual(indexesAfterDelete, [0, 1, 3]);
+
+    //
+    // CREATE NEW ACCOUNT
+    //
+
+    const newAccount = await wallet.deriveAccount(
+        {
+            name: "New Account After Delete",
+        },
+        passwordProvider,
+    );
+
+    console.log("\nCreated account after delete:", {
+        name: newAccount.getName(),
+        index: newAccount.getIndex(),
+        address: newAccount.getAddress(),
+    });
+
+    assert.equal(newAccount.getIndex(), 2);
+
+    const finalIndexes = wallet
+        .getAccounts()
+        .map((account) => account.getIndex())
+        .sort((a, b) => a! - b!);
+
+    console.log("\nFinal indexes:", finalIndexes);
+
+    assert.deepEqual(finalIndexes, [0, 1, 2, 3]);
 });

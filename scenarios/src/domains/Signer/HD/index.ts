@@ -48,9 +48,10 @@ export default class HDSigner extends Signer {
                 ? signingContext.bip44path
                 : Bip44Path.parse(signingContext.bip44path);
 
-        const { privateKey } = await KeysManager.getPrivateDataFromSeed(seed, {
-            customHDPath: path,
-        });
+        const { privateKey } = await KeysManager.getPrivateDataFromSeed(
+            seed,
+            path,
+        );
 
         const publicKey: Uint8Array =
             KeysManager.getPublicKeyFromPrivateKey(privateKey);
