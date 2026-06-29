@@ -47,6 +47,11 @@ export interface ICreateHDWalletOptions {
     accountOptions: TCreateAccountPayload;
 }
 
+export interface IRestoreWalletPayload {
+    signerRecord: ISignerRecord;
+    accountRecords: IAccountRecord[];
+}
+
 export enum WalletTypes {
     PRIVATE_KEY = "private-key",
     HD = "hd",
@@ -241,10 +246,11 @@ export default class Wallet {
     }
 
     public static async restore(
+        payload: IRestoreWalletPayload,
         passwordProvider: SecretsProvider,
-        signerRecord: ISignerRecord,
-        accountRecords: IAccountRecord[],
     ): Promise<Wallet> {
+        const { signerRecord, accountRecords } = payload;
+
         const signer: Signer = restoreSigner({
             type: signerRecord.type,
             encryptedData: signerRecord.encryptedData,
