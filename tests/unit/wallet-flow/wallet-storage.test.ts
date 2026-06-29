@@ -198,12 +198,16 @@ test("should save and restore HD wallet from storage", async () => {
     console.log("    Account options:", JSON.stringify(accountOptions));
 
     console.log("\n[2] Creating HD wallet instance...");
-    const wallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const wallet = await Wallet.createHD(
+        {
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
+            mnemonic: MNEMONIC,
         },
-    });
+        passwordProvider,
+    );
     const signerId = wallet.getSigner().getId();
     const account = wallet.getActiveAccount();
     console.log("    Wallet ID:", wallet.getId());
@@ -273,12 +277,16 @@ test("should isolate accounts between different signers", async () => {
     console.log("    PK Wallet account address:", account1?.getAddress());
 
     console.log("\n[2] Creating HD wallet...");
-    const wallet2 = await Wallet.createHD(MNEMONIC, passwordProvider, {
-        accountOptions,
-        pathOptions: {
-            index: 1,
+    const wallet2 = await Wallet.createHD(
+        {
+            accountOptions,
+            pathOptions: {
+                index: 1,
+            },
+            mnemonic: MNEMONIC,
         },
-    });
+        passwordProvider,
+    );
     const signerId2 = wallet2.getSigner().getId();
     const account2 = wallet2.getActiveAccount();
     console.log("    HD Wallet signer ID:", signerId2);
@@ -360,12 +368,16 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
 
     console.log("\n[2] Creating HD wallet...");
 
-    const hdWallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const hdWallet = await Wallet.createHD(
+        {
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
+            mnemonic: MNEMONIC,
         },
-    });
+        passwordProvider,
+    );
 
     const hdSignerId = hdWallet.getSigner().getId();
 
@@ -374,17 +386,21 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
 
     console.log("\n[3] Creating HD custom path wallet...");
 
-    const customHDWallet = await Wallet.createHD(MNEMONIC, passwordProvider, {
-        accountOptions,
-        pathOptions: {
-            customHDPath: new Bip44Path({
-                coinType: 44,
-                account: 501,
-                change: 1,
-                index: 132,
-            }),
+    const customHDWallet = await Wallet.createHD(
+        {
+            accountOptions,
+            pathOptions: {
+                customHDPath: new Bip44Path({
+                    coinType: 44,
+                    account: 501,
+                    change: 1,
+                    index: 132,
+                }),
+            },
+            mnemonic: MNEMONIC,
         },
-    });
+        passwordProvider,
+    );
 
     const customHDSignerId = customHDWallet.getSigner().getId();
 

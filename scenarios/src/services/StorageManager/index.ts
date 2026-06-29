@@ -212,7 +212,10 @@ class StorageManager {
                 accountRecord.signerId === signerId,
         );
 
-        return Wallet.restore(passwordProvider, signerRecord, accountRecords);
+        return Wallet.restore(
+            { signerRecord, accountRecords },
+            passwordProvider,
+        );
     };
 
     public static getWallets = async (): Promise<IWalletStorageData[]> => {
