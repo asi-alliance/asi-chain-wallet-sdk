@@ -36,8 +36,6 @@ export default abstract class Signer {
         return this.encryptedSecret;
     }
 
-    public abstract decrypt(passwordProvider: SecretsProvider): Promise<any>;
-
     public abstract sign(
         payload: string,
         signingContext: TSigningContext,

@@ -5,7 +5,7 @@ import Account, {
     TEditableAccountOptions,
 } from "../Account";
 import { createSigner, restoreSigner } from "../../utils/fabrics/signer";
-import { generateRandomId } from "../../utils";
+import { decryptSignerData, generateRandomId } from "../../utils";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -136,8 +136,10 @@ export default class Wallet {
         payload: Omit<TCreateAccountPayload, "index">,
         passwordProvider: SecretsProvider,
     ): Promise<Account> {
-        const secretData: IHDSecret =
-            await this.signer.decrypt(passwordProvider);
+        const secretData = (await decryptSignerData(
+            this.signer.getEncryptedSecret(),
+            passwordProvider,
+        )) as IHDSecret;
         const secretProvider = new SecretsProvider(() => secretData);
 
         const derivationIndex: number | null = this.getDeriveIndex(
@@ -249,7 +251,10 @@ export default class Wallet {
         });
 
         const secretData: IPrivateKeyCredentials | IHDSecret =
-            await signer.decrypt(passwordProvider);
+            await decryptSignerData(
+                signer.getEncryptedSecret(),
+                passwordProvider,
+            );
         const secretProvider = new SecretsProvider(() => secretData);
 
         const accounts: [string, Account][] = await Promise.all(

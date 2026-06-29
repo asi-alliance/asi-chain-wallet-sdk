@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import SecretsProvider from "../../../scenarios/src/domains/SecretsProvider";
+import SecretsProvider, {
+    IHDSecret,
+    IPrivateKeyCredentials,
+} from "../../../scenarios/src/domains/SecretsProvider";
 import KeysManager from "../../../scenarios/src/services/KeysManager";
 import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
 import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
 import { ISignerRecord } from "../../../scenarios/src/domains/Signer";
 import { IAccountRecord } from "../../../scenarios/src/domains/Account";
+import { decryptSignerData } from "../../../scenarios/src/utils";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -62,7 +66,10 @@ test("should create PK wallet", async () => {
 
     const activeAccount = wallet.getActiveAccount();
 
-    const decrypted = await wallet.getSigner().decrypt(passwordProvider);
+    const decrypted = (await decryptSignerData(
+        wallet.getSigner().getEncryptedSecret(),
+        passwordProvider,
+    )) as IPrivateKeyCredentials;
 
     console.log("\n[PK Wallet Creation]");
     console.log("Wallet ID:", wallet.getId());
@@ -116,7 +123,10 @@ test("should create HD wallet", async () => {
 
     const account = wallet.getActiveAccount();
 
-    const secret = await wallet.getSigner().decrypt(passwordProvider);
+    const secret = (await decryptSignerData(
+        wallet.getSigner().getEncryptedSecret(),
+        passwordProvider,
+    )) as IHDSecret;
 
     console.log("\n[HD Wallet Creation]");
     console.log("Wallet ID:", wallet.getId());
@@ -234,7 +244,10 @@ test("should fail decrypt with wrong password", async () => {
     let failed = false;
 
     try {
-        await wallet.getSigner().decrypt(wrongPassword);
+        await decryptSignerData(
+            wallet.getSigner().getEncryptedSecret(),
+            wrongPassword,
+        );
     } catch (error) {
         failed = true;
     }
