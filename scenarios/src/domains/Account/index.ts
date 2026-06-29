@@ -42,7 +42,7 @@ class Account {
     private readonly address: string;
     private name: string;
     private assets: Assets;
-    private primaryAsset: Asset | null;
+    private primaryAsset: Asset;
 
     constructor({ name, index, portfolioOptions, address }: IAccountOptions) {
         this.name = name;
@@ -51,7 +51,7 @@ class Account {
         this.assets =
             portfolioOptions?.assets ??
             new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
-        this.primaryAsset = portfolioOptions?.primaryAsset ?? null;
+        this.primaryAsset = portfolioOptions?.primaryAsset ?? DEFAULT_ASSET;
     }
 
     public getName(): string {
