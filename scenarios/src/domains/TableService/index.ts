@@ -1,5 +1,5 @@
 export interface ITableRecord {
-    id: string | number;
+    id: string;
     [key: string]: any;
 }
 

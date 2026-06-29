@@ -3,6 +3,11 @@ import type SecretsProvider from "../SecretsProvider";
 import { EncryptedData } from "../../services/Crypto";
 import { WalletTypes } from "../Wallet";
 
+export interface ISignerOptions {
+    id: string;
+    encryptedSecret: EncryptedData;
+}
+
 export type TPKSigningContext = {
     passwordProvider: SecretsProvider;
 };
@@ -26,10 +31,16 @@ export interface ISignerRecord {
 }
 
 export default abstract class Signer {
+    protected readonly id: string;
     protected encryptedSecret: EncryptedData;
 
-    constructor(encryptedSecret: EncryptedData) {
+    constructor({ id, encryptedSecret }: ISignerOptions) {
+        this.id = id;
         this.encryptedSecret = encryptedSecret;
+    }
+
+    public getId(): string {
+        return this.id;
     }
 
     public getEncryptedSecret(): EncryptedData {

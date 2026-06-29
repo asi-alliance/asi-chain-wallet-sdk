@@ -14,7 +14,7 @@ export interface IHDSignerEncryptedFields {
     rootHDPath: string;
 }
 
-export interface ISignerRecord extends ITableRecord {
+export interface ISignerStorageRecord extends ITableRecord {
     type: WalletTypes;
     encryptedData: EncryptedData;
 
@@ -97,26 +97,26 @@ export class SignersStorageRepository {
         });
     }
 
-    public async getSigner(id: string): Promise<ISignerRecord | null> {
+    public async getSigner(id: string): Promise<ISignerStorageRecord | null> {
         await this.ensureInitialized();
 
         return this.storageInterface.getById(
             SIGNERS_DATA_KEY,
             id,
-        ) as Promise<ISignerRecord | null>;
+        ) as Promise<ISignerStorageRecord | null>;
     }
 
-    public async getAllSigners(): Promise<ISignerRecord[]> {
+    public async getAllSigners(): Promise<ISignerStorageRecord[]> {
         await this.ensureInitialized();
 
         return this.storageInterface.getAll(SIGNERS_DATA_KEY) as Promise<
-            ISignerRecord[]
+            ISignerStorageRecord[]
         >;
     }
 
     public async updateSigner(
         signerId: string,
-        updates: Partial<ISignerRecord>,
+        updates: Partial<ISignerStorageRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
 
