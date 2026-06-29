@@ -28,7 +28,15 @@ export default class AccountDataService {
                 networkName,
             );
         } catch (error) {
-            console.error("Failed to fetch transaction history", error);
+            if (GraphqlParser.isRecoverableNetworkError(error)) {
+                console.warn(
+                    "[GraphQL] Network error while loading transaction history. Returning an empty history.",
+                );
+
+                return [];
+            }
+
+            console.error("AccountDataService.getTransactionHistory:", error);
 
             return [];
         }

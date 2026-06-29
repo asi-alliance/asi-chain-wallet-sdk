@@ -1,10 +1,14 @@
 import BaseHttpClient from "@domains/BaseHttpClient";
 
 export default class ValidatorClient extends BaseHttpClient {
-    public submitDeploy(deploy: string) {
+    public submitDeploy(deploy: any) {
         return this.post("/api/deploy", {
             deploy,
         });
+    }
+
+    public submitExploratoryDeploy(rholangCode: string): Promise<any> {
+        return this.post("/api/explore-deploy", rholangCode);
     }
 
     public transfer(payload: {

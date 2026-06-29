@@ -1,5 +1,5 @@
 import { blake2bHex } from "blakejs";
-import { DEFAULT_PHLO_LIMIT } from "../../config";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "../../config";
 import ApiClientManager from "../../domains/ApiClientManager";
 import Asset from "../../domains/Asset";
 import { createTransferDeploy } from "../../domains/Deploy/factory";
@@ -19,6 +19,8 @@ export interface ITransferDetails {
     amount: bigint;
     asset: Asset;
     phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
 }
 
 export interface ITransferPayload {
@@ -84,6 +86,14 @@ export default class TransactionService {
             throw new Error("Amount must be greater than zero");
         }
 
+        if (details.phloLimit && details.phloLimit <= 0n) {
+            throw new Error("Phlo limit must be greater than zero");
+        }
+
+        if (details.phloPrice && details.phloPrice <= 0n) {
+            throw new Error("Phlo price must be greater than zero");
+        }
+
         const deploy = createTransferDeploy(
             fromAddress,
             details.to,
@@ -95,9 +105,9 @@ export default class TransactionService {
             {
                 term: deploy,
                 phloLimit: details.phloLimit ?? DEFAULT_PHLO_LIMIT,
-                phloPrice: 1,
+                phloPrice: details.phloPrice ?? DEFAULT_PHLO_PRICE,
                 timestamp: Date.now(),
-                shardId: "root",
+                shardId: details.shardId ?? "root",
             },
             passwordProvider,
         );
