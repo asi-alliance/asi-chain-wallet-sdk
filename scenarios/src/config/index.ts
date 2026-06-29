@@ -7,3 +7,5 @@ export const DEFAULT_ASSET: Asset = new Asset({
     id: generateRandomId(),
     name: "ASI",
 });
+
+export const DEFAULT_PHLO_LIMIT: number = 500000;
