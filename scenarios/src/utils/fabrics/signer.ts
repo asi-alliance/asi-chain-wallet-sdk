@@ -1,16 +1,18 @@
-import Signer, { ISignerRecord } from "../../domains/Signer";
 import HDSigner from "../../domains/Signer/HD";
-import PrivateKeySigner from "../../domains/Signer/PK";
 import CryptoService from "../../services/Crypto";
+import PrivateKeySigner from "../../domains/Signer/PK";
 import SecretsProvider from "../../domains/SecretsProvider";
+import Signer, { ISignerRecord } from "../../domains/Signer";
 import { WalletTypes } from "../../domains/Wallet";
 
 export type TCreateSignerPayload =
     | {
+          id: string;
           type: WalletTypes.PRIVATE_KEY;
           secretProvider: SecretsProvider;
       }
     | {
+          id: string;
           type: WalletTypes.HD;
           secretProvider: SecretsProvider;
       };
@@ -27,23 +29,24 @@ export const createSigner = async (
 
     switch (payload.type) {
         case WalletTypes.PRIVATE_KEY:
-            return new PrivateKeySigner(encryptedSecret);
+            return new PrivateKeySigner({ id: payload.id, encryptedSecret });
 
         case WalletTypes.HD: {
-            return new HDSigner(encryptedSecret);
+            return new HDSigner({ id: payload.id, encryptedSecret });
         }
     }
 };
 
 export const restoreSigner = ({
+    id,
     type,
     encryptedData,
-}: Omit<ISignerRecord, "id">): Signer => {
+}: ISignerRecord): Signer => {
     switch (type) {
         case WalletTypes.PRIVATE_KEY:
-            return new PrivateKeySigner(encryptedData);
+            return new PrivateKeySigner({ id, encryptedSecret: encryptedData });
 
         case WalletTypes.HD:
-            return new HDSigner(encryptedData);
+            return new HDSigner({ id, encryptedSecret: encryptedData });
     }
 };

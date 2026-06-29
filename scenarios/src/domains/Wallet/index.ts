@@ -171,6 +171,7 @@ export default class Wallet {
         secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const signer: Signer = await createSigner({
+            id: generateRandomId(),
             type: WalletTypes.PRIVATE_KEY,
             secretProvider,
         });
@@ -214,6 +215,7 @@ export default class Wallet {
         );
 
         const signer: Signer = await createSigner({
+            id: generateRandomId(),
             type: WalletTypes.HD,
             secretProvider: secretProviderFromSigner,
         });
@@ -251,10 +253,7 @@ export default class Wallet {
     ): Promise<Wallet> {
         const { signerRecord, accountRecords } = payload;
 
-        const signer: Signer = restoreSigner({
-            type: signerRecord.type,
-            encryptedData: signerRecord.encryptedData,
-        });
+        const signer: Signer = restoreSigner(signerRecord);
 
         const secretData: IPrivateKeyCredentials | IHDSecret =
             await decryptSignerData(

@@ -1,15 +1,15 @@
-// import "fake-indexeddb/auto";
+import "fake-indexeddb/auto";
 
-// import test from "node:test";
+import test from "node:test";
 
-// import BrowserStorage from "@domains/BrowserStorage";
 
-// import { runStorageContract } from "./storage.contract";
+import { runStorageContract } from "./storage.contract";
+import BrowserStorage from "../../../scenarios/src/domains/BrowserStorage";
 
-// runStorageContract(
-//     test,
-//     () =>
-//         new BrowserStorage(
-//             `test-browser-storage-${Date.now()}-${Math.random()}`,
-//         ),
-// );
+runStorageContract(
+    test,
+    () =>
+        new BrowserStorage(
+            `test-browser-storage-${Date.now()}-${Math.random()}`,
+        ),
+);

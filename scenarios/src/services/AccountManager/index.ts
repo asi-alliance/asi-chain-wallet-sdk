@@ -14,7 +14,8 @@ export default class AccountManager {
         activeAccount: Account | null = null,
     ) {
         this.accounts = accounts;
-        this.activeAccount = activeAccount;
+        this.activeAccount =
+            activeAccount ?? accounts.values().next().value ?? null;
     }
 
     public async create(
