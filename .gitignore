@@ -19,3 +19,10 @@ coverage/
 tmp/
 temp/
 *.bak
+
+# Storage
+/storage
+
+# Storage tests
+.tmp/
+.persist-test/

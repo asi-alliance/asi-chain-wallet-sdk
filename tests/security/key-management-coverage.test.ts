@@ -9,10 +9,8 @@ import MnemonicService from "../../src/services/Mnemonic";
 
 const PASSWORD = "coverage-password";
 const PRIVATE_KEY = Uint8Array.from([
-    9, 8, 7, 6, 5, 4, 3, 2,
-    1, 10, 11, 12, 13, 14, 15, 16,
-    17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27, 28, 29, 30, 31, 32,
+    9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
 ]);
 
 afterEach(() => {
@@ -88,7 +86,10 @@ test("KeysManager covers validation and utility branches", async () => {
         Array.from(pairFromPrivate.privateKey),
         Array.from(pair.privateKey),
     );
-    assert.deepEqual(Array.from(pairFromPrivate.publicKey), Array.from(publicKey));
+    assert.deepEqual(
+        Array.from(pairFromPrivate.publicKey),
+        Array.from(publicKey),
+    );
     assert.equal(privateHex.length, 64);
 
     const mnemonic = MnemonicService.generateMnemonic();

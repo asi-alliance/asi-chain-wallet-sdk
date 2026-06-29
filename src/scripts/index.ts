@@ -1,4 +1,4 @@
-import { IDBStorageController } from "@domains/IDBStorageController";
+import { IDBStorageController } from "@domains/WalletsStorageController";
 
 export const createStorage = () => {
     return IDBStorageController.getInstance();

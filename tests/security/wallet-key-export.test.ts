@@ -6,10 +6,8 @@ import Wallet, { SigningCapability } from "../../src/domains/Wallet";
 
 const PASSWORD = "wallet-password";
 const PRIVATE_KEY = Uint8Array.from([
-    1, 2, 3, 4, 5, 6, 7, 8,
-    9, 10, 11, 12, 13, 14, 15, 16,
-    17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27, 28, 29, 30, 31, 32,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
 ]);
 
 afterEach(() => {
@@ -47,9 +45,7 @@ test("withSigningCapability signs without exposing raw key bytes", async () => {
     Wallet.disableUnsafeRawKeyExport();
     const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
     const digest = Uint8Array.from([
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         1, 1, 1, 1, 1, 1, 1, 1,
     ]);
 
@@ -72,9 +68,7 @@ test("signing capability cannot be reused after callback scope", async () => {
     Wallet.disableUnsafeRawKeyExport();
     const wallet = await Wallet.fromPrivateKey("test", PRIVATE_KEY, PASSWORD);
     const digest = Uint8Array.from([
-        2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2,
-        2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
         2, 2, 2, 2, 2, 2, 2, 2,
     ]);
 
