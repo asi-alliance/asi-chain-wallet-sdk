@@ -5,7 +5,7 @@ import Account, {
     TEditableAccountOptions,
 } from "../Account";
 import { createSigner, restoreSigner } from "../../utils/fabrics/signer";
-import { decryptSignerData, generateRandomId } from "../../utils";
+import { decryptSignerData, encodeBase16, generateRandomId } from "../../utils";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -13,18 +13,14 @@ import SecretsProvider, {
 import KeysManager from "../../services/KeysManager";
 import Bip44Path from "../Bip44Path";
 import AccountManager from "../../services/AccountManager";
-import { OnlyHDWallet } from "../../utils/decorators";
+import { EnsureActiveAccountExist, OnlyHDWallet } from "../../utils/decorators";
+import TransactionService, {
+    ITransferDetails,
+    ITransferPayload,
+} from "../../services/TransactionService";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
-
-export interface StoredWalletMeta {
-    id: string;
-    name: string;
-    address: Address;
-    encryptedData: string;
-    index: string | null;
-}
 
 export interface IWalletOptions {
     id?: string;
@@ -32,6 +28,7 @@ export interface IWalletOptions {
     signer: Signer;
     accounts: Map<string, Account>;
     activeAccount?: Account;
+    transactionService?: TransactionService;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -63,6 +60,7 @@ export default class Wallet {
     private readonly type: WalletTypes;
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
+    private readonly transactionService: TransactionService;
 
     private constructor({
         id,
@@ -70,6 +68,7 @@ export default class Wallet {
         signer,
         accounts,
         activeAccount,
+        transactionService,
     }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;
@@ -78,6 +77,8 @@ export default class Wallet {
             accounts,
             activeAccount ?? null,
         );
+        this.transactionService =
+            transactionService ?? new TransactionService();
     }
 
     public getId(): string {
@@ -281,6 +282,19 @@ export default class Wallet {
             type: signerRecord.type,
             signer,
             accounts: accountsMap,
+        });
+    }
+
+    @EnsureActiveAccountExist
+    public async transfer(
+        payload: ITransferDetails,
+        passwordProvider: SecretsProvider,
+    ): Promise<string> {
+        return this.transactionService.transfer({
+            account: this.getActiveAccount()!,
+            signer: this.signer,
+            details: payload,
+            passwordProvider,
         });
     }
 }

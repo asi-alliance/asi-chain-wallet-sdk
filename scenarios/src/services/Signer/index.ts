@@ -64,7 +64,7 @@ export default class SignerService {
         }
     }
 
-    private static readonly deployDataProtobufSerialize = (
+    public static readonly deployDataProtobufSerialize = (
         deployData: DeployData,
     ): Uint8Array => {
         const {

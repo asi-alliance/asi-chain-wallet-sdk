@@ -4,7 +4,7 @@ import { GraphqlParser } from "@services/GraphqlParser";
 import { Transaction } from "@domains/Transaction";
 import { NetworkName } from "@domains/Network";
 
-export default class AccountService {
+export default class AccountDataService {
     private readonly apiClientManager: ApiClientManager;
 
     constructor(apiClientManager?: ApiClientManager) {

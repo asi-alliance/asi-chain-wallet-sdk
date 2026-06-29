@@ -3,6 +3,7 @@ import Asset from "../../domains/Asset";
 import Wallet, { Address } from "../../domains/Wallet";
 import SecretsProvider from "../../domains/SecretsProvider";
 import ApiClientManager from "../../domains/ApiClientManager";
+import ObserverClient, { IBalanceResponse } from "../../domains/ObserverClient";
 import { createTransferDeploy } from "../../domains/Deploy/factory";
 import { DEFAULT_PHLO_LIMIT } from "../../config";
 import { validateAddress } from "../../utils";
@@ -76,19 +77,14 @@ export default class AssetsService {
         address: Address,
         asset: Asset,
     ): Promise<IBalanceData> {
-        const validation = validateAddress(address);
+        const observer: ObserverClient =
+            ApiClientManager.getInstance().getObserverClient();
 
-        if (!validation.isValid) {
-            throw new Error(`Invalid address: ${validation.errorCode}`);
-        }
-
-        const observerClient = this.apiClientManager.getObserverClient();
-
-        const response = await observerClient.getBalance(address);
+        const response: IBalanceResponse = await observer.getBalance(address);
 
         return {
-            amount: BigInt(response.balance ?? 0),
-            asset,
+            amount: BigInt(response.balance),
+            asset: asset,
         };
     }
 }

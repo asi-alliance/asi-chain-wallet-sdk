@@ -1,3 +1,4 @@
+import Account from "../../domains/Account";
 import { ITableRecord, ITableService } from "../../domains/TableService";
 import { WalletTypes } from "../../domains/Wallet";
 
@@ -86,6 +87,7 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
+    activeAccount: Account | null;
     getType(): WalletTypes;
 }
 
@@ -136,6 +138,20 @@ export function EnsureApiClientManagerConfigured<
     return function (this: This, ...args: Args): Return {
         if (!this.isConfigured()) {
             throw new Error("ApiClientManager config is not initialized");
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export function EnsureActiveAccountExist<
+    This extends IWalletContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.activeAccount) {
+            throw new Error("Wallet hasn't active account for transfer!");
         }
 
         return target.apply(this, args);
