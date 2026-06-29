@@ -194,8 +194,8 @@ export default class Wallet {
     }
 
     public static async createHD(
-        passwordProvider: SecretsProvider,
         options: ICreateHDWalletOptions,
+        passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
         const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
             options.pathOptions,

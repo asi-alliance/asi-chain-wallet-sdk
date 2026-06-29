@@ -114,13 +114,16 @@ test("should sign payload with PK wallet signer", async () => {
 });
 
 test("should create HD wallet", async () => {
-    const wallet = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const wallet = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
         },
-    });
+        passwordProvider,
+    );
 
     const account = wallet.getActiveAccount();
 
@@ -145,21 +148,27 @@ test("should create HD wallet", async () => {
 });
 
 test("HD wallet should generate different addresses for different indexes", async () => {
-    const wallet0 = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const wallet0 = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
         },
-    });
+        passwordProvider,
+    );
 
-    const wallet1 = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions,
-        pathOptions: {
-            index: 1,
+    const wallet1 = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions,
+            pathOptions: {
+                index: 1,
+            },
         },
-    });
+        passwordProvider,
+    );
 
     const address0 = wallet0.getActiveAccount()?.getAddress();
 
@@ -208,13 +217,16 @@ test("should restore PK wallet", async () => {
 });
 
 test("should restore HD wallet", async () => {
-    const original = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const original = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
         },
-    });
+        passwordProvider,
+    );
 
     const restored = await Wallet.restore(
         {
@@ -272,13 +284,16 @@ test("PK and HD wallet should generate independent addresses", async () => {
         createPkProvider(PASSWORD).provider,
     );
 
-    const hd = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions,
-        pathOptions: {
-            index: 0,
+    const hd = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions,
+            pathOptions: {
+                index: 0,
+            },
         },
-    });
+        passwordProvider,
+    );
 
     const pkAddress = pk.getActiveAccount()?.getAddress();
 
@@ -293,13 +308,16 @@ test("PK and HD wallet should generate independent addresses", async () => {
 });
 
 test("HD wallet should update, remove account and reuse freed derivation index", async () => {
-    const wallet = await Wallet.createHD(passwordProvider, {
-        mnemonic: MNEMONIC,
-        accountOptions: accountPayload,
-        pathOptions: {
-            index: 0,
+    const wallet = await Wallet.createHD(
+        {
+            mnemonic: MNEMONIC,
+            accountOptions: accountPayload,
+            pathOptions: {
+                index: 0,
+            },
         },
-    });
+        passwordProvider,
+    );
 
     console.log("\n=== INITIAL WALLET ===");
 
