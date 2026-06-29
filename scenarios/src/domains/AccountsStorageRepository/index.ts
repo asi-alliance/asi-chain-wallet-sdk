@@ -28,8 +28,17 @@ export interface IFullWalletRecord extends IPublicWalletRecord, ITableRecord {
     updatedAt?: number;
 }
 
-export class WalletsStorageRepository {
-    private static instance: WalletsStorageRepository;
+export interface IAccountRecord extends ITableRecord {
+    signerId: string;
+    name: string;
+    index: number | null;
+
+    createdAt: number;
+    updatedAt?: number;
+}
+
+export class AccountsStorageRepository {
+    private static instance: AccountsStorageRepository;
     private storageInterface: ITableService<ITableRecord>;
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
@@ -38,11 +47,12 @@ export class WalletsStorageRepository {
         this.storageInterface = storageFabric();
     }
 
-    public static getInstance(): WalletsStorageRepository {
-        if (!WalletsStorageRepository.instance) {
-            WalletsStorageRepository.instance = new WalletsStorageRepository();
+    public static getInstance(): AccountsStorageRepository {
+        if (!AccountsStorageRepository.instance) {
+            AccountsStorageRepository.instance =
+                new AccountsStorageRepository();
         }
-        return WalletsStorageRepository.instance;
+        return AccountsStorageRepository.instance;
     }
 
     public async initialize(): Promise<void> {
@@ -123,66 +133,69 @@ export class WalletsStorageRepository {
             value: record.value,
         }));
     }
-
-    public async saveWallet(
-        walletId: string,
+    public async saveAccount(
+        accountId: string,
+        signerId: string,
         name: string,
-        type: WalletTypes,
-        encryptedData: EncryptedData,
+        index: number | null,
     ): Promise<void> {
         await this.ensureInitialized();
         await this.storageInterface.insert(WALLETS_DATA_KEY, {
-            id: walletId,
+            id: accountId,
+            signerId,
             name,
-            type,
-            encryptedData,
+            index,
             createdAt: Date.now(),
         });
     }
 
-    public async getWallet(id: string): Promise<IFullWalletRecord | null> {
+    public async getAccount(id: string): Promise<IAccountRecord | null> {
         await this.ensureInitialized();
         return this.storageInterface.getById(
             WALLETS_DATA_KEY,
             id,
-        ) as Promise<IFullWalletRecord | null>;
+        ) as Promise<IAccountRecord | null>;
     }
 
-    public async getAllWallets(): Promise<IFullWalletRecord[]> {
+    public async getAllAccounts(): Promise<IAccountRecord[]> {
         await this.ensureInitialized();
         return this.storageInterface.getAll(WALLETS_DATA_KEY) as Promise<
-            IFullWalletRecord[]
+            IAccountRecord[]
         >;
     }
 
-    public async updateWallet(
-        address: string,
-        updates: Partial<IFullWalletRecord>,
+    public async updateAccount(
+        accountId: string,
+        updates: Partial<IAccountRecord>,
     ): Promise<void> {
         await this.ensureInitialized();
-        await this.storageInterface.update(WALLETS_DATA_KEY, address, updates);
+        await this.storageInterface.update(
+            WALLETS_DATA_KEY,
+            accountId,
+            updates,
+        );
     }
 
-    public async deleteWallet(address: string): Promise<void> {
+    public async deleteAccount(accountId: string): Promise<void> {
         await this.ensureInitialized();
-        await this.storageInterface.delete(WALLETS_DATA_KEY, address);
+        await this.storageInterface.delete(WALLETS_DATA_KEY, accountId);
     }
 
-    public async deleteMultipleWallets(addresses: string[]): Promise<void> {
+    public async deleteMultipleAccounts(accountIds: string[]): Promise<void> {
         await this.ensureInitialized();
-        await this.storageInterface.deleteMany(WALLETS_DATA_KEY, addresses);
+        await this.storageInterface.deleteMany(WALLETS_DATA_KEY, accountIds);
     }
 
-    public async hasWallet(address: string): Promise<boolean> {
+    public async hasAccount(accountId: string): Promise<boolean> {
         await this.ensureInitialized();
-        const wallet = await this.getWallet(address);
-        return wallet !== null;
+        const account = await this.getAccount(accountId);
+        return account !== null;
     }
 
-    public async getWalletsCount(): Promise<number> {
+    public async getAccountsCount(): Promise<number> {
         await this.ensureInitialized();
-        const wallets = await this.getAllWallets();
-        return wallets.length;
+        const accounts = await this.getAllAccounts();
+        return accounts.length;
     }
 
     public async clearAllData(): Promise<void> {
