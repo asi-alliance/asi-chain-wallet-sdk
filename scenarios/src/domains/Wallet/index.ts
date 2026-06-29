@@ -43,6 +43,7 @@ export type TCreateHDPathWalletOptions =
       };
 
 export interface ICreateHDWalletOptions {
+    mnemonic: string;
     pathOptions: TCreateHDPathWalletOptions;
     accountOptions: TCreateAccountPayload;
 }
@@ -107,7 +108,7 @@ export default class Wallet {
         this.accountManager.setActiveAccount(id);
     }
 
-    private getDeriveIndex(initialHDPath: Bip44Path): number | null {
+    private getDerivationIndex(initialHDPath: Bip44Path): number | null {
         const initialAccountIndex = initialHDPath.getIndex();
 
         const indexes = this.getAccounts()
@@ -147,7 +148,7 @@ export default class Wallet {
         )) as IHDSecret;
         const secretProvider = new SecretsProvider(() => secretData);
 
-        const derivationIndex: number | null = this.getDeriveIndex(
+        const derivationIndex: number | null = this.getDerivationIndex(
             secretData.rootHDPath,
         );
 
@@ -193,7 +194,6 @@ export default class Wallet {
     }
 
     public static async createHD(
-        mnemonic: string,
         passwordProvider: SecretsProvider,
         options: ICreateHDWalletOptions,
     ): Promise<Wallet> {
@@ -206,7 +206,7 @@ export default class Wallet {
                 return {
                     secret: {
                         rootHDPath: rootHDPath.toString(),
-                        seed: mnemonic,
+                        seed: options.mnemonic,
                     },
                     password: passwordProvider.getSecret().password,
                 };
@@ -222,7 +222,7 @@ export default class Wallet {
             () => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed: mnemonic,
+                    seed: options.mnemonic,
                 };
             },
         );
