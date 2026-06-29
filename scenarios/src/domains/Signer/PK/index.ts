@@ -1,20 +1,20 @@
 import CryptoService from "../../../services/Crypto";
 import KeysManager from "../../../services/KeysManager";
 import Signer, { ISignedMessageResponse, TSigningContext } from "..";
-import { toUint8Array } from "../../../utils/functions";
+import { decryptSignerData, toUint8Array } from "../../../utils/functions";
 import { sign } from "@noble/secp256k1";
+import SecretsProvider, { IPrivateKeyCredentials } from "../../SecretsProvider";
 
 export default class PrivateKeySigner extends Signer {
     public async sign(
         payload: string,
         signingContext: TSigningContext,
     ): Promise<ISignedMessageResponse> {
-        const keyMaterial: string = await CryptoService.decryptWithPassword(
+        const { privateKey } = (await decryptSignerData(
             this.encryptedSecret,
-            await signingContext.passwordProvider.getSecret(),
-        );
+            signingContext.passwordProvider,
+        )) as IPrivateKeyCredentials;
 
-        const privateKey: Uint8Array = toUint8Array(keyMaterial);
         const publicKey: Uint8Array =
             KeysManager.getPublicKeyFromPrivateKey(privateKey);
 

@@ -1,32 +1,24 @@
-import Signer from "../../domains/Signer";
-import CryptoService from "@services/Crypto";
+import Signer, { ISignerRecord } from "../../domains/Signer";
 import HDSigner from "../../domains/Signer/HD";
 import PrivateKeySigner from "../../domains/Signer/PK";
-import { WalletTypes } from "@domains/WalletsStorageRepository";
-import {
-    TPasswordProvider,
-    THDSecretProvider,
-    TPrivateKeyProvider,
-} from "@domains/PasswordProvider";
+import CryptoService from "../../services/Crypto";
+import SecretsProvider from "../../domains/SecretsProvider";
+import { WalletTypes } from "../../domains/Wallet";
 
 export type TCreateSignerPayload =
     | {
           type: WalletTypes.PRIVATE_KEY;
-          passwordProvider: TPasswordProvider;
-          secretProvider: TPrivateKeyProvider;
+          secretProvider: SecretsProvider;
       }
     | {
           type: WalletTypes.HD;
-          passwordProvider: TPasswordProvider;
-          secretProvider: THDSecretProvider;
+          secretProvider: SecretsProvider;
       };
 
 export const createSigner = async (
     payload: TCreateSignerPayload,
 ): Promise<Signer> => {
-    const { password } = await payload.passwordProvider();
-
-    const secret = await payload.secretProvider();
+    const { password, secret } = payload.secretProvider.getSecret();
 
     const encryptedSecret = await CryptoService.encryptWithPassword(
         JSON.stringify(secret),
@@ -37,7 +29,21 @@ export const createSigner = async (
         case WalletTypes.PRIVATE_KEY:
             return new PrivateKeySigner(encryptedSecret);
 
-        case WalletTypes.HD:
+        case WalletTypes.HD: {
             return new HDSigner(encryptedSecret);
+        }
+    }
+};
+
+export const restoreSigner = ({
+    type,
+    encryptedData,
+}: Omit<ISignerRecord, "id">): Signer => {
+    switch (type) {
+        case WalletTypes.PRIVATE_KEY:
+            return new PrivateKeySigner(encryptedData);
+
+        case WalletTypes.HD:
+            return new HDSigner(encryptedData);
     }
 };

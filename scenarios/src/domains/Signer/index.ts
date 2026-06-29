@@ -1,6 +1,7 @@
 import Bip44Path from "../Bip44Path";
 import type SecretsProvider from "../SecretsProvider";
 import { EncryptedData } from "../../services/Crypto";
+import { WalletTypes } from "../Wallet";
 
 export type TPKSigningContext = {
     passwordProvider: SecretsProvider;
@@ -17,6 +18,12 @@ export type ISignedMessageResponse = {
 };
 
 export type TSigningContext = TPKSigningContext | THDSigningContext;
+
+export interface ISignerRecord {
+    id: string;
+    type: WalletTypes;
+    encryptedData: EncryptedData;
+}
 
 export default abstract class Signer {
     protected encryptedSecret: EncryptedData;

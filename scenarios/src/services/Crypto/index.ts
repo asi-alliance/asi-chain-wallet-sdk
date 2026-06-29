@@ -1,4 +1,4 @@
-import { arrayBufferToBase64, base64ToArrayBuffer } from "@utils/codec";
+import { arrayBufferToBase64, base64ToArrayBuffer } from "../../utils";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",
@@ -17,14 +17,14 @@ export type CryptoConfig = {
     readonly KEY_IMPORT_USAGE: KeyUsage[];
     readonly HASH_FUNCTION: string;
     readonly ALGORITHM: string;
-}
+};
 
 export type EncryptedData = {
     data: string;
     salt: string;
     iv: string;
     version: number;
-}
+};
 
 const CryptoConfig: CryptoConfig = {
     VERSION: 2,

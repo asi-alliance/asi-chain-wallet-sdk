@@ -1,8 +1,8 @@
-import { ITableRecord, ITableService } from "@domains/TableService";
 import {
     EnsureDatabaseInitialized,
     EnsureTableExists,
-} from "@utils/decorators";
+} from "../../utils/decorators";
+import { ITableRecord, ITableService } from "../TableService";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private readonly name: string;

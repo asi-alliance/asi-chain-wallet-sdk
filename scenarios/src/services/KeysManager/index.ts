@@ -1,4 +1,8 @@
-import { PRIVATE_KEY_LENGTH } from "../../utils/constants";
+import Bip44Path from "../../domains/Bip44Path";
+import KeyDerivationService from "../KeyDerivation";
+import { ASI_COIN_TYPE, PRIVATE_KEY_LENGTH } from "../../utils/constants";
+import { isCustomCreateHDWalletOptions } from "../../utils/guards";
+import { TCreateHDWalletOptions } from "../../domains/Wallet";
 import { utils, getPublicKey } from "@noble/secp256k1";
 
 const { randomBytes, bytesToHex } = utils;
@@ -7,6 +11,19 @@ export type KeyPair = {
     privateKey: Uint8Array;
     publicKey: Uint8Array;
 };
+
+export interface IBaseHDWalletPrivateKeyData {
+    path: Bip44Path;
+    privateKey: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromMnemonic extends IBaseHDWalletPrivateKeyData {
+    seed: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromSeed extends IBaseHDWalletPrivateKeyData {
+    index: number;
+}
 
 export default class KeysManager {
     public static generateRandomKey(
@@ -42,5 +59,31 @@ export default class KeysManager {
 
     public static convertKeyToHex(key: Uint8Array): string {
         return bytesToHex(key);
+    }
+
+    public static async getInitialHDPathFromOptions(
+        hdWalletOptions: TCreateHDWalletOptions,
+    ): Promise<Bip44Path> {
+        return !isCustomCreateHDWalletOptions(hdWalletOptions)
+            ? new Bip44Path({
+                  coinType: ASI_COIN_TYPE,
+                  account: 0,
+                  change: 0,
+                  index: hdWalletOptions.index,
+              })
+            : hdWalletOptions.customHDPath;
+    }
+
+    public static async getPrivateDataFromSeed(
+        seed: Uint8Array,
+        path: Bip44Path,
+    ): Promise<IHDWalletPrivateKeyDataFromSeed> {
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+        return {
+            privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
+            path,
+            index: path.getIndex(),
+        };
     }
 }

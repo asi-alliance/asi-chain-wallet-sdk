@@ -1,6 +1,6 @@
-import { ITableRecord, ITableService } from "@domains/TableService";
-import { storageFabric } from "@fabrics/Storage";
-import { EncryptedData } from "@services/Crypto";
+import { storageFabric } from "../../fabrics/Storage";
+import { EncryptedData } from "../../services/Crypto";
+import { ITableRecord, ITableService } from "../TableService";
 
 const STORE_KEY: string = "SDK_STORE";
 const WALLETS_DATA_KEY: string = "WALLETS";
@@ -8,7 +8,6 @@ const WALLETS_DATA_KEY: string = "WALLETS";
 export enum WalletTypes {
     PRIVATE_KEY = "private-key",
     HD = "hd",
-    MPC = "mpc",
 }
 
 export interface IPublicWalletRecord extends ITableRecord {
@@ -66,7 +65,8 @@ export class WalletsStorageRepository {
 
     private async doInitialize(): Promise<void> {
         try {
-            const asiStoreExists = await this.storageInterface.tableExists(STORE_KEY);
+            const asiStoreExists =
+                await this.storageInterface.tableExists(STORE_KEY);
 
             if (!asiStoreExists) {
                 await this.storageInterface.createTable(STORE_KEY, "id");
@@ -150,7 +150,9 @@ export class WalletsStorageRepository {
 
     public async getAllWallets(): Promise<IFullWalletRecord[]> {
         await this.ensureInitialized();
-        return this.storageInterface.getAll(WALLETS_DATA_KEY) as Promise<IFullWalletRecord[]>;
+        return this.storageInterface.getAll(WALLETS_DATA_KEY) as Promise<
+            IFullWalletRecord[]
+        >;
     }
 
     public async updateWallet(
