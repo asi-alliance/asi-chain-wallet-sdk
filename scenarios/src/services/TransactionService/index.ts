@@ -1,4 +1,4 @@
-import { blake2bHex } from "blakejs";
+import blakejs from "blakejs";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "../../config";
 import ApiClientManager from "../../domains/ApiClientManager";
 import Asset from "../../domains/Asset";
@@ -13,6 +13,8 @@ import {
 import SignerService, { SignedResult } from "../Signer";
 import Account from "../../domains/Account";
 import Signer from "../../domains/Signer";
+
+const { blake2bHex } = blakejs;
 
 export interface ITransferDetails {
     to: Address;
@@ -112,8 +114,16 @@ export default class TransactionService {
             passwordProvider,
         );
 
-        return this.apiClientManager
-            .getValidatorClient()
-            .submitDeploy(JSON.stringify(signedDeploy)) as Promise<string>;
+        try {
+            const transferPayload = (await this.apiClientManager
+                .getValidatorClient()
+                .submitDeploy(JSON.stringify(signedDeploy))) as Promise<string>;
+
+            return transferPayload;
+        } catch (error: unknown) {
+            console.log("ERROR ON TRANSACTION: ", error);
+
+            throw error;
+        }
     }
 }

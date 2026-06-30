@@ -145,14 +145,7 @@ class Account {
         const observer: ObserverClient =
             ApiClientManager.getInstance().getObserverClient();
 
-        const response: IBalanceResponse = await observer.getBalance(
-            this.address,
-        );
-
-        return {
-            amount: BigInt(response.balance),
-            asset: this.primaryAsset,
-        };
+        return observer.getBalance(this.address);
     }
 }
 

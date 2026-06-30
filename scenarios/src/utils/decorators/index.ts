@@ -1,6 +1,8 @@
 import Account from "../../domains/Account";
+import NetworkConfigProvider from "../../domains/NetworkConfigProvider";
 import { ITableRecord, ITableService } from "../../domains/TableService";
 import { WalletTypes } from "../../domains/Wallet";
+import AccountManager from "../../services/AccountManager";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -87,7 +89,7 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
-    activeAccount: Account | null;
+    accountManager: AccountManager;
     getType(): WalletTypes;
 }
 
@@ -113,7 +115,7 @@ export interface IApiClientManagerContext {
 }
 
 export interface IApiClientManagerConfigContext {
-    isConfigured(): boolean;
+    networkConfigProvider: NetworkConfigProvider;
 }
 
 export function EnsureApiClientManagerInitialized<
@@ -136,7 +138,7 @@ export function EnsureApiClientManagerConfigured<
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        if (!this.isConfigured()) {
+        if (!this.networkConfigProvider.isReady()) {
             throw new Error("ApiClientManager config is not initialized");
         }
 
@@ -150,7 +152,7 @@ export function EnsureActiveAccountExist<
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        if (!this.activeAccount) {
+        if (!this.accountManager.getActiveAccount()) {
             throw new Error("Wallet hasn't active account for transfer!");
         }
 

@@ -1,9 +1,4 @@
-export type NetworkName =
-    | "Dev"
-    | "MainNet"
-    | "TestNet"
-    | "DevNet";
-
+export type NetworkName = "NewDev" | "Dev" | "MainNet" | "TestNet" | "DevNet";
 
 export interface INetworkConfig {
     ValidatorURL: string;
@@ -11,6 +6,4 @@ export interface INetworkConfig {
     IndexerURL: string;
 }
 
-
-export type TNetworksConfig =
-    Record<NetworkName, INetworkConfig>;
+export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
