@@ -6,8 +6,8 @@ import {
     SkipIfDatabaseNotInitialized,
     SkipIfTableExists,
 } from "../../utils/decorators";
+import { DEFAULT_NODE_STORAGE_DIR } from "../../config";
 
-const DEFAULT_STORAGE_DIR: string = "./storage";
 const TABLES_FOLDER_KEY: string = "__tables__";
 const TABLES_KEY_PREFIX: string = "table";
 
@@ -16,7 +16,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
 
     private storageInterface: LocalStorage | null = null;
 
-    constructor(storageDir: string = DEFAULT_STORAGE_DIR) {
+    constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
         this.storageDir = storageDir;
     }
 

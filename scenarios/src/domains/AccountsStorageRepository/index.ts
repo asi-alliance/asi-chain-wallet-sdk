@@ -1,4 +1,4 @@
-import { storageFabric } from "../../fabrics/Storage";
+import { IStorageFabricOptions, storageFabric } from "../../fabrics/Storage";
 import { EncryptedData } from "../../services/Crypto";
 import { ITableRecord, ITableService } from "../TableService";
 
@@ -42,14 +42,17 @@ export class AccountsStorageRepository {
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
-    private constructor() {
-        this.storageInterface = storageFabric();
+    private constructor(options?: IStorageFabricOptions) {
+        this.storageInterface = storageFabric(options);
     }
 
-    public static getInstance(): AccountsStorageRepository {
+    public static getInstance(
+        options?: IStorageFabricOptions,
+    ): AccountsStorageRepository {
         if (!AccountsStorageRepository.instance) {
-            AccountsStorageRepository.instance =
-                new AccountsStorageRepository();
+            AccountsStorageRepository.instance = new AccountsStorageRepository(
+                options,
+            );
         }
         return AccountsStorageRepository.instance;
     }

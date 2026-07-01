@@ -4,10 +4,11 @@ import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
 } from "../SecretsProvider";
-import { Address } from "../Wallet";
 import WalletsService from "../../services/Wallets";
+import ApiServiceRegistry from "../ApiServiceRegistry";
 import { isPrivateKeySecretData } from "../../utils/guards";
 import KeyDerivationService from "../../services/KeyDerivation";
+import { Address } from "../Wallet";
 
 export interface IPortfolioOptions {
     assets?: Assets;
@@ -17,7 +18,7 @@ export interface IPortfolioOptions {
 export interface IAccountOptions {
     name: string;
     index: number | null;
-    address: string;
+    address: Address;
     portfolioOptions?: IPortfolioOptions;
 }
 
@@ -39,7 +40,7 @@ export interface IAccountRecord {
 
 class Account {
     private readonly index: number | null;
-    private readonly address: string;
+    private readonly address: Address;
     private name: string;
     private assets: Assets;
     private primaryAsset: Asset;
@@ -66,7 +67,7 @@ class Account {
         return Array.from(this.assets.values());
     }
 
-    public getAddress(): string {
+    public getAddress(): Address {
         return this.address;
     }
 
@@ -137,6 +138,13 @@ class Account {
         }
 
         this.name = options.name;
+    }
+
+    public async getBalance() {
+        return ApiServiceRegistry.getInstance().assets.getBalance(
+            this.address,
+            this.primaryAsset,
+        );
     }
 }
 

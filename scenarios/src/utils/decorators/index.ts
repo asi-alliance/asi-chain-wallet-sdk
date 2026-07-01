@@ -1,5 +1,8 @@
+import Account from "../../domains/Account";
+import NetworkConfigProvider from "../../domains/NetworkConfigProvider";
 import { ITableRecord, ITableService } from "../../domains/TableService";
 import { WalletTypes } from "../../domains/Wallet";
+import AccountManager from "../../services/AccountManager";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -86,6 +89,7 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
+    accountManager: AccountManager;
     getType(): WalletTypes;
 }
 
@@ -103,5 +107,55 @@ export function OnlyHDWallet<
         }
 
         return await target.apply(this, args);
+    };
+}
+
+export interface IApiClientManagerContext {
+    isReady(): boolean;
+}
+
+export interface IApiClientManagerConfigContext {
+    networkConfigProvider: NetworkConfigProvider;
+}
+
+export function EnsureApiClientManagerInitialized<
+    This extends IApiClientManagerContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.isReady()) {
+            throw new Error("ApiClientManager is not initialized");
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export function EnsureApiClientManagerConfigured<
+    This extends IApiClientManagerConfigContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.networkConfigProvider.isReady()) {
+            throw new Error("ApiClientManager config is not initialized");
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export function EnsureActiveAccountExist<
+    This extends IWalletContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.accountManager.getActiveAccount()) {
+            throw new Error("Wallet hasn't active account for transfer!");
+        }
+
+        return target.apply(this, args);
     };
 }

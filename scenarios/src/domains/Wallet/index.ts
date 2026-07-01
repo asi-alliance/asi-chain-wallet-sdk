@@ -5,7 +5,7 @@ import Account, {
     TEditableAccountOptions,
 } from "../Account";
 import { createSigner, restoreSigner } from "../../utils/fabrics/signer";
-import { decryptSignerData, generateRandomId } from "../../utils";
+import { decryptSignerData, encodeBase16, generateRandomId } from "../../utils";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -13,18 +13,14 @@ import SecretsProvider, {
 import KeysManager from "../../services/KeysManager";
 import Bip44Path from "../Bip44Path";
 import AccountManager from "../../services/AccountManager";
-import { OnlyHDWallet } from "../../utils/decorators";
+import { EnsureActiveAccountExist, OnlyHDWallet } from "../../utils/decorators";
+import TransactionService, {
+    ITransferDetails,
+} from "../../services/TransactionService";
+import ApiServiceRegistry from "../ApiServiceRegistry";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
-
-export interface StoredWalletMeta {
-    id: string;
-    name: string;
-    address: Address;
-    encryptedData: string;
-    index: string | null;
-}
 
 export interface IWalletOptions {
     id?: string;
@@ -32,6 +28,7 @@ export interface IWalletOptions {
     signer: Signer;
     accounts: Map<string, Account>;
     activeAccount?: Account;
+    transactionService?: TransactionService;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -70,6 +67,7 @@ export default class Wallet {
         signer,
         accounts,
         activeAccount,
+        transactionService,
     }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;
@@ -281,6 +279,19 @@ export default class Wallet {
             type: signerRecord.type,
             signer,
             accounts: accountsMap,
+        });
+    }
+
+    @EnsureActiveAccountExist
+    public async transfer(
+        payload: ITransferDetails,
+        passwordProvider: SecretsProvider,
+    ): Promise<string> {
+        return ApiServiceRegistry.getInstance().transactions.transfer({
+            account: this.getActiveAccount()!,
+            signer: this.signer,
+            details: payload,
+            passwordProvider,
         });
     }
 }

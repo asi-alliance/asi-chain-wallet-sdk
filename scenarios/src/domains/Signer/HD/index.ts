@@ -1,13 +1,10 @@
+import Bip44Path from "../../Bip44Path";
 import CryptoService from "../../../services/Crypto";
 import KeysManager from "../../../services/KeysManager";
+import KeyDerivationService from "../../../services/KeyDerivation";
 import Signer, { ISignedMessageResponse, THDSigningContext } from "..";
 import { sign } from "@noble/secp256k1";
-import SecretsProvider, {
-    IHDSecret,
-    IHDSecretRecord,
-} from "../../SecretsProvider";
-import Bip44Path from "../../Bip44Path";
-import KeyDerivationService from "../../../services/KeyDerivation";
+import { IHDSecretRecord } from "../../SecretsProvider";
 
 export default class HDSigner extends Signer {
     public async sign(

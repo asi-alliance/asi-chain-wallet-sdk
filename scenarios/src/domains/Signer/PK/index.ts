@@ -1,9 +1,8 @@
-import CryptoService from "../../../services/Crypto";
 import KeysManager from "../../../services/KeysManager";
 import Signer, { ISignedMessageResponse, TSigningContext } from "..";
-import { decryptSignerData, toUint8Array } from "../../../utils/functions";
+import { IPrivateKeyCredentials } from "../../SecretsProvider";
+import { decryptSignerData } from "../../../utils/functions";
 import { sign } from "@noble/secp256k1";
-import SecretsProvider, { IPrivateKeyCredentials } from "../../SecretsProvider";
 
 export default class PrivateKeySigner extends Signer {
     public async sign(

@@ -1,4 +1,4 @@
-import { storageFabric } from "../../fabrics/Storage";
+import { IStorageFabricOptions, storageFabric } from "../../fabrics/Storage";
 import { EncryptedData } from "../../services/Crypto";
 import { ITableRecord, ITableService } from "../TableService";
 import { WalletTypes } from "../Wallet";
@@ -28,13 +28,17 @@ export class SignersStorageRepository {
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
-    private constructor() {
-        this.storageInterface = storageFabric();
+    private constructor(options?: IStorageFabricOptions) {
+        this.storageInterface = storageFabric(options);
     }
 
-    public static getInstance(): SignersStorageRepository {
+    public static getInstance(
+        options?: IStorageFabricOptions,
+    ): SignersStorageRepository {
         if (!SignersStorageRepository.instance) {
-            SignersStorageRepository.instance = new SignersStorageRepository();
+            SignersStorageRepository.instance = new SignersStorageRepository(
+                options,
+            );
         }
         return SignersStorageRepository.instance;
     }
