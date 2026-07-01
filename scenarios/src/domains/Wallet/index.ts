@@ -16,8 +16,8 @@ import AccountManager from "../../services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "../../utils/decorators";
 import TransactionService, {
     ITransferDetails,
-    ITransferPayload,
 } from "../../services/TransactionService";
+import ApiServiceRegistry from "../ApiServiceRegistry";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -60,7 +60,6 @@ export default class Wallet {
     private readonly type: WalletTypes;
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
-    private readonly transactionService: TransactionService;
 
     private constructor({
         id,
@@ -77,8 +76,6 @@ export default class Wallet {
             accounts,
             activeAccount ?? null,
         );
-        this.transactionService =
-            transactionService ?? new TransactionService();
     }
 
     public getId(): string {
@@ -290,7 +287,7 @@ export default class Wallet {
         payload: ITransferDetails,
         passwordProvider: SecretsProvider,
     ): Promise<string> {
-        return this.transactionService.transfer({
+        return ApiServiceRegistry.getInstance().transactions.transfer({
             account: this.getActiveAccount()!,
             signer: this.signer,
             details: payload,

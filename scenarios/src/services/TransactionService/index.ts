@@ -14,7 +14,7 @@ import {
 import SignerService, { SignedResult } from "../Signer";
 import Account from "../../domains/Account";
 import Signer from "../../domains/Signer";
-import BlockService from "../BlockService";
+import ApiServiceRegistry from "../../domains/ApiServiceRegistry";
 
 const { blake2bHex } = blakejs;
 
@@ -36,12 +36,10 @@ export interface ITransferPayload {
 
 export default class TransactionService {
     private readonly apiClientManager: ApiClientManager;
-    private readonly blockService: BlockService;
 
     constructor(apiClientManager?: ApiClientManager) {
         this.apiClientManager =
             apiClientManager ?? ApiClientManager.getInstance();
-        this.blockService = new BlockService(this.apiClientManager);
     }
 
     private async signDeploy(
@@ -106,10 +104,8 @@ export default class TransactionService {
             details.amount,
         );
 
-        console.log("DEPLOY RHOLANG: ", deploy);
-
         const latestBlockNumber: number =
-            await this.blockService.getLatestBlockNumber();
+            await ApiServiceRegistry.getInstance().blocks.getLatestBlockNumber();
 
         if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
             throw new Error(
@@ -130,19 +126,13 @@ export default class TransactionService {
             passwordProvider,
         );
 
-        // console.log("SIGNED DEPLOY: ", signedDeploy);
-
         try {
             const transferPayload = (await this.apiClientManager
                 .getValidatorClient()
                 .submitDeploy(signedDeploy)) as Promise<string>;
 
-            console.log("TRANSFER PAYLOAD: ", transferPayload);
-
             return transferPayload;
         } catch (error: unknown) {
-            console.log("ERROR ON TRANSACTION: ", error);
-
             throw error;
         }
     }

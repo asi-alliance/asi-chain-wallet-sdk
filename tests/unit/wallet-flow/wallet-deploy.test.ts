@@ -10,6 +10,7 @@ import ApiClientManager from "../../../scenarios/src/domains/ApiClientManager";
 import axios, { AxiosError } from "axios";
 import { DEFAULT_ASSET } from "../../../scenarios/src/config";
 import { decryptSignerData } from "../../../scenarios/src/utils";
+import { IBalanceData } from "../../../scenarios/src/services/AssetsService";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -125,12 +126,6 @@ function logAxiosError(error: unknown): void {
 
 ApiClientManager.getInstance().initialize(
     {
-        Dev: {
-            ValidatorURL: "http://202.181.159.96:40423",
-            ReadOnlyURL: "http://202.181.159.96:40453",
-            IndexerURL:
-                "https://indexer.asi-chain.singularitynet.dev/v1/graphql",
-        },
         DevNet: {
             ValidatorURL:
                 "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
@@ -138,13 +133,17 @@ ApiClientManager.getInstance().initialize(
                 "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
             IndexerURL: "https://indexer.dev.asichain.io/v1/graphql",
         },
+        Dev: {
+            ValidatorURL: "http://202.181.159.96:40423",
+            ReadOnlyURL: "http://202.181.159.96:40453",
+            IndexerURL:
+                "https://indexer.asi-chain.singularitynet.dev/v1/graphql",
+        },
         MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
         TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
     },
     "DevNet",
 );
-
-console.log("NETWORK: ", ApiClientManager.getInstance().getNetwork());
 
 test("manual transfer between two wallets", async () => {
     console.log("\n=== MANUAL TRANSFER TEST ===");
@@ -248,33 +247,33 @@ test("manual transfer between two wallets", async () => {
     // 3. CHECK INITIAL BALANCES
     //
 
-    // console.log("\n[3] Initial balances");
+    console.log("\n[3] Initial balances");
 
-    // try {
-    //     const sourceBalance: IBalanceResponse = await sourceWallet
-    //         .getActiveAccount()!
-    //         .getBalance();
+    try {
+        const sourceBalance: IBalanceData = await sourceWallet
+            .getActiveAccount()!
+            .getBalance();
 
-    //     console.log("    Source:", sourceBalance.balance.toString());
-    // } catch (error: unknown) {
-    //     logAxiosError(error);
-    //     console.error("Account.getBalance: ", error);
+        console.log("    Source:", sourceBalance.amount);
+    } catch (error: unknown) {
+        logAxiosError(error);
+        console.error("Account.getBalance: ", error);
 
-    //     throw new Error(`Account.getBalance: ${(error as Error).message}`);
-    // }
+        throw new Error(`Account.getBalance: ${(error as Error).message}`);
+    }
 
-    // try {
-    //     const destinationBalance: IBalanceResponse = await destinationWallet
-    //         .getActiveAccount()!
-    //         .getBalance();
+    try {
+        const destinationBalance: IBalanceData = await destinationWallet
+            .getActiveAccount()!
+            .getBalance();
 
-    //     console.log("    Source:", destinationBalance.balance.toString());
-    // } catch (error: unknown) {
-    //     logAxiosError(error);
-    //     console.error("Account.getBalance: ", error);
+        console.log("    Destination:", destinationBalance.amount);
+    } catch (error: unknown) {
+        logAxiosError(error);
+        console.error("Account.getBalance: ", error);
 
-    //     throw new Error(`Account.getBalance: ${(error as Error).message}`);
-    // }
+        throw new Error(`Account.getBalance: ${(error as Error).message}`);
+    }
 
     //
     // 4. MANUAL STEP
@@ -293,17 +292,17 @@ test("manual transfer between two wallets", async () => {
     // 5. TRANSFER
     //
 
-    const deployId = await sourceWallet.transfer(
-        {
-            to: destinationAddress,
-            amount: 1n,
-            asset: DEFAULT_ASSET,
-        },
-        passwordProvider,
-    );
+    // const deployId = await sourceWallet.transfer(
+    //     {
+    //         to: destinationAddress,
+    //         amount: 100n,
+    //         asset: DEFAULT_ASSET,
+    //     },
+    //     passwordProvider,
+    // );
 
-    console.log("\nDeploy ID:");
-    console.log(deployId);
+    // console.log("\nDeploy ID:");
+    // console.log(deployId);
 
     //
     // ASSERTIONS

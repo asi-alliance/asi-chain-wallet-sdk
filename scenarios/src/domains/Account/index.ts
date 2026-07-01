@@ -5,10 +5,9 @@ import SecretsProvider, {
     IPrivateKeyCredentials,
 } from "../SecretsProvider";
 import WalletsService from "../../services/Wallets";
+import ApiServiceRegistry from "../ApiServiceRegistry";
 import { isPrivateKeySecretData } from "../../utils/guards";
 import KeyDerivationService from "../../services/KeyDerivation";
-import ApiClientManager from "../ApiClientManager";
-import ObserverClient, { IBalanceResponse } from "../ObserverClient";
 import { Address } from "../Wallet";
 
 export interface IPortfolioOptions {
@@ -142,10 +141,10 @@ class Account {
     }
 
     public async getBalance() {
-        const observer: ObserverClient =
-            ApiClientManager.getInstance().getObserverClient();
-
-        return observer.getBalance(this.address);
+        return ApiServiceRegistry.getInstance().assets.getBalance(
+            this.address,
+            this.primaryAsset,
+        );
     }
 }
 
