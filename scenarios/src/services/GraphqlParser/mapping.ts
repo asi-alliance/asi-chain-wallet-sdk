@@ -2,10 +2,10 @@
  * Anti-Corruption Layer (ACL)
  */
 
-import { NetworkName } from "@domains/Network";
-import { normalizeAddress } from "@domains/Wallet/mapping";
-import { Transaction } from "@domains/Transaction";
 import { RawTransfer } from ".";
+import { NetworkName } from "../../domains/Network";
+import { Transaction } from "../../domains/Transaction";
+import { normalizeAddress } from "../../utils";
 
 type RawTransferMappingContext = {
     accountAddress: string;

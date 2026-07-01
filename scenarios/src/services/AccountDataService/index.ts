@@ -1,8 +1,8 @@
 import ApiClientManager from "../../domains/ApiClientManager";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
-import { GraphqlParser } from "@services/GraphqlParser";
-import { Transaction } from "@domains/Transaction";
+import { Transaction } from "../../domains/Transaction";
 import { NetworkName } from "@domains/Network";
+import { Pagination } from "../GraphqlParser/queryOptions";
+import { GraphqlParser } from "../GraphqlParser";
 
 export default class AccountDataService {
     private readonly apiClientManager: ApiClientManager;

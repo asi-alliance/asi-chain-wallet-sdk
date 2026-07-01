@@ -8,6 +8,12 @@ import {
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "../../domains/AccountsStorageRepository";
+import { EncryptedData } from "../Crypto";
+import { NetworkName } from "../../domains/Network";
+import {
+    TransactionReservationsStorageRepository,
+    ITransactionReservationsStorageRecord,
+} from "../../domains/TransactionReservationsStorageRepository";
 
 export interface ISaveSignerToStorageOptions {
     id: string;
@@ -34,6 +40,13 @@ export interface IGetWalletFromStorageOptions {
 export interface IWalletStorageData {
     signer: ISignerRecord;
     accounts: IAccountRecord[];
+}
+
+export interface ISaveTransactionReservationsOptions {
+    id: string;
+    networkName: NetworkName;
+    signerId: string;
+    encryptedData: EncryptedData;
 }
 
 class StorageManager {
@@ -232,6 +245,60 @@ class StorageManager {
                     accountRecord.signerId === signerRecord.id,
             ),
         }));
+    };
+
+    public static saveTransactionReservation = async ({
+        id,
+        networkName,
+        signerId,
+        encryptedData,
+    }: ISaveTransactionReservationsOptions): Promise<void> => {
+        await TransactionReservationsStorageRepository.getInstance().saveTransactionReservation(
+            id,
+            networkName,
+            signerId,
+            encryptedData,
+        );
+    };
+
+    public static getTransactionReservationsBySignerId = async (
+        signerId: string,
+        networkName: NetworkName,
+    ): Promise<ITransactionReservationsStorageRecord[]> => {
+        const records =
+            await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
+
+        return records.filter(
+            (record: ITransactionReservationsStorageRecord) =>
+                record.signerId === signerId &&
+                record.networkName === networkName,
+        );
+    };
+
+    public static updateTransactionReservation = async (
+        id: string,
+        updates: Partial<ITransactionReservationsStorageRecord>,
+    ): Promise<void> => {
+        await TransactionReservationsStorageRepository.getInstance().updateTransactionReservation(
+            id,
+            updates,
+        );
+    };
+
+    public static deleteTransactionReservation = async (
+        id: string,
+    ): Promise<void> => {
+        await TransactionReservationsStorageRepository.getInstance().deleteTransactionReservation(
+            id,
+        );
+    };
+
+    public static deleteMultipleTransactionReservations = async (
+        ids: string[],
+    ): Promise<void> => {
+        await TransactionReservationsStorageRepository.getInstance().deleteMultipleTransactionReservations(
+            ids,
+        );
     };
 }
 

@@ -1,6 +1,6 @@
 import IndexerClient from "@domains/IndexerClient";
 import { NetworkName } from "@domains/Network";
-import { Transaction } from "@domains/Transaction";
+import { Transaction } from "../../../scenarios/src/domains/Transaction";
 
 import { GraphqlParser } from "@services/GraphqlParser";
 

@@ -1,6 +1,6 @@
+import { NetworkName } from "../../domains/Network";
+import { Transaction } from "../../domains/Transaction";
 import { mapRawTransferToTransaction } from "./mapping";
-import { Transaction } from "@domains/Transaction";
-import { NetworkName } from "@domains/Network";
 import { Pagination } from "./queryOptions";
 
 interface GraphqlEnvelope<TData> {
