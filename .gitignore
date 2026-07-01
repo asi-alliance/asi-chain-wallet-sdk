@@ -26,3 +26,4 @@ temp/
 # Storage tests
 .tmp/
 .persist-test/
+/storage-test

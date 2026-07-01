@@ -10,3 +10,5 @@ export const DEFAULT_ASSET: Asset = new Asset({
 
 export const DEFAULT_PHLO_LIMIT: number = 500000;
 export const DEFAULT_PHLO_PRICE: number = 1;
+
+export const DEFAULT_NODE_STORAGE_DIR: string = "./storage";

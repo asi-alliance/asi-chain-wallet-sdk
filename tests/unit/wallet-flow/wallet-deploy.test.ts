@@ -8,9 +8,11 @@ import KeysManager from "../../../scenarios/src/services/KeysManager";
 import StorageManager from "../../../scenarios/src/services/StorageManager";
 import ApiClientManager from "../../../scenarios/src/domains/ApiClientManager";
 import axios, { AxiosError } from "axios";
-import { DEFAULT_ASSET } from "../../../scenarios/src/config";
 import { decryptSignerData } from "../../../scenarios/src/utils";
 import { IBalanceData } from "../../../scenarios/src/services/AssetsService";
+import { AccountsStorageRepository } from "../../../scenarios/src/domains/AccountsStorageRepository";
+import { SignersStorageRepository } from "../../../scenarios/src/domains/SignersStorageRepository";
+import { DEFAULT_ASSET } from "../../../scenarios/src/config";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -24,6 +26,8 @@ const passwordProvider = new SecretsProvider(() => ({
 const accountOptions = {
     name: "Main account",
 };
+
+const NODE_STORAGE_DIR: string = "./storage-test";
 
 const stringifyPrivateKey = (privateKey: Uint8Array): string => {
     return Array.from(privateKey)
@@ -144,6 +148,14 @@ ApiClientManager.getInstance().initialize(
     },
     "DevNet",
 );
+
+AccountsStorageRepository.getInstance({
+    nodeStorageDir: NODE_STORAGE_DIR,
+});
+
+SignersStorageRepository.getInstance({
+    nodeStorageDir: NODE_STORAGE_DIR,
+});
 
 test("manual transfer between two wallets", async () => {
     console.log("\n=== MANUAL TRANSFER TEST ===");
@@ -292,17 +304,17 @@ test("manual transfer between two wallets", async () => {
     // 5. TRANSFER
     //
 
-    // const deployId = await sourceWallet.transfer(
-    //     {
-    //         to: destinationAddress,
-    //         amount: 100n,
-    //         asset: DEFAULT_ASSET,
-    //     },
-    //     passwordProvider,
-    // );
+    const deployId = await sourceWallet.transfer(
+        {
+            to: destinationAddress,
+            amount: 100n,
+            asset: DEFAULT_ASSET,
+        },
+        passwordProvider,
+    );
 
-    // console.log("\nDeploy ID:");
-    // console.log(deployId);
+    console.log("\nDeploy ID:");
+    console.log(deployId);
 
     //
     // ASSERTIONS
