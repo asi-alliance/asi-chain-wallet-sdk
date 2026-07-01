@@ -9,7 +9,7 @@ export enum DeployStatus {
     CHECK_ERROR = "CheckingError",
 }
 
-export type DeployStatusResult =
+export type IDeployStatusResult =
     | {
           status:
               | DeployStatus.DEPLOYING
@@ -91,7 +91,7 @@ export default class DeployService {
 
     public async getDeployStatus(
         deployHash: string,
-    ): Promise<DeployStatusResult> {
+    ): Promise<IDeployStatusResult> {
         try {
             const deploy = await this.getDeploy(deployHash);
 

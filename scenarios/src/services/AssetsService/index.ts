@@ -1,9 +1,8 @@
 import Asset from "../../domains/Asset";
-import ApiClientManager from "../../domains/ApiClientManager";
 import { createCheckBalanceDeploy } from "../../domains/Deploy/factory";
 import { Address } from "../../domains/Wallet";
 import { validateAddress } from "../../utils";
-import ApiServiceRegistry from "../../domains/ApiServiceRegistry";
+import DeployService from "../DeployService";
 
 export interface IBalanceData {
     amount: bigint;
@@ -11,11 +10,10 @@ export interface IBalanceData {
 }
 
 export default class AssetsService {
-    private readonly apiClientManager: ApiClientManager;
+    private readonly deployService: DeployService;
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    constructor(deployService: DeployService) {
+        this.deployService = deployService;
     }
 
     public async getBalance(
@@ -34,9 +32,7 @@ export default class AssetsService {
 
         try {
             const expr =
-                await ApiServiceRegistry.getInstance().deploy.exploreDeployData(
-                    checkBalanceDeploy,
-                );
+                await this.deployService.exploreDeployData(checkBalanceDeploy);
 
             if (expr?.length > 0) {
                 const firstExpr = expr[0];

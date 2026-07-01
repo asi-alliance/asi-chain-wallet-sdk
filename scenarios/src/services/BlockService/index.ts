@@ -9,7 +9,7 @@ export enum DeployStatus {
     CHECK_ERROR = "CheckingError",
 }
 
-export type DeployStatusResult =
+export type IDeployStatusResult =
     | {
           status:
               | DeployStatus.DEPLOYING

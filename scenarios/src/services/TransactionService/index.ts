@@ -1,6 +1,5 @@
 import blakejs from "blakejs";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "../../config";
-import ApiClientManager from "../../domains/ApiClientManager";
 import Asset from "../../domains/Asset";
 import { createTransferDeploy } from "../../domains/Deploy/factory";
 import SecretsProvider from "../../domains/SecretsProvider";
@@ -14,7 +13,8 @@ import {
 import SignerService, { SignedResult } from "../Signer";
 import Account from "../../domains/Account";
 import Signer from "../../domains/Signer";
-import ApiServiceRegistry from "../../domains/ApiServiceRegistry";
+import DeployService from "../DeployService";
+import BlockService from "../BlockService";
 
 const { blake2bHex } = blakejs;
 
@@ -35,11 +35,12 @@ export interface ITransferPayload {
 }
 
 export default class TransactionService {
-    private readonly apiClientManager: ApiClientManager;
+    private readonly deployService: DeployService;
+    private readonly blockService: BlockService;
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    constructor(deployService: DeployService, blockService: BlockService) {
+        this.deployService = deployService;
+        this.blockService = blockService;
     }
 
     private async signDeploy(
@@ -105,7 +106,7 @@ export default class TransactionService {
         );
 
         const latestBlockNumber: number =
-            await ApiServiceRegistry.getInstance().blocks.getLatestBlockNumber();
+            await this.blockService.getLatestBlockNumber();
 
         if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
             throw new Error(
@@ -127,11 +128,16 @@ export default class TransactionService {
         );
 
         try {
-            const transferPayload = (await this.apiClientManager
-                .getValidatorClient()
-                .submitDeploy(signedDeploy)) as Promise<string>;
+            const submittedDeployId: string | undefined =
+                await this.deployService.submitSignedDeploy(signedDeploy);
 
-            return transferPayload;
+            if (!submittedDeployId) {
+                throw new Error(
+                    "Error on submitted deploy parsing - not found deploy id",
+                );
+            }
+
+            return submittedDeployId;
         } catch (error: unknown) {
             throw error;
         }

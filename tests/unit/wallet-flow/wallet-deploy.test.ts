@@ -13,6 +13,7 @@ import { IBalanceData } from "../../../scenarios/src/services/AssetsService";
 import { AccountsStorageRepository } from "../../../scenarios/src/domains/AccountsStorageRepository";
 import { SignersStorageRepository } from "../../../scenarios/src/domains/SignersStorageRepository";
 import { DEFAULT_ASSET } from "../../../scenarios/src/config";
+import ApiServiceRegistry from "../../../scenarios/src/domains/ApiServiceRegistry";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -313,8 +314,23 @@ test("manual transfer between two wallets", async () => {
         passwordProvider,
     );
 
+    console.log("\nTransfer deploy submitted!");
     console.log("\nDeploy ID:");
     console.log(deployId);
+
+    await ApiServiceRegistry.getInstance().poller.watch(
+        deployId,
+        {
+            onConfirmed: (result) =>
+                console.log("TRANSACTION CONFIRMED: ", result),
+            onStatus: (status) => console.log("STATUS: ", status),
+            onError: (error) => console.log("ERROR: ", error.message),
+        },
+        {
+            intervalMs: 5000,
+            timeoutMs: 180000,
+        },
+    ).done;
 
     //
     // ASSERTIONS
