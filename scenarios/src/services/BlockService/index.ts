@@ -1,5 +1,5 @@
+import ObserverClient, { IBlockDto } from "../../domains/ObserverClient";
 import ApiClientManager from "../../domains/ApiClientManager";
-import ObserverClient, { IBlockDto } from "@domains/ObserverClient";
 import { INVALID_BLOCK_NUMBER } from "../../utils";
 
 export enum DeployStatus {
@@ -39,7 +39,17 @@ export default class BlockService {
     }
 
     public async getLatestBlock(): Promise<IBlockDto> {
-        return this.apiClientManager.getObserverClient().getLatestBlock();
+        const blocks: IBlockDto[] = await this.apiClientManager
+            .getObserverClient()
+            .getBlocks();
+
+        if (!blocks?.length) {
+            throw new Error(
+                "BlockService.getLatestBlock: No blocks returned from /api/blocks",
+            );
+        }
+
+        return blocks[0];
     }
 
     public async getLatestBlockNumber(): Promise<number> {

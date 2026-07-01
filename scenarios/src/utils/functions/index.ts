@@ -182,3 +182,39 @@ export const decryptSignerData = async (
         rootHDPath: path,
     };
 };
+
+export type IUrlValue = string | number | boolean | undefined;
+
+export interface IUrlParams {
+    path?: Record<string, IUrlValue>;
+    query?: Record<string, IUrlValue | undefined | null>;
+}
+
+export const buildUrl = (
+    pathPrefix: string,
+    params: IUrlParams = {},
+): string => {
+    let url = pathPrefix;
+
+    Object.entries(params.path ?? {}).forEach(([key, value]) => {
+        if (value === undefined) {
+            return;
+        }
+
+        url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+    });
+
+    const query = new URLSearchParams();
+
+    Object.entries(params.query ?? {}).forEach(([key, value]) => {
+        if (value === null || value === undefined) {
+            return;
+        }
+
+        query.append(key, String(value));
+    });
+
+    const queryString = query.toString();
+
+    return queryString ? `${url}?${queryString}` : url;
+};

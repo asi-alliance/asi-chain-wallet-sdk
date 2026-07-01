@@ -1,4 +1,4 @@
-export type NetworkName = "NewDev" | "Dev" | "MainNet" | "TestNet" | "DevNet";
+export type NetworkName = "Dev" | "MainNet" | "TestNet" | "DevNet";
 
 export interface INetworkConfig {
     ValidatorURL: string;

@@ -8,11 +8,13 @@ import { Address } from "../../domains/Wallet";
 import {
     AddressValidationResult,
     encodeBase16,
+    INVALID_BLOCK_NUMBER,
     validateAddress,
 } from "../../utils";
 import SignerService, { SignedResult } from "../Signer";
 import Account from "../../domains/Account";
 import Signer from "../../domains/Signer";
+import BlockService from "../BlockService";
 
 const { blake2bHex } = blakejs;
 
@@ -34,10 +36,12 @@ export interface ITransferPayload {
 
 export default class TransactionService {
     private readonly apiClientManager: ApiClientManager;
+    private readonly blockService: BlockService;
 
     constructor(apiClientManager?: ApiClientManager) {
         this.apiClientManager =
             apiClientManager ?? ApiClientManager.getInstance();
+        this.blockService = new BlockService(this.apiClientManager);
     }
 
     private async signDeploy(
@@ -96,11 +100,22 @@ export default class TransactionService {
             throw new Error("Phlo price must be greater than zero");
         }
 
-        const deploy = createTransferDeploy(
+        const deploy: string = createTransferDeploy(
             fromAddress,
             details.to,
             details.amount,
         );
+
+        console.log("DEPLOY RHOLANG: ", deploy);
+
+        const latestBlockNumber: number =
+            await this.blockService.getLatestBlockNumber();
+
+        if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
+            throw new Error(
+                "TransactionService.transfer: Invalid block number",
+            );
+        }
 
         const signedDeploy = await this.signDeploy(
             signer,
@@ -108,16 +123,21 @@ export default class TransactionService {
                 term: deploy,
                 phloLimit: details.phloLimit ?? DEFAULT_PHLO_LIMIT,
                 phloPrice: details.phloPrice ?? DEFAULT_PHLO_PRICE,
+                validAfterBlockNumber: latestBlockNumber - 1,
                 timestamp: Date.now(),
                 shardId: details.shardId ?? "root",
             },
             passwordProvider,
         );
 
+        // console.log("SIGNED DEPLOY: ", signedDeploy);
+
         try {
             const transferPayload = (await this.apiClientManager
                 .getValidatorClient()
-                .submitDeploy(JSON.stringify(signedDeploy))) as Promise<string>;
+                .submitDeploy(signedDeploy)) as Promise<string>;
+
+            console.log("TRANSFER PAYLOAD: ", transferPayload);
 
             return transferPayload;
         } catch (error: unknown) {

@@ -1,13 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Wallet from "../../../scenarios/src/domains/Wallet";
-import SecretsProvider from "../../../scenarios/src/domains/SecretsProvider";
+import SecretsProvider, {
+    IPrivateKeyCredentials,
+} from "../../../scenarios/src/domains/SecretsProvider";
 import KeysManager from "../../../scenarios/src/services/KeysManager";
 import StorageManager from "../../../scenarios/src/services/StorageManager";
 import ApiClientManager from "../../../scenarios/src/domains/ApiClientManager";
 import axios, { AxiosError } from "axios";
-import { IBalanceResponse } from "../../../scenarios/src/domains/ObserverClient";
 import { DEFAULT_ASSET } from "../../../scenarios/src/config";
+import { decryptSignerData } from "../../../scenarios/src/utils";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -22,6 +24,18 @@ const accountOptions = {
     name: "Main account",
 };
 
+const stringifyPrivateKey = (privateKey: Uint8Array): string => {
+    return Array.from(privateKey)
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+};
+
+function hexToUint8Array(hex: string): Uint8Array {
+    return new Uint8Array(
+        hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+    );
+}
+
 const createPkProvider = (password: string) => {
     const privateKey = KeysManager.generateRandomKey();
 
@@ -34,6 +48,27 @@ const createPkProvider = (password: string) => {
         provider: new SecretsProvider(() => ({
             secret: {
                 privateKey,
+            },
+            password,
+        })),
+        privateKey,
+    };
+};
+
+const createSourcePkProvider = (password: string) => {
+    const privateKey = KeysManager.generateRandomKey();
+
+    console.log(
+        "[createPkProvider] Private key generated:",
+        privateKey.toString().substring(0, 20) + "...",
+    );
+
+    return {
+        provider: new SecretsProvider(() => ({
+            secret: {
+                privateKey: hexToUint8Array(
+                    "5f668a7ee96d944a4494cc947e4005e172d7ab3461ee5538f1f2a45a835e9657",
+                ),
             },
             password,
         })),
@@ -88,29 +123,26 @@ function logAxiosError(error: unknown): void {
     console.error("===================\n");
 }
 
-ApiClientManager.getInstance().initialize({
-    DevNet: {
-        ValidatorURL:
-            "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
-        ReadOnlyURL:
-            "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
-        IndexerURL: "https://indexer.dev.asichain.io/v1/graphql",
+ApiClientManager.getInstance().initialize(
+    {
+        Dev: {
+            ValidatorURL: "http://202.181.159.96:40423",
+            ReadOnlyURL: "http://202.181.159.96:40453",
+            IndexerURL:
+                "https://indexer.asi-chain.singularitynet.dev/v1/graphql",
+        },
+        DevNet: {
+            ValidatorURL:
+                "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
+            ReadOnlyURL:
+                "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/bb93eaa595aaddf6912e372debc73eef/endpoint_0/HTTP_API",
+            IndexerURL: "https://indexer.dev.asichain.io/v1/graphql",
+        },
+        MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
+        TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
     },
-    NewDev: {
-        ValidatorURL: "http://202.181.159.96:40423",
-        ReadOnlyURL: "http://202.181.159.96:40453",
-        IndexerURL: "https://indexer.asi-chain.singularitynet.dev/v1/graphql",
-    },
-    Dev: {
-        ValidatorURL:
-            "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/69bca1a3d19689cc22cd78f3e2abd47e/endpoint_1/HTTP_API",
-        ReadOnlyURL:
-            "https://ihmps4dkpg.execute-api.us-east-1.amazonaws.com/prod/f1067e764b590182392e69553839faf1/endpoint_5/HTTP_API",
-        IndexerURL: "https://indexer.asi-chain.singularitynet.dev/v1/graphql",
-    },
-    MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
-    TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
-});
+    "DevNet",
+);
 
 console.log("NETWORK: ", ApiClientManager.getInstance().getNetwork());
 
@@ -122,19 +154,32 @@ test("manual transfer between two wallets", async () => {
     //
 
     const sourceWallet: Wallet = await StorageManager.getWallet({
-        signerId: "res_1782816994878_d8cdaded",
+        signerId: "res_1782826781716_f2c3c000",
         passwordProvider: createPkProvider(PASSWORD).provider,
     });
 
     const destinationWallet: Wallet = await StorageManager.getWallet({
-        signerId: "res_1782816994988_036931bd",
+        signerId: "res_1782826781767_3aba070a",
         passwordProvider: createPkProvider(PASSWORD).provider,
     });
 
     const sourceAddress = sourceWallet.getActiveAccount()!.getAddress();
 
+    const passwordProvider = createPkProvider(PASSWORD).provider;
+
     console.log("    Source address:");
     console.log("   ", sourceAddress);
+    console.log("    Source private key:");
+    const sourcePrivateKey: IPrivateKeyCredentials = (await decryptSignerData(
+        destinationWallet.getSigner().getEncryptedSecret(),
+        passwordProvider,
+    )) as IPrivateKeyCredentials;
+
+    const stringifiedSourcePrivateKey: string = stringifyPrivateKey(
+        sourcePrivateKey.privateKey,
+    );
+
+    console.log("   ", stringifiedSourcePrivateKey);
 
     const destinationAddress = destinationWallet
         .getActiveAccount()!
@@ -142,6 +187,18 @@ test("manual transfer between two wallets", async () => {
 
     console.log("    Destination address:");
     console.log("   ", destinationAddress);
+    console.log("    Destination private key:");
+    const destinationPrivateKey: IPrivateKeyCredentials =
+        (await decryptSignerData(
+            destinationWallet.getSigner().getEncryptedSecret(),
+            passwordProvider,
+        )) as IPrivateKeyCredentials;
+
+    const stringifiedDestinationPrivateKey: string = stringifyPrivateKey(
+        destinationPrivateKey.privateKey,
+    );
+
+    console.log("   ", stringifiedDestinationPrivateKey);
 
     //
     // 1. CREATE SOURCE WALLET
@@ -151,7 +208,7 @@ test("manual transfer between two wallets", async () => {
 
     // const sourceWallet = await Wallet.createPk(
     //     accountOptions,
-    //     createPkProvider(PASSWORD).provider,
+    //     createSourcePkProvider(PASSWORD).provider,
     // );
 
     // const sourceAddress = sourceWallet.getActiveAccount()!.getAddress();
@@ -191,35 +248,33 @@ test("manual transfer between two wallets", async () => {
     // 3. CHECK INITIAL BALANCES
     //
 
-    console.log("\n[3] Initial balances");
+    // console.log("\n[3] Initial balances");
 
-    try {
-        const sourceBalance: IBalanceResponse = await sourceWallet
-            .getActiveAccount()!
-            .getBalance();
+    // try {
+    //     const sourceBalance: IBalanceResponse = await sourceWallet
+    //         .getActiveAccount()!
+    //         .getBalance();
 
-        console.log("SOURCE BALANCE RESPONSE: ", sourceBalance);
+    //     console.log("    Source:", sourceBalance.balance.toString());
+    // } catch (error: unknown) {
+    //     logAxiosError(error);
+    //     console.error("Account.getBalance: ", error);
 
-        console.log("    Source:", sourceBalance.balance.toString());
-    } catch (error: unknown) {
-        logAxiosError(error);
-        console.error("Account.getBalance: ", error);
+    //     throw new Error(`Account.getBalance: ${(error as Error).message}`);
+    // }
 
-        throw new Error(`Account.getBalance: ${(error as Error).message}`);
-    }
+    // try {
+    //     const destinationBalance: IBalanceResponse = await destinationWallet
+    //         .getActiveAccount()!
+    //         .getBalance();
 
-    try {
-        const destinationBalance: IBalanceResponse = await destinationWallet
-            .getActiveAccount()!
-            .getBalance();
+    //     console.log("    Source:", destinationBalance.balance.toString());
+    // } catch (error: unknown) {
+    //     logAxiosError(error);
+    //     console.error("Account.getBalance: ", error);
 
-        console.log("    Source:", destinationBalance.balance.toString());
-    } catch (error: unknown) {
-        logAxiosError(error);
-        console.error("Account.getBalance: ", error);
-
-        throw new Error(`Account.getBalance: ${(error as Error).message}`);
-    }
+    //     throw new Error(`Account.getBalance: ${(error as Error).message}`);
+    // }
 
     //
     // 4. MANUAL STEP
@@ -229,7 +284,7 @@ test("manual transfer between two wallets", async () => {
     console.log("MANUAL STEP");
     console.log("=========================================");
     console.log("Send some tokens to:");
-    console.log(sourceAddress);
+    console.log(destinationAddress);
     console.log("");
     console.log("Then uncomment transfer() below.");
     console.log("=========================================");
