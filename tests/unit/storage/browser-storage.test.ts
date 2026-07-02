@@ -4,7 +4,7 @@ import test from "node:test";
 
 
 import { runStorageContract } from "./storage.contract";
-import BrowserStorage from "../../../scenarios/src/domains/BrowserStorage";
+import BrowserStorage from "@domains/BrowserStorage";
 
 runStorageContract(
     test,

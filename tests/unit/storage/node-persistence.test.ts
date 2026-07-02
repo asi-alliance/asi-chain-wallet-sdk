@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import NodeStorage from "../../../scenarios/src/domains/NodeStorage";
+import NodeStorage from "@domains/NodeStorage";
 
 test("NodeStorage persists data between instances", async () => {
     const dir = path.join(process.cwd(), ".persist-test");

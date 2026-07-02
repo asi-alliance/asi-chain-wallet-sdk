@@ -20,7 +20,7 @@ export const decodeBase16 = (hex: string): Uint8Array => {
 
 export const encodeBase16 = (bytes: Uint8Array): string => {
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-        ""
+        "",
     );
 };
 
@@ -45,7 +45,6 @@ export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 
     return bytes.buffer;
 };
-
 
 export const bufferToBigInt = (buffer: Uint8Array): bigint =>
     BigInt("0x" + Buffer.from(buffer).toString("hex"));

@@ -9,22 +9,22 @@
                 "./dist"
             ],
             "@services/*": [
-                "./src_new/services/*"
+                "./src/services/*"
             ],
             "@domains/*": [
-                "./src_new/domains/*"
+                "./src/domains/*"
             ],
             "@config/*": [
-                "./src_new/config/*"
+                "./src/config/*"
             ],
             "@utils/*": [
-                "./src_new/utils/*"
+                "./src/utils/*"
             ],
             "@scripts/*": [
-                "./src_new/scripts/*"
+                "./src/scripts/*"
             ],
             "@fabrics/*": [
-                "./src_new/fabrics/*"
+                "./src/fabrics/*"
             ]
         }
     }

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import MnemonicService from "../../src/services/Mnemonic";
-import WalletsService from "../../src/services/Wallets";
+import MnemonicService from "@services/Mnemonic";
+import WalletsService from "@services/Wallets";
 
 test("createFirstWalletWithMnemonic returns generated mnemonic when omitted", async () => {
     const wallet = await WalletsService.createFirstWalletWithMnemonic();
