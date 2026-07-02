@@ -12,7 +12,7 @@ import { NetworkName } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import { GAS_FEE, RESERVATION_EXPIRATION_TIME } from "@config/index";
+import { GasFee, RESERVATION_EXPIRATION_TIME } from "@config/index";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails } from "@services/TransactionService";
@@ -111,7 +111,7 @@ export default class ReservationAdapter {
             0n,
         );
 
-        const totalFee: bigint = BigInt(reservations.length) * GAS_FEE.MAX;
+        const totalFee: bigint = BigInt(reservations.length) * GasFee.MAX;
 
         return totalAmount + totalFee;
     }

@@ -13,7 +13,7 @@ export const DEFAULT_PHLO_PRICE: number = 1;
 
 export const DEFAULT_NODE_STORAGE_DIR: string = "./storage";
 
-export const GAS_FEE = {
+export const GasFee = {
     MIN: 170000n,
     MAX: 250000n,
 };
