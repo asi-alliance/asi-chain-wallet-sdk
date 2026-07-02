@@ -1,3 +1,10 @@
+import Bip44Path from "@domains/Bip44Path";
+import SecretsProvider, {
+    IHDSecret,
+    IHDSecretRecord,
+    IPrivateKeyCredentials,
+} from "@domains/SecretsProvider";
+import CryptoService, { EncryptedData } from "@services/Crypto";
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 
 export const genRandomHex = (size: number) =>
@@ -119,16 +126,102 @@ export const fromAtomicAmountToNumber = (
 
 export const fromAtomicAmount = fromAtomicAmountToString;
 
-export const stringifyPrivateKeyToUnitArray = (
-    stringifyPrivateKey: any,
-): Uint8Array => {
-    const values: number[] = Object.keys(stringifyPrivateKey)
-        .sort((a, b) => Number(a) - Number(b))
-        .map((k: string) => {
-            const v = stringifyPrivateKey[k];
-            const num = typeof v === "string" ? Number(v) : v;
-            return typeof num === "number" && !isNaN(num) ? num : 0;
-        });
+export const toUint8Array = (value: unknown): Uint8Array => {
+    if (value instanceof Uint8Array) {
+        return value;
+    }
 
-    return new Uint8Array(values);
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "type" in value &&
+        value.type === "Buffer" &&
+        "data" in value &&
+        Array.isArray(value.data)
+    ) {
+        return Uint8Array.from(value.data);
+    }
+
+    if (Array.isArray(value)) {
+        return Uint8Array.from(value);
+    }
+
+    if (typeof value === "object" && value !== null) {
+        return Uint8Array.from(Object.values(value));
+    }
+
+    throw new Error("Unsupported data format");
 };
+
+export const decryptSignerData = async (
+    signerData: EncryptedData,
+    passwordProvider: SecretsProvider,
+): Promise<IHDSecret | IPrivateKeyCredentials> => {
+    const stringifiedKeyMaterial: string =
+        await CryptoService.decryptWithPassword(
+            signerData,
+            passwordProvider.getSecret().password,
+        );
+
+    const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials = JSON.parse(
+        stringifiedKeyMaterial,
+    );
+
+    if ("privateKey" in keyMaterial) {
+        const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
+
+        return {
+            privateKey,
+        };
+    }
+
+    const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);
+
+    return {
+        seed: keyMaterial.seed,
+        rootHDPath: path,
+    };
+};
+
+export type IUrlValue = string | number | boolean | undefined;
+
+export interface IUrlParams {
+    path?: Record<string, IUrlValue>;
+    query?: Record<string, IUrlValue | undefined | null>;
+}
+
+export const buildUrl = (
+    pathPrefix: string,
+    params: IUrlParams = {},
+): string => {
+    let url = pathPrefix;
+
+    Object.entries(params.path ?? {}).forEach(([key, value]) => {
+        if (value === undefined) {
+            return;
+        }
+
+        url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+    });
+
+    const query = new URLSearchParams();
+
+    Object.entries(params.query ?? {}).forEach(([key, value]) => {
+        if (value === null || value === undefined) {
+            return;
+        }
+
+        query.append(key, String(value));
+    });
+
+    const queryString = query.toString();
+
+    return queryString ? `${url}?${queryString}` : url;
+};
+
+/**
+ * @returns address in the format accepted within the SDK application
+ */
+export function normalizeAddress(address: string | undefined): string {
+    return address?.trim().toLowerCase() ?? "";
+}

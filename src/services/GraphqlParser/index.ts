@@ -1,7 +1,7 @@
-import { Transaction } from "@domains/aggregates/Transaction";
-import { NetworkName } from "@domains/aggregates/Network";
-import { mapRawTransferToTransaction } from "./mapping";
+import { NetworkName } from "@domains/Network";
 import { Pagination } from "./queryOptions";
+import { Transaction } from "@domains/Transaction";
+import { mapRawTransferToTransaction } from "./mapper";
 
 interface GraphqlEnvelope<TData> {
     data?: TData;
@@ -87,8 +87,12 @@ export class GraphqlParser {
         address: string,
         networkName: NetworkName,
     ): Transaction[] {
-        return (data?.transfers ?? [])
-            .map((transfer) =>
+        if (!data || !data.transfers) {
+            return [];
+        }
+
+        return data.transfers
+            .map((transfer: RawTransfer) =>
                 mapRawTransferToTransaction(transfer, {
                     accountAddress: address,
                     networkName: networkName,

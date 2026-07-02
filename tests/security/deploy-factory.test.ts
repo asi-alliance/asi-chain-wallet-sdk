@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Address } from "../../src/domains/Wallet";
+import type { Address } from "@domains/Wallet";
 import {
     createCheckBalanceDeploy,
     createTransferDeploy,
     escapeRholangString,
-} from "../../src/domains/Deploy/factory";
+} from "@domains/Deploy/factory";
 
 test("escapeRholangString escapes dangerous characters", () => {
     const raw = 'a"b\\c\nd\re\tf';

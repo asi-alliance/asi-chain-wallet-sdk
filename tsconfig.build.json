@@ -16,7 +16,6 @@
     },
     "include": [
         "src",
-        "src_new"
     ],
     "exclude": [
         "node_modules",

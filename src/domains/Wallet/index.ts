@@ -1,292 +1,297 @@
-import WalletsService from "@services/Wallets";
+import Signer, { ISignerRecord } from "@domains/Signer";
+import Account, {
+    IAccountRecord,
+    TCreateAccountPayload,
+    TEditableAccountOptions,
+} from "@domains/Account";
+import { createSigner, restoreSigner } from "@utils/fabrics/signer";
+import { decryptSignerData, generateRandomId } from "@utils/index";
+import SecretsProvider, {
+    IHDSecret,
+    IPrivateKeyCredentials,
+} from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
-import Asset, { Assets } from "@domains/Asset";
-import CryptoService, { EncryptedData } from "@services/Crypto";
-import { validateAddress } from "@utils/validators";
-import { sign } from "@noble/secp256k1";
-import {
-    TPasswordProvider,
-    TPrivateKeyPasswordProvider,
-} from "@domains/PasswordProvider";
-import { generateRandomId } from "@utils";
-import KeyDerivationService from "@services/KeyDerivation";
+import Bip44Path from "@domains/Bip44Path";
+import AccountManager from "@services/AccountManager";
+import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
+import TransactionService, {
+    ITransferDetails,
+} from "@services/TransactionService";
+import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
 
-export interface StoredWalletMeta {
-    name: string;
-    address: Address;
-    encryptedPrivateKey: string;
-    masterNodeId: string | null;
-    index: string | null;
+export interface IWalletOptions {
+    id?: string;
+    type: WalletTypes;
+    signer: Signer;
+    accounts: Map<string, Account>;
+    activeAccount?: Account;
+    transactionService?: TransactionService;
 }
 
-export type StringifiedWalletMeta = string;
+export type TCreateHDPathWalletOptions =
+    | {
+          customHDPath: Bip44Path;
+      }
+    | {
+          index: number;
+      };
 
-export type WalletMemory = Map<string, string>;
-
-export enum WalletMemoryKeys {
-    PRIVATE_KEY = "private_key",
-    CRYPTO_SALT = "crypto_salt",
-    CRYPTO_IV = "crypto_iv",
-    CRYPTO_VERSION = "crypto version",
+export interface ICreateHDWalletOptions {
+    mnemonic: string;
+    pathOptions: TCreateHDPathWalletOptions;
+    accountOptions: TCreateAccountPayload;
 }
 
-export interface SigningCapability {
-    signDigest(digest: Uint8Array): Promise<Uint8Array>;
-    getPublicKey(): Uint8Array;
+export interface IRestoreWalletPayload {
+    signerRecord: ISignerRecord;
+    accountRecords: IAccountRecord[];
+}
+
+export enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
 }
 
 export default class Wallet {
-    private static unsafeRawKeyExportEnabled = false;
-    private id: string;
-    private name: string;
-    private address: Address;
-    private privateKey: EncryptedData;
-    private isLocked: boolean;
-    private assets: Assets;
-    private masterNodeId: string | null;
-    private index: number | null;
+    private readonly id: string;
+    private readonly type: WalletTypes;
+    private readonly signer: Signer;
+    private readonly accountManager: AccountManager;
 
-    private constructor(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
-        index: number | null,
-    ) {
-        this.id = generateRandomId();
-        this.name = name;
-        this.index = index;
-        this.masterNodeId = masterNodeId;
-        this.address = address;
-        this.privateKey = encryptedPrivateKey;
-        this.assets = new Map();
-        this.isLocked = true;
-    }
-
-    public static async fromPrivateKey(
-        name: string,
-        passwordProvider: TPrivateKeyPasswordProvider,
-    ): Promise<Wallet> {
-        const { privateKey, password } = await passwordProvider();
-
-        const address: Address =
-            WalletsService.deriveAddressFromPrivateKey(privateKey);
-
-        const encrypted: EncryptedData = await this.encryptPrivateKey(
-            privateKey,
-            password,
+    private constructor({
+        id,
+        type,
+        signer,
+        accounts,
+        activeAccount,
+        transactionService,
+    }: IWalletOptions) {
+        this.id = id ?? generateRandomId();
+        this.type = type;
+        this.signer = signer;
+        this.accountManager = new AccountManager(
+            accounts,
+            activeAccount ?? null,
         );
-
-        return new Wallet(name, address, encrypted, null, null);
-    }
-
-    public static async fromHD(
-        seedId: string,
-        mnemonic: string,
-        name: string,
-        passwordProvider: TPasswordProvider,
-        lastIndex: number,
-    ): Promise<Wallet> {
-        const { password } = await passwordProvider();
-
-        const nextIndex: number = lastIndex++;
-
-        const path: string = KeyDerivationService.buildBip44Path({
-            coinType: 60,
-            account: 0,
-            change: 0,
-            index: nextIndex,
-        });
-
-        const seed = await KeyDerivationService.mnemonicToSeed(mnemonic);
-        const masterNode = KeyDerivationService.seedToMasterNode(seed);
-
-        const privateKey = KeyDerivationService.derivePrivateKey(
-            masterNode,
-            path,
-        );
-
-        const address: Address =
-            WalletsService.deriveAddressFromPrivateKey(privateKey);
-
-        const encryptedPrivateKey: EncryptedData = await this.encryptPrivateKey(
-            privateKey,
-            password,
-        );
-
-        return new Wallet(
-            name,
-            address,
-            encryptedPrivateKey,
-            seedId,
-            nextIndex,
-        );
-    }
-
-    public static fromEncryptedData(
-        name: string,
-        address: Address,
-        encryptedPrivateKey: EncryptedData,
-        masterNodeId: string | null,
-        index: number | null,
-    ): Wallet {
-        const validation = validateAddress(address);
-        if (!validation.isValid) {
-            throw new Error(
-                `Invalid address format: ${validation.errorCode ?? "UNKNOWN"}`,
-            );
-        }
-
-        return new Wallet(
-            name,
-            address,
-            encryptedPrivateKey,
-            masterNodeId,
-            index,
-        );
-    }
-
-    /**
-     * @deprecated Raw key export is disabled by default. Prefer `withSigningCapability()`.
-     * Enable only for legacy migration by calling `Wallet.enableUnsafeRawKeyExportForLegacyInterop()`.
-     */
-    public async decrypt(password: string): Promise<Uint8Array> {
-        if (!Wallet.unsafeRawKeyExportEnabled) {
-            throw new Error(
-                "Wallet.decrypt is disabled by default for security. Use withSigningCapability() instead.",
-            );
-        }
-
-        return await this.decryptPrivateKey(password);
-    }
-
-    public static enableUnsafeRawKeyExportForLegacyInterop(): void {
-        Wallet.unsafeRawKeyExportEnabled = true;
-    }
-
-    public static disableUnsafeRawKeyExport(): void {
-        Wallet.unsafeRawKeyExportEnabled = false;
-    }
-
-    public static isUnsafeRawKeyExportEnabled(): boolean {
-        return Wallet.unsafeRawKeyExportEnabled;
-    }
-
-    private async decryptPrivateKey(password: string): Promise<Uint8Array> {
-        try {
-            const decrypted = await CryptoService.decryptWithPassword(
-                this.privateKey,
-                password,
-            );
-
-            const parsed = JSON.parse(decrypted);
-            if (
-                parsed &&
-                typeof parsed === "object" &&
-                !Array.isArray(parsed)
-            ) {
-                // convert to sorted array of numbers
-                const values: number[] = Object.keys(parsed)
-                    .sort((a, b) => Number(a) - Number(b))
-                    .map((k) => {
-                        const v = parsed[k];
-                        const num = typeof v === "string" ? Number(v) : v;
-                        return typeof num === "number" && !isNaN(num) ? num : 0;
-                    });
-                return new Uint8Array(values);
-            }
-            return new Uint8Array(parsed);
-        } catch (error: any) {
-            throw new Error("Unlock Failed: " + error?.message);
-        }
-    }
-
-    public async withSigningCapability<T>(
-        password: string,
-        callback: (signingCapability: SigningCapability) => Promise<T> | T,
-    ): Promise<T> {
-        const privateKey = await this.decryptPrivateKey(password);
-        let expired = false;
-
-        const signingCapability: SigningCapability = {
-            signDigest: async (digest: Uint8Array): Promise<Uint8Array> => {
-                if (expired) {
-                    throw new Error("Signing capability has expired");
-                }
-
-                return await sign(digest, privateKey);
-            },
-            getPublicKey: (): Uint8Array => {
-                if (expired) {
-                    throw new Error("Signing capability has expired");
-                }
-
-                return KeysManager.getPublicKeyFromPrivateKey(privateKey);
-            },
-        };
-
-        try {
-            return await callback(signingCapability);
-        } finally {
-            expired = true;
-            privateKey.fill(0);
-        }
-    }
-
-    public getEncryptedPrivateKey(): EncryptedData {
-        return this.privateKey;
-    }
-
-    public registerAsset(asset: Asset): void {
-        this.assets.set(asset.getId(), asset);
     }
 
     public getId(): string {
         return this.id;
     }
 
-    public getAddress(): Address {
-        return this.address;
+    public getType(): WalletTypes {
+        return this.type;
     }
 
-    public getName(): string {
-        return this.name;
+    public getSigner(): Signer {
+        return this.signer;
     }
 
-    public getIndex(): number | null {
-        return this.index;
+    public getAccounts(): Account[] {
+        return this.accountManager.getAccounts();
     }
 
-    public getAssets(): Assets {
-        return this.assets;
+    public getAccountsMap(): Map<string, Account> {
+        return this.accountManager.getAccountsMap();
     }
 
-    public isWalletLocked(): boolean {
-        return this.isLocked;
+    public getActiveAccount(): Account | null {
+        return this.accountManager.getActiveAccount();
     }
 
-    public toString(): StringifiedWalletMeta {
-        const meta: StoredWalletMeta = {
-            name: this.name,
-            address: this.address,
-            encryptedPrivateKey: JSON.stringify(this.privateKey),
-            masterNodeId: this.masterNodeId ?? "",
-            index: this.index?.toString() ?? "",
-        };
-
-        return JSON.stringify(meta);
+    public setActiveAccount(id: string): void {
+        this.accountManager.setActiveAccount(id);
     }
 
-    private static async encryptPrivateKey(
-        privateKey: Uint8Array,
-        password: string,
-    ) {
-        return await CryptoService.encryptWithPassword(
-            JSON.stringify(privateKey),
-            password,
+    private getDerivationIndex(initialHDPath: Bip44Path): number | null {
+        const initialAccountIndex = initialHDPath.getIndex();
+
+        const indexes = this.getAccounts()
+            .map((account: Account) => account.getIndex())
+            .filter((index: number | null): index is number => index !== null)
+            .sort((a, b) => a - b);
+
+        if (!indexes.length) {
+            return initialAccountIndex;
+        }
+
+        let expectedIndex = initialAccountIndex + 1;
+
+        for (const index of indexes) {
+            if (index === expectedIndex) {
+                expectedIndex++;
+
+                continue;
+            }
+
+            if (index > expectedIndex) {
+                return expectedIndex;
+            }
+        }
+
+        return expectedIndex;
+    }
+
+    @OnlyHDWallet
+    public async deriveAccount(
+        payload: Omit<TCreateAccountPayload, "index">,
+        passwordProvider: SecretsProvider,
+    ): Promise<Account> {
+        const secretData = (await decryptSignerData(
+            this.signer.getEncryptedSecret(),
+            passwordProvider,
+        )) as IHDSecret;
+        const secretProvider = new SecretsProvider(() => secretData);
+
+        const derivationIndex: number | null = this.getDerivationIndex(
+            secretData.rootHDPath,
         );
+
+        return this.accountManager.create(
+            { ...payload, index: derivationIndex ?? undefined },
+            secretProvider,
+        );
+    }
+
+    public removeAccount(id: string): boolean {
+        return this.accountManager.remove(id);
+    }
+
+    public updateAccount(id: string, payload: TEditableAccountOptions): void {
+        this.accountManager.update(id, payload);
+    }
+
+    public static async createPk(
+        accountOptions: TCreateAccountPayload,
+        secretProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const signer: Signer = await createSigner({
+            id: generateRandomId(),
+            type: WalletTypes.PRIVATE_KEY,
+            secretProvider,
+        });
+
+        const initialAccountId: string = generateRandomId();
+        const initialAccount: Account = await Account.create(
+            accountOptions,
+            new SecretsProvider(() => secretProvider.getSecret().secret),
+        );
+
+        const accounts: Map<string, Account> = new Map([
+            [initialAccountId, initialAccount],
+        ]);
+
+        return new Wallet({
+            type: WalletTypes.PRIVATE_KEY,
+            signer,
+            accounts,
+            activeAccount: initialAccount,
+        });
+    }
+
+    public static async createHD(
+        options: ICreateHDWalletOptions,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
+            options.pathOptions,
+        );
+
+        const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
+            () => {
+                return {
+                    secret: {
+                        rootHDPath: rootHDPath.toString(),
+                        seed: options.mnemonic,
+                    },
+                    password: passwordProvider.getSecret().password,
+                };
+            },
+        );
+
+        const signer: Signer = await createSigner({
+            id: generateRandomId(),
+            type: WalletTypes.HD,
+            secretProvider: secretProviderFromSigner,
+        });
+
+        const secretProviderFromAccount: SecretsProvider = new SecretsProvider(
+            () => {
+                return {
+                    rootHDPath: rootHDPath,
+                    seed: options.mnemonic,
+                };
+            },
+        );
+
+        const initialAccountId: string = generateRandomId();
+        const initialAccount: Account = await Account.create(
+            options.accountOptions,
+            secretProviderFromAccount,
+        );
+
+        const accounts: Map<string, Account> = new Map([
+            [initialAccountId, initialAccount],
+        ]);
+
+        return new Wallet({
+            type: WalletTypes.HD,
+            signer,
+            accounts,
+            activeAccount: initialAccount,
+        });
+    }
+
+    public static async restore(
+        payload: IRestoreWalletPayload,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const { signerRecord, accountRecords } = payload;
+
+        const signer: Signer = restoreSigner(signerRecord);
+
+        const secretData: IPrivateKeyCredentials | IHDSecret =
+            await decryptSignerData(
+                signer.getEncryptedSecret(),
+                passwordProvider,
+            );
+        const secretProvider = new SecretsProvider(() => secretData);
+
+        const accounts: [string, Account][] = await Promise.all(
+            accountRecords.map(async (record: IAccountRecord) => {
+                const account = await Account.create(
+                    {
+                        name: record.name,
+                    },
+                    secretProvider,
+                );
+
+                return [record.id, account];
+            }),
+        );
+
+        const accountsMap: Map<string, Account> = new Map(accounts);
+
+        return new Wallet({
+            type: signerRecord.type,
+            signer,
+            accounts: accountsMap,
+        });
+    }
+
+    @EnsureActiveAccountExist
+    public async transfer(
+        payload: ITransferDetails,
+        passwordProvider: SecretsProvider,
+    ): Promise<string> {
+        return ApiServiceRegistry.getInstance().transactions.transfer({
+            account: this.getActiveAccount()!,
+            signer: this.signer,
+            details: payload,
+            passwordProvider,
+        });
     }
 }
