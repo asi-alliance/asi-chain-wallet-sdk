@@ -1,4 +1,5 @@
 import { NetworkName } from "@domains/Network";
+import { ITableRecord } from "@domains/TableService";
 
 type TransactionStatus = "pending" | "confirmed" | "failed";
 
@@ -17,4 +18,17 @@ export interface Transaction {
     note?: string;
     networkName: NetworkName; //TODO: clarify what network data will be stored
     detectedBy?: "balance_change" | "manual" | "auto";
+}
+
+export interface ITransactionReservationPrivateData {
+    timestamp: Date;
+    accountAddress: string;
+    pendingAmount: string;
+    deployId: string;
+    expirationTime: number;
+}
+
+export interface ITransactionReservation
+    extends ITransactionReservationPrivateData, ITableRecord {
+    networkName: NetworkName;
 }

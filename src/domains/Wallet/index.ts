@@ -28,7 +28,6 @@ export interface IWalletOptions {
     signer: Signer;
     accounts: Map<string, Account>;
     activeAccount?: Account;
-    transactionService?: TransactionService;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -67,7 +66,6 @@ export default class Wallet {
         signer,
         accounts,
         activeAccount,
-        transactionService,
     }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;

@@ -11,7 +11,7 @@ export interface IDeployConfirmedResult {
 export interface IDeployWatchCallbacks {
     onConfirmed?: (result: IDeployConfirmedResult) => void;
     onError?: (error: Error) => void;
-    onStatus?: (status: IDeployStatusResult) => void;
+    onStatus?: (status: IDeployStatusResult, deployId: string) => void;
 }
 
 export interface IDeployWatchOptions {
@@ -91,7 +91,7 @@ export default class DeployStatusPoller {
                 const status: IDeployStatusResult =
                     await this.deployService.getDeployStatus(deployId);
 
-                callbacks.onStatus?.(status);
+                callbacks.onStatus?.(status, deployId);
 
                 if (status.status === DeployStatus.FINALIZED) {
                     succeed({ deployId });
