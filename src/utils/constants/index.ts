@@ -6,13 +6,13 @@ export const ASI_COIN_TYPE = 60;
 
 export const ASI_DECIMALS = 8;
 
-export const GasFee = {
-    BASE_FEE: 0.0025,
-    VARIATION_RANGE: 0.1,
-    LABEL: "ASI",
-    TRANSFER: "0.0025",
-    DEPLOY: "0.0025",
-};
+// export const GasFee = {
+//     BASE_FEE: 0.0025,
+//     VARIATION_RANGE: 0.1,
+//     LABEL: "ASI",
+//     TRANSFER: "0.0025",
+//     DEPLOY: "0.0025",
+// };
 
 export const HEX_RADIX: number = 16;
 
@@ -31,4 +31,4 @@ export const DEFAULT_BIP_44_PATH_OPTIONS = {
     account: 0,
     change: 0,
     index: 0,
-}
+};
