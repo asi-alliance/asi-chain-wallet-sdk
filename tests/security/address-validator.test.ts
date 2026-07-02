@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import WalletsService from "../../src/services/Wallets";
-import KeysManager from "../../src/services/KeysManager";
+import WalletsService from "@services/Wallets";
+import KeysManager from "@services/KeysManager";
 import {
     isAddress,
     validateAddress,
     validateAccountName,
     AddressValidationErrorCode,
-} from "../../src/utils/validators";
+} from "@utils/validators";
 
 test("isAddress accepts SDK-derived addresses", () => {
     const { privateKey } = KeysManager.generateKeyPair();

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import Asset from "../../src/domains/Asset";
-import Wallet, { Address } from "../../src/domains/Wallet";
-import KeyDerivationService from "../../src/services/KeyDerivation";
-import KeysManager from "../../src/services/KeysManager";
-import MnemonicService from "../../src/services/Mnemonic";
+import Asset from "@domains/Asset";
+import Wallet, { Address } from "@domains/Wallet";
+import KeyDerivationService from "@services/KeyDerivation";
+import KeysManager from "@services/KeysManager";
+import MnemonicService from "@services/Mnemonic";
 
 const PASSWORD = "coverage-password";
 const PRIVATE_KEY = Uint8Array.from([

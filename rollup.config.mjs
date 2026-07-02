@@ -15,17 +15,17 @@ const pkg = JSON.parse(
 const external = [...Object.keys(pkg.dependencies || {}), ...builtinModules];
 
 const aliasEntries = {
-    "@services": path.resolve("src_new/services"),
-    "@domains": path.resolve("src_new/domains"),
-    "@config": path.resolve("src_new/config"),
-    "@utils": path.resolve("src_new/utils"),
-    "@scripts": path.resolve("src_new/scripts"),
-    "@fabrics": path.resolve("src_new/fabrics"),
+    "@services": path.resolve("src/services"),
+    "@domains": path.resolve("src/domains"),
+    "@config": path.resolve("src/config"),
+    "@utils": path.resolve("src/utils"),
+    "@scripts": path.resolve("src/scripts"),
+    "@fabrics": path.resolve("src/fabrics"),
 };
 
 export default [
     {
-        input: "src_new/index.ts",
+        input: "src/index.ts",
         external,
         plugins: [
             alias({ entries: aliasEntries }),
@@ -49,7 +49,7 @@ export default [
         ],
     },
     {
-        input: "src_new/index.ts",
+        input: "src/index.ts",
         plugins: [alias({ entries: aliasEntries }), dts()],
         output: [{ file: "dist/index.d.ts", format: "es" }],
     },

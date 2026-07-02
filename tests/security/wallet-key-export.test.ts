@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { verify } from "@noble/secp256k1";
 
-import Wallet, { SigningCapability } from "../../src/domains/Wallet";
+import Wallet, { SigningCapability } from "@domains/Wallet";
 
 const PASSWORD = "wallet-password";
 const PRIVATE_KEY = Uint8Array.from([

@@ -1,64 +1,22 @@
-import BinaryWriter from "@services/BinaryWriter";
-import { encodeBase16 } from "@utils/codec";
-import { DeployData } from "@domains/Deploy";
 import blakejs from "blakejs";
-import {
-    SigningRequest,
-    PasswordProvider,
-    SignedResult,
-} from "@domains/Signer";
+import Wallet from "@domains/Wallet";
+import BinaryWriter from "@domains/BinaryWriter";
+import { DeployData } from "@domains/Deploy";
 
-const { blake2bHex } = blakejs;
+export interface SigningRequest {
+    wallet: Wallet;
+    data: any;
+}
+
+export interface SignedResult {
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
 
 export default class SignerService {
-    public static async sign(
-        request: SigningRequest,
-        passwordProvider: PasswordProvider,
-    ): Promise<SignedResult> {
-        const { wallet, data: deployData } = request;
-
-        try {
-            const password = await passwordProvider();
-
-            return await wallet.withSigningCapability(
-                password,
-                async (signingCapability) => {
-                    const deploySerialized =
-                        this.deployDataProtobufSerialize(deployData);
-
-                    const hashed = blake2bHex(deploySerialized, undefined, 32);
-                    const suitableBytes = Uint8Array.from(
-                        Buffer.from(hashed, "hex"),
-                    );
-
-                    const signature = await signingCapability.signDigest(
-                        suitableBytes,
-                    );
-                    const publicKey = signingCapability.getPublicKey();
-
-                    return {
-                        data: {
-                            term: deployData.term,
-                            timestamp: deployData.timestamp,
-                            phloPrice: deployData.phloPrice,
-                            phloLimit: deployData.phloLimit,
-                            validAfterBlockNumber:
-                                deployData.validAfterBlockNumber,
-                            shardId: deployData.shardId,
-                        },
-                        deployer: encodeBase16(publicKey),
-                        signature: encodeBase16(signature),
-                        sigAlgorithm: "secp256k1",
-                    };
-                },
-            );
-        } catch (error: any) {
-            const errorMessage = `SignerService.sign: ${(error as Error).message}`;
-            throw new Error(errorMessage);
-        }
-    }
-
-    private static readonly deployDataProtobufSerialize = (
+    public static readonly deployDataProtobufSerialize = (
         deployData: DeployData,
     ): Uint8Array => {
         const {

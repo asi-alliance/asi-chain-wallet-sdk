@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import Asset from "../../src/domains/Asset";
-import CryptoService from "../../src/services/Crypto";
+import Asset from "@domains/Asset";
+import CryptoService from "@services/Crypto";
 
 test("Asset uses default decimals and returns values via getters", () => {
     const asset = new Asset("ASI", "ASI");

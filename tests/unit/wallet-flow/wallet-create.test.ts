@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
-} from "../../../scenarios/src/domains/SecretsProvider";
-import KeysManager from "../../../scenarios/src/services/KeysManager";
-import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
-import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
-import { ISignerRecord } from "../../../scenarios/src/domains/Signer";
-import { IAccountRecord } from "../../../scenarios/src/domains/Account";
-import { decryptSignerData } from "../../../scenarios/src/utils";
+} from "@domains/SecretsProvider";
+import KeysManager from "@services/KeysManager";
+import Wallet, { WalletTypes } from "@domains/Wallet";
+import Bip44Path from "@domains/Bip44Path";
+import { ISignerRecord } from "@domains/Signer";
+import { IAccountRecord } from "@domains/Account";
+import { decryptSignerData } from "@utils/index";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";

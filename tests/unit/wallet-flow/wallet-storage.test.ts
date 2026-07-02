@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import Wallet, { WalletTypes } from "../../../scenarios/src/domains/Wallet";
-import SecretsProvider from "../../../scenarios/src/domains/SecretsProvider";
-import KeysManager from "../../../scenarios/src/services/KeysManager";
-import StorageManager from "../../../scenarios/src/services/StorageManager";
-import { AccountsStorageRepository } from "../../../scenarios/src/domains/AccountsStorageRepository";
-import { SignersStorageRepository } from "../../../scenarios/src/domains/SignersStorageRepository";
-import Bip44Path from "../../../scenarios/src/domains/Bip44Path";
+import Wallet, { WalletTypes } from "@domains/Wallet";
+import SecretsProvider from "@domains/SecretsProvider";
+import KeysManager from "@services/KeysManager";
+import StorageManager from "@services/StorageManager";
+import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
+import { SignersStorageRepository } from "@domains/SignersStorageRepository";
+import Bip44Path from "@domains/Bip44Path";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
