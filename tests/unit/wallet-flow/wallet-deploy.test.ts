@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import Wallet from "../../../scenarios/src/domains/Wallet";
+import Wallet from "@domains/Wallet";
 import SecretsProvider, {
     IPrivateKeyCredentials,
-} from "../../../scenarios/src/domains/SecretsProvider";
-import KeysManager from "../../../scenarios/src/services/KeysManager";
-import StorageManager from "../../../scenarios/src/services/StorageManager";
-import ApiClientManager from "../../../scenarios/src/domains/ApiClientManager";
+} from "@domains/SecretsProvider";
+import KeysManager from "@services/KeysManager";
+import StorageManager from "@services/StorageManager";
+import ApiClientManager from "@domains/ApiClientManager";
 import axios, { AxiosError } from "axios";
-import { decryptSignerData } from "../../../scenarios/src/utils";
-import { IBalanceData } from "../../../scenarios/src/services/AssetsService";
-import { AccountsStorageRepository } from "../../../scenarios/src/domains/AccountsStorageRepository";
-import { SignersStorageRepository } from "../../../scenarios/src/domains/SignersStorageRepository";
-import { DEFAULT_ASSET } from "../../../scenarios/src/config";
-import ApiServiceRegistry from "../../../scenarios/src/domains/ApiServiceRegistry";
+import { decryptSignerData } from "@utils/index";
+import { IBalanceData } from "@services/AssetsService";
+import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
+import { SignersStorageRepository } from "@domains/SignersStorageRepository";
+import { DEFAULT_ASSET } from "@config/index";
+import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
     ITableRecord,
     ITableService,
-} from "../../../scenarios/src/domains/TableService";
+} from "@domains/TableService";
 
 export type StorageFactory = () => ITableService<ITableRecord>;
 

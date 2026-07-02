@@ -1,6 +1,6 @@
 import test from "node:test";
 import path from "node:path";
-import NodeStorage from "../../../scenarios/src/domains/NodeStorage";
+import NodeStorage from "@domains/NodeStorage";
 
 import { runStorageContract } from "./storage.contract";
 

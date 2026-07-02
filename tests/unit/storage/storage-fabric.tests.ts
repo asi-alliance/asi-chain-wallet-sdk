@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { storageFabric } from "@fabrics/Storage";
-import NodeStorage from "../../../scenarios/src/domains/NodeStorage";
-import BrowserStorage from "../../../scenarios/src/domains/BrowserStorage";
+import NodeStorage from "@domains/NodeStorage";
+import BrowserStorage from "@domains/BrowserStorage";
 
 test("returns NodeStorage in Node", () => {
     delete (globalThis as any).window;

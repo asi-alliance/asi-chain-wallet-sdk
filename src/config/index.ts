@@ -1,50 +1,22 @@
 import Asset from "@domains/Asset";
-import { ResubmitConfig } from "@services/Resubmit/types";
 import { generateRandomId } from "@utils/functions";
 
-export interface WalletClientConfig {
-    mode: string;
-    // network: string;
-    // availableNetworks: Networks[];
-}
+export const NATIVE_TOKEN_DECIMALS_AMOUNT: number = 8;
 
-export enum WalletClientModes {
-    LOCAL = "local",
-    MPC = "mpc",
-}
+export const DEFAULT_ASSET: Asset = new Asset({
+    id: generateRandomId(),
+    name: "ASI",
+});
 
-export const DEFAULT_CLIENT_CONFIG: WalletClientConfig = {
-    mode: WalletClientModes.LOCAL,
-    // network: Networks.DEVNET,
-    // availableNetworks: [Networks.MAINNET, Networks.TESTNET, Networks.DEVNET],
+export const DEFAULT_PHLO_LIMIT: number = 500000;
+export const DEFAULT_PHLO_PRICE: number = 1;
+
+export const DEFAULT_NODE_STORAGE_DIR: string = "./storage";
+
+export const GAS_FEE = {
+    MIN: 170000n,
+    MAX: 250000n,
 };
 
-const DEFAULT_AXIOS_TIMEOUT_MS: number = 30000;
-const MAX_WALLETS_PER_ACCOUNT: number = 20;
-const DEFAULT_DECIMALS_AMOUNT: number = 8;
-const DEFAULT_PHLO_LIMIT: number = 500000;
-
-export const defaultAsset: Asset = new Asset(
-    generateRandomId(),
-    "ASI",
-    DEFAULT_DECIMALS_AMOUNT,
-);
-
-export const DEFAULT_RESUBMIT_CONFIG: ResubmitConfig = {
-    phloPrice: 1,
-
-    useRandomNode: true,
-    deployValiditySeconds: 80,
-    nodeSelectionAttempts: 3,
-    deployRetries: 3,
-
-    deployIntervalSeconds: 5,
-    pollingIntervalSeconds: 3,
-};
-
-export {
-    DEFAULT_DECIMALS_AMOUNT,
-    DEFAULT_AXIOS_TIMEOUT_MS,
-    MAX_WALLETS_PER_ACCOUNT,
-    DEFAULT_PHLO_LIMIT,
-};
+export const DEPLOY_STATUS_POLLING_TIMEOUT: number = 3 * 60 * 1000;
+export const RESERVATION_EXPIRATION_TIME: number = 5 * 60 * 1000;
