@@ -13,10 +13,7 @@ async function findTestFiles(dir) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
             results.push(...(await findTestFiles(fullPath)));
-        } else if (
-            entry.isFile() &&
-            entry.name.endsWith("wallet-deploy.test.ts")
-        ) {
+        } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
             results.push(fullPath);
         }
     }

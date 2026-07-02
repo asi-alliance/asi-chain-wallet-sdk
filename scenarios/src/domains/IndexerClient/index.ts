@@ -1,9 +1,9 @@
 import BaseGraphQLClient from "@domains/BaseGraphQLClient";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
+import { Pagination } from "../../services/GraphqlParser/queryOptions";
 import {
     GraphqlParser,
     TransactionHistoryQueryData,
-} from "@services/GraphqlParser";
+} from "../../services/GraphqlParser";
 
 export default class IndexerClient extends BaseGraphQLClient {
     public async getTransactionHistory(
