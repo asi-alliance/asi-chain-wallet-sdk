@@ -262,6 +262,7 @@ export default class Wallet {
             accountRecords.map(async (record: IAccountRecord) => {
                 const account = await Account.create(
                     {
+                        id: record.id,
                         name: record.name,
                     },
                     secretProvider,
@@ -286,6 +287,7 @@ export default class Wallet {
         passwordProvider: SecretsProvider,
     ): Promise<string> {
         return ApiServiceRegistry.getInstance().transactions.transfer({
+            walletType: this.type,
             account: this.getActiveAccount()!,
             signer: this.signer,
             details: payload,

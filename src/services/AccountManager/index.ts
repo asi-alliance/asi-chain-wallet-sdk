@@ -28,8 +28,11 @@ export default class AccountManager extends ItemManager<Account> {
         payload: TCreateAccountPayload,
         secretProvider: SecretsProvider,
     ): Promise<ICreatedAccountData> {
-        const account = await Account.create(payload, secretProvider);
         const accountId: string = generateRandomId();
+        const account = await Account.create(
+            { id: accountId, ...payload },
+            secretProvider,
+        );
 
         this.add(accountId, account);
 

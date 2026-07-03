@@ -2,7 +2,10 @@ import Bip44Path from "@domains/Bip44Path";
 import CryptoService from "@services/Crypto";
 import KeysManager from "@services/KeysManager";
 import KeyDerivationService from "@services/KeyDerivation";
-import Signer, { ISignedMessageResponse, THDSigningContext } from "@domains/Signer";
+import Signer, {
+    ISignedMessageResponse,
+    THDSigningContext,
+} from "@domains/Signer";
 import { sign } from "@noble/secp256k1";
 import { IHDSecretRecord } from "@domains/SecretsProvider";
 
@@ -18,10 +21,9 @@ export default class HDSigner extends Signer {
             );
         const keyMaterial: IHDSecretRecord = JSON.parse(stringifiedKeyMaterial);
 
-        const path: Bip44Path =
-            signingContext.bip44path instanceof Bip44Path
-                ? signingContext.bip44path
-                : Bip44Path.parse(signingContext.bip44path);
+        const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);
+
+        path.setIndex(signingContext.index);
 
         const privateKey = await KeyDerivationService.deriveKeyFromMnemonic(
             keyMaterial.seed,

@@ -22,7 +22,7 @@ temp/
 /memory
 
 # Storage
-/storage
+/storage*
 
 # Storage tests
 .tmp/

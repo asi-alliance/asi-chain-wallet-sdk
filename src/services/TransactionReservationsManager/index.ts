@@ -12,6 +12,7 @@ import {
 export interface ITransactionReservationsManagerOptions {
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
+    onFailed?: (reservation: ITransactionReservation, error: Error) => void;
     watchCallbacks?: IDeployWatchCallbacks;
     watchOptions?: IDeployWatchOptions;
 }
@@ -29,6 +30,10 @@ export default class TransactionReservationsManager implements IDisposable {
         reservation: ITransactionReservation,
     ) => void;
     private readonly onExpired?: (reservation: ITransactionReservation) => void;
+    private readonly onFailed?: (
+        reservation: ITransactionReservation,
+        error: Error,
+    ) => void;
     private readonly watchCallbacks?: IDeployWatchCallbacks;
     private readonly watchOptions?: IDeployWatchOptions;
 
@@ -38,6 +43,7 @@ export default class TransactionReservationsManager implements IDisposable {
     ) {
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
+        this.onFailed = options.onFailed;
         this.watchCallbacks = options.watchCallbacks;
         this.watchOptions = {
             ...options.watchOptions,
@@ -112,6 +118,11 @@ export default class TransactionReservationsManager implements IDisposable {
 
                         this.handleConfirmed(reservation);
                     },
+                    onError: (error: Error) => {
+                        this.watchCallbacks?.onError?.(error);
+
+                        this.handleFailed(reservation, error);
+                    },
                 },
                 this.watchOptions,
             );
@@ -165,5 +176,16 @@ export default class TransactionReservationsManager implements IDisposable {
         this.reservations.delete(reservation.id);
 
         this.onExpired?.(reservation);
+    }
+
+    private handleFailed(
+        reservation: ITransactionReservation,
+        error: Error,
+    ): void {
+        this.stopWatch(reservation.id);
+        this.clearExpiration(reservation.id);
+        this.reservations.delete(reservation.id);
+
+        this.onFailed?.(reservation, error);
     }
 }

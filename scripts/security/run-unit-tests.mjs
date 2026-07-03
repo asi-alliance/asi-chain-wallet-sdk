@@ -5,10 +5,9 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
-const EXCLUDE_TESTS = [
-    "wallet-storage.test.ts",
-    "wallet-transaction-reservations.test.ts",
-];
+const EXCLUDE_TESTS = [];
+
+//wallet-transaction-reservations.test.ts
 
 async function findTestFiles(dir) {
     const entries = await readdir(dir, { withFileTypes: true });

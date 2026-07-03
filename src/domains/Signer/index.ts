@@ -14,7 +14,7 @@ export type TPKSigningContext = {
 
 export type THDSigningContext = {
     passwordProvider: SecretsProvider;
-    bip44path: string | Bip44Path;
+    index: number;
 };
 
 export type ISignedMessageResponse = {
