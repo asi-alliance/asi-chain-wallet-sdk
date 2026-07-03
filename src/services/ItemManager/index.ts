@@ -21,6 +21,10 @@ export default class ItemManager<T> {
         return this.items.get(id) ?? null;
     }
 
+    public hasByFilter(filter: (item: T) => boolean): boolean {
+        return Array.from(this.items.values()).some(filter);
+    }
+
     public has(id: string): boolean {
         return this.items.has(id);
     }

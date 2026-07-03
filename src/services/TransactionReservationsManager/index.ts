@@ -1,3 +1,4 @@
+import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservation } from "@domains/Transaction";
@@ -15,7 +16,7 @@ export interface ITransactionReservationsManagerOptions {
     watchOptions?: IDeployWatchOptions;
 }
 
-export default class TransactionReservationsManager {
+export default class TransactionReservationsManager implements IDisposable {
     private readonly reservations: Map<string, ITransactionReservation> =
         new Map();
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();

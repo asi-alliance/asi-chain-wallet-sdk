@@ -14,6 +14,7 @@ import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
 import { ICreatedAccountData } from "@services/AccountManager";
+import ReservationAdapterManager from "@services/ReservationAdapterManager";
 
 export interface IUnlockedWallet {
     id: string;
@@ -60,15 +61,24 @@ export interface ICreateClientOptions {
 
 interface IClientOptions {
     walletsMap?: Map<string, Wallet>;
+    reservationAdaptersMap?: Map<string, ReservationAdapter>;
     eventDispatcher?: IClientEventDispatcher;
 }
 
 export default class Client {
     private readonly eventDispatcher?: IClientEventDispatcher;
     private readonly walletManager: WalletManager;
+    private readonly reservationAdapterManager: ReservationAdapterManager;
 
-    private constructor({ walletsMap, eventDispatcher }: IClientOptions) {
+    private constructor({
+        walletsMap,
+        reservationAdaptersMap,
+        eventDispatcher,
+    }: IClientOptions) {
         this.walletManager = new WalletManager(walletsMap);
+        this.reservationAdapterManager = new ReservationAdapterManager(
+            reservationAdaptersMap,
+        );
         this.eventDispatcher = eventDispatcher;
     }
 
@@ -95,6 +105,7 @@ export default class Client {
 
     public async clearPersistence(): Promise<void> {
         this.walletManager.clear();
+        this.reservationAdapterManager.clear();
 
         await StorageManager.clear();
 
@@ -103,6 +114,7 @@ export default class Client {
 
     public close(): void {
         this.walletManager.clear();
+        this.reservationAdapterManager.clear();
 
         StorageManager.close();
         ApiClientManager.getInstance().close();
@@ -130,6 +142,8 @@ export default class Client {
             passwordProvider,
         );
 
+        await this.reservationAdapterManager.create(wallet, passwordProvider);
+
         await this.emitWalletsChanged();
 
         return wallet;
@@ -149,6 +163,8 @@ export default class Client {
             secretProvider,
         );
 
+        await this.reservationAdapterManager.create(wallet, secretProvider);
+
         await this.emitWalletsChanged();
 
         return wallet;
@@ -156,6 +172,7 @@ export default class Client {
 
     public async removeWallet(walletId: string): Promise<void> {
         await this.walletManager.delete(walletId);
+        this.reservationAdapterManager.remove(walletId);
 
         await this.emitWalletsChanged();
     }
@@ -164,6 +181,16 @@ export default class Client {
         signerId: string,
         password: string,
     ): Promise<Wallet> {
+        if (
+            this.walletManager.hasByFilter(
+                (wallet: Wallet) => wallet.getSigner().getId() === signerId,
+            )
+        ) {
+            throw new Error(
+                "Client.unlockWallet: This wallet already unlocked",
+            );
+        }
+
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
@@ -172,11 +199,9 @@ export default class Client {
             passwordProvider,
         );
 
-        return wallet;
-    }
+        await this.reservationAdapterManager.create(wallet, passwordProvider);
 
-    public lockWallet(walletId: string): void {
-        this.walletManager.remove(walletId);
+        return wallet;
     }
 
     public async deriveAccount(
@@ -249,37 +274,37 @@ export default class Client {
     public async getAvailableBalance(
         walletId: string,
         accountId: string,
-        password: string,
     ): Promise<bigint> {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
         const account: Account = this.getAccount(wallet, accountId);
-        const passwordProvider: SecretsProvider =
-            this.createPasswordProvider(password);
 
-        return this.withReservationAdapter(
-            wallet,
-            passwordProvider,
-            async (adapter: ReservationAdapter) => {
-                const balance = await adapter.getBalance(account);
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
 
-                return balance.amount;
-            },
-        );
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.getAvailableBalance: Not found reservation adapter",
+            );
+        }
+
+        const balance = await reservationAdapter.getBalance(account);
+
+        return balance.amount;
     }
 
     public async getReservations(
         walletId: string,
-        password: string,
     ): Promise<ITransactionReservation[]> {
-        const wallet: Wallet = this.getUnlockedWallet(walletId);
-        const passwordProvider: SecretsProvider =
-            this.createPasswordProvider(password);
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
 
-        return this.withReservationAdapter(
-            wallet,
-            passwordProvider,
-            (adapter: ReservationAdapter) => adapter.getReservations(),
-        );
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.getReservations: Not found reservation adapter",
+            );
+        }
+
+        return reservationAdapter.getReservations();
     }
 
     public async transfer(
@@ -293,24 +318,25 @@ export default class Client {
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
-        return this.withReservationAdapter(
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            throw new Error("Client.transfer: Not found reservation adapter");
+        }
+
+        const deployId: string = await reservationAdapter.transfer(
             wallet,
+            { to, amount, asset: DEFAULT_ASSET },
             passwordProvider,
-            async (adapter: ReservationAdapter) => {
-                const deployId: string = await adapter.transfer(
-                    wallet,
-                    { to, amount, asset: DEFAULT_ASSET },
-                    passwordProvider,
-                );
-
-                this.eventDispatcher?.onReservationsChanged?.(
-                    walletId,
-                    adapter.getReservations(),
-                );
-
-                return deployId;
-            },
         );
+
+        this.eventDispatcher?.onReservationsChanged?.(
+            walletId,
+            reservationAdapter.getReservations(),
+        );
+
+        return deployId;
     }
 
     public toDisplayAmount(atomicAmount: bigint): string {
@@ -319,23 +345,6 @@ export default class Client {
 
     public toAtomicAmount(amount: number | string): bigint {
         return toAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
-    }
-
-    private async withReservationAdapter<T>(
-        wallet: Wallet,
-        passwordProvider: SecretsProvider,
-        handler: (adapter: ReservationAdapter) => T | Promise<T>,
-    ): Promise<T> {
-        const adapter: ReservationAdapter = await ReservationAdapter.create(
-            wallet,
-            passwordProvider,
-        );
-
-        try {
-            return await handler(adapter);
-        } finally {
-            adapter.dispose();
-        }
     }
 
     private getUnlockedWallet(walletId: string): Wallet {
