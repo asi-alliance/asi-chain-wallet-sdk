@@ -11,7 +11,7 @@ import ReservationAdapter from "@domains/ReservationAdapter";
 import { ITransactionReservation } from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
-import WalletManager, { IWalletMetadata } from "@services/WalletManager";
+import WalletManager from "@services/WalletManager";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
 import { ICreatedAccountData } from "@services/AccountManager";
 
@@ -42,7 +42,7 @@ export interface ITransferRequest {
 }
 
 export interface IClientEventDispatcher {
-    onWalletsChanged?(wallets: IWalletMetadata[]): void;
+    onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(networkName: NetworkName): void;
     onReservationsChanged?(
@@ -59,14 +59,16 @@ export interface ICreateClientOptions {
 }
 
 interface IClientOptions {
+    walletsMap?: Map<string, Wallet>;
     eventDispatcher?: IClientEventDispatcher;
 }
 
 export default class Client {
     private readonly eventDispatcher?: IClientEventDispatcher;
-    private readonly walletManager: WalletManager = new WalletManager();
+    private readonly walletManager: WalletManager;
 
-    private constructor({ eventDispatcher }: IClientOptions) {
+    private constructor({ walletsMap, eventDispatcher }: IClientOptions) {
+        this.walletManager = new WalletManager(walletsMap);
         this.eventDispatcher = eventDispatcher;
     }
 
@@ -381,6 +383,6 @@ export default class Client {
             return;
         }
 
-        this.eventDispatcher.onWalletsChanged(await this.walletManager.list());
+        this.eventDispatcher.onWalletsChanged(this.walletManager.getAll());
     }
 }

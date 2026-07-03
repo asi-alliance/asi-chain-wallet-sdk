@@ -160,7 +160,7 @@ export default class WalletManager extends ItemManager<Wallet> {
         currentWallet.setActiveAccount(accountId);
     }
 
-    public async list(): Promise<IWalletMetadata[]> {
+    public async getPublicWalletsMetadata(): Promise<IWalletMetadata[]> {
         const walletsData: IWalletStorageData[] =
             await StorageManager.getWallets();
 
@@ -176,6 +176,10 @@ export default class WalletManager extends ItemManager<Wallet> {
     }
 
     public async count(): Promise<number> {
+        return this.items.size;
+    }
+
+    public async countInStorage(): Promise<number> {
         return (await StorageManager.getSigners()).length;
     }
 
