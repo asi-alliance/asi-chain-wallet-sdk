@@ -105,6 +105,12 @@ export default class ApiClientManager {
         return this.currentNetwork!;
     }
 
+    @EnsureApiClientManagerInitialized
+    @EnsureApiClientManagerConfigured
+    public getNetworkNames(): NetworkName[] {
+        return this.networkConfigProvider.getNetworkNames();
+    }
+
     public isReady(): boolean {
         return this.isInitialized;
     }

@@ -15,6 +15,14 @@ export default class NetworkConfigProvider {
         return this.networksConfig[network];
     }
 
+    public getNetworkNames(): NetworkName[] {
+        if (!this.networksConfig) {
+            throw new Error("Network config is not initialized");
+        }
+
+        return Object.keys(this.networksConfig) as NetworkName[];
+    }
+
     public isReady(): boolean {
         return this.networksConfig !== null;
     }

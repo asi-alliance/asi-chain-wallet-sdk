@@ -19,6 +19,7 @@ coverage/
 tmp/
 temp/
 *.bak
+/memory
 
 # Storage
 /storage
@@ -27,3 +28,6 @@ temp/
 .tmp/
 .persist-test/
 /storage-test
+
+# Playground previous versions
+/playground-last

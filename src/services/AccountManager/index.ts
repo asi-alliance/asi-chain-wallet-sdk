@@ -3,17 +3,23 @@ import Account, {
     TEditableAccountOptions,
 } from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
+import ItemManager from "@services/ItemManager";
 import { generateRandomId } from "@utils/index";
 
-export default class AccountManager {
-    private readonly accounts: Map<string, Account>;
+export interface ICreatedAccountData {
+    accountId: string;
+    account: Account;
+}
+
+export default class AccountManager extends ItemManager<Account> {
     private activeAccount: Account | null;
 
     constructor(
         accounts: Map<string, Account> = new Map(),
         activeAccount: Account | null = null,
     ) {
-        this.accounts = accounts;
+        super(accounts);
+
         this.activeAccount =
             activeAccount ?? accounts.values().next().value ?? null;
     }
@@ -21,40 +27,39 @@ export default class AccountManager {
     public async create(
         payload: TCreateAccountPayload,
         secretProvider: SecretsProvider,
-    ): Promise<Account> {
+    ): Promise<ICreatedAccountData> {
         const account = await Account.create(payload, secretProvider);
+        const accountId: string = generateRandomId();
 
-        const id = generateRandomId();
-
-        this.accounts.set(id, account);
+        this.add(accountId, account);
 
         if (!this.activeAccount) {
             this.activeAccount = account;
         }
 
-        return account;
+        return { account, accountId };
     }
 
     public remove(id: string): boolean {
-        const account: Account | undefined = this.accounts.get(id);
+        const account: Account | null = this.get(id);
 
         if (!account) {
             return false;
         }
 
-        const deleted: boolean = this.accounts.delete(id);
+        const deleted: boolean = super.remove(id);
 
-        if (this.activeAccount === account && !this.accounts.size) {
+        if (this.activeAccount === account && !this.items.size) {
             return deleted;
         }
 
-        this.activeAccount = this.accounts.values().next().value!;
+        this.activeAccount = this.items.values().next().value ?? null;
 
         return deleted;
     }
 
     public update(id: string, payload: TEditableAccountOptions): void {
-        const account: Account | undefined = this.accounts.get(id);
+        const account: Account | null = this.get(id);
 
         if (!account) {
             console.error("Cannot update missing account");
@@ -66,7 +71,7 @@ export default class AccountManager {
     }
 
     public setActiveAccount(id: string): void {
-        const account: Account | undefined = this.accounts.get(id);
+        const account: Account | null = this.get(id);
 
         if (!account) {
             console.error("Cannot set active account");
@@ -82,14 +87,14 @@ export default class AccountManager {
     }
 
     public getAccounts(): Account[] {
-        return Array.from(this.accounts.values());
+        return this.getAll();
     }
 
     public getAccountsMap(): Map<string, Account> {
-        return this.accounts;
+        return this.getMap();
     }
 
     public getAccount(id: string): Account | null {
-        return this.accounts.get(id) ?? null;
+        return this.get(id);
     }
 }

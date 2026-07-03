@@ -12,6 +12,8 @@ export * from "./DeployService";
 export { default as DeployService } from "./DeployService";
 export * from "./DeployStatusPoller";
 export { default as DeployStatusPoller } from "./DeployStatusPoller";
+export * from "./ItemManager";
+export { default as ItemManager } from "./ItemManager";
 export * from "./KeyDerivation";
 export { default as KeyDerivation } from "./KeyDerivation";
 export * from "./KeysManager";
