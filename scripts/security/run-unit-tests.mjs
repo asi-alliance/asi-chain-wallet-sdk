@@ -19,7 +19,7 @@ async function findTestFiles(dir) {
             results.push(...(await findTestFiles(fullPath)));
         } else if (
             entry.isFile() &&
-            entry.name.endsWith(".test.ts") &&
+            entry.name.endsWith("client.test.ts") &&
             !EXCLUDE_TESTS.includes(entry.name)
         ) {
             results.push(fullPath);

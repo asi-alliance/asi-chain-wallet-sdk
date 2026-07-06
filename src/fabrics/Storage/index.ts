@@ -9,9 +9,7 @@ export interface IStorageFabricOptions {
 export const storageFabric = (
     options?: IStorageFabricOptions,
 ): ITableService<ITableRecord> => {
-    const isBrowser = typeof window !== "undefined";
-
-    return isBrowser
-        ? new BrowserStorage()
-        : new NodeStorage(options?.nodeStorageDir);
+    return typeof window !== "undefined"
+        ? BrowserStorage.getInstance()
+        : NodeStorage.getInstance(options?.nodeStorageDir);
 };

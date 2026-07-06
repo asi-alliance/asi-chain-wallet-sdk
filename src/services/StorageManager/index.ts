@@ -54,13 +54,11 @@ class StorageManager {
     public static init = async (
         options?: IStorageFabricOptions,
     ): Promise<void> => {
-        await Promise.all([
-            SignersStorageRepository.getInstance(options).initialize(),
-            AccountsStorageRepository.getInstance(options).initialize(),
-            TransactionReservationsStorageRepository.getInstance(
-                options,
-            ).initialize(),
-        ]);
+        await SignersStorageRepository.getInstance(options).initialize();
+        await AccountsStorageRepository.getInstance(options).initialize();
+        await TransactionReservationsStorageRepository.getInstance(
+            options,
+        ).initialize();
     };
 
     public static saveSigner = async ({
@@ -315,11 +313,9 @@ class StorageManager {
     };
 
     public static clear = async (): Promise<void> => {
-        await Promise.all([
-            SignersStorageRepository.getInstance().clearAllData(),
-            AccountsStorageRepository.getInstance().clearAllData(),
-            TransactionReservationsStorageRepository.getInstance().clearAllData(),
-        ]);
+        await SignersStorageRepository.getInstance().clearAllData();
+        await AccountsStorageRepository.getInstance().clearAllData();
+        await TransactionReservationsStorageRepository.getInstance().clearAllData();
     };
 
     public static close = (): void => {
