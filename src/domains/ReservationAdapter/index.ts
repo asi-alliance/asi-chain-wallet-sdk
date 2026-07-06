@@ -163,18 +163,37 @@ export default class ReservationAdapter {
             encryptedData,
         });
     }
+    public async validateSufficientBalance(
+        account: Account,
+        amount: bigint,
+    ): Promise<boolean> {
+        const totalReservedAmount: bigint =
+            this.getReservedAmount(account.getAddress()) + amount;
+        const remoteBalance: bigint = (await account.getBalance()).amount;
+
+        return remoteBalance - totalReservedAmount > 0n;
+    }
 
     public async transfer(
         wallet: Wallet,
         details: ITransferDetails,
         passwordProvider: SecretsProvider,
     ): Promise<string> {
+        const account: Account = wallet.getActiveAccount()!;
+
+        const isSufficientBalance: boolean =
+            await this.validateSufficientBalance(account, details.amount);
+
+        if (!isSufficientBalance) {
+            throw new Error(
+                "ReservationAdapter.transfer: Insufficient balance",
+            );
+        }
+
         const deployId: string = await wallet.transfer(
             details,
             passwordProvider,
         );
-
-        const account: Account = wallet.getActiveAccount()!;
 
         const reservation: ITransactionReservation = {
             id: generateRandomId(),
