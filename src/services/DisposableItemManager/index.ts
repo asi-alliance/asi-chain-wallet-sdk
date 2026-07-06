@@ -13,7 +13,7 @@ export default class DisposableItemManager<
         super.add(id, item);
     }
 
-    public remove(id: string): boolean {
+    public remove(id: string): T {
         this.get(id)?.dispose();
 
         return super.remove(id);
