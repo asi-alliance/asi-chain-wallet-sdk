@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import { fromAtomicAmount } from "asi-wallet-sdk";
+import { formatAmount } from "../../sdk-react-kit";
 import "./style.css";
 
 export interface ITransferCompletedModalProps {
@@ -79,7 +79,7 @@ const TransferCompletedModal = ({
                         name="amount"
                         type="text"
                         readOnly
-                        value={fromAtomicAmount(amount)}
+                        value={formatAmount(amount)}
                     />
                 </div>
 

@@ -5,11 +5,21 @@ import {
 import { ITableRecord, ITableService } from "@domains/TableService";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
+    private static instance: BrowserStorage | null = null;
+
     private readonly name: string;
     private storageInterface: IDBDatabase | null = null;
 
-    constructor(name: string = "AppDatabase") {
+    private constructor(name: string = "AppDatabase") {
         this.name = name;
+    }
+
+    public static getInstance(name?: string): BrowserStorage {
+        if (!BrowserStorage.instance) {
+            BrowserStorage.instance = new BrowserStorage(name);
+        }
+
+        return BrowserStorage.instance;
     }
 
     public async init(): Promise<IDBDatabase> {

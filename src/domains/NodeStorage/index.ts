@@ -12,12 +12,21 @@ const TABLES_FOLDER_KEY: string = "__tables__";
 const TABLES_KEY_PREFIX: string = "table";
 
 export default class NodeStorage implements ITableService<ITableRecord> {
-    private readonly storageDir: string;
+    private static instance: NodeStorage | null = null;
 
+    private readonly storageDir: string;
     private storageInterface: LocalStorage | null = null;
 
-    constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
+    private constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
         this.storageDir = storageDir;
+    }
+
+    public static getInstance(storageDir?: string): NodeStorage {
+        if (!NodeStorage.instance) {
+            NodeStorage.instance = new NodeStorage(storageDir);
+        }
+
+        return NodeStorage.instance;
     }
 
     public async init(): Promise<void> {

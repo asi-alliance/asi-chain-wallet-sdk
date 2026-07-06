@@ -1,0 +1,51 @@
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  background: #fff;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.app-header__brand {
+  flex-shrink: 0;
+}
+
+.app-header__title {
+  color: #222;
+  font-family: 'Roboto', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.app-header__subtitle {
+  color: #333;
+  font-family: 'Roboto', monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.app-header__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #dc2626;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #dc2626;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.app-header__reset:hover {
+  background: #dc2626;
+  color: #fff;
+}

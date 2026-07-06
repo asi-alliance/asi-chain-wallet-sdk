@@ -28,10 +28,6 @@ export interface IAccountHDData extends ISeedCredentials {
     path: string;
 }
 
-export interface ICreateHDWalletPayload extends ISeedCredentials {
-    customHDPath?: string;
-}
-
 export type TSecretsProviderInterface = () => any;
 
 export default class SecretsProvider {

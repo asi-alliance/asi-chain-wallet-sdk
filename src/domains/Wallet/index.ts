@@ -172,14 +172,13 @@ export default class Wallet {
             secretProvider,
         });
 
-        const initialAccountId: string = generateRandomId();
         const initialAccount: Account = await Account.create(
             accountOptions,
             new SecretsProvider(() => secretProvider.getSecret().secret),
         );
 
         const accounts: Map<string, Account> = new Map([
-            [initialAccountId, initialAccount],
+            [initialAccount.getId(), initialAccount],
         ]);
 
         return new Wallet({
@@ -225,14 +224,13 @@ export default class Wallet {
             },
         );
 
-        const initialAccountId: string = generateRandomId();
         const initialAccount: Account = await Account.create(
             options.accountOptions,
             secretProviderFromAccount,
         );
 
         const accounts: Map<string, Account> = new Map([
-            [initialAccountId, initialAccount],
+            [initialAccount.getId(), initialAccount],
         ]);
 
         return new Wallet({
@@ -258,21 +256,20 @@ export default class Wallet {
             );
         const secretProvider = new SecretsProvider(() => secretData);
 
-        const accounts: [string, Account][] = await Promise.all(
-            accountRecords.map(async (record: IAccountRecord) => {
-                const account = await Account.create(
-                    {
-                        id: record.id,
-                        name: record.name,
-                    },
-                    secretProvider,
-                );
+        const accountsMap: Map<string, Account> = new Map();
 
-                return [record.id, account];
-            }),
-        );
+        for (const record of accountRecords) {
+            const account = await Account.create(
+                {
+                    id: record.id,
+                    name: record.name,
+                    index: record.index ?? undefined,
+                },
+                secretProvider,
+            );
 
-        const accountsMap: Map<string, Account> = new Map(accounts);
+            accountsMap.set(account.getId(), account);
+        }
 
         return new Wallet({
             type: signerRecord.type,

@@ -54,13 +54,11 @@ class StorageManager {
     public static init = async (
         options?: IStorageFabricOptions,
     ): Promise<void> => {
-        await Promise.all([
-            SignersStorageRepository.getInstance(options).initialize(),
-            AccountsStorageRepository.getInstance(options).initialize(),
-            TransactionReservationsStorageRepository.getInstance(
-                options,
-            ).initialize(),
-        ]);
+        await SignersStorageRepository.getInstance(options).initialize();
+        await AccountsStorageRepository.getInstance(options).initialize();
+        await TransactionReservationsStorageRepository.getInstance(
+            options,
+        ).initialize();
     };
 
     public static saveSigner = async ({

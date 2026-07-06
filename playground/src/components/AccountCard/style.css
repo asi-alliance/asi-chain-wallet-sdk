@@ -1,4 +1,5 @@
-.wallet-card {
+.wallet-card,
+.account-card {
 	position: relative;
 
 	display: flex;
@@ -30,7 +31,8 @@
 	transform: scale(1.1);
 }
 
-.wallet-card-index {
+.wallet-card-index,
+.account-card-index {
 	position: absolute;
 	top: 6px;
 	right: 8px;
@@ -48,25 +50,29 @@
 	pointer-events: none;
 }
 
-.wallet-card-body {
+.wallet-card-body,
+.account-card-body {
 	flex: auto;
 	width: 100%;
 	overflow: hidden;
 }
 
-.wallet-card-body>.buttons {
+.wallet-card-body > .buttons,
+.account-card-body > .buttons {
 	display: flex;
 	flex-wrap: wrap;
 }
 
-.wallet-card-head {
+.wallet-card-head,
+.account-card-head {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 1rem;
 	margin-bottom: 0.5rem;
 }
 
-.wallet-card-address {
+.wallet-card-address,
+.account-card-address {
 	font-family: 'Fira Mono', 'Consolas', monospace;
 	color: #444;
 
@@ -84,7 +90,8 @@
 	margin-bottom: 0.5rem;
 }
 
-.wallet-card-balance {
+.wallet-card-balance,
+.account-card-balance {
 	font-weight: 500;
 	color: #222;
 
@@ -96,7 +103,8 @@
 	white-space: nowrap;
 }
 
-.wallet-card-state {
+.wallet-card-state,
+.account-card-state {
 	font-size: 0.75rem;
 	color: #fff;
 
@@ -108,7 +116,8 @@
 	background: #e57373;
 }
 
-.wallet-card-state.unlocked {
+.wallet-card-state.unlocked,
+.account-card-state.unlocked {
 	background: #81c784;
 }
 
@@ -116,7 +125,8 @@
 	display: flex;
 }
 
-.wallet-card-button {
+.wallet-card-button,
+.account-card-button {
 	background: #0078d4;
 	color: #fff;
 
@@ -135,11 +145,13 @@
 	margin: 5px;
 }
 
-.wallet-card-button:hover:not(:disabled) {
+.wallet-card-button:hover:not(:disabled),
+.account-card-button:hover:not(:disabled) {
 	background: #005fa3;
 }
 
-.wallet-card-button:disabled {
+.wallet-card-button:disabled,
+.account-card-button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
