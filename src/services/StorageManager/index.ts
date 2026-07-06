@@ -313,11 +313,9 @@ class StorageManager {
     };
 
     public static clear = async (): Promise<void> => {
-        await Promise.all([
-            SignersStorageRepository.getInstance().clearAllData(),
-            AccountsStorageRepository.getInstance().clearAllData(),
-            TransactionReservationsStorageRepository.getInstance().clearAllData(),
-        ]);
+        await SignersStorageRepository.getInstance().clearAllData();
+        await AccountsStorageRepository.getInstance().clearAllData();
+        await TransactionReservationsStorageRepository.getInstance().clearAllData();
     };
 
     public static close = (): void => {

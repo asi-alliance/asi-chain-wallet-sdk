@@ -9,12 +9,16 @@ export default class ItemManager<T> {
         this.items.set(id, item);
     }
 
-    public remove(id: string): boolean {
+    public remove(id: string): T {
         if (!this.items.has(id)) {
-            return false;
+            throw new Error("ItemManager.remove: not found item by id");
         }
 
-        return this.items.delete(id);
+        const targetItem: T = this.get(id)!;
+
+        this.items.delete(id);
+
+        return targetItem;
     }
 
     public get(id: string): T | null {

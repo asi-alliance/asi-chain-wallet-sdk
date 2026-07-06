@@ -154,7 +154,7 @@ export default class Wallet {
         );
     }
 
-    public removeAccount(id: string): boolean {
+    public removeAccount(id: string): Account {
         return this.accountManager.remove(id);
     }
 

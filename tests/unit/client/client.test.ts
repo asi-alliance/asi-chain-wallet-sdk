@@ -5,8 +5,6 @@ import fs from "node:fs/promises";
 import Client from "@domains/Client";
 import Wallet, { WalletTypes } from "@domains/Wallet";
 import { TNetworksConfig } from "@domains/Network";
-import ApiServiceRegistry from "@domains/ApiServiceRegistry";
-import ApiClientManager from "@domains/ApiClientManager";
 import StorageManager from "@services/StorageManager";
 
 const STORAGE_DIR = "./storage-client-test";
