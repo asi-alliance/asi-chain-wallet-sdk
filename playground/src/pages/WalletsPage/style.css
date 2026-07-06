@@ -2,10 +2,6 @@
 	width: 24px;
 }
 
-.mnemonics .wallets-page__card-wrap .remove-block button {
-	display: none;
-}
-
 .mnemonics .wallets-page__card-wrap:last-child .remove-block button {
 	display: block;
 }
