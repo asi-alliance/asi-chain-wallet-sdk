@@ -15,6 +15,10 @@ import WalletManager from "@services/WalletManager";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
+import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
+import InsensitiveCacheStorageSerializer from "@services/InsensitiveCacheStorageSerializer";
+import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageRepository";
+import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 
 export interface IUnlockedWallet {
     id: string;
@@ -52,34 +56,43 @@ export interface IClientEventDispatcher {
     ): void;
 }
 
+export interface ICreateClientFlags {
+    withInsensitiveCacheStorage?: boolean;
+}
+
 export interface ICreateClientOptions {
     networksConfig: TNetworksConfig;
     defaultNetwork?: NetworkName;
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
+    flags?: ICreateClientFlags;
 }
 
 interface IClientOptions {
     walletsMap?: Map<string, Wallet>;
     reservationAdaptersMap?: Map<string, ReservationAdapter>;
     eventDispatcher?: IClientEventDispatcher;
+    flags?: ICreateClientFlags;
 }
 
 export default class Client {
-    private readonly eventDispatcher?: IClientEventDispatcher;
     private readonly walletManager: WalletManager;
     private readonly reservationAdapterManager: ReservationAdapterManager;
+    private readonly eventDispatcher?: IClientEventDispatcher;
+    private readonly flags?: ICreateClientFlags;
 
     private constructor({
         walletsMap,
         reservationAdaptersMap,
         eventDispatcher,
+        flags,
     }: IClientOptions) {
         this.walletManager = new WalletManager(walletsMap);
         this.reservationAdapterManager = new ReservationAdapterManager(
             reservationAdaptersMap,
         );
         this.eventDispatcher = eventDispatcher;
+        this.flags = flags;
     }
 
     public static async create({
@@ -87,6 +100,7 @@ export default class Client {
         defaultNetwork,
         storageOptions,
         eventDispatcher,
+        flags,
     }: ICreateClientOptions): Promise<Client> {
         await StorageManager.init(storageOptions);
 
@@ -96,11 +110,20 @@ export default class Client {
         );
         ApiServiceRegistry.getInstance();
 
-        return new Client({ eventDispatcher });
+        if (flags?.withInsensitiveCacheStorage) {
+            await InsensitiveCacheStorageManager.init();
+        }
+
+        return new Client({ eventDispatcher, flags });
     }
 
     public getWalletManager(): WalletManager {
         return this.walletManager;
+    }
+
+    @EnsureWithInsensitiveCacheStorage
+    public getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> {
+        return InsensitiveCacheStorageManager.getAll();
     }
 
     public async clearPersistence(): Promise<void> {
@@ -146,6 +169,14 @@ export default class Client {
 
         await this.emitWalletsChanged();
 
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.save(
+                InsensitiveCacheStorageSerializer.serialize(
+                    wallet.getActiveAccount()!,
+                ),
+            );
+        }
+
         return wallet;
     }
 
@@ -167,12 +198,26 @@ export default class Client {
 
         await this.emitWalletsChanged();
 
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.save(
+                InsensitiveCacheStorageSerializer.serialize(
+                    wallet.getActiveAccount()!,
+                ),
+            );
+        }
+
         return wallet;
     }
 
     public async removeWallet(walletId: string): Promise<void> {
-        await this.walletManager.delete(walletId);
+        const removedWallet: Wallet = await this.walletManager.delete(walletId);
         this.reservationAdapterManager.remove(walletId);
+
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.deleteAll(
+                Array.from(removedWallet.getAccountsMap().keys()),
+            );
+        }
 
         await this.emitWalletsChanged();
     }
@@ -221,6 +266,14 @@ export default class Client {
 
         this.emitAccountsChanged(walletId);
 
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.save(
+                InsensitiveCacheStorageSerializer.serialize(
+                    createdAccountData.account,
+                ),
+            );
+        }
+
         return createdAccountData;
     }
 
@@ -228,7 +281,14 @@ export default class Client {
         walletId: string,
         accountId: string,
     ): Promise<void> {
-        await this.walletManager.removeAccount(walletId, accountId);
+        const removedAccount: Account = await this.walletManager.removeAccount(
+            walletId,
+            accountId,
+        );
+
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.delete(removedAccount.getId());
+        }
 
         this.emitAccountsChanged(walletId);
     }

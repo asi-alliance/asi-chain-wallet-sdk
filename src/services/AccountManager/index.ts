@@ -43,22 +43,12 @@ export default class AccountManager extends ItemManager<Account> {
         return { account, accountId };
     }
 
-    public remove(id: string): boolean {
-        const account: Account | null = this.get(id);
-
-        if (!account) {
-            return false;
-        }
-
-        const deleted: boolean = super.remove(id);
-
-        if (this.activeAccount === account && !this.items.size) {
-            return deleted;
-        }
+    public remove(id: string): Account {
+        const removedAccount: Account = super.remove(id);
 
         this.activeAccount = this.items.values().next().value ?? null;
 
-        return deleted;
+        return removedAccount;
     }
 
     public update(id: string, payload: TEditableAccountOptions): void {

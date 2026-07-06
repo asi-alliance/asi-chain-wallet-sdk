@@ -74,12 +74,8 @@ export default class WalletManager extends ItemManager<Wallet> {
         return wallet;
     }
 
-    public async delete(id: string): Promise<void> {
-        const currentWallet: Wallet | null = this.get(id);
-
-        if (!currentWallet) {
-            throw new Error("WalletManager.delete: unknown wallet id");
-        }
+    public async delete(id: string): Promise<Wallet> {
+        const currentWallet: Wallet = super.remove(id);
 
         const accountIds: string[] = Array.from(
             currentWallet.getAccountsMap().keys(),
@@ -91,7 +87,7 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         await StorageManager.deleteSigner(currentWallet.getSigner().getId());
 
-        this.remove(id);
+        return currentWallet;
     }
 
     public async deriveAccount(
@@ -120,16 +116,19 @@ export default class WalletManager extends ItemManager<Wallet> {
     public async removeAccount(
         walletId: string,
         accountId: string,
-    ): Promise<void> {
+    ): Promise<Account> {
         const currentWallet: Wallet | null = this.get(walletId);
 
         if (!currentWallet) {
             throw new Error("WalletManager.removeAccount: unknown wallet id");
         }
 
-        currentWallet.removeAccount(accountId);
+        const removedAccount: Account =
+            currentWallet.removeAccount(accountId);
 
         await StorageManager.deleteAccount(accountId);
+
+        return removedAccount;
     }
 
     public async renameAccount(

@@ -1,4 +1,4 @@
-import Account from "@domains/Account";
+import { ICreateClientFlags } from "@domains/Client";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import { WalletTypes } from "@domains/Wallet";
@@ -154,6 +154,26 @@ export function EnsureActiveAccountExist<
     return function (this: This, ...args: Args): Return {
         if (!this.accountManager.getActiveAccount()) {
             throw new Error("Wallet hasn't active account for transfer!");
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export interface IClientContext {
+    flags?: ICreateClientFlags;
+}
+
+export function EnsureWithInsensitiveCacheStorage<
+    This extends IClientContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.flags?.withInsensitiveCacheStorage) {
+            throw new Error(
+                "You cannot get insensitive account data when storage flag inactive!",
+            );
         }
 
         return target.apply(this, args);

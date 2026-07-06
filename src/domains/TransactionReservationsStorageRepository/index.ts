@@ -20,7 +20,7 @@ export class TransactionReservationsStorageRepository {
     private isInitialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
-    private constructor(options?: IStorageFabricOptions) {
+    public constructor(options?: IStorageFabricOptions) {
         this.storageInterface = storageFabric(options);
     }
 
