@@ -17,7 +17,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     private readonly storageDir: string;
     private storageInterface: LocalStorage | null = null;
 
-    private constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
+    public constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
         this.storageDir = storageDir;
     }
 

@@ -10,7 +10,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
     private readonly name: string;
     private storageInterface: IDBDatabase | null = null;
 
-    private constructor(name: string = "AppDatabase") {
+    public constructor(name: string = "AppDatabase") {
         this.name = name;
     }
 

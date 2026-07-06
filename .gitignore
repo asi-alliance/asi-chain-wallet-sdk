@@ -19,7 +19,6 @@ coverage/
 tmp/
 temp/
 *.bak
-/memory
 
 # Storage
 /storage*
