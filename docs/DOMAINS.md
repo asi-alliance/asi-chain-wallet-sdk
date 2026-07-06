@@ -2,7 +2,7 @@
 
 This file documents the current domain modules under `src/domains`.
 
-The SDK is organized around a high-level `Client` façade. `Client` owns a
+The SDK is organized around a high-level `Client` facade. `Client` owns a
 `WalletManager` and a `ReservationAdapterManager`, and it wires network access
 through the singletons `ApiClientManager` (transport) and `ApiServiceRegistry`
 (services). Wallets own accounts through an `AccountManager`, and secret material
@@ -95,7 +95,10 @@ interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(networkName: NetworkName): void;
-    onReservationsChanged?(walletId: string, reservations: ITransactionReservation[]): void;
+    onReservationsChanged?(
+        walletId: string,
+        reservations: ITransactionReservation[],
+    ): void;
 }
 ```
 
@@ -114,13 +117,16 @@ is only reachable via the static factories.
 Branded address type:
 
 ```ts
-type Address = `1111${string}` // brand-typed; produced by validated derivation
+type Address = `1111${string}`; // brand-typed; produced by validated derivation
 ```
 
 Wallet type:
 
 ```ts
-enum WalletTypes { PRIVATE_KEY = "private-key", HD = "hd" }
+enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
+}
 ```
 
 Factories:
@@ -179,7 +185,7 @@ Account.create(accountOptions: TCreateAccountPayload, secretProvider: SecretsPro
 interface IAccountOptions {
     id?: string;
     name: string;
-    index: number | null;   // null for private-key accounts
+    index: number | null; // null for private-key accounts
     address: Address;
     portfolioOptions?: IPortfolioOptions;
 }
@@ -231,9 +237,12 @@ signatures without leaking key bytes to callers. Concrete implementations are
 
 ```ts
 abstract class Signer {
-    getId(): string
-    getEncryptedSecret(): EncryptedData
-    abstract sign(payload: string, signingContext: TSigningContext): Promise<ISignedMessageResponse>
+    getId(): string;
+    getEncryptedSecret(): EncryptedData;
+    abstract sign(
+        payload: string,
+        signingContext: TSigningContext,
+    ): Promise<ISignedMessageResponse>;
 }
 ```
 
@@ -243,7 +252,11 @@ type TPKSigningContext = { passwordProvider: SecretsProvider };
 type THDSigningContext = { passwordProvider: SecretsProvider; index: number };
 type TSigningContext = TPKSigningContext | THDSigningContext;
 
-interface ISignerRecord { id: string; type: WalletTypes; encryptedData: EncryptedData }
+interface ISignerRecord {
+    id: string;
+    type: WalletTypes;
+    encryptedData: EncryptedData;
+}
 ```
 
 Both implementations decrypt the secret, derive the private key (HD derives at
@@ -267,11 +280,21 @@ getSecret(): any
 Secret shapes (all in this module):
 
 ```ts
-interface IPasswordCredentials { password: string }
-interface IPrivateKeyCredentials { privateKey: Uint8Array }
-interface ISeedCredentials { seed: string }
-interface IHDSecret extends ISeedCredentials { rootHDPath: Bip44Path }
-interface IHDSecretRecord extends ISeedCredentials { rootHDPath: string } // serialized form
+interface IPasswordCredentials {
+    password: string;
+}
+interface IPrivateKeyCredentials {
+    privateKey: Uint8Array;
+}
+interface ISeedCredentials {
+    seed: string;
+}
+interface IHDSecret extends ISeedCredentials {
+    rootHDPath: Bip44Path;
+}
+interface IHDSecretRecord extends ISeedCredentials {
+    rootHDPath: string;
+} // serialized form
 ```
 
 ---
@@ -453,7 +476,8 @@ interface Transaction {
     detectedBy?: "balance_change" | "manual" | "auto";
 }
 
-interface ITransactionReservation extends ITransactionReservationPrivateData, ITableRecord {
+interface ITransactionReservation
+    extends ITransactionReservationPrivateData, ITableRecord {
     networkName: NetworkName;
 }
 ```
@@ -467,7 +491,7 @@ interface ITransactionReservation extends ITransactionReservationPrivateData, IT
 
 Bridges a wallet to the persistent, encrypted reservation store and the in-memory
 `TransactionReservationsManager`. Reservations represent funds temporarily locked
-by a pending transfer, so the *available* balance excludes them plus their gas fee.
+by a pending transfer, so the _available_ balance excludes them plus their gas fee.
 
 ```ts
 ReservationAdapter.create(wallet, passwordProvider, reservationsManagerOptions?): Promise<ReservationAdapter>
