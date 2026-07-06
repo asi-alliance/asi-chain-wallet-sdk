@@ -429,7 +429,7 @@ test("HD wallet should update, remove account and reuse freed derivation index",
     // CREATE NEW ACCOUNT
     //
 
-    const newAccount = await wallet.deriveAccount(
+    const { account: newAccount } = await wallet.deriveAccount(
         {
             name: "New Account After Delete",
         },

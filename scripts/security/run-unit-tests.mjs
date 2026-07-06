@@ -5,6 +5,10 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
+const EXCLUDE_TESTS = [];
+
+//wallet-transaction-reservations.test.ts
+
 async function findTestFiles(dir) {
     const entries = await readdir(dir, { withFileTypes: true });
     const results = [];
@@ -13,7 +17,11 @@ async function findTestFiles(dir) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
             results.push(...(await findTestFiles(fullPath)));
-        } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
+        } else if (
+            entry.isFile() &&
+            entry.name.endsWith(".test.ts") &&
+            !EXCLUDE_TESTS.includes(entry.name)
+        ) {
             results.push(fullPath);
         }
     }

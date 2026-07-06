@@ -3,7 +3,7 @@ import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Asset from "@domains/Asset";
 import { createTransferDeploy } from "@domains/Deploy/factory";
 import SecretsProvider from "@domains/SecretsProvider";
-import { Address } from "@domains/Wallet";
+import { Address, WalletTypes } from "@domains/Wallet";
 import {
     AddressValidationResult,
     encodeBase16,
@@ -12,7 +12,7 @@ import {
 } from "@utils/index";
 import SignerService, { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
-import Signer from "@domains/Signer";
+import Signer, { TSigningContext } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 
@@ -28,6 +28,7 @@ export interface ITransferDetails {
 }
 
 export interface ITransferPayload {
+    walletType: WalletTypes;
     account: Account;
     signer: Signer;
     details: ITransferDetails;
@@ -46,7 +47,7 @@ export default class TransactionService {
     private async signDeploy(
         signer: Signer,
         deployData: any,
-        passwordProvider: SecretsProvider,
+        signingContext: TSigningContext,
     ): Promise<SignedResult> {
         const serialized: Uint8Array =
             SignerService.deployDataProtobufSerialize(deployData);
@@ -55,9 +56,7 @@ export default class TransactionService {
 
         // const digest = Uint8Array.from(Buffer.from(hash, "hex"));
 
-        const signed = await signer.sign(hash, {
-            passwordProvider,
-        });
+        const signed = await signer.sign(hash, signingContext);
 
         return {
             data: deployData,
@@ -68,6 +67,7 @@ export default class TransactionService {
     }
 
     public async transfer({
+        walletType,
         account,
         signer,
         details,
@@ -114,6 +114,16 @@ export default class TransactionService {
             );
         }
 
+        const signingContext: TSigningContext =
+            walletType !== WalletTypes.HD
+                ? {
+                      passwordProvider,
+                  }
+                : {
+                      passwordProvider,
+                      index: account.getIndex()!,
+                  };
+
         const signedDeploy = await this.signDeploy(
             signer,
             {
@@ -124,7 +134,7 @@ export default class TransactionService {
                 timestamp: Date.now(),
                 shardId: details.shardId ?? "root",
             },
-            passwordProvider,
+            signingContext,
         );
 
         try {

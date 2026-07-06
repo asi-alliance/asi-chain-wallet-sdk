@@ -1,3 +1,4 @@
+import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservation } from "@domains/Transaction";
@@ -11,11 +12,12 @@ import {
 export interface ITransactionReservationsManagerOptions {
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
+    onFailed?: (reservation: ITransactionReservation, error: Error) => void;
     watchCallbacks?: IDeployWatchCallbacks;
     watchOptions?: IDeployWatchOptions;
 }
 
-export default class TransactionReservationsManager {
+export default class TransactionReservationsManager implements IDisposable {
     private readonly reservations: Map<string, ITransactionReservation> =
         new Map();
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
@@ -28,6 +30,10 @@ export default class TransactionReservationsManager {
         reservation: ITransactionReservation,
     ) => void;
     private readonly onExpired?: (reservation: ITransactionReservation) => void;
+    private readonly onFailed?: (
+        reservation: ITransactionReservation,
+        error: Error,
+    ) => void;
     private readonly watchCallbacks?: IDeployWatchCallbacks;
     private readonly watchOptions?: IDeployWatchOptions;
 
@@ -37,6 +43,7 @@ export default class TransactionReservationsManager {
     ) {
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
+        this.onFailed = options.onFailed;
         this.watchCallbacks = options.watchCallbacks;
         this.watchOptions = {
             ...options.watchOptions,
@@ -111,6 +118,11 @@ export default class TransactionReservationsManager {
 
                         this.handleConfirmed(reservation);
                     },
+                    onError: (error: Error) => {
+                        this.watchCallbacks?.onError?.(error);
+
+                        this.handleFailed(reservation, error);
+                    },
                 },
                 this.watchOptions,
             );
@@ -164,5 +176,16 @@ export default class TransactionReservationsManager {
         this.reservations.delete(reservation.id);
 
         this.onExpired?.(reservation);
+    }
+
+    private handleFailed(
+        reservation: ITransactionReservation,
+        error: Error,
+    ): void {
+        this.stopWatch(reservation.id);
+        this.clearExpiration(reservation.id);
+        this.reservations.delete(reservation.id);
+
+        this.onFailed?.(reservation, error);
     }
 }

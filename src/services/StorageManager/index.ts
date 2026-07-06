@@ -14,6 +14,7 @@ import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
 } from "@domains/TransactionReservationsStorageRepository";
+import { IStorageFabricOptions } from "@fabrics/Storage";
 
 export interface ISaveSignerToStorageOptions {
     id: string;
@@ -50,6 +51,18 @@ export interface ISaveTransactionReservationsOptions {
 }
 
 class StorageManager {
+    public static init = async (
+        options?: IStorageFabricOptions,
+    ): Promise<void> => {
+        await Promise.all([
+            SignersStorageRepository.getInstance(options).initialize(),
+            AccountsStorageRepository.getInstance(options).initialize(),
+            TransactionReservationsStorageRepository.getInstance(
+                options,
+            ).initialize(),
+        ]);
+    };
+
     public static saveSigner = async ({
         id,
         type,
@@ -299,6 +312,20 @@ class StorageManager {
         await TransactionReservationsStorageRepository.getInstance().deleteMultipleTransactionReservations(
             ids,
         );
+    };
+
+    public static clear = async (): Promise<void> => {
+        await Promise.all([
+            SignersStorageRepository.getInstance().clearAllData(),
+            AccountsStorageRepository.getInstance().clearAllData(),
+            TransactionReservationsStorageRepository.getInstance().clearAllData(),
+        ]);
+    };
+
+    public static close = (): void => {
+        SignersStorageRepository.getInstance().close();
+        AccountsStorageRepository.getInstance().close();
+        TransactionReservationsStorageRepository.getInstance().close();
     };
 }
 

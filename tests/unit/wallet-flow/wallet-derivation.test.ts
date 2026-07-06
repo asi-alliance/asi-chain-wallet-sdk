@@ -111,7 +111,7 @@ test("HD wallet should derive accounts with incremental indexes from zero", asyn
 
     printWalletState("HD WALLET BEFORE DERIVATION", wallet);
 
-    const account1 = await wallet.deriveAccount(
+    const { account: account1 } = await wallet.deriveAccount(
         {
             name: "Account 2",
         },
@@ -126,7 +126,7 @@ test("HD wallet should derive accounts with incremental indexes from zero", asyn
         address: account1.getAddress(),
     });
 
-    const account2 = await wallet.deriveAccount(
+    const { account: account2 } = await wallet.deriveAccount(
         {
             name: "Account 3",
         },
@@ -169,7 +169,7 @@ test("HD wallet should derive accounts from custom HD path index", async () => {
 
     printWalletState("CUSTOM HD WALLET BEFORE DERIVATION", wallet);
 
-    const account10 = await wallet.deriveAccount(
+    const { account: account10 } = await wallet.deriveAccount(
         {
             name: "Account 10",
         },
@@ -184,7 +184,7 @@ test("HD wallet should derive accounts from custom HD path index", async () => {
         address: account10.getAddress(),
     });
 
-    const account11 = await wallet.deriveAccount(
+    const { account: account11 } = await wallet.deriveAccount(
         {
             name: "Account 11",
         },

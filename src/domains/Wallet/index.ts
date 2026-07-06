@@ -12,7 +12,7 @@ import SecretsProvider, {
 } from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
-import AccountManager from "@services/AccountManager";
+import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
 import TransactionService, {
     ITransferDetails,
@@ -137,7 +137,7 @@ export default class Wallet {
     public async deriveAccount(
         payload: Omit<TCreateAccountPayload, "index">,
         passwordProvider: SecretsProvider,
-    ): Promise<Account> {
+    ): Promise<ICreatedAccountData> {
         const secretData = (await decryptSignerData(
             this.signer.getEncryptedSecret(),
             passwordProvider,
@@ -262,6 +262,7 @@ export default class Wallet {
             accountRecords.map(async (record: IAccountRecord) => {
                 const account = await Account.create(
                     {
+                        id: record.id,
                         name: record.name,
                     },
                     secretProvider,
@@ -286,6 +287,7 @@ export default class Wallet {
         passwordProvider: SecretsProvider,
     ): Promise<string> {
         return ApiServiceRegistry.getInstance().transactions.transfer({
+            walletType: this.type,
             account: this.getActiveAccount()!,
             signer: this.signer,
             details: payload,

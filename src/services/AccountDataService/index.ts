@@ -14,10 +14,13 @@ export default class AccountDataService {
 
     public async getTransactionHistory(
         address: string,
-        networkName: NetworkName,
+        networkName?: NetworkName,
         pagination: Pagination = {},
     ): Promise<Transaction[]> {
         try {
+            const currentNetwork: NetworkName =
+                networkName ?? ApiClientManager.getInstance().getNetwork();
+
             const response = await this.apiClientManager
                 .getIndexerClient()
                 .getTransactionHistory(address, pagination);
@@ -25,7 +28,7 @@ export default class AccountDataService {
             return GraphqlParser.mapTransactionHistory(
                 response,
                 address,
-                networkName,
+                currentNetwork,
             );
         } catch (error) {
             if (GraphqlParser.isRecoverableNetworkError(error)) {

@@ -9,6 +9,10 @@ import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { isPrivateKeySecretData } from "@utils/guards";
 import KeyDerivationService from "@services/KeyDerivation";
 import { Address } from "@domains/Wallet";
+import { Transaction } from "@domains/Transaction";
+import { NetworkName } from "@domains/Network";
+import { Pagination } from "@services/GraphqlParser/queryOptions";
+import { generateRandomId } from "@utils/index";
 
 export interface IPortfolioOptions {
     assets?: Assets;
@@ -16,6 +20,7 @@ export interface IPortfolioOptions {
 }
 
 export interface IAccountOptions {
+    id?: string;
     name: string;
     index: number | null;
     address: Address;
@@ -39,13 +44,21 @@ export interface IAccountRecord {
 }
 
 class Account {
+    private readonly id: string;
     private readonly index: number | null;
     private readonly address: Address;
     private name: string;
     private assets: Assets;
     private primaryAsset: Asset;
 
-    constructor({ name, index, portfolioOptions, address }: IAccountOptions) {
+    constructor({
+        id,
+        name,
+        index,
+        portfolioOptions,
+        address,
+    }: IAccountOptions) {
+        this.id = id ?? generateRandomId();
         this.name = name;
         this.index = index;
         this.address = address;
@@ -53,6 +66,10 @@ class Account {
             portfolioOptions?.assets ??
             new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
         this.primaryAsset = portfolioOptions?.primaryAsset ?? DEFAULT_ASSET;
+    }
+
+    public getId(): string {
+        return this.id;
     }
 
     public getName(): string {
@@ -144,6 +161,17 @@ class Account {
         return ApiServiceRegistry.getInstance().assets.getBalance(
             this.address,
             this.primaryAsset,
+        );
+    }
+
+    public async getTransactionsHistory(
+        networkName?: NetworkName,
+        pagination?: Pagination,
+    ): Promise<Transaction[]> {
+        return ApiServiceRegistry.getInstance().accountData.getTransactionHistory(
+            this.address,
+            networkName,
+            pagination,
         );
     }
 }
