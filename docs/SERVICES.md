@@ -2,249 +2,389 @@
 
 This file documents the current service modules under `src/services`.
 
----
+Services split into a few groups:
 
-## CryptoService (`src/services/Crypto/index.ts`)
-
-Password-based encryption/decryption using WebCrypto.
-
-```ts
-encryptWithPassword(data: string, password: string): Promise<EncryptedData>
-```
-
-Encrypts plaintext with `PBKDF2(SHA-256)` derived key + `AES-GCM`.
-
-```ts
-decryptWithPassword(payload: EncryptedData, passphrase: string): Promise<string>
-```
-
-Decrypts ciphertext payload. Throws on unsupported version or invalid credentials.
-
-```ts
-deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
-```
-
-Derives the `AES-GCM` key from password + salt.
-
-Current profile highlights:
-
-- Version: `2`
-- KDF: `PBKDF2`, `100_000` iterations, `SHA-256`
-- Cipher: `AES-GCM`
-- Salt: `16` bytes
-- IV: `12` bytes
+- **Managers** — in-memory ownership of domain objects (`ItemManager`,
+  `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
+  `TransactionReservationsManager`, `DisposableItemManager`).
+- **Persistence orchestration** — `StorageManager`,
+  `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
+- **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
+  `BlockService`, `AccountDataService`, `AssetsService`, `TransactionService`,
+  `DeployStatusPoller`, plus the `GraphqlParser` helpers.
+- **Crypto / key primitives** — `CryptoService`, `WalletsService`,
+  `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
+  `BinaryWriter` (documented under domains).
 
 ---
 
-## WalletsService (`src/services/Wallets/index.ts`)
+## Managers
 
-Wallet creation and address derivation.
+### ItemManager (`src/services/ItemManager/index.ts`)
 
-```ts
-createWallet(privateKey?: Uint8Array, options?: CreateWalletOptions): WalletMeta
-```
-
-Creates wallet metadata from an existing or generated secp256k1 private key.
+Generic in-memory `Map<string, T>` registry used as a base class.
 
 ```ts
-createFirstWalletWithMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
+add(id: string, item: T): void
+remove(id: string): T          // throws when missing
+get(id: string): T | null
+has(id: string): boolean
+hasByFilter(filter: (item: T) => boolean): boolean
+getAll(): T[]
+getMap(): Map<string, T>
+clear(): void
 ```
 
-Builds wallet from BIP-39 mnemonic + BIP-44 path. Always returns normalized mnemonic in output.
+### DisposableItemManager (`src/services/DisposableItemManager/index.ts`)
 
-Validation behavior:
-
-- Throws `WalletsService.createFirstWalletWithMnemonic: Recovery mnemonic is missing or invalid` when mnemonic is blank/invalid.
+`ItemManager` whose items implement `IDisposable`. Calls `dispose()` on overwrite,
+removal, and clear.
 
 ```ts
-deriveAddressFromPrivateKey(privateKey: Uint8Array): Address
+interface IDisposable { dispose(): void }
 ```
 
-Derives address from private key.
+### WalletManager (`src/services/WalletManager/index.ts`)
+
+`ItemManager<Wallet>` that bridges wallets to `StorageManager`. Owned by `Client`.
 
 ```ts
-deriveAddressFromPublicKey(publicKey: Uint8Array): Address
+createHD(params: ICreateHDWalletParams, passwordProvider): Promise<Wallet>
+createPrivateKey(accountName: string, secretProvider): Promise<Wallet>
+unlock(signerId: string, passwordProvider): Promise<Wallet>
+delete(id: string): Promise<Wallet>              // removes signer + accounts from storage
+deriveAccount(walletId, accountName, passwordProvider): Promise<IDerivedAccount>
+removeAccount(walletId, accountId): Promise<Account>
+renameAccount(walletId, accountId, name): Promise<void>
+setActiveAccount(walletId, accountId): void
+getPublicWalletsMetadata(): Promise<IWalletMetadata[]>
+count(): Promise<number>
+countInStorage(): Promise<number>
 ```
 
-Derives address from public key (`keccak256` + chain prefix + `blake2b` checksum + base58).
+`IWalletMetadata = { signerId, type, accounts: IAccountMetadata[] }` is the
+lightweight, non-secret listing used by UIs to render locked wallets.
+
+### AccountManager (`src/services/AccountManager/index.ts`)
+
+`ItemManager<Account>` owned by each `Wallet`; also tracks the active account.
+
+```ts
+create(payload: TCreateAccountPayload, secretProvider): Promise<ICreatedAccountData>
+remove(id: string): Account
+update(id: string, payload: TEditableAccountOptions): void
+setActiveAccount(id: string): void
+getActiveAccount(): Account | null
+getAccounts(): Account[]
+getAccountsMap(): Map<string, Account>
+getAccount(id: string): Account | null
+```
+
+`ICreatedAccountData = { accountId: string; account: Account }`.
+
+### ReservationAdapterManager (`src/services/ReservationAdapterManager/index.ts`)
+
+`DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
+
+```ts
+create(wallet: Wallet, passwordProvider: SecretsProvider): Promise<ReservationAdapter>
+```
+
+### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
+
+In-memory tracker for active reservations. Each reservation is watched by the
+`DeployStatusPoller` and also gets an expiration timer; confirmation, expiry, or
+failure removes it and fires the matching callback. Implements `IDisposable`.
+
+```ts
+new TransactionReservationsManager(reservations, options?: ITransactionReservationsManagerOptions)
+add(reservation): void
+remove(id: string): boolean
+get(id: string): ITransactionReservation | null
+getAll(): ITransactionReservation[]
+getByAccountAddress(accountAddress: string): ITransactionReservation[]
+dispose(): void
+```
+
+```ts
+interface ITransactionReservationsManagerOptions {
+    onConfirmed?(reservation): void;
+    onExpired?(reservation): void;
+    onFailed?(reservation, error: Error): void;
+    watchCallbacks?: IDeployWatchCallbacks;
+    watchOptions?: IDeployWatchOptions;
+}
+```
 
 ---
 
-## MnemonicService (`src/services/Mnemonic/index.ts`)
+## Persistence orchestration
+
+### StorageManager (`src/services/StorageManager/index.ts`)
+
+Static façade over the three primary repositories (signers, accounts,
+transaction reservations). Handles encrypt-on-write of signer secrets and
+compose/decompose of the `Wallet` aggregate.
+
+```ts
+StorageManager.init(options?: IStorageFabricOptions): Promise<void>
+
+// signers
+saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
+
+// accounts
+saveAccount / saveAccounts / getAccount / getAccounts / updateAccount / deleteAccount / deleteMultipleAccounts
+
+// wallets (aggregate of signer + accounts)
+saveWallet(options): Promise<void>
+saveWallets(options[]): Promise<void[]>
+getWallet({ signerId, passwordProvider }): Promise<Wallet>   // restores + decrypts
+getWallets(): Promise<IWalletStorageData[]>                  // public metadata
+
+// reservations
+saveTransactionReservation / getTransactionReservationsBySignerId /
+updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
+
+clear(): Promise<void>
+close(): void
+```
+
+### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
+
+Static façade over `InsensitiveCacheStorageRepository`. Opt-in via the
+`withInsensitiveCacheStorage` client flag; caches non-secret account data
+(currently `{ id, address }`) so addresses can be listed while wallets are locked.
+
+```ts
+init(): Promise<void>
+save(record: IInsensitiveCacheRecord): Promise<void>
+get(id): Promise<IInsensitiveCacheRecord | null>
+getAll(): Promise<IInsensitiveCacheRecord[]>
+update(id, updates): Promise<void>
+delete(id): Promise<void>
+deleteAll(ids: string[]): Promise<void>
+clear(): Promise<void>
+close(): void
+```
+
+### InsensitiveCacheStorageSerializer (`src/services/InsensitiveCacheStorageSerializer/index.ts`)
+
+```ts
+InsensitiveCacheStorageSerializer.serialize(account: Account): IInsensitiveCacheRecord
+// { id: account.getId(), address: account.getAddress() }
+```
+
+---
+
+## API services
+
+Instantiated once by `ApiServiceRegistry` over an `ApiClientManager`.
+
+### DeployService (`src/services/DeployService/index.ts`)
+
+Submits deploys and reads deploy status through the validator/observer clients.
+
+```ts
+submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
+exploreDeployData(rholangCode: string): Promise<any>                  // returns result.expr
+getDeploy(deployHash: string): Promise<any>
+isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= FAULT_TOLERANCE_THRESHOLD
+getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
+```
+
+```ts
+enum DeployStatus { DEPLOYING, INCLUDED_IN_BLOCK, FINALIZED, CHECK_ERROR }
+type IDeployStatusResult =
+    | { status: DEPLOYING | INCLUDED_IN_BLOCK | FINALIZED }
+    | { status: CHECK_ERROR; errorMessage: string };
+```
+
+### BlockService (`src/services/BlockService/index.ts`)
+
+```ts
+getBlock(blockHash: string): Promise<string>          // block info
+getLatestBlock(): Promise<IBlockDto>
+getLatestBlockNumber(): Promise<number>               // INVALID_BLOCK_NUMBER on failure
+isValidatorActive(): Promise<boolean>
+```
+
+### AccountDataService (`src/services/AccountDataService/index.ts`)
+
+Reads and maps transaction history from the indexer. Recoverable network/CORS
+errors are swallowed and return an empty list.
+
+```ts
+getTransactionHistory(address: string, networkName?: NetworkName, pagination?: Pagination): Promise<Transaction[]>
+```
+
+### AssetsService (`src/services/AssetsService/index.ts`)
+
+Balance reads via an exploratory deploy.
+
+```ts
+getBalance(address: Address, asset: Asset): Promise<IBalanceData> // { amount: bigint; asset }
+```
+
+Validates the address first (throws on invalid); any exploration/parse failure
+resolves to `{ amount: 0n, asset }`.
+
+### TransactionService (`src/services/TransactionService/index.ts`)
+
+Builds, signs and submits a transfer deploy end to end.
+
+```ts
+transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
+```
+
+```ts
+interface ITransferDetails {
+    to: Address;
+    amount: bigint;
+    asset: Asset;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
+}
+interface ITransferPayload {
+    walletType: WalletTypes;
+    account: Account;
+    signer: Signer;
+    details: ITransferDetails;
+    passwordProvider: SecretsProvider;
+}
+```
+
+Flow: validate recipient + amount → generate transfer RhoLang → read latest block
+number → build the appropriate `TSigningContext` (HD adds `index`) → serialize +
+`blake2b-256` hash + sign → submit via `DeployService`. Defaults `phloLimit`/
+`phloPrice` from config and `shardId` to `"root"`.
+
+### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
+
+Polls a deploy until finalized or timed out.
+
+```ts
+watch(deployId, callbacks?: IDeployWatchCallbacks, options?: IDeployWatchOptions): IDeployWatchHandle
+waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult>
+```
+
+`IDeployWatchHandle = { cancel(): void; done: Promise<IDeployConfirmedResult> }`.
+Defaults: 5s interval, 180s timeout. Re-entrancy is guarded so ticks never overlap.
+
+### GraphqlParser (`src/services/GraphqlParser/`)
+
+Anti-corruption layer between the indexer's GraphQL shape and the domain
+`Transaction`.
+
+```ts
+GraphqlParser.createTransactionHistoryRequest(address, pagination?): { query, variables }
+GraphqlParser.mapTransactionHistory(data, address, networkName): Transaction[]
+GraphqlParser.unwrapGraphqlEnvelope<T>(response): GraphqlEnvelope<T>
+GraphqlParser.isRecoverableNetworkError(error): boolean
+```
+
+`mapper.ts` maps a `RawTransfer` to `Transaction` (`send`/`receive` decided by
+comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`
+defines `Pagination` (`{ offset?, limit? }`), `Order`, and `QueryOptions`.
+
+---
+
+## Crypto / key primitives
+
+### CryptoService (`src/services/Crypto/index.ts`)
+
+Password-based encryption via WebCrypto.
+
+```ts
+CryptoService.encryptWithPassword(data: string, password: string): Promise<EncryptedData>
+CryptoService.decryptWithPassword(payload: EncryptedData, passphrase: string): Promise<string>
+CryptoService.deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
+```
+
+`EncryptedData = { data, salt, iv, version }`. Current profile:
+
+- Version `2`
+- KDF `PBKDF2`, `100_000` iterations, `SHA-256`
+- Cipher `AES-GCM`, 256-bit key
+- Salt `16` bytes, IV `12` bytes
+
+Decryption throws on an unsupported version or invalid credentials.
+
+### WalletsService (`src/services/Wallets/index.ts`)
+
+Address derivation and wallet metadata generation.
+
+```ts
+WalletsService.createWallet(privateKey?: Uint8Array, options?: CreateWalletOptions): WalletMeta
+WalletsService.createFirstWalletWithMnemonic(mnemonic?: string, index?: number): Promise<WalletMeta>
+WalletsService.deriveAddressFromPrivateKey(privateKey: Uint8Array): Address
+WalletsService.deriveAddressFromPublicKey(publicKey: Uint8Array): Address
+```
+
+`WalletMeta = { address, privateKey, publicKey?, mnemonic? }`. Address derivation:
+`keccak256` of the public key → chain prefix → `blake2b` checksum → base58 (always
+prefixed `1111`). `createFirstWalletWithMnemonic` throws
+`"...Recovery mnemonic is missing or invalid"` for blank/invalid input.
+
+### MnemonicService (`src/services/Mnemonic/index.ts`)
 
 BIP-39 helpers.
 
 ```ts
-generateMnemonic(strength?: MnemonicStrength): string
+enum MnemonicStrength { TWELVE_WORDS = 128, TWENTY_FOUR_WORDS = 256 }
+
+MnemonicService.generateMnemonic(strength?): string
+MnemonicService.generateMnemonicArray(strength?): string[]
+MnemonicService.isMnemonicValid(mnemonic: string): boolean
+MnemonicService.mnemonicToWordArray(mnemonic: string): string[]
+MnemonicService.wordArrayToMnemonic(words: string[]): string
+MnemonicService.mnemonicToSeed(mnemonic: string | string[], passphrase?): Promise<Uint8Array>
 ```
 
-Generates mnemonic phrase (`12` or `24` words).
+### KeyDerivationService (`src/services/KeyDerivation/index.ts`)
+
+BIP-32/BIP-44 derivation over a custom `@noble/secp256k1` ECC adapter
+(`eccAdapter.ts`).
 
 ```ts
-generateMnemonicArray(strength?: MnemonicStrength): string[]
+KeyDerivationService.deriveKeyFromMnemonic(mnemonic: string | string[], bip44path: string | Bip44Path): Promise<Uint8Array>
+KeyDerivationService.derivePrivateKey(masterNode: BIP32Interface, path: Bip44Path): Uint8Array
+KeyDerivationService.mnemonicToSeed(mnemonicWords: string[] | string, passphrase?): Promise<Uint8Array>
+KeyDerivationService.seedToMasterNode(seed): BIP32Interface
+KeyDerivationService.deriveNextKeyFromMnemonic(mnemonicWords, currentIndex, options?): Promise<Uint8Array>
 ```
 
-Generates and splits mnemonic into words.
+Derived seeds are zeroized after use.
 
-```ts
-isMnemonicValid(mnemonic: string): boolean
-```
-
-Validates mnemonic.
-
-```ts
-mnemonicToWordArray(mnemonic: string): string[]
-wordArrayToMnemonic(words: string[]): string
-```
-
-Conversion helpers.
-
----
-
-## KeyDerivationService (`src/services/KeyDerivation/index.ts`)
-
-BIP-32/BIP-44 derivation helpers.
-
-```ts
-buildBip44Path(options: Bip44PathOptions): string
-```
-
-Builds path `m/44'/coinType'/account'/change/index`.
-
-```ts
-derivePrivateKey(masterNode: BIP32Interface, path: string): Uint8Array
-```
-
-Derives private key bytes from master node and path.
-
-```ts
-mnemonicToSeed(mnemonicWords: string[] | string, passphrase?: string): Promise<Uint8Array>
-```
-
-Converts mnemonic to seed.
-
-```ts
-seedToMasterNode(seed: Uint8Array): BIP32Interface
-```
-
-Builds BIP32 master node using `tiny-secp256k1` + `bip32` factory.
-
-```ts
-deriveKeyFromMnemonic(...)
-deriveNextKeyFromMnemonic(...)
-```
-
-Convenience derivation helpers.
-
----
-
-## KeysManager (`src/services/KeysManager/index.ts`)
+### KeysManager (`src/services/KeysManager/index.ts`)
 
 secp256k1 key utilities.
 
 ```ts
-generateRandomKey(length?: number): Uint8Array
-generateKeyPair(keyLength?: number): KeyPair
-getKeyPairFromPrivateKey(privateKey: Uint8Array): KeyPair
-getPublicKeyFromPrivateKey(privateKey: Uint8Array): Uint8Array
-convertKeyToHex(key: Uint8Array): string
-deriveKeyFromMnemonic(mnemonicWords: string[], options?: Bip44PathOptions): Promise<Uint8Array>
+KeysManager.generateRandomKey(length?: number): Uint8Array
+KeysManager.generateKeyPair(keyLength?: number): KeyPair
+KeysManager.getKeyPairFromPrivateKey(privateKey: Uint8Array): KeyPair
+KeysManager.getPublicKeyFromPrivateKey(privateKey: Uint8Array): Uint8Array
+KeysManager.convertKeyToHex(key: Uint8Array): string
+KeysManager.getInitialHDPathFromOptions(options: TCreateHDPathWalletOptions): Promise<Bip44Path>
+KeysManager.getPrivateDataFromSeed(seed: Uint8Array, path: Bip44Path): Promise<IHDWalletPrivateKeyDataFromSeed>
 ```
 
-`generateMpcKeyPair()` is intentionally unimplemented and throws.
+`KeyPair = { privateKey: Uint8Array; publicKey: Uint8Array }`. Default key length
+is `PRIVATE_KEY_LENGTH` (32 bytes).
 
----
+### SignerService (`src/services/Signer/index.ts`)
 
-## SignerService (`src/services/Signer/index.ts`)
-
-Builds deploy signatures without exposing raw key bytes to callers.
+Serializes `DeployData` into the protobuf byte layout expected on-chain (used by
+`TransactionService` before hashing/signing).
 
 ```ts
-sign(request: SigningRequest, passwordProvider: PasswordProvider): Promise<SignedResult>
+SignerService.deployDataProtobufSerialize(deployData: DeployData): Uint8Array
 ```
 
-Flow:
-
-1. Gets password from `passwordProvider`.
-2. Uses `wallet.withSigningCapability(...)` to obtain scoped signing capability.
-3. Serializes deploy data (`BinaryWriter`).
-4. Hashes with `blake2b-256`.
-5. Signs digest with secp256k1 and returns `{ deployer, signature, sigAlgorithm }`.
-
-Security boundary:
-
-- Normal signing path does not return decrypted private key bytes.
-- Capability expires after callback scope.
-
----
-
-## AssetsService (`src/services/AssetsService/index.ts`)
-
-Balance and transfer operations through `BlockchainGateway`.
+Also exports the signing result contracts:
 
 ```ts
-transfer(
-  fromAddress: Address,
-  toAddress: Address,
-  amount: bigint,
-  wallet: Wallet,
-  passwordProvider: PasswordProvider,
-  phloLimit?: number
-): Promise<string | undefined>
-```
-
-Validation behavior:
-
-- Uses checksum-aware `validateAddress()` and returns deterministic address error codes.
-- Rejects non-positive amounts.
-
-```ts
-getBalance(address: Address): Promise<bigint>
-```
-
-- Validates address before exploration deploy.
-
----
-
-## DeployResubmitter (`src/services/Resubmit/DeployResubmitter.ts`)
-
-Retry + resubmission flow for non-read-only deploys.
-
-```ts
-resubmit(
-  rholangCode: string,
-  wallet: Wallet,
-  passwordProvider: PasswordProvider,
-  phloLimit?: number
-): Promise<ResubmitResult>
-```
-
-Related exports from `src/services/Resubmit/index.ts`:
-
-- `ResubmitNodeManager`
-- `ResubmitConfig`
-- `ResubmitResult`
-
----
-
-## FeeService (`src/services/Fee/index.ts`)
-
-Gas-fee helper utilities.
-
-```ts
-generateRandomGasFee(): string
-getGasFeeAsNumber(): number
-formatGasFee(fee?: string): string
-```
-
----
-
-## BinaryWriter (`src/services/BinaryWriter/index.ts`)
-
-Low-level protobuf-like writer used by signing serialization.
-
-```ts
-writeString(fieldNumber: number, value: string): void
-writeInt64(fieldNumber: number, value: number): void
-getResultBuffer(): Uint8Array
+interface SigningRequest { wallet: Wallet; data: any }
+interface SignedResult { data: any; deployer: string; signature: string; sigAlgorithm: string }
 ```
