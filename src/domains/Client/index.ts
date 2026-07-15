@@ -209,7 +209,7 @@ export default class Client {
         return wallet;
     }
 
-    public async removeWallet(walletId: string): Promise<void> {
+    public async removeWallet(walletId: string): Promise<Wallet> {
         const removedWallet: Wallet = await this.walletManager.delete(walletId);
         this.reservationAdapterManager.remove(walletId);
 
@@ -220,6 +220,8 @@ export default class Client {
         }
 
         await this.emitWalletsChanged();
+
+        return removedWallet;
     }
 
     public async unlockWallet(
@@ -280,7 +282,7 @@ export default class Client {
     public async removeAccount(
         walletId: string,
         accountId: string,
-    ): Promise<void> {
+    ): Promise<Account> {
         const removedAccount: Account = await this.walletManager.removeAccount(
             walletId,
             accountId,
@@ -291,6 +293,8 @@ export default class Client {
         }
 
         this.emitAccountsChanged(walletId);
+
+        return removedAccount;
     }
 
     public async renameAccount(
