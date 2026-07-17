@@ -2,7 +2,7 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { INetworkModalPayload } from "@components/NetworkModal";
-import { INetworkConfig, NetworkName } from "asi-wallet-sdk";
+import { INetworkRecord, NetworkId } from "asi-wallet-sdk";
 
 type CreateNetworksPageHandlersParams = {
     sdk: UseSdkValue;
@@ -12,9 +12,9 @@ type CreateNetworksPageHandlersParams = {
 
 export type NetworksPageHandlers = {
     addNetwork: () => void;
-    editNetwork: (name: NetworkName, config: INetworkConfig) => void;
-    removeNetwork: (name: NetworkName) => void;
-    switchNetwork: (name: NetworkName) => void;
+    editNetwork: (network: INetworkRecord) => void;
+    removeNetwork: (network: INetworkRecord) => void;
+    switchNetwork: (networkId: NetworkId) => void;
 };
 
 export const createNetworksPageHandlers = ({
@@ -48,21 +48,21 @@ export const createNetworksPageHandlers = ({
                 },
             }),
 
-        editNetwork: (name: NetworkName, config: INetworkConfig) =>
+        editNetwork: (network: INetworkRecord) =>
             setModalState({
                 type: Modals.NETWORK_MODAL,
                 props: {
                     mode: "edit",
-                    title: `Edit ${name}`,
-                    initialName: name,
-                    initialConfig: config,
+                    title: `Edit ${network.name}`,
+                    initialName: network.name,
+                    initialConfig: network.config,
                     onSubmit: (payload: INetworkModalPayload) =>
                         withLoader(async () => {
                             try {
-                                sdk.updateNetwork(
-                                    payload.name,
-                                    payload.config,
-                                );
+                                sdk.updateNetwork(network.id, {
+                                    name: payload.name,
+                                    config: payload.config,
+                                });
                                 closeModal();
                             } catch (error) {
                                 console.error(error);
@@ -76,12 +76,12 @@ export const createNetworksPageHandlers = ({
                 },
             }),
 
-        removeNetwork: (name: NetworkName) =>
+        removeNetwork: (network: INetworkRecord) =>
             withLoader(async () => {
-                if (!window.confirm(`Remove network "${name}"?`)) return;
+                if (!window.confirm(`Remove network "${network.name}"?`)) return;
 
                 try {
-                    sdk.removeNetwork(name);
+                    sdk.removeNetwork(network.id);
                 } catch (error) {
                     console.error(error);
                     alert(
@@ -90,9 +90,9 @@ export const createNetworksPageHandlers = ({
                 }
             }),
 
-        switchNetwork: (name: NetworkName) => {
+        switchNetwork: (networkId: NetworkId) => {
             try {
-                sdk.setNetwork(name);
+                sdk.setNetwork(networkId);
             } catch (error) {
                 console.error(error);
                 alert((error as Error)?.message ?? "Failed to switch network");

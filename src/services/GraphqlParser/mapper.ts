@@ -2,14 +2,14 @@
  * Anti-Corruption Layer (ACL)
  */
 
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import { RawTransfer } from ".";
 import { Transaction } from "@domains/Transaction";
 import { normalizeAddress } from "@utils/functions";
 
 type RawTransferMappingContext = {
     accountAddress: string;
-    networkName: NetworkName;
+    networkId: NetworkId;
 };
 
 export function mapRawTransferToTransaction(
@@ -33,7 +33,7 @@ export function mapRawTransferToTransaction(
         deployId: transfer.deploy_id,
         blockHash: transfer.block_hash,
         status: "confirmed",
-        networkName: context.networkName,
+        networkId: context.networkId,
         detectedBy: "auto",
     };
 }

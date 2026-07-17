@@ -31,15 +31,17 @@ tears the client down on unmount.
 Returned value (`UseSdkValue`):
 
 - State: `client`, `isReady`, `walletsMetadata: IWalletMetadata[]`,
-  `unlockedWallets: Wallet[]`, `reservationsByWallet`, `networks`,
-  `networkRecords: IPlaygroundNetwork[]`, `currentNetwork`.
-- Network: `setNetwork(name)`, `addNetwork(name, config)`,
-  `updateNetwork(name, partialConfig)`, `removeNetwork(name)`. `networkRecords`
-  pairs each `NetworkName` with its `INetworkConfig` and `isDefault` flag
-  (`IPlaygroundNetwork = { name, config, isDefault }`) — built from
-  `getNetworksNames()` + `getNetwork(name)` and refreshed after every CRUD call.
-  `updateNetwork`/`removeNetwork` also re-sync `currentNetwork`, since the SDK
-  switches the active network internally without emitting `onNetworkChanged`.
+  `unlockedWallets: Wallet[]`, `reservationsByWallet`,
+  `networkRecords: INetworkRecord[]`, `currentNetwork: INetworkRecord | null`.
+- Network: `setNetwork(id)`, `addNetwork(name, config): INetworkRecord`,
+  `updateNetwork(id, update)`, `removeNetwork(id)`. Networks are identified by a
+  stable `id` (`INetworkRecord = { id, name, config, isDefault }`); `name` is
+  editable data, not the key. `networkRecords` comes straight from
+  `client.getNetworks()` and is refreshed after every CRUD call.
+  `updateNetwork`/`removeNetwork` also re-sync `currentNetwork` from
+  `getCurrentNetwork()`, since the SDK switches the active network internally
+  without emitting `onNetworkChanged`. `onNetworkChanged(record)` delivers the
+  full active-network record.
 - Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
 - Wallet lifecycle: `createHDWallet(input, password)`,
   `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
@@ -156,15 +158,18 @@ network change.
 
 Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
 as cards showing the network name, a `default`/`custom` badge, an `active` badge
-for `sdk.currentNetwork`, and the Validator/Read-only/Indexer URLs. Actions per
-card: **Switch** (disabled for the active network), and — only for `custom`
-(`!isDefault`) networks — **Edit** and **Remove**. A header **Add network** button
-opens the create form. Default networks cannot be edited or removed (the SDK
-`@EnsureNetworkNotDefault` decorator throws; such errors surface via `alert`).
+when the card id equals `sdk.currentNetwork?.id`, and the Validator/Read-only/
+Indexer URLs. Actions per card: **Switch** (disabled for the active network), and
+— only for `custom` (`!isDefault`) networks — **Edit** and **Remove**. A header
+**Add network** button opens the create form. Everything is keyed by the stable
+`network.id`; the editable `name` is just data. Default networks cannot be edited
+or removed (the SDK `@EnsureNetworkNotDefault` decorator throws; such errors
+surface via `alert`).
 
-`helpers.ts` builds `NetworksPageHandlers`: `addNetwork`, `editNetwork`,
-`removeNetwork`, `switchNetwork`. They open `NetworkModal` (add/edit) or confirm
-removal and call the matching `useSdk` methods through `withLoader`.
+`helpers.ts` builds `NetworksPageHandlers`: `addNetwork`, `editNetwork(record)`,
+`removeNetwork(record)`, `switchNetwork(id)`. They open `NetworkModal` (add/edit)
+or confirm removal and call the matching `useSdk` methods through `withLoader`
+(`updateNetwork(id, { name, config })`).
 
 ---
 
@@ -189,16 +194,17 @@ interface IAccountCardProps {
 
 ### NetworkSelector (`components/NetworkSelector/index.tsx`)
 
-Renders a button per `sdk.networks`; switching calls `sdk.setNetwork(name)`. The
-active network is disabled. (`sdk.networks` comes from `getNetworksNames()`, which
-returns the live `Map` keys — including any custom networks added at runtime.)
+Renders a button per `sdk.networkRecords` (shows `name`, keyed by `id`); switching
+calls `sdk.setNetwork(id)`. The active network (`id === currentNetwork?.id`) is
+disabled.
 
 ### NetworkModal (`components/NetworkModal/index.tsx`)
 
-Add or edit a network. Collects `name` (read-only in `edit` mode, since the name
-is the record key and is not renamed by the SDK) and the Validator/Read-only/
-Indexer URLs. Only `name` is required locally; empty URLs are allowed (matching
-the placeholder default networks). On submit it emits an `INetworkModalPayload`.
+Add or edit a network. Collects `name` (editable in both modes) and the Validator/
+Read-only/Indexer URLs. Only `name` is required locally; empty URLs are allowed
+(matching the placeholder default networks). On submit it emits an
+`INetworkModalPayload`; the page maps that to `addNetwork(name, config)` or
+`updateNetwork(id, { name, config })`.
 
 ```ts
 interface INetworkModalPayload { name: NetworkName; config: INetworkConfig }

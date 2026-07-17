@@ -10,7 +10,7 @@ import { isPrivateKeySecretData } from "@utils/guards";
 import KeyDerivationService from "@services/KeyDerivation";
 import type { Address } from "@domains/Wallet";
 import { Transaction } from "@domains/Transaction";
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { generateRandomId } from "@utils/index";
 import KeysManager from "@services/KeysManager";
@@ -176,14 +176,14 @@ class Account {
     }
 
     public async getTransactionsHistory(
-        networkName?: NetworkName,
+        networkId?: NetworkId,
         pagination?: Pagination,
     ): Promise<Transaction[]> {
         return ApiServiceRegistry.getInstance().accountData.getTransactionHistory(
             this.address,
             encodeBase16(this.publicKey),
             pagination,
-            networkName,
+            networkId,
         );
     }
 }

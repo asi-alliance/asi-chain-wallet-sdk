@@ -1,8 +1,8 @@
-import type { INetworkRecord, NetworkName } from "@domains/Network";
+import type { INetworkRecord, NetworkId } from "@domains/Network";
 
 interface INetworkConfigProviderContext {
     isReady(): boolean;
-    networksRecords: Map<NetworkName, INetworkRecord> | null;
+    networksRecords: Map<NetworkId, INetworkRecord> | null;
 }
 
 export function EnsureNetworkConfigProviderReady<
@@ -25,9 +25,9 @@ export function EnsureNetworkExist<
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        const networkName: NetworkName = args[0];
+        const networkId: NetworkId = args[0];
 
-        if (!this.networksRecords?.get(networkName)) {
+        if (!this.networksRecords?.get(networkId)) {
             throw new Error("Network config is not found");
         }
 
@@ -41,9 +41,9 @@ export function EnsureNetworkNotDefault<
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        const networkName: NetworkName = args[0];
+        const networkId: NetworkId = args[0];
         const targetNetworkRecord: INetworkRecord =
-            this.networksRecords!.get(networkName)!;
+            this.networksRecords!.get(networkId)!;
 
         if (targetNetworkRecord.isDefault) {
             throw new Error("Network config is not default");

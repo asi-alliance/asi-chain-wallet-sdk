@@ -4,10 +4,13 @@ import {
     IClientEventDispatcher,
     ICreatedAccountData,
     INetworkConfig,
+    INetworkRecord,
+    INetworkUpdate,
     ITransactionReservation,
     ITransferRequest,
     IWalletMetadata,
     MnemonicStrength,
+    NetworkId,
     NetworkName,
     Wallet,
 } from "asi-wallet-sdk";
@@ -23,25 +26,15 @@ export interface ICreatePkWalletInput {
     privateKey: Uint8Array;
 }
 
-export interface IPlaygroundNetwork {
-    name: NetworkName;
-    config: INetworkConfig;
-    isDefault: boolean;
-}
-
 const useSdk = () => {
     const [client, setClient] = useState<Client | null>(null);
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
         [],
     );
     const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
-    const [networks, setNetworks] = useState<NetworkName[]>([]);
-    const [networkRecords, setNetworkRecords] = useState<IPlaygroundNetwork[]>(
-        [],
-    );
-    const [currentNetwork, setCurrentNetwork] = useState<NetworkName | null>(
-        null,
-    );
+    const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
+    const [currentNetwork, setCurrentNetwork] =
+        useState<INetworkRecord | null>(null);
     const [reservationsByWallet, setReservationsByWallet] = useState<
         Record<string, ITransactionReservation[]>
     >({});
@@ -71,12 +64,7 @@ const useSdk = () => {
             return;
         }
 
-        const names = currentClient.getNetworksNames();
-
-        setNetworks(names);
-        setNetworkRecords(
-            names.map((name) => ({ name, ...currentClient.getNetwork(name) })),
-        );
+        setNetworkRecords(currentClient.getNetworks());
     }, []);
 
     const eventDispatcher = useMemo<IClientEventDispatcher>(
@@ -87,8 +75,8 @@ const useSdk = () => {
             onAccountsChanged: () => {
                 void refresh();
             },
-            onNetworkChanged: (networkName: NetworkName) => {
-                setCurrentNetwork(networkName);
+            onNetworkChanged: (network: INetworkRecord) => {
+                setCurrentNetwork(network);
             },
             onReservationsChanged: (
                 walletId: string,
@@ -259,10 +247,10 @@ const useSdk = () => {
     );
 
     const setNetwork = useCallback(
-        (networkName: NetworkName): void => {
+        (networkId: NetworkId): void => {
             const currentClient = requireClient();
 
-            currentClient.setNetwork(networkName);
+            currentClient.setNetwork(networkId);
 
             setCurrentNetwork(currentClient.getCurrentNetwork());
         },
@@ -270,19 +258,21 @@ const useSdk = () => {
     );
 
     const addNetwork = useCallback(
-        (name: NetworkName, config: INetworkConfig): void => {
-            requireClient().addNetwork(name, config);
+        (name: NetworkName, config: INetworkConfig): INetworkRecord => {
+            const record = requireClient().addNetwork(name, config);
 
             refreshNetworks();
+
+            return record;
         },
         [requireClient, refreshNetworks],
     );
 
     const updateNetwork = useCallback(
-        (name: NetworkName, config: Partial<INetworkConfig>): void => {
+        (networkId: NetworkId, update: INetworkUpdate): void => {
             const currentClient = requireClient();
 
-            currentClient.updateNetwork(name, config);
+            currentClient.updateNetwork(networkId, update);
 
             refreshNetworks();
             setCurrentNetwork(currentClient.getCurrentNetwork());
@@ -291,10 +281,10 @@ const useSdk = () => {
     );
 
     const removeNetwork = useCallback(
-        (name: NetworkName): void => {
+        (networkId: NetworkId): void => {
             const currentClient = requireClient();
 
-            currentClient.removeNetwork(name);
+            currentClient.removeNetwork(networkId);
 
             refreshNetworks();
             setCurrentNetwork(currentClient.getCurrentNetwork());
@@ -350,7 +340,6 @@ const useSdk = () => {
         walletsMetadata,
         unlockedWallets,
         reservationsByWallet,
-        networks,
         networkRecords,
         currentNetwork,
         setNetwork,

@@ -2,6 +2,8 @@ import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkUpdate,
+    NetworkId,
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
@@ -56,7 +58,7 @@ export interface ITransferRequest {
 export interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
-    onNetworkChanged?(networkName: NetworkName): void;
+    onNetworkChanged?(network: INetworkRecord): void;
     onReservationsChanged?(
         walletId: string,
         reservations: ITransactionReservation[],
@@ -318,18 +320,22 @@ export default class Client {
         this.walletManager.setActiveAccount(walletId, accountId);
     }
 
-    public getNetworksNames(): NetworkName[] {
-        return ApiClientManager.getInstance().getNetworkNames();
+    public getCurrentNetworkId(): NetworkId {
+        return ApiClientManager.getInstance().getCurrentNetworkId();
     }
 
-    public getCurrentNetwork(): NetworkName {
+    public getCurrentNetwork(): INetworkRecord {
         return ApiClientManager.getInstance().getCurrentNetwork();
     }
 
-    public setNetwork(networkName: NetworkName): void {
-        ApiClientManager.getInstance().switchNetwork(networkName);
+    public setNetwork(networkId: NetworkId): void {
+        const apiClientManager = ApiClientManager.getInstance();
 
-        this.eventDispatcher?.onNetworkChanged?.(networkName);
+        apiClientManager.switchNetwork(networkId);
+
+        this.eventDispatcher?.onNetworkChanged?.(
+            apiClientManager.getCurrentNetwork(),
+        );
     }
 
     public async getBalance(address: Address): Promise<bigint> {
@@ -444,23 +450,23 @@ export default class Client {
         return ApiClientManager.getInstance().getNetworks();
     }
 
-    public getNetwork(name: NetworkName): INetworkRecord {
-        return ApiClientManager.getInstance().getNetwork(name);
+    public getNetwork(id: NetworkId): INetworkRecord {
+        return ApiClientManager.getInstance().getNetwork(id);
     }
 
-    public addNetwork(name: NetworkName, config: INetworkConfig): void {
-        ApiClientManager.getInstance().addNetwork(name, config);
-    }
-
-    public updateNetwork(
+    public addNetwork(
         name: NetworkName,
-        config: Partial<INetworkConfig>,
-    ): void {
-        ApiClientManager.getInstance().updateNetwork(name, config);
+        config: INetworkConfig,
+    ): INetworkRecord {
+        return ApiClientManager.getInstance().addNetwork(name, config);
     }
 
-    public removeNetwork(name: NetworkName): void {
-        ApiClientManager.getInstance().removeNetwork(name);
+    public updateNetwork(id: NetworkId, update: INetworkUpdate): void {
+        ApiClientManager.getInstance().updateNetwork(id, update);
+    }
+
+    public removeNetwork(id: NetworkId): void {
+        ApiClientManager.getInstance().removeNetwork(id);
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

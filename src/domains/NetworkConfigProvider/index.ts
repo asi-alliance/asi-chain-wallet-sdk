@@ -1,9 +1,12 @@
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkUpdate,
+    NetworkId,
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
+import { generateRandomId } from "@utils/index";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -11,14 +14,16 @@ import {
 } from "@utils/decorators/networkConfigProvider";
 
 export default class NetworkConfigProvider {
-    private networksRecords: Map<NetworkName, INetworkRecord> | null = null;
+    private networksRecords: Map<NetworkId, INetworkRecord> | null = null;
 
     public initialize(config: TNetworksConfig): void {
-        this.networksRecords = new Map<NetworkName, INetworkRecord>(
-            Object.entries(config).map(([name, config]) => [
+        this.networksRecords = new Map<NetworkId, INetworkRecord>(
+            Object.entries(config).map(([name, networkConfig]) => [
                 name,
                 {
-                    config,
+                    id: name,
+                    name,
+                    config: networkConfig,
                     isDefault: true,
                 },
             ]),
@@ -32,47 +37,53 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkExist
-    public get(network: NetworkName): INetworkRecord {
-        return this.networksRecords!.get(network)!;
+    public get(id: NetworkId): INetworkRecord {
+        return this.networksRecords!.get(id)!;
     }
 
     @EnsureNetworkConfigProviderReady
-    public getNetworkNames(): NetworkName[] {
-        if (!this.networksRecords) {
-            throw new Error("Network config is not initialized");
+    public getIds(): NetworkId[] {
+        return Array.from(this.networksRecords!.keys());
+    }
+
+    @EnsureNetworkConfigProviderReady
+    public add(name: NetworkName, networkConfig: INetworkConfig): INetworkRecord {
+        const record: INetworkRecord = {
+            id: generateRandomId(),
+            name,
+            config: networkConfig,
+            isDefault: false,
+        };
+
+        this.networksRecords!.set(record.id, record);
+
+        return record;
+    }
+
+    @EnsureNetworkConfigProviderReady
+    @EnsureNetworkExist
+    @EnsureNetworkNotDefault
+    public remove(id: NetworkId): INetworkRecord {
+        const record: INetworkRecord = this.networksRecords!.get(id)!;
+
+        this.networksRecords!.delete(id);
+
+        return record;
+    }
+
+    @EnsureNetworkConfigProviderReady
+    @EnsureNetworkExist
+    @EnsureNetworkNotDefault
+    public update(id: NetworkId, update: INetworkUpdate): void {
+        const record: INetworkRecord = this.networksRecords!.get(id)!;
+
+        if (update.name !== undefined) {
+            record.name = update.name;
         }
 
-        return Array.from(this.networksRecords.keys());
-    }
-
-    @EnsureNetworkConfigProviderReady
-    public add(name: NetworkName, networkConfig: INetworkConfig): void {
-        this.networksRecords!.set(name, {
-            isDefault: false,
-            config: networkConfig,
-        });
-    }
-
-    @EnsureNetworkConfigProviderReady
-    @EnsureNetworkExist
-    @EnsureNetworkNotDefault
-    public remove(name: NetworkName): INetworkRecord {
-        const targetConfig: INetworkRecord = Object.assign(
-            this.networksRecords!.get(name)!,
-        );
-
-        this.networksRecords!.delete(name);
-
-        return targetConfig;
-    }
-
-    @EnsureNetworkConfigProviderReady
-    @EnsureNetworkExist
-    @EnsureNetworkNotDefault
-    public update(name: NetworkName, config: Partial<INetworkConfig>): void {
-        const targetConfig: INetworkRecord = this.networksRecords!.get(name)!;
-
-        targetConfig.config = { ...targetConfig.config, ...config };
+        if (update.config) {
+            record.config = { ...record.config, ...update.config };
+        }
     }
 
     public isReady(): boolean {

@@ -9,7 +9,7 @@ import {
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
 import { EncryptedData } from "@services/Crypto";
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
@@ -45,7 +45,7 @@ export interface IWalletStorageData {
 
 export interface ISaveTransactionReservationsOptions {
     id: string;
-    networkName: NetworkName;
+    networkId: NetworkId;
     signerId: string;
     encryptedData: EncryptedData;
 }
@@ -260,13 +260,13 @@ class StorageManager {
 
     public static saveTransactionReservation = async ({
         id,
-        networkName,
+        networkId,
         signerId,
         encryptedData,
     }: ISaveTransactionReservationsOptions): Promise<void> => {
         await TransactionReservationsStorageRepository.getInstance().saveTransactionReservation(
             id,
-            networkName,
+            networkId,
             signerId,
             encryptedData,
         );
@@ -274,7 +274,7 @@ class StorageManager {
 
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
-        networkName: NetworkName,
+        networkId: NetworkId,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
         const records =
             await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
@@ -282,7 +282,7 @@ class StorageManager {
         return records.filter(
             (record: ITransactionReservationsStorageRecord) =>
                 record.signerId === signerId &&
-                record.networkName === networkName,
+                record.networkId === networkId,
         );
     };
 

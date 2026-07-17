@@ -32,12 +32,13 @@ const NetworksPage = (): ReactElement => {
             </div>
 
             <div className="networks-page__list">
-                {sdk.networkRecords.map(({ name, config, isDefault }) => {
-                    const isActive = name === sdk.currentNetwork;
+                {sdk.networkRecords.map((network) => {
+                    const { id, name, config, isDefault } = network;
+                    const isActive = id === sdk.currentNetwork?.id;
 
                     return (
                         <div
-                            key={name}
+                            key={id}
                             className={`network-card ${
                                 isActive ? "network-card--active" : ""
                             }`}
@@ -81,7 +82,7 @@ const NetworksPage = (): ReactElement => {
                                 <button
                                     className="networks-page__action"
                                     type="button"
-                                    onClick={() => handlers.switchNetwork(name)}
+                                    onClick={() => handlers.switchNetwork(id)}
                                     disabled={isActive}
                                 >
                                     Switch
@@ -92,10 +93,7 @@ const NetworksPage = (): ReactElement => {
                                             className="networks-page__action"
                                             type="button"
                                             onClick={() =>
-                                                handlers.editNetwork(
-                                                    name,
-                                                    config,
-                                                )
+                                                handlers.editNetwork(network)
                                             }
                                         >
                                             Edit
@@ -104,7 +102,7 @@ const NetworksPage = (): ReactElement => {
                                             className="networks-page__action networks-page__action--danger"
                                             type="button"
                                             onClick={() =>
-                                                handlers.removeNetwork(name)
+                                                handlers.removeNetwork(network)
                                             }
                                         >
                                             Remove

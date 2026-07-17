@@ -1,3 +1,5 @@
+export type NetworkId = string;
+
 export type NetworkName = string;
 
 export interface INetworkConfig {
@@ -9,6 +11,13 @@ export interface INetworkConfig {
 export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
 
 export interface INetworkRecord {
+    id: NetworkId;
+    name: NetworkName;
     config: INetworkConfig;
     isDefault: boolean;
+}
+
+export interface INetworkUpdate {
+    name?: NetworkName;
+    config?: Partial<INetworkConfig>;
 }

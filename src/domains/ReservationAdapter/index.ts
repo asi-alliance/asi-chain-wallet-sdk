@@ -8,7 +8,7 @@ import {
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import CryptoService, { EncryptedData } from "@services/Crypto";
@@ -58,14 +58,14 @@ export default class ReservationAdapter {
             "onConfirmed" | "onExpired"
         >,
     ): Promise<ReservationAdapter> {
-        const networkName: NetworkName =
-            ApiClientManager.getInstance().getCurrentNetwork();
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
         const signerId: string = wallet.getSigner().getId();
 
         const records: ITransactionReservationsStorageRecord[] =
             await StorageManager.getTransactionReservationsBySignerId(
                 signerId,
-                networkName,
+                networkId,
             );
 
         const password: string = passwordProvider.getSecret().password;
@@ -89,7 +89,7 @@ export default class ReservationAdapter {
 
             reservations.push({
                 id: record.id,
-                networkName: record.networkName,
+                networkId: record.networkId,
                 timestamp: new Date(privateData.timestamp),
                 accountAddress: privateData.accountAddress,
                 pendingAmount: privateData.pendingAmount,
@@ -158,7 +158,7 @@ export default class ReservationAdapter {
 
         await StorageManager.saveTransactionReservation({
             id: reservation.id,
-            networkName: reservation.networkName,
+            networkId: reservation.networkId,
             signerId: wallet.getSigner().getId(),
             encryptedData,
         });
@@ -201,7 +201,7 @@ export default class ReservationAdapter {
             timestamp: new Date(),
             accountAddress: account.getAddress(),
             pendingAmount: details.amount.toString(),
-            networkName: ApiClientManager.getInstance().getCurrentNetwork(),
+            networkId: ApiClientManager.getInstance().getCurrentNetworkId(),
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
         };
 

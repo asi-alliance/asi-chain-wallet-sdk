@@ -2,7 +2,7 @@ import ApiClientManager from "@domains/ApiClientManager";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { GraphqlParser } from "@services/GraphqlParser";
 import { Transaction } from "@domains/Transaction";
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 
 export default class AccountDataService {
     private readonly apiClientManager: ApiClientManager;
@@ -16,12 +16,12 @@ export default class AccountDataService {
         address: string,
         publicKey: string,
         pagination: Pagination = {},
-        networkName?: NetworkName,
+        networkId?: NetworkId,
     ): Promise<Transaction[]> {
         try {
-            const currentNetwork: NetworkName =
-                networkName ??
-                ApiClientManager.getInstance().getCurrentNetwork();
+            const currentNetworkId: NetworkId =
+                networkId ??
+                ApiClientManager.getInstance().getCurrentNetworkId();
 
             const response = await this.apiClientManager
                 .getIndexerClient()
@@ -30,7 +30,7 @@ export default class AccountDataService {
             return GraphqlParser.mapTransactionHistory(
                 response,
                 address,
-                currentNetwork,
+                currentNetworkId,
             );
         } catch (error) {
             if (GraphqlParser.isRecoverableNetworkError(error)) {

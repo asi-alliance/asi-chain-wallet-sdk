@@ -1,4 +1,4 @@
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import { IStorageFabricOptions, storageFabric } from "@fabrics/Storage";
 import { EncryptedData } from "@services/Crypto";
@@ -6,7 +6,7 @@ import { EncryptedData } from "@services/Crypto";
 const TRANSACTION_RESERVATIONS_DATA_KEY: string = "TRANSACTION_RESERVATIONS";
 
 export interface ITransactionReservationsStorageRecord extends ITableRecord {
-    networkName: NetworkName;
+    networkId: NetworkId;
     signerId: string;
     encryptedData: EncryptedData;
 
@@ -79,7 +79,7 @@ export class TransactionReservationsStorageRepository {
 
     public async saveTransactionReservation(
         id: string,
-        networkName: NetworkName,
+        networkId: NetworkId,
         signerId: string,
         encryptedData: EncryptedData,
     ): Promise<void> {
@@ -87,7 +87,7 @@ export class TransactionReservationsStorageRepository {
 
         await this.storageInterface.insert(TRANSACTION_RESERVATIONS_DATA_KEY, {
             id,
-            networkName,
+            networkId,
             signerId,
             encryptedData,
             createdAt: Date.now(),

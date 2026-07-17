@@ -81,7 +81,6 @@ const NetworkModal = ({
                             type="text"
                             autoComplete="off"
                             defaultValue={initialName}
-                            readOnly={mode === "edit"}
                             required
                         />
                     </div>

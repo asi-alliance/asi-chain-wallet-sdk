@@ -1,4 +1,4 @@
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import { Pagination } from "./queryOptions";
 import { Transaction } from "@domains/Transaction";
 import { mapRawTransferToTransaction } from "./mapper";
@@ -108,7 +108,7 @@ export class GraphqlParser {
     public static mapTransactionHistory(
         data: TransactionHistoryQueryData | undefined,
         address: string,
-        networkName: NetworkName,
+        networkId: NetworkId,
     ): Transaction[] {
         if (!data || !data.transfers) {
             return [];
@@ -118,7 +118,7 @@ export class GraphqlParser {
             .map((transfer: RawTransfer) =>
                 mapRawTransferToTransaction(transfer, {
                     accountAddress: address,
-                    networkName: networkName,
+                    networkId: networkId,
                 }),
             )
             .filter(this.isDefined);
