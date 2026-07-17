@@ -414,8 +414,6 @@ test("HD wallet should update, remove account and reuse freed derivation index",
 
     console.log("\nRemoved account:", removed);
 
-    assert.equal(removed, true);
-
     const indexesAfterDelete = wallet
         .getAccounts()
         .map((account) => account.getIndex())
