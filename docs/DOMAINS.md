@@ -429,7 +429,6 @@ query<T>(query: string, variables?: Record<string, unknown>): Promise<T>
 ```ts
 submitDeploy(deploy): Promise<any>          // POST /api/deploy
 submitExploratoryDeploy(rholangCode): Promise<any> // POST /api/explore-deploy
-transfer(payload): Promise<any>             // POST /api/transfer
 getStatus(): Promise<any>                   // GET  /status
 ```
 
@@ -439,7 +438,6 @@ getStatus(): Promise<any>                   // GET  /status
 getDeploy(deployHash): Promise<any>         // GET /api/deploy/:hash
 getBlock(blockHash): Promise<IBlockDto>     // GET /api/block/:hash
 getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> // GET /api/blocks
-getLatestBlock(): Promise<IBlockDto>        // GET /api/block/latest
 ```
 
 `IBlockDto = { blockInfo: string; blockNumber: number }`.
