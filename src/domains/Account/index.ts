@@ -12,6 +12,7 @@ import { Transaction } from "@domains/Transaction";
 import { NetworkName } from "@domains/Network";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { generateRandomId } from "@utils/index";
+import KeysManager from "@services/KeysManager";
 
 export interface IPortfolioOptions {
     assets?: Assets;
@@ -23,6 +24,7 @@ export interface IAccountOptions {
     name: string;
     index: number | null;
     address: Address;
+    publicKey: Uint8Array;
     portfolioOptions?: IPortfolioOptions;
 }
 
@@ -30,7 +32,7 @@ export type TEditableAccountOptions = Partial<Pick<IAccountOptions, "name">>;
 
 export type TCreateAccountPayload = Omit<
     IAccountOptions,
-    "address" | "index"
+    "address" | "index" | "publicKey"
 > & {
     index?: number;
 };
@@ -46,6 +48,7 @@ class Account {
     private readonly id: string;
     private readonly index: number | null;
     private readonly address: Address;
+    private readonly publicKey: Uint8Array;
     private name: string;
     private assets: Assets;
     private primaryAsset: Asset;
@@ -56,11 +59,13 @@ class Account {
         index,
         portfolioOptions,
         address,
+        publicKey,
     }: IAccountOptions) {
         this.id = id ?? generateRandomId();
         this.name = name;
         this.index = index;
         this.address = address;
+        this.publicKey = publicKey;
         this.assets =
             portfolioOptions?.assets ??
             new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
@@ -115,6 +120,8 @@ class Account {
             secretProvider.getSecret();
 
         if (isPrivateKeySecretData(secretData)) {
+            const publicKey: Uint8Array =
+                KeysManager.getPublicKeyFromPrivateKey(secretData.privateKey);
             const address: Address = WalletsService.deriveAddressFromPrivateKey(
                 secretData.privateKey,
             );
@@ -123,6 +130,7 @@ class Account {
                 ...accountOptions,
                 index: null,
                 address,
+                publicKey,
             });
         }
 
@@ -136,6 +144,8 @@ class Account {
                 secretData.rootHDPath,
             );
 
+        const publicKey: Uint8Array =
+            KeysManager.getPublicKeyFromPrivateKey(privateKey);
         const address: Address =
             WalletsService.deriveAddressFromPrivateKey(privateKey);
 
@@ -145,6 +155,7 @@ class Account {
             ...accountOptions,
             index: secretData.rootHDPath.getIndex(),
             address,
+            publicKey,
         });
     }
 
