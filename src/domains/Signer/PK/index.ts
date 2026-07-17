@@ -1,7 +1,10 @@
+import Signer, {
+    ISignedMessageResponse,
+    TSigningContext,
+} from "@domains/Signer";
+import CryptoService from "@services/Crypto";
 import KeysManager from "@services/KeysManager";
-import Signer, { ISignedMessageResponse, TSigningContext } from "@domains/Signer";
 import { IPrivateKeyCredentials } from "@domains/SecretsProvider";
-import { decryptSignerData } from "@utils/functions";
 import { sign } from "@noble/secp256k1";
 
 export default class PrivateKeySigner extends Signer {
@@ -9,7 +12,7 @@ export default class PrivateKeySigner extends Signer {
         payload: string,
         signingContext: TSigningContext,
     ): Promise<ISignedMessageResponse> {
-        const { privateKey } = (await decryptSignerData(
+        const { privateKey } = (await CryptoService.decryptSignerData(
             this.encryptedSecret,
             signingContext.passwordProvider,
         )) as IPrivateKeyCredentials;

@@ -1,4 +1,5 @@
 import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import { generateRandomId } from "@utils/index";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;
@@ -41,3 +42,8 @@ export default class Asset {
         return this.contractAddress;
     }
 }
+
+export const DEFAULT_ASSET: Asset = new Asset({
+    id: generateRandomId(),
+    name: "ASI",
+});

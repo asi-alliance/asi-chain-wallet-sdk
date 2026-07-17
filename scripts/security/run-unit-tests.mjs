@@ -5,7 +5,13 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
-const EXCLUDE_TESTS = [];
+const EXCLUDE_PATTERNS = [
+    // "wallet-create.test.ts",
+    "wallet-deploy.test.ts",
+    // "wallet-derivation.test.ts",
+    "wallet-storage.test.ts",
+    "wallet-transaction-reservations.test.ts",
+];
 
 //wallet-transaction-reservations.test.ts
 
@@ -19,8 +25,8 @@ async function findTestFiles(dir) {
             results.push(...(await findTestFiles(fullPath)));
         } else if (
             entry.isFile() &&
-            entry.name.endsWith("client.test.ts") &&
-            !EXCLUDE_TESTS.includes(entry.name)
+            entry.name.endsWith(".test.ts") &&
+            !EXCLUDE_PATTERNS.includes(entry.name)
         ) {
             results.push(fullPath);
         }

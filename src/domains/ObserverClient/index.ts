@@ -40,8 +40,4 @@ export default class ObserverClient extends BaseHttpClient {
 
         return this.get(path, view ? { params: { view } } : undefined);
     }
-
-    public getLatestBlock(): Promise<IBlockDto> {
-        return this.get("/api/block/latest");
-    }
 }

@@ -2,8 +2,7 @@ import HDSigner from "@domains/Signer/HD";
 import CryptoService from "@services/Crypto";
 import PrivateKeySigner from "@domains/Signer/PK";
 import SecretsProvider from "@domains/SecretsProvider";
-import Signer, { ISignerRecord } from "@domains/Signer";
-import { WalletTypes } from "@domains/Wallet";
+import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
 
 export type TCreateSignerPayload =
     | {

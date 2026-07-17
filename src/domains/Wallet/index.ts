@@ -1,11 +1,11 @@
-import Signer, { ISignerRecord } from "@domains/Signer";
+import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
 import Account, {
     IAccountRecord,
     TCreateAccountPayload,
     TEditableAccountOptions,
 } from "@domains/Account";
 import { createSigner, restoreSigner } from "@utils/fabrics/signer";
-import { decryptSignerData, generateRandomId } from "@utils/index";
+import { generateRandomId } from "@utils/index";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -14,10 +14,9 @@ import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
-import TransactionService, {
-    ITransferDetails,
-} from "@services/TransactionService";
+import { ITransferDetails } from "@services/TransactionService";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import CryptoService from "@services/Crypto";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -47,11 +46,6 @@ export interface ICreateHDWalletOptions {
 export interface IRestoreWalletPayload {
     signerRecord: ISignerRecord;
     accountRecords: IAccountRecord[];
-}
-
-export enum WalletTypes {
-    PRIVATE_KEY = "private-key",
-    HD = "hd",
 }
 
 export default class Wallet {
@@ -138,7 +132,7 @@ export default class Wallet {
         payload: Omit<TCreateAccountPayload, "index">,
         passwordProvider: SecretsProvider,
     ): Promise<ICreatedAccountData> {
-        const secretData = (await decryptSignerData(
+        const secretData = (await CryptoService.decryptSignerData(
             this.signer.getEncryptedSecret(),
             passwordProvider,
         )) as IHDSecret;
@@ -250,7 +244,7 @@ export default class Wallet {
         const signer: Signer = restoreSigner(signerRecord);
 
         const secretData: IPrivateKeyCredentials | IHDSecret =
-            await decryptSignerData(
+            await CryptoService.decryptSignerData(
                 signer.getEncryptedSecret(),
                 passwordProvider,
             );
