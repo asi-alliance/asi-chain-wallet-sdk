@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 
 import Client from "@domains/Client";
-import Wallet, { WalletTypes } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import { TNetworksConfig } from "@domains/Network";
 import StorageManager from "@services/StorageManager";
+import { WalletTypes } from "@domains/Signer";
 
 const STORAGE_DIR = "./storage-client-test";
 

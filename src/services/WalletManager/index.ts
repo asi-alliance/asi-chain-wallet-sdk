@@ -1,8 +1,9 @@
 import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
-import Wallet, { WalletTypes } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
+import { WalletTypes } from "@domains/Signer";
 
 export interface IAccountMetadata {
     id: string;
@@ -123,8 +124,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             throw new Error("WalletManager.removeAccount: unknown wallet id");
         }
 
-        const removedAccount: Account =
-            currentWallet.removeAccount(accountId);
+        const removedAccount: Account = currentWallet.removeAccount(accountId);
 
         await StorageManager.deleteAccount(accountId);
 

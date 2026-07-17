@@ -1,7 +1,7 @@
 import { IStorageFabricOptions, storageFabric } from "@fabrics/Storage";
 import { EncryptedData } from "@services/Crypto";
 import { ITableRecord, ITableService } from "@domains/TableService";
-import { WalletTypes } from "@domains/Wallet";
+import { WalletTypes } from "@domains/Signer";
 
 const SIGNERS_DATA_KEY: string = "SIGNERS";
 

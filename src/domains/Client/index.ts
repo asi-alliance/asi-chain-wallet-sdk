@@ -1,10 +1,10 @@
-import { DEFAULT_ASSET, NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import { NetworkName, TNetworksConfig } from "@domains/Network";
 import { IStorageFabricOptions } from "@fabrics/Storage";
 import StorageManager from "@services/StorageManager";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
-import Wallet, { Address, WalletTypes } from "@domains/Wallet";
+import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter from "@domains/ReservationAdapter";
@@ -19,6 +19,8 @@ import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageMan
 import InsensitiveCacheStorageSerializer from "@services/InsensitiveCacheStorageSerializer";
 import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageRepository";
 import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
+import { DEFAULT_ASSET } from "@domains/Asset";
+import { WalletTypes } from "@domains/Signer";
 
 export interface IUnlockedWallet {
     id: string;

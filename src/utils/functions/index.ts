@@ -1,10 +1,3 @@
-import Bip44Path from "@domains/Bip44Path";
-import SecretsProvider, {
-    IHDSecret,
-    IHDSecretRecord,
-    IPrivateKeyCredentials,
-} from "@domains/SecretsProvider";
-import CryptoService, { EncryptedData } from "@services/Crypto";
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 
 export const genRandomHex = (size: number) =>
@@ -151,36 +144,6 @@ export const toUint8Array = (value: unknown): Uint8Array => {
     }
 
     throw new Error("Unsupported data format");
-};
-
-export const decryptSignerData = async (
-    signerData: EncryptedData,
-    passwordProvider: SecretsProvider,
-): Promise<IHDSecret | IPrivateKeyCredentials> => {
-    const stringifiedKeyMaterial: string =
-        await CryptoService.decryptWithPassword(
-            signerData,
-            passwordProvider.getSecret().password,
-        );
-
-    const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials = JSON.parse(
-        stringifiedKeyMaterial,
-    );
-
-    if ("privateKey" in keyMaterial) {
-        const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
-
-        return {
-            privateKey,
-        };
-    }
-
-    const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);
-
-    return {
-        seed: keyMaterial.seed,
-        rootHDPath: path,
-    };
 };
 
 export type IUrlValue = string | number | boolean | undefined;

@@ -1,4 +1,14 @@
-import { arrayBufferToBase64, base64ToArrayBuffer } from "@utils/index";
+import Bip44Path from "@domains/Bip44Path";
+import SecretsProvider, {
+    IHDSecret,
+    IHDSecretRecord,
+    IPrivateKeyCredentials,
+} from "@domains/SecretsProvider";
+import {
+    arrayBufferToBase64,
+    base64ToArrayBuffer,
+    toUint8Array,
+} from "@utils/index";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",
@@ -87,6 +97,35 @@ export default class CryptoService {
         );
 
         return new TextDecoder().decode(decrypted);
+    }
+
+    public static async decryptSignerData(
+        signerData: EncryptedData,
+        passwordProvider: SecretsProvider,
+    ): Promise<IHDSecret | IPrivateKeyCredentials> {
+        const stringifiedKeyMaterial: string =
+            await CryptoService.decryptWithPassword(
+                signerData,
+                passwordProvider.getSecret().password,
+            );
+
+        const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials =
+            JSON.parse(stringifiedKeyMaterial);
+
+        if ("privateKey" in keyMaterial) {
+            const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
+
+            return {
+                privateKey,
+            };
+        }
+
+        const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);
+
+        return {
+            seed: keyMaterial.seed,
+            rootHDPath: path,
+        };
     }
 
     public static async deriveKey(

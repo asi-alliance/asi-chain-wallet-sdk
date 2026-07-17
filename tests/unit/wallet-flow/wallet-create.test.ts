@@ -5,11 +5,11 @@ import SecretsProvider, {
     IPrivateKeyCredentials,
 } from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
-import Wallet, { WalletTypes } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import Bip44Path from "@domains/Bip44Path";
-import { ISignerRecord } from "@domains/Signer";
+import { ISignerRecord, WalletTypes } from "@domains/Signer";
 import { IAccountRecord } from "@domains/Account";
-import { decryptSignerData } from "@utils/index";
+import CryptoService from "@services/Crypto";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -66,7 +66,7 @@ test("should create PK wallet", async () => {
 
     const activeAccount = wallet.getActiveAccount();
 
-    const decrypted = (await decryptSignerData(
+    const decrypted = (await CryptoService.decryptSignerData(
         wallet.getSigner().getEncryptedSecret(),
         passwordProvider,
     )) as IPrivateKeyCredentials;
@@ -127,7 +127,7 @@ test("should create HD wallet", async () => {
 
     const account = wallet.getActiveAccount();
 
-    const secret = (await decryptSignerData(
+    const secret = (await CryptoService.decryptSignerData(
         wallet.getSigner().getEncryptedSecret(),
         passwordProvider,
     )) as IHDSecret;
@@ -264,7 +264,7 @@ test("should fail decrypt with wrong password", async () => {
     let failed = false;
 
     try {
-        await decryptSignerData(
+        await CryptoService.decryptSignerData(
             wallet.getSigner().getEncryptedSecret(),
             wrongPassword,
         );

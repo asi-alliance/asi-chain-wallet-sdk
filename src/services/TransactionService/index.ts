@@ -3,7 +3,7 @@ import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Asset from "@domains/Asset";
 import { createTransferDeploy } from "@domains/Deploy/factory";
 import SecretsProvider from "@domains/SecretsProvider";
-import { Address, WalletTypes } from "@domains/Wallet";
+import { Address } from "@domains/Wallet";
 import {
     AddressValidationResult,
     encodeBase16,
@@ -12,7 +12,7 @@ import {
 } from "@utils/index";
 import SignerService, { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
-import Signer, { TSigningContext } from "@domains/Signer";
+import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 

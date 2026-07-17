@@ -1,5 +1,4 @@
-import Asset, { Assets } from "@domains/Asset";
-import { DEFAULT_ASSET } from "@config/index";
+import Asset, { Assets, DEFAULT_ASSET } from "@domains/Asset";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -8,7 +7,7 @@ import WalletsService from "@services/Wallets";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { isPrivateKeySecretData } from "@utils/guards";
 import KeyDerivationService from "@services/KeyDerivation";
-import { Address } from "@domains/Wallet";
+import type { Address } from "@domains/Wallet";
 import { Transaction } from "@domains/Transaction";
 import { NetworkName } from "@domains/Network";
 import { Pagination } from "@services/GraphqlParser/queryOptions";

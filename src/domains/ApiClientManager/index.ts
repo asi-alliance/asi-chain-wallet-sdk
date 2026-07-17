@@ -6,7 +6,7 @@ import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
 import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
-} from "@utils/decorators";
+} from "@utils/decorators/apiClientManager";
 
 export interface IApiClients {
     validator: ValidatorClient;
