@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account } from "asi-wallet-sdk";
+import { Account, ApiServiceRegistry } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -52,6 +52,11 @@ const AccountCard = ({
                     { walletId, accountId, to: toAddress as never, amount },
                     password,
                 );
+
+                ApiServiceRegistry.getInstance().poller.watch(deployId, {
+                    onConfirmed: reload,
+                    onError: reload,
+                });
 
                 await reload();
 
