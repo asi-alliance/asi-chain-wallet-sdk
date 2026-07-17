@@ -1,5 +1,10 @@
 import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
-import { NetworkName, TNetworksConfig } from "@domains/Network";
+import {
+    INetworkConfig,
+    INetworkRecord,
+    NetworkName,
+    TNetworksConfig,
+} from "@domains/Network";
 import { IStorageFabricOptions } from "@fabrics/Storage";
 import StorageManager from "@services/StorageManager";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -318,7 +323,7 @@ export default class Client {
     }
 
     public getCurrentNetwork(): NetworkName {
-        return ApiClientManager.getInstance().getNetwork();
+        return ApiClientManager.getInstance().getCurrentNetwork();
     }
 
     public setNetwork(networkName: NetworkName): void {
@@ -433,6 +438,29 @@ export default class Client {
         }
 
         return account;
+    }
+
+    public getNetworks(): INetworkRecord[] {
+        return ApiClientManager.getInstance().getNetworks();
+    }
+
+    public getNetwork(name: NetworkName): INetworkRecord {
+        return ApiClientManager.getInstance().getNetwork(name);
+    }
+
+    public addNetwork(name: NetworkName, config: INetworkConfig): void {
+        ApiClientManager.getInstance().addNetwork(name, config);
+    }
+
+    public updateNetwork(
+        name: NetworkName,
+        config: Partial<INetworkConfig>,
+    ): void {
+        ApiClientManager.getInstance().updateNetwork(name, config);
+    }
+
+    public removeNetwork(name: NetworkName): void {
+        ApiClientManager.getInstance().removeNetwork(name);
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

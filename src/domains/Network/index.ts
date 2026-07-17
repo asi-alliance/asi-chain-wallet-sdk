@@ -1,4 +1,4 @@
-export type NetworkName = "Dev" | "MainNet" | "TestNet" | "DevNet";
+export type NetworkName = string;
 
 export interface INetworkConfig {
     ValidatorURL: string;
@@ -7,3 +7,8 @@ export interface INetworkConfig {
 }
 
 export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
+
+export interface INetworkRecord {
+    config: INetworkConfig;
+    isDefault: boolean;
+}

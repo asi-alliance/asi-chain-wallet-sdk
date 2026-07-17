@@ -19,7 +19,8 @@ export default class AccountDataService {
     ): Promise<Transaction[]> {
         try {
             const currentNetwork: NetworkName =
-                networkName ?? ApiClientManager.getInstance().getNetwork();
+                networkName ??
+                ApiClientManager.getInstance().getCurrentNetwork();
 
             const response = await this.apiClientManager
                 .getIndexerClient()

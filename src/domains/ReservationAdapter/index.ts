@@ -59,7 +59,7 @@ export default class ReservationAdapter {
         >,
     ): Promise<ReservationAdapter> {
         const networkName: NetworkName =
-            ApiClientManager.getInstance().getNetwork();
+            ApiClientManager.getInstance().getCurrentNetwork();
         const signerId: string = wallet.getSigner().getId();
 
         const records: ITransactionReservationsStorageRecord[] =
@@ -201,7 +201,7 @@ export default class ReservationAdapter {
             timestamp: new Date(),
             accountAddress: account.getAddress(),
             pendingAmount: details.amount.toString(),
-            networkName: ApiClientManager.getInstance().getNetwork(),
+            networkName: ApiClientManager.getInstance().getCurrentNetwork(),
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
         };
 

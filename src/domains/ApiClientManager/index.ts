@@ -2,7 +2,12 @@ import IndexerClient from "@domains/IndexerClient";
 import ObserverClient from "@domains/ObserverClient";
 import ValidatorClient from "@domains/ValidatorClient";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
-import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
+import {
+    INetworkConfig,
+    INetworkRecord,
+    NetworkName,
+    TNetworksConfig,
+} from "@domains/Network";
 import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
@@ -59,7 +64,7 @@ export default class ApiClientManager {
 
     @EnsureApiClientManagerConfigured
     public switchNetwork(network: NetworkName): void {
-        const config: INetworkConfig = this.networkConfigProvider.get(network);
+        const { config } = this.networkConfigProvider.get(network);
 
         this.validatorClient = new ValidatorClient({
             baseUrl: config.ValidatorURL,
@@ -101,7 +106,7 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
-    public getNetwork(): NetworkName {
+    public getCurrentNetwork(): NetworkName {
         return this.currentNetwork!;
     }
 
@@ -109,6 +114,45 @@ export default class ApiClientManager {
     @EnsureApiClientManagerConfigured
     public getNetworkNames(): NetworkName[] {
         return this.networkConfigProvider.getNetworkNames();
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetworks(): INetworkRecord[] {
+        return this.networkConfigProvider.getAll();
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetwork(name: NetworkName): INetworkRecord {
+        return this.networkConfigProvider.get(name);
+    }
+
+    @EnsureApiClientManagerInitialized
+    public addNetwork(name: NetworkName, config: INetworkConfig): void {
+        this.networkConfigProvider.add(name, config);
+    }
+
+    @EnsureApiClientManagerInitialized
+    public updateNetwork(
+        name: NetworkName,
+        config: Partial<INetworkConfig>,
+    ): void {
+        this.networkConfigProvider.update(name, config);
+
+        if (this.currentNetwork === name) {
+            this.switchNetwork(name);
+        }
+    }
+
+    @EnsureApiClientManagerInitialized
+    public removeNetwork(name: NetworkName): void {
+        this.networkConfigProvider.remove(name);
+
+        if (this.currentNetwork === name) {
+            const firstNetworkName: NetworkName =
+                this.networkConfigProvider.getNetworkNames()[0];
+
+            this.switchNetwork(firstNetworkName);
+        }
     }
 
     public isReady(): boolean {
