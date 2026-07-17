@@ -42,7 +42,7 @@ export default class NetworkConfigProvider {
             throw new Error("Network config is not initialized");
         }
 
-        return Object.keys(this.networksRecords) as NetworkName[];
+        return Array.from(this.networksRecords.keys());
     }
 
     @EnsureNetworkConfigProviderReady

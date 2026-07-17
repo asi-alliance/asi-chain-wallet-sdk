@@ -3,6 +3,7 @@ import {
     Client,
     IClientEventDispatcher,
     ICreatedAccountData,
+    INetworkConfig,
     ITransactionReservation,
     ITransferRequest,
     IWalletMetadata,
@@ -22,6 +23,12 @@ export interface ICreatePkWalletInput {
     privateKey: Uint8Array;
 }
 
+export interface IPlaygroundNetwork {
+    name: NetworkName;
+    config: INetworkConfig;
+    isDefault: boolean;
+}
+
 const useSdk = () => {
     const [client, setClient] = useState<Client | null>(null);
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
@@ -29,6 +36,9 @@ const useSdk = () => {
     );
     const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
     const [networks, setNetworks] = useState<NetworkName[]>([]);
+    const [networkRecords, setNetworkRecords] = useState<IPlaygroundNetwork[]>(
+        [],
+    );
     const [currentNetwork, setCurrentNetwork] = useState<NetworkName | null>(
         null,
     );
@@ -53,6 +63,21 @@ const useSdk = () => {
         },
         [],
     );
+
+    const refreshNetworks = useCallback((activeClient?: Client): void => {
+        const currentClient = activeClient ?? clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        const names = currentClient.getNetworksNames();
+
+        setNetworks(names);
+        setNetworkRecords(
+            names.map((name) => ({ name, ...currentClient.getNetwork(name) })),
+        );
+    }, []);
 
     const eventDispatcher = useMemo<IClientEventDispatcher>(
         () => ({
@@ -92,7 +117,7 @@ const useSdk = () => {
 
             clientRef.current = createdClient;
             setClient(createdClient);
-            setNetworks(createdClient.getNetworksNames());
+            refreshNetworks(createdClient);
             setCurrentNetwork(createdClient.getCurrentNetwork());
 
             await refresh(createdClient);
@@ -105,7 +130,7 @@ const useSdk = () => {
             clientRef.current?.close();
             clientRef.current = null;
         };
-    }, [eventDispatcher, refresh]);
+    }, [eventDispatcher, refresh, refreshNetworks]);
 
     const requireClient = useCallback((): Client => {
         if (!clientRef.current) {
@@ -244,6 +269,39 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const addNetwork = useCallback(
+        (name: NetworkName, config: INetworkConfig): void => {
+            requireClient().addNetwork(name, config);
+
+            refreshNetworks();
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const updateNetwork = useCallback(
+        (name: NetworkName, config: Partial<INetworkConfig>): void => {
+            const currentClient = requireClient();
+
+            currentClient.updateNetwork(name, config);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const removeNetwork = useCallback(
+        (name: NetworkName): void => {
+            const currentClient = requireClient();
+
+            currentClient.removeNetwork(name);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
     const transfer = useCallback(
         (request: ITransferRequest, password: string): Promise<string> =>
             requireClient().transfer(request, password),
@@ -293,8 +351,12 @@ const useSdk = () => {
         unlockedWallets,
         reservationsByWallet,
         networks,
+        networkRecords,
         currentNetwork,
         setNetwork,
+        addNetwork,
+        updateNetwork,
+        removeNetwork,
         generateMnemonic,
         generatePrivateKey,
         createHDWallet,

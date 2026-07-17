@@ -31,8 +31,15 @@ tears the client down on unmount.
 Returned value (`UseSdkValue`):
 
 - State: `client`, `isReady`, `walletsMetadata: IWalletMetadata[]`,
-  `unlockedWallets: Wallet[]`, `reservationsByWallet`, `networks`, `currentNetwork`.
-- Network: `setNetwork(name)`.
+  `unlockedWallets: Wallet[]`, `reservationsByWallet`, `networks`,
+  `networkRecords: IPlaygroundNetwork[]`, `currentNetwork`.
+- Network: `setNetwork(name)`, `addNetwork(name, config)`,
+  `updateNetwork(name, partialConfig)`, `removeNetwork(name)`. `networkRecords`
+  pairs each `NetworkName` with its `INetworkConfig` and `isDefault` flag
+  (`IPlaygroundNetwork = { name, config, isDefault }`) — built from
+  `getNetworksNames()` + `getNetwork(name)` and refreshed after every CRUD call.
+  `updateNetwork`/`removeNetwork` also re-sync `currentNetwork`, since the SDK
+  switches the active network internally without emitting `onNetworkChanged`.
 - Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
 - Wallet lifecycle: `createHDWallet(input, password)`,
   `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
@@ -104,7 +111,8 @@ loader.
   and the `useAppContext()` hook.
 - `meta.tsx` — the `Modals` enum and the `ModalProps` union.
 - `ModalManager.tsx` — maps `Modals` to `PasswordModal`, `TransferModal`,
-  `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`.
+  `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`,
+  `NetworkModal`.
 - `Header/` — brand, `ApplicationNavigation`, and a "CLEAR SDK LS" button that
   calls `sdk.clearPersistence()` and reloads.
 
@@ -112,7 +120,7 @@ loader.
 
 ## Routing (`playground/src/router`)
 
-- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, default `/wallets`).
+- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, `/networks`, default `/wallets`).
 - `routes.ts` — `PAGE_ROUTES` mapping each path to a label and page component.
 - `index.tsx` — `ApplicationNavigation` (NavLinks) and `PersistentPageRoutes`,
   which keep every page mounted and toggle visibility with `hidden` so page state
@@ -144,6 +152,20 @@ network change.
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
   deploy id and block hash, and offers a copy-deploy-id button.
 
+### NetworksPage (`pages/NetworksPage/index.tsx`)
+
+Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
+as cards showing the network name, a `default`/`custom` badge, an `active` badge
+for `sdk.currentNetwork`, and the Validator/Read-only/Indexer URLs. Actions per
+card: **Switch** (disabled for the active network), and — only for `custom`
+(`!isDefault`) networks — **Edit** and **Remove**. A header **Add network** button
+opens the create form. Default networks cannot be edited or removed (the SDK
+`@EnsureNetworkNotDefault` decorator throws; such errors surface via `alert`).
+
+`helpers.ts` builds `NetworksPageHandlers`: `addNetwork`, `editNetwork`,
+`removeNetwork`, `switchNetwork`. They open `NetworkModal` (add/edit) or confirm
+removal and call the matching `useSdk` methods through `withLoader`.
+
 ---
 
 ## Components
@@ -168,7 +190,28 @@ interface IAccountCardProps {
 ### NetworkSelector (`components/NetworkSelector/index.tsx`)
 
 Renders a button per `sdk.networks`; switching calls `sdk.setNetwork(name)`. The
-active network is disabled.
+active network is disabled. (`sdk.networks` comes from `getNetworksNames()`, which
+returns the live `Map` keys — including any custom networks added at runtime.)
+
+### NetworkModal (`components/NetworkModal/index.tsx`)
+
+Add or edit a network. Collects `name` (read-only in `edit` mode, since the name
+is the record key and is not renamed by the SDK) and the Validator/Read-only/
+Indexer URLs. Only `name` is required locally; empty URLs are allowed (matching
+the placeholder default networks). On submit it emits an `INetworkModalPayload`.
+
+```ts
+interface INetworkModalPayload { name: NetworkName; config: INetworkConfig }
+
+interface INetworkModalProps {
+    mode: "add" | "edit";
+    title?: string;
+    initialName?: string;
+    initialConfig?: INetworkConfig;
+    onSubmit: (payload: INetworkModalPayload) => void;
+    onClose?: () => void;
+}
+```
 
 ### ReservationStatus (`components/ReservationStatus/index.tsx`)
 

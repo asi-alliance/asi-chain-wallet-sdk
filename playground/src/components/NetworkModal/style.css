@@ -1,0 +1,109 @@
+.network-modal__overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.network-modal__content {
+	background: #fff;
+	border-radius: 12px;
+	box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+	padding: 32px 28px 24px 28px;
+	min-width: 360px;
+	max-width: 95vw;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.network-modal__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+.network-modal__title {
+	font-size: 1.3rem;
+	font-weight: 600;
+	margin: 0;
+}
+
+.network-modal__close {
+	background: none;
+	border: none;
+	font-size: 1.5rem;
+	cursor: pointer;
+	color: #888;
+	transition: color 0.2s;
+}
+
+.network-modal__close:hover {
+	color: #d00;
+}
+
+.network-modal__form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.network-modal__row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.network-modal__row input[readonly] {
+	background: #f3f3f3;
+	color: #666;
+	cursor: not-allowed;
+}
+
+.network-modal__error {
+	color: #d00;
+	background: #ffeaea;
+	border-radius: 5px;
+	padding: 7px 12px;
+	font-size: 0.98em;
+	margin-top: 2px;
+}
+
+.network-modal__actions {
+	display: flex;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.network-modal__button {
+	background: #007bff;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 8px 18px;
+	font-size: 1em;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.network-modal__button:hover {
+	background: #0056b3;
+}
+
+.network-modal__button--secondary {
+	background: #f3f3f3;
+	color: #333;
+	border: 1px solid #ccc;
+}
+
+.network-modal__button--secondary:hover {
+	background: #e5e5e5;
+}
