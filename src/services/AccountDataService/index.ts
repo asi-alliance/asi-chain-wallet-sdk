@@ -14,8 +14,9 @@ export default class AccountDataService {
 
     public async getTransactionHistory(
         address: string,
-        networkName?: NetworkName,
+        publicKey: string,
         pagination: Pagination = {},
+        networkName?: NetworkName,
     ): Promise<Transaction[]> {
         try {
             const currentNetwork: NetworkName =
@@ -24,7 +25,7 @@ export default class AccountDataService {
 
             const response = await this.apiClientManager
                 .getIndexerClient()
-                .getTransactionHistory(address, pagination);
+                .getTransactionHistory(address, publicKey, pagination);
 
             return GraphqlParser.mapTransactionHistory(
                 response,

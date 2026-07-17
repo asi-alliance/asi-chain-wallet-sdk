@@ -25,27 +25,48 @@ export interface RawTransfer {
 }
 
 const TRANSACTION_HISTORY_QUERY = `
-  query GetTransactionHistory($address: String!, $offset: Int!, $limit: Int) {
-    transfers(
-      where: {
-        _or: [
-          {from_address: {_eq: $address}},
-          {to_address: {_eq: $address}}
-        ]
-      },
-      order_by: {block_number: desc},
-      offset: $offset,
-      limit: $limit
-    ) {
-      deploy_id
-      block_number
-      from_address
-      to_address
-      amount_asi
-      timestamp
-      from_public_key
+query GetTransactionHistory(
+  $address: String!
+  $publicKey: String!
+  $offset: Int!
+  $limit: Int
+) {
+  transfers(
+    where: {
+      _or: [
+        { from_address: { _eq: $address } }
+        { to_address: { _eq: $address } }
+      ]
+    }
+    order_by: { block_number: desc }
+    offset: $offset
+    limit: $limit
+  ) {
+    deploy_id
+    block_number
+    from_address
+    to_address
+    amount_asi
+    timestamp
+    from_public_key
+  }
+
+  deployments(
+    where: { deployer: { _eq: $publicKey } }
+    order_by: { block_number: desc }
+    offset: $offset
+    limit: $limit
+  ) {
+    deploy_id
+    block_number
+    deployer
+    timestamp
+
+    block {
+      block_hash
     }
   }
+}
 `;
 
 /**
@@ -62,6 +83,7 @@ export class GraphqlParser {
 
     public static createTransactionHistoryRequest(
         address: string,
+        publicKey: string,
         pagination: Pagination = {},
     ): {
         query: string;
@@ -69,6 +91,7 @@ export class GraphqlParser {
     } {
         const variables: Record<string, number | string | undefined> = {
             address: address.trim(),
+            publicKey,
             offset: pagination.offset ?? 0,
         };
 

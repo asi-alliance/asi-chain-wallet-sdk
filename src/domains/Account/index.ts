@@ -1,3 +1,4 @@
+import { encodeBase16 } from "./../../utils/codec/index";
 import Asset, { Assets, DEFAULT_ASSET } from "@domains/Asset";
 import SecretsProvider, {
     IHDSecret,
@@ -180,8 +181,9 @@ class Account {
     ): Promise<Transaction[]> {
         return ApiServiceRegistry.getInstance().accountData.getTransactionHistory(
             this.address,
-            networkName,
+            encodeBase16(this.publicKey),
             pagination,
+            networkName,
         );
     }
 }
