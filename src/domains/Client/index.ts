@@ -1,7 +1,4 @@
-import {
-    ASI_WALLET_KEYFILE,
-    NATIVE_TOKEN_DECIMALS_AMOUNT,
-} from "@config/index";
+import { ExportFormat, NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import {
     INetworkConfig,
     INetworkRecord,
@@ -28,6 +25,7 @@ import { ITransactionReservation, Transaction } from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
+import ExportService from "@services/ExportService";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
@@ -341,27 +339,18 @@ export default class Client {
             accountId,
         );
 
-        return JSON.stringify(
-            {
-                version: 1,
-                type: ASI_WALLET_KEYFILE,
-                address: exportedAccount.getAddress(),
-                encryptedPrivateKey: targetWallet
-                    .getSigner()
-                    .getEncryptedSecret(),
-                timestamp: new Date().toISOString(),
-            },
-            null,
-            2,
-        );
+        return ExportService.exportAccountKeyfile({
+            address: exportedAccount.getAddress(),
+            encryptedPrivateKey: targetWallet.getSigner().getEncryptedSecret(),
+        });
     }
 
     public async getExportedTransactionsData(
         walletId: string,
         accountId: string,
-        format: "json" | "csv" = "json",
+        format: ExportFormat = ExportFormat.JSON,
         networkId?: string,
-    ) {
+    ): Promise<string> {
         const currentAccount: Account = this.walletManager.getAccount(
             walletId,
             accountId,
@@ -370,46 +359,7 @@ export default class Client {
         const transactions: Transaction[] =
             await currentAccount.getTransactionsHistory(networkId);
 
-        if (format === "json") {
-            return JSON.stringify(transactions, null, 2);
-        }
-
-        const headers: string[] = [
-            "Date",
-            "Time",
-            "Type",
-            "Status",
-            "From",
-            "To",
-            "Amount",
-            "Gas Cost",
-            "Deploy ID",
-            "Block Hash",
-            "Network ID",
-            "Note",
-        ];
-
-        const rows = transactions.map((tx: Transaction) => {
-            const date = new Date(tx.timestamp);
-            return [
-                date.toLocaleDateString(),
-                date.toLocaleTimeString(),
-                tx.type,
-                tx.status,
-                tx.from,
-                tx.to || "",
-                tx.amount || "",
-                tx.gasCost || "",
-                tx.deployId || "",
-                tx.blockHash || "",
-                tx.networkId,
-                tx.note || "",
-            ]
-                .map((val) => `"${val}"`)
-                .join(",");
-        });
-
-        return [headers.join(","), ...rows].join("\n");
+        return ExportService.exportTransactions(transactions, format);
     }
 
     public setActiveAccount(walletId: string, accountId: string): void {

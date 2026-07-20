@@ -7,6 +7,30 @@ export const DEFAULT_NODE_STORAGE_DIR: string = "./storage";
 
 export const ASI_WALLET_KEYFILE: string = "asi-wallet-keyfile";
 
+export const ASI_WALLET_KEYFILE_VERSION: number = 1;
+
+export const ExportFormat = {
+    JSON: "json",
+    CSV: "csv",
+} as const;
+
+export type ExportFormat = (typeof ExportFormat)[keyof typeof ExportFormat];
+
+export const TRANSACTIONS_CSV_HEADERS: string[] = [
+    "Date",
+    "Time",
+    "Type",
+    "Status",
+    "From",
+    "To",
+    "Amount",
+    "Gas Cost",
+    "Deploy ID",
+    "Block Hash",
+    "Network ID",
+    "Note",
+];
+
 export const GasFee = {
     MIN: 170000n,
     MAX: 250000n,

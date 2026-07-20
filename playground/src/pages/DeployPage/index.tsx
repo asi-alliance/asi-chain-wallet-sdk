@@ -219,104 +219,121 @@ const DeployPage = (): ReactElement => {
     return (
         <main className="deploy-page">
             <NetworkSelector />
-            <h1>Deploy</h1>
 
-            {accountEntries.length === 0 ? (
-                <p>
-                    Unlock a wallet on the Wallets page to deploy a Rholang
-                    contract.
-                </p>
-            ) : (
-                <section className="section">
-                    <SelectFilter
-                        id="deploy-account"
-                        label="Account:"
-                        value={selectedAccountId}
-                        options={accountOptions}
-                        onChange={setSelectedAccountId}
-                    />
-                </section>
-            )}
+            <section className="deploy-page__panel">
+                <div className="deploy-page__header">
+                    <h2 className="deploy-page__title">Deploy</h2>
+                    {currentNetwork && (
+                        <span className="deploy-page__network">
+                            {currentNetwork.name}
+                        </span>
+                    )}
+                </div>
 
-            <section className="section deploy-page__field">
-                <label htmlFor="deploy-phlo-limit">Phlo limit:</label>
-                <input
-                    id="deploy-phlo-limit"
-                    type="number"
-                    value={phloLimit}
-                    onChange={(event) => setPhloLimit(event.target.value)}
-                />
-            </section>
-
-            <section className="section deploy-page__field">
-                <label htmlFor="deploy-code">Rholang code:</label>
-                <textarea
-                    id="deploy-code"
-                    className="deploy-page__editor"
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
-                    placeholder="Enter your Rholang code here..."
-                    disabled={isLoading}
-                />
-            </section>
-
-            <div className="deploy-page__actions">
-                <button
-                    type="button"
-                    onClick={handleDeployClick}
-                    disabled={isLoading || !code.trim() || !selectedEntry}
-                >
-                    Deploy
-                </button>
-                <button
-                    type="button"
-                    onClick={() => void handleExplore()}
-                    disabled={isLoading || !code.trim()}
-                >
-                    Explore
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setCode(EXAMPLE_CONTRACT)}
-                    disabled={isLoading}
-                >
-                    Load example
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setCode("")}
-                    disabled={isLoading}
-                >
-                    Clear
-                </button>
-            </div>
-
-            {isLoading && <p>Working...</p>}
-
-            {error && <div className="deploy-page__error">{error}</div>}
-
-            {deployId && (
-                <div className="deploy-page__success">
-                    <div>Deploy submitted successfully!</div>
-                    <div className="deploy-page__deploy-id">
-                        Deploy ID: {deployId}
+                {accountEntries.length === 0 ? (
+                    <p className="deploy-page__empty">
+                        Unlock a wallet on the Wallets page to deploy a Rholang
+                        contract.
+                    </p>
+                ) : (
+                    <div className="deploy-page__controls">
+                        <div className="deploy-page__field">
+                            <SelectFilter
+                                id="deploy-account"
+                                label="Account:"
+                                value={selectedAccountId}
+                                options={accountOptions}
+                                onChange={setSelectedAccountId}
+                            />
+                        </div>
+                        <div className="deploy-page__field">
+                            <label htmlFor="deploy-phlo-limit">
+                                Phlo limit:
+                            </label>
+                            <input
+                                id="deploy-phlo-limit"
+                                type="number"
+                                value={phloLimit}
+                                onChange={(event) =>
+                                    setPhloLimit(event.target.value)
+                                }
+                            />
+                        </div>
                     </div>
-                    {status && <div>Status: {status}</div>}
-                </div>
-            )}
+                )}
+            </section>
 
-            {result !== null && (
-                <div className="deploy-page__result">
-                    <h4>Explore result</h4>
-                    <pre>{stringify(result)}</pre>
+            <section className="deploy-page__panel">
+                <div className="deploy-page__field">
+                    <label htmlFor="deploy-code">Rholang code:</label>
+                    <textarea
+                        id="deploy-code"
+                        className="deploy-page__editor"
+                        value={code}
+                        onChange={(event) => setCode(event.target.value)}
+                        placeholder="Enter your Rholang code here..."
+                        disabled={isLoading}
+                    />
                 </div>
-            )}
 
-            {currentNetwork && (
-                <p className="deploy-page__network-hint">
-                    Network: {currentNetwork.name}
-                </p>
-            )}
+                <div className="deploy-page__actions">
+                    <button
+                        type="button"
+                        className="deploy-page__action"
+                        onClick={handleDeployClick}
+                        disabled={isLoading || !code.trim() || !selectedEntry}
+                    >
+                        Deploy
+                    </button>
+                    <button
+                        type="button"
+                        className="deploy-page__action deploy-page__action--ghost"
+                        onClick={() => void handleExplore()}
+                        disabled={isLoading || !code.trim()}
+                    >
+                        Explore
+                    </button>
+                    <button
+                        type="button"
+                        className="deploy-page__action deploy-page__action--ghost"
+                        onClick={() => setCode(EXAMPLE_CONTRACT)}
+                        disabled={isLoading}
+                    >
+                        Load example
+                    </button>
+                    <button
+                        type="button"
+                        className="deploy-page__action deploy-page__action--ghost"
+                        onClick={() => setCode("")}
+                        disabled={isLoading}
+                    >
+                        Clear
+                    </button>
+                </div>
+
+                {isLoading && (
+                    <p className="deploy-page__working">Working...</p>
+                )}
+
+                {error && <div className="deploy-page__error">{error}</div>}
+
+                {deployId && (
+                    <div className="deploy-page__success">
+                        <div>Deploy submitted successfully!</div>
+                        <div className="deploy-page__deploy-id">
+                            Deploy ID: {deployId}
+                        </div>
+                        {status && <div>Status: {status}</div>}
+                    </div>
+                )}
+
+                {result !== null && (
+                    <div className="deploy-page__result">
+                        <h4>Explore result</h4>
+                        <pre>{stringify(result)}</pre>
+                    </div>
+                )}
+            </section>
         </main>
     );
 };

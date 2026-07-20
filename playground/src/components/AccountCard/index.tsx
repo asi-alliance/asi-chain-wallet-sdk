@@ -7,6 +7,7 @@ import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { formatAmount } from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
+import { downloadTextFile } from "@utils/functions";
 
 export interface IAccountCardProps {
     sdk: UseSdkValue;
@@ -100,6 +101,21 @@ const AccountCard = ({
             },
         });
 
+    const exportAccount = () => {
+        try {
+            const keyfile = sdk.getExportedAccountData(walletId, accountId);
+
+            downloadTextFile(
+                `asi-keyfile-${account.getName()}.json`,
+                keyfile,
+                "application/json",
+            );
+        } catch (error) {
+            console.error(error);
+            alert((error as Error)?.message ?? "Export failed");
+        }
+    };
+
     const copyAddress = async () => {
         try {
             await navigator.clipboard.writeText(address);
@@ -177,6 +193,12 @@ const AccountCard = ({
                         disabled={isCopied}
                     >
                         {isCopied ? "Copied" : "Copy address"}
+                    </button>
+                    <button
+                        className="account-card-button"
+                        onClick={exportAccount}
+                    >
+                        Export
                     </button>
                 </div>
             </div>

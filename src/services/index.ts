@@ -14,6 +14,8 @@ export * from "./DeployStatusPoller";
 export { default as DeployStatusPoller } from "./DeployStatusPoller";
 export * from "./DisposableItemManager";
 export { default as DisposableItemManager } from "./DisposableItemManager";
+export * from "./ExportService";
+export { default as ExportService } from "./ExportService";
 export * from "./ItemManager";
 export { default as ItemManager } from "./ItemManager";
 export * from "./ReservationAdapterManager";

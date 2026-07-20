@@ -327,6 +327,12 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const getExportedAccountData = useCallback(
+        (walletId: string, accountId: string): string =>
+            requireClient().getExportedAccountData(walletId, accountId),
+        [requireClient],
+    );
+
     const getBalance = useCallback(
         (address: string): Promise<bigint> =>
             requireClient().getBalance(address as never),
@@ -389,6 +395,7 @@ const useSdk = () => {
         deploy,
         exploreDeploy,
         watchDeploy,
+        getExportedAccountData,
         getBalance,
         getAvailableBalance,
         getReservations,
