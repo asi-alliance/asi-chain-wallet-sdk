@@ -1,5 +1,6 @@
-import { IStorageFabricOptions, storageFabric } from "@fabrics/Storage";
-import { ITableRecord, ITableService } from "@domains/TableService";
+import { IStorageFabricOptions } from "@fabrics/Storage";
+import { BaseStorageRepository } from "@domains/BaseStorageRepository";
+import { ITableRecord } from "@domains/TableService";
 import { EncryptedData } from "@services/Crypto";
 import { WalletTypes } from "@domains/Signer";
 
@@ -32,14 +33,11 @@ export interface IAccountStorageRecord extends ITableRecord {
     updatedAt?: number;
 }
 
-export class AccountsStorageRepository {
+export class AccountsStorageRepository extends BaseStorageRepository<IAccountStorageRecord> {
     private static instance: AccountsStorageRepository;
-    private storageInterface: ITableService<ITableRecord>;
-    private isInitialized: boolean = false;
-    private initPromise: Promise<void> | null = null;
 
     public constructor(options?: IStorageFabricOptions) {
-        this.storageInterface = storageFabric(options);
+        super(ACCOUNTS_DATA_KEY, options);
     }
 
     public static getInstance(
@@ -53,60 +51,13 @@ export class AccountsStorageRepository {
         return AccountsStorageRepository.instance;
     }
 
-    public async initialize(): Promise<void> {
-        if (this.isInitialized) {
-            return;
-        }
-
-        if (this.initPromise) {
-            return this.initPromise;
-        }
-
-        this.initPromise = this.doInitialize();
-
-        try {
-            await this.initPromise;
-        } finally {
-            this.initPromise = null;
-        }
-    }
-
-    private async doInitialize(): Promise<void> {
-        try {
-            const walletsTableExists =
-                await this.storageInterface.tableExists(ACCOUNTS_DATA_KEY);
-
-            if (!walletsTableExists) {
-                await this.storageInterface.createTable(
-                    ACCOUNTS_DATA_KEY,
-                    "id",
-                );
-            }
-
-            this.isInitialized = true;
-        } catch (error) {
-            throw error;
-        }
-    }
-
-    private async ensureInitialized(): Promise<void> {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
-    }
-
-    public getRawDB(): ITableService<ITableRecord> {
-        return this.storageInterface;
-    }
-
     public async saveAccount(
         accountId: string,
         signerId: string,
         name: string,
         index: number | null,
     ): Promise<void> {
-        await this.ensureInitialized();
-        await this.storageInterface.insert(ACCOUNTS_DATA_KEY, {
+        await this.insertRecord({
             id: accountId,
             signerId,
             name,
@@ -118,88 +69,38 @@ export class AccountsStorageRepository {
     public async saveAccounts(
         accounts: IAccountStorageRecord[],
     ): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.insertMany(ACCOUNTS_DATA_KEY, accounts);
+        await this.insertManyRecords(accounts);
     }
 
     public async getAccount(id: string): Promise<IAccountStorageRecord | null> {
-        await this.ensureInitialized();
-        return this.storageInterface.getById(
-            ACCOUNTS_DATA_KEY,
-            id,
-        ) as Promise<IAccountStorageRecord | null>;
+        return this.getRecordById(id);
     }
 
     public async getAllAccounts(): Promise<IAccountStorageRecord[]> {
-        await this.ensureInitialized();
-        return this.storageInterface.getAll(ACCOUNTS_DATA_KEY) as Promise<
-            IAccountStorageRecord[]
-        >;
+        return this.getAllRecords();
     }
 
     public async updateAccount(
         accountId: string,
         updates: Partial<IAccountStorageRecord>,
     ): Promise<void> {
-        await this.ensureInitialized();
-        await this.storageInterface.update(
-            ACCOUNTS_DATA_KEY,
-            accountId,
-            updates,
-        );
+        await this.updateRecord(accountId, updates);
     }
 
     public async deleteAccount(accountId: string): Promise<void> {
-        await this.ensureInitialized();
-        await this.storageInterface.delete(ACCOUNTS_DATA_KEY, accountId);
+        await this.deleteRecord(accountId);
     }
 
     public async deleteMultipleAccounts(accountIds: string[]): Promise<void> {
-        await this.ensureInitialized();
-        await this.storageInterface.deleteMany(ACCOUNTS_DATA_KEY, accountIds);
+        await this.deleteManyRecords(accountIds);
     }
 
     public async hasAccount(accountId: string): Promise<boolean> {
-        await this.ensureInitialized();
-        const account = await this.getAccount(accountId);
-        return account !== null;
+        return this.hasRecord(accountId);
     }
 
     public async getAccountsCount(): Promise<number> {
-        await this.ensureInitialized();
-        const accounts = await this.getAllAccounts();
-        return accounts.length;
-    }
-
-    public async clearAllData(): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.clearTable(ACCOUNTS_DATA_KEY);
-    }
-
-    public async clearTable(tableName: string): Promise<void> {
-        await this.ensureInitialized();
-
-        if (![ACCOUNTS_DATA_KEY].includes(tableName)) {
-            throw new Error(`Invalid table name: ${tableName}`);
-        }
-
-        await this.storageInterface.clearTable(tableName);
-    }
-
-    public isReady(): boolean {
-        return this.isInitialized;
-    }
-
-    public async getTablesList(): Promise<string[]> {
-        await this.ensureInitialized();
-        return [ACCOUNTS_DATA_KEY];
-    }
-
-    public close(): void {
-        this.storageInterface.close();
-        this.isInitialized = false;
+        return this.getRecordsCount();
     }
 }
 

@@ -1,6 +1,7 @@
-import { IStorageFabricOptions, storageFabric } from "@fabrics/Storage";
+import { IStorageFabricOptions } from "@fabrics/Storage";
+import { BaseStorageRepository } from "@domains/BaseStorageRepository";
 import { EncryptedData } from "@services/Crypto";
-import { ITableRecord, ITableService } from "@domains/TableService";
+import { ITableRecord } from "@domains/TableService";
 import { WalletTypes } from "@domains/Signer";
 
 const SIGNERS_DATA_KEY: string = "SIGNERS";
@@ -22,14 +23,11 @@ export interface ISignerStorageRecord extends ITableRecord {
     updatedAt?: number;
 }
 
-export class SignersStorageRepository {
+export class SignersStorageRepository extends BaseStorageRepository<ISignerStorageRecord> {
     private static instance: SignersStorageRepository;
-    private storageInterface: ITableService<ITableRecord>;
-    private isInitialized: boolean = false;
-    private initPromise: Promise<void> | null = null;
 
     public constructor(options?: IStorageFabricOptions) {
-        this.storageInterface = storageFabric(options);
+        super(SIGNERS_DATA_KEY, options);
     }
 
     public static getInstance(
@@ -43,57 +41,12 @@ export class SignersStorageRepository {
         return SignersStorageRepository.instance;
     }
 
-    public async initialize(): Promise<void> {
-        if (this.isInitialized) {
-            return;
-        }
-
-        if (this.initPromise) {
-            return this.initPromise;
-        }
-
-        this.initPromise = this.doInitialize();
-
-        try {
-            await this.initPromise;
-        } finally {
-            this.initPromise = null;
-        }
-    }
-
-    private async doInitialize(): Promise<void> {
-        try {
-            const signersTableExists =
-                await this.storageInterface.tableExists(SIGNERS_DATA_KEY);
-
-            if (!signersTableExists) {
-                await this.storageInterface.createTable(SIGNERS_DATA_KEY, "id");
-            }
-
-            this.isInitialized = true;
-        } catch (error) {
-            throw error;
-        }
-    }
-
-    private async ensureInitialized(): Promise<void> {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
-    }
-
-    public getRawDB(): ITableService<ITableRecord> {
-        return this.storageInterface;
-    }
-
     public async saveSigner(
         signerId: string,
         type: WalletTypes,
         encryptedData: EncryptedData,
     ): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.insert(SIGNERS_DATA_KEY, {
+        await this.insertRecord({
             id: signerId,
             type,
             encryptedData,
@@ -102,88 +55,34 @@ export class SignersStorageRepository {
     }
 
     public async getSigner(id: string): Promise<ISignerStorageRecord | null> {
-        await this.ensureInitialized();
-
-        return this.storageInterface.getById(
-            SIGNERS_DATA_KEY,
-            id,
-        ) as Promise<ISignerStorageRecord | null>;
+        return this.getRecordById(id);
     }
 
     public async getAllSigners(): Promise<ISignerStorageRecord[]> {
-        await this.ensureInitialized();
-
-        return this.storageInterface.getAll(SIGNERS_DATA_KEY) as Promise<
-            ISignerStorageRecord[]
-        >;
+        return this.getAllRecords();
     }
 
     public async updateSigner(
         signerId: string,
         updates: Partial<ISignerStorageRecord>,
     ): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.update(SIGNERS_DATA_KEY, signerId, updates);
+        await this.updateRecord(signerId, updates);
     }
 
     public async deleteSigner(signerId: string): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.delete(SIGNERS_DATA_KEY, signerId);
+        await this.deleteRecord(signerId);
     }
 
     public async deleteMultipleSigners(signerIds: string[]): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.deleteMany(SIGNERS_DATA_KEY, signerIds);
+        await this.deleteManyRecords(signerIds);
     }
 
     public async hasSigner(signerId: string): Promise<boolean> {
-        await this.ensureInitialized();
-
-        const signer = await this.getSigner(signerId);
-
-        return signer !== null;
+        return this.hasRecord(signerId);
     }
 
     public async getSignersCount(): Promise<number> {
-        await this.ensureInitialized();
-
-        const signers = await this.getAllSigners();
-
-        return signers.length;
-    }
-
-    public async clearAllData(): Promise<void> {
-        await this.ensureInitialized();
-
-        await this.storageInterface.clearTable(SIGNERS_DATA_KEY);
-    }
-
-    public async clearTable(tableName: string): Promise<void> {
-        await this.ensureInitialized();
-
-        if (tableName !== SIGNERS_DATA_KEY) {
-            throw new Error(`Invalid table name: ${tableName}`);
-        }
-
-        await this.storageInterface.clearTable(tableName);
-    }
-
-    public isReady(): boolean {
-        return this.isInitialized;
-    }
-
-    public async getTablesList(): Promise<string[]> {
-        await this.ensureInitialized();
-
-        return [SIGNERS_DATA_KEY];
-    }
-
-    public close(): void {
-        this.storageInterface.close();
-        this.isInitialized = false;
+        return this.getRecordsCount();
     }
 }
 
