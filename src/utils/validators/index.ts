@@ -128,3 +128,38 @@ export const validateAddress = (address: string): AddressValidationResult => {
 export const isAddress = (address: string): address is Address => {
     return validateAddress(address).isValid;
 };
+
+const ALLOWED_URL_PROTOCOLS: readonly string[] = ["http:", "https:"];
+
+export const validateUrl = (
+    url: string,
+): { isValid: boolean; error?: string } => {
+    const trimmed: string = url?.trim() ?? "";
+
+    if (trimmed.length === 0) {
+        return { isValid: false, error: "URL is required" };
+    }
+
+    let parsed: URL;
+
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        return { isValid: false, error: "URL is not valid" };
+    }
+
+    if (!ALLOWED_URL_PROTOCOLS.includes(parsed.protocol)) {
+        return {
+            isValid: false,
+            error: "URL must use http or https protocol",
+        };
+    }
+
+    if (parsed.hostname.length === 0) {
+        return { isValid: false, error: "URL must contain a host" };
+    }
+
+    return { isValid: true };
+};
+
+export const isValidUrl = (url: string): boolean => validateUrl(url).isValid;

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactElement } from "react";
-import { INetworkConfig, NetworkName } from "asi-wallet-sdk";
+import { INetworkConfig, NetworkName, validateUrl } from "asi-wallet-sdk";
 import "./style.css";
 
 export interface INetworkModalPayload {
@@ -41,20 +41,28 @@ const NetworkModal = ({
             return;
         }
 
-        onSubmit({
-            name,
-            config: {
-                ValidatorURL: (
-                    (formData.get("validatorUrl") as string) ?? ""
-                ).trim(),
-                ReadOnlyURL: (
-                    (formData.get("readOnlyUrl") as string) ?? ""
-                ).trim(),
-                IndexerURL: (
-                    (formData.get("indexerUrl") as string) ?? ""
-                ).trim(),
-            },
-        });
+        const config: INetworkConfig = {
+            ValidatorURL: ((formData.get("validatorUrl") as string) ?? "").trim(),
+            ReadOnlyURL: ((formData.get("readOnlyUrl") as string) ?? "").trim(),
+            IndexerURL: ((formData.get("indexerUrl") as string) ?? "").trim(),
+        };
+
+        const urlFields: { label: string; value: string }[] = [
+            { label: "Validator URL", value: config.ValidatorURL },
+            { label: "Read-only URL", value: config.ReadOnlyURL },
+            { label: "Indexer URL", value: config.IndexerURL },
+        ];
+
+        for (const { label, value } of urlFields) {
+            const { isValid, error } = validateUrl(value);
+
+            if (!isValid) {
+                setLocalError(`${label}: ${error}`);
+                return;
+            }
+        }
+
+        onSubmit({ name, config });
     };
 
     return (

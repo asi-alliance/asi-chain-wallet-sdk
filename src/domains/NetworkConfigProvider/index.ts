@@ -6,7 +6,7 @@ import {
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
-import { generateRandomId } from "@utils/index";
+import { generateRandomId, validateUrl } from "@utils/index";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -16,7 +16,30 @@ import {
 export default class NetworkConfigProvider {
     private networksRecords: Map<NetworkId, INetworkRecord> | null = null;
 
+    private validateConfigUrls(
+        config: Partial<INetworkConfig>,
+        { allowEmpty }: { allowEmpty: boolean },
+    ): void {
+        (Object.entries(config) as [keyof INetworkConfig, string][]).forEach(
+            ([field, url]) => {
+                if (allowEmpty && (url ?? "").trim().length === 0) {
+                    return;
+                }
+
+                const { isValid, error } = validateUrl(url);
+
+                if (!isValid) {
+                    throw new Error(`Invalid ${field}: ${error}`);
+                }
+            },
+        );
+    }
+
     public initialize(config: TNetworksConfig): void {
+        Object.values(config).forEach((networkConfig: INetworkConfig) => {
+            this.validateConfigUrls(networkConfig, { allowEmpty: true });
+        });
+
         this.networksRecords = new Map<NetworkId, INetworkRecord>(
             Object.entries(config).map(([name, networkConfig]) => [
                 name,
@@ -57,7 +80,12 @@ export default class NetworkConfigProvider {
     }
 
     @EnsureNetworkConfigProviderReady
-    public add(name: NetworkName, networkConfig: INetworkConfig): INetworkRecord {
+    public add(
+        name: NetworkName,
+        networkConfig: INetworkConfig,
+    ): INetworkRecord {
+        this.validateConfigUrls(networkConfig, { allowEmpty: false });
+
         const record: INetworkRecord = {
             id: generateRandomId(),
             name,
@@ -85,6 +113,10 @@ export default class NetworkConfigProvider {
     @EnsureNetworkExist
     @EnsureNetworkNotDefault
     public update(id: NetworkId, update: INetworkUpdate): void {
+        if (update.config) {
+            this.validateConfigUrls(update.config, { allowEmpty: false });
+        }
+
         const record: INetworkRecord = this.networksRecords!.get(id)!;
 
         if (update.name !== undefined) {
