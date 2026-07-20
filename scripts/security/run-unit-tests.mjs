@@ -5,13 +5,7 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
-const EXCLUDE_PATTERNS = [
-    // "wallet-create.test.ts",
-    "wallet-deploy.test.ts",
-    // "wallet-derivation.test.ts",
-    "wallet-storage.test.ts",
-    "wallet-transaction-reservations.test.ts",
-];
+const EXCLUDE_PATTERNS = [];
 
 //wallet-transaction-reservations.test.ts
 
