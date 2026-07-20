@@ -147,6 +147,7 @@ ApiClientManager.getInstance().initialize(
         MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
         TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
     },
+    [],
     "DevNet",
 );
 

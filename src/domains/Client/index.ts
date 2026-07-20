@@ -12,6 +12,11 @@ import StorageManager from "@services/StorageManager";
 import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import {
+    IDeployWatchCallbacks,
+    IDeployWatchHandle,
+    IDeployWatchOptions,
+} from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -54,6 +59,13 @@ export interface ITransferRequest {
     accountId: string;
     to: Address;
     amount: bigint;
+}
+
+export interface IDeployRequest {
+    walletId: string;
+    accountId: string;
+    term: string;
+    phloLimit?: number;
 }
 
 export interface IClientEventDispatcher {
@@ -412,6 +424,47 @@ export default class Client {
         );
 
         return deployId;
+    }
+
+    public async deploy(
+        { walletId, accountId, term, phloLimit }: IDeployRequest,
+        password: string,
+    ): Promise<string> {
+        const wallet: Wallet = this.getUnlockedWallet(walletId);
+
+        wallet.setActiveAccount(accountId);
+
+        const account: Account = this.getAccount(wallet, accountId);
+
+        const passwordProvider: SecretsProvider =
+            this.createPasswordProvider(password);
+
+        return ApiServiceRegistry.getInstance().transactions.deploy({
+            walletType: wallet.getType(),
+            account,
+            signer: wallet.getSigner(),
+            term,
+            phloLimit,
+            passwordProvider,
+        });
+    }
+
+    public exploreDeploy(rholang: string): Promise<unknown> {
+        return ApiServiceRegistry.getInstance().deploy.exploreDeployData(
+            rholang,
+        );
+    }
+
+    public watchDeploy(
+        deployId: string,
+        callbacks?: IDeployWatchCallbacks,
+        options?: IDeployWatchOptions,
+    ): IDeployWatchHandle {
+        return ApiServiceRegistry.getInstance().poller.watch(
+            deployId,
+            callbacks,
+            options,
+        );
     }
 
     public toDisplayAmount(atomicAmount: bigint): string {

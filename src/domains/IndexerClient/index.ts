@@ -12,7 +12,11 @@ export default class IndexerClient extends BaseGraphQLClient {
         pagination: Pagination = {},
     ): Promise<TransactionHistoryQueryData> {
         const { query, variables } =
-            GraphqlParser.createTransactionHistoryRequest(address, publicKey, pagination);
+            GraphqlParser.createTransactionHistoryRequest(
+                address,
+                publicKey,
+                pagination,
+            );
 
         return this.query<TransactionHistoryQueryData>(query, variables);
     }

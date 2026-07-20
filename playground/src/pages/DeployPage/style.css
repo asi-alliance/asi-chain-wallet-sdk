@@ -1,0 +1,76 @@
+.deploy-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+}
+
+.deploy-page .section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.deploy-page__field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.deploy-page__editor {
+    width: 100%;
+    min-height: 260px;
+    padding: 12px;
+    font-family: "Fira Code", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.deploy-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.deploy-page__error {
+    padding: 12px;
+    border-radius: 8px;
+    background: #c0392b;
+    color: #fff;
+    word-break: break-word;
+}
+
+.deploy-page__success {
+    padding: 12px;
+    border-radius: 8px;
+    background: #1e824c;
+    color: #fff;
+    word-break: break-all;
+}
+
+.deploy-page__deploy-id {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.deploy-page__result {
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.deploy-page__result pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+}
+
+.deploy-page__network-hint {
+    font-size: 12px;
+    opacity: 0.7;
+}

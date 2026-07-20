@@ -1,7 +1,10 @@
 import { NetworkId } from "@domains/Network";
 import { Pagination } from "./queryOptions";
 import { Transaction } from "@domains/Transaction";
-import { mapRawTransferToTransaction } from "./mapper";
+import {
+    mapRawDeploymentToTransaction,
+    mapRawTransferToTransaction,
+} from "./mapper";
 
 interface GraphqlEnvelope<TData> {
     data?: TData;
@@ -10,6 +13,7 @@ interface GraphqlEnvelope<TData> {
 
 export interface TransactionHistoryQueryData {
     transfers?: RawTransfer[];
+    deployments?: RawDeployment[];
 }
 
 export interface RawTransfer {
@@ -22,6 +26,16 @@ export interface RawTransfer {
     timestamp?: number | string;
     from_public_key?: string;
     network_name?: string;
+}
+
+export interface RawDeployment {
+    deploy_id: string;
+    block_number?: number | string;
+    deployer?: string;
+    timestamp?: number | string;
+    block?: {
+        block_hash?: string;
+    };
 }
 
 const TRANSACTION_HISTORY_QUERY = `
@@ -110,18 +124,52 @@ export class GraphqlParser {
         address: string,
         networkId: NetworkId,
     ): Transaction[] {
-        if (!data || !data.transfers) {
+        if (!data) {
             return [];
         }
 
-        return data.transfers
+        const transactionsById: Map<string, Transaction> = new Map();
+
+        (data.transfers ?? [])
             .map((transfer: RawTransfer) =>
                 mapRawTransferToTransaction(transfer, {
                     accountAddress: address,
-                    networkId: networkId,
+                    networkId,
                 }),
             )
-            .filter(this.isDefined);
+            .filter(this.isDefined)
+            .forEach((transaction: Transaction) => {
+                transactionsById.set(transaction.id, transaction);
+            });
+
+        (data.deployments ?? [])
+            .map((deployment: RawDeployment) =>
+                mapRawDeploymentToTransaction(deployment, { networkId }),
+            )
+            .filter(this.isDefined)
+            .forEach((deployment: Transaction) => {
+                const existing: Transaction | undefined = transactionsById.get(
+                    deployment.id,
+                );
+
+                if (!existing) {
+                    transactionsById.set(deployment.id, deployment);
+
+                    return;
+                }
+
+                if (!existing.blockHash && deployment.blockHash) {
+                    transactionsById.set(deployment.id, {
+                        ...existing,
+                        blockHash: deployment.blockHash,
+                    });
+                }
+            });
+
+        return Array.from(transactionsById.values()).sort(
+            (first: Transaction, second: Transaction) =>
+                second.timestamp.getTime() - first.timestamp.getTime(),
+        );
     }
 
     public static unwrapGraphqlEnvelope<TData>(

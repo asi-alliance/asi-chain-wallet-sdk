@@ -74,6 +74,14 @@ getReservations(walletId: string): Promise<ITransactionReservation[]>
 transfer(request: ITransferRequest, password: string): Promise<string> // returns deployId
 ```
 
+Raw deploys (arbitrary Rholang, no reservation adapter):
+
+```ts
+deploy(request: IDeployRequest, password: string): Promise<string> // returns deployId
+exploreDeploy(rholang: string): Promise<unknown>                    // read-only, no unlock
+watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle     // poll deploy status
+```
+
 Amount helpers (bound to the native token decimals):
 
 ```ts
@@ -104,7 +112,8 @@ interface IClientEventDispatcher {
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
-`ITransferRequest` (`{ walletId, accountId, to, amount }`).
+`ITransferRequest` (`{ walletId, accountId, to, amount }`),
+`IDeployRequest` (`{ walletId, accountId, term, phloLimit? }`).
 
 ---
 
@@ -198,6 +207,7 @@ getId(): string
 getName(): string
 getIndex(): number | null
 getAddress(): Address
+getPublicKey(): Uint8Array
 listAssets(): Asset[]
 getAsset(id: string): Asset | null
 registerAsset(asset: Asset): void
@@ -208,7 +218,8 @@ getTransactionsHistory(networkName?: NetworkName, pagination?: Pagination): Prom
 ```
 
 `getBalance` and `getTransactionsHistory` read through
-`ApiServiceRegistry.getInstance()`. Associated record shape:
+`ApiServiceRegistry.getInstance()`; the history combines the account's transfers
+and deployments (de-duplicated by deploy id). Associated record shape:
 `IAccountRecord = { id, signerId, name, index }`.
 
 ---

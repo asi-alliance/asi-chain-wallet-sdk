@@ -51,6 +51,10 @@ Returned value (`UseSdkValue`):
   `setActiveAccount(walletId, accountId)`.
 - Transfers & balances: `transfer(request, password)`, `getBalance(address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
+- Raw deploys: `deploy(request, password)` (arbitrary Rholang term via
+  `IDeployRequest = { walletId, accountId, term, phloLimit? }`),
+  `exploreDeploy(rholang)` (read-only, no unlock/password),
+  `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
 - Persistence: `clearPersistence()`.
 
@@ -147,8 +151,9 @@ methods through `withLoader`.
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 
 Lets the user pick an unlocked account (via `SelectFilter`) and lists its
-transactions using `account.getTransactionsHistory()`. Reloads on account or
-network change.
+transactions using `account.getTransactionsHistory()` (transfers plus the
+account's deployments, merged and de-duplicated by deploy id). Reloads on account
+or network change.
 
 - `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
@@ -170,6 +175,17 @@ surface via `alert`).
 `removeNetwork(record)`, `switchNetwork(id)`. They open `NetworkModal` (add/edit)
 or confirm removal and call the matching `useSdk` methods through `withLoader`
 (`updateNetwork(id, { name, config })`).
+
+### DeployPage (`pages/DeployPage/index.tsx`)
+
+Runs arbitrary Rholang against the current network (restores the `Deploy` /
+`DeployLiteModeWidget` flow from the web wallet). Lets the user pick an unlocked
+account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
+example contract), and set a phlo limit. **Deploy** opens `PasswordModal` and calls
+`sdk.deploy({ walletId, accountId, term, phloLimit }, password)`, then tracks
+status with `sdk.watchDeploy(deployId, ...)` (the watch handle is cancelled on
+unmount and before each new run). **Explore** calls `sdk.exploreDeploy(code)` and
+needs no unlock/password. Errors and the explore/deploy result are shown inline.
 
 ---
 

@@ -3,6 +3,10 @@ import {
     Client,
     IClientEventDispatcher,
     ICreatedAccountData,
+    IDeployRequest,
+    IDeployWatchCallbacks,
+    IDeployWatchHandle,
+    IDeployWatchOptions,
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
@@ -301,6 +305,28 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const deploy = useCallback(
+        (request: IDeployRequest, password: string): Promise<string> =>
+            requireClient().deploy(request, password),
+        [requireClient],
+    );
+
+    const exploreDeploy = useCallback(
+        (rholang: string): Promise<unknown> =>
+            requireClient().exploreDeploy(rholang),
+        [requireClient],
+    );
+
+    const watchDeploy = useCallback(
+        (
+            deployId: string,
+            callbacks?: IDeployWatchCallbacks,
+            options?: IDeployWatchOptions,
+        ): IDeployWatchHandle =>
+            requireClient().watchDeploy(deployId, callbacks, options),
+        [requireClient],
+    );
+
     const getBalance = useCallback(
         (address: string): Promise<bigint> =>
             requireClient().getBalance(address as never),
@@ -360,6 +386,9 @@ const useSdk = () => {
         removeAccount,
         setActiveAccount,
         transfer,
+        deploy,
+        exploreDeploy,
+        watchDeploy,
         getBalance,
         getAvailableBalance,
         getReservations,

@@ -3,12 +3,16 @@
  */
 
 import { NetworkId } from "@domains/Network";
-import { RawTransfer } from ".";
+import { RawDeployment, RawTransfer } from ".";
 import { Transaction } from "@domains/Transaction";
 import { normalizeAddress } from "@utils/functions";
 
 type RawTransferMappingContext = {
     accountAddress: string;
+    networkId: NetworkId;
+};
+
+type RawDeploymentMappingContext = {
     networkId: NetworkId;
 };
 
@@ -32,6 +36,29 @@ export function mapRawTransferToTransaction(
         amount: toOptionalString(transfer.amount_asi),
         deployId: transfer.deploy_id,
         blockHash: transfer.block_hash,
+        status: "confirmed",
+        networkId: context.networkId,
+        detectedBy: "auto",
+    };
+}
+
+export function mapRawDeploymentToTransaction(
+    deployment: RawDeployment,
+    context: RawDeploymentMappingContext,
+): Transaction | undefined {
+    const from = deployment.deployer?.trim();
+
+    if (!deployment.deploy_id || !from) {
+        return undefined;
+    }
+
+    return {
+        id: deployment.deploy_id,
+        timestamp: toDate(deployment.timestamp),
+        type: "deploy",
+        from,
+        deployId: deployment.deploy_id,
+        blockHash: deployment.block?.block_hash,
         status: "confirmed",
         networkId: context.networkId,
         detectedBy: "auto",

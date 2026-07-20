@@ -93,6 +93,10 @@ class Account {
         return this.address;
     }
 
+    public getPublicKey(): Uint8Array {
+        return this.publicKey;
+    }
+
     public getAsset(id: Asset["id"]): Asset | null {
         return this.assets.get(id) ?? null;
     }

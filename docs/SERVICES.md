@@ -210,11 +210,11 @@ isValidatorActive(): Promise<boolean>
 
 ### AccountDataService (`src/services/AccountDataService/index.ts`)
 
-Reads and maps transaction history from the indexer. Recoverable network/CORS
-errors are swallowed and return an empty list.
+Reads and maps transaction history (transfers + deployments) from the indexer.
+Recoverable network/CORS errors are swallowed and return an empty list.
 
 ```ts
-getTransactionHistory(address: string, networkName?: NetworkName, pagination?: Pagination): Promise<Transaction[]>
+getTransactionHistory(address: string, publicKey: string, pagination?: Pagination, networkId?: NetworkId): Promise<Transaction[]>
 ```
 
 ### AssetsService (`src/services/AssetsService/index.ts`)
@@ -230,10 +230,11 @@ resolves to `{ amount: 0n, asset }`.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
-Builds, signs and submits a transfer deploy end to end.
+Builds, signs and submits deploys end to end.
 
 ```ts
 transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
+deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
 ```
 
 ```ts
@@ -252,12 +253,24 @@ interface ITransferPayload {
     details: ITransferDetails;
     passwordProvider: SecretsProvider;
 }
+interface IDeployPayload {
+    walletType: WalletTypes;
+    account: Account;
+    signer: Signer;
+    term: string;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
+    passwordProvider: SecretsProvider;
+}
 ```
 
-Flow: validate recipient + amount → generate transfer RhoLang → read latest block
-number → build the appropriate `TSigningContext` (HD adds `index`) → serialize +
-`blake2b-256` hash + sign → submit via `DeployService`. Defaults `phloLimit`/
-`phloPrice` from config and `shardId` to `"root"`.
+`transfer` validates recipient + amount, then generates the transfer RhoLang;
+`deploy` takes an arbitrary `term` (rejects an empty one). Both share a private
+`signAndSubmit`: read latest block number → build the appropriate `TSigningContext`
+(HD adds `index`) → serialize + `blake2b-256` hash + sign → submit via
+`DeployService`. Defaults `phloLimit`/`phloPrice` from config and `shardId` to
+`"root"`.
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 
@@ -277,11 +290,17 @@ Anti-corruption layer between the indexer's GraphQL shape and the domain
 `Transaction`.
 
 ```ts
-GraphqlParser.createTransactionHistoryRequest(address, pagination?): { query, variables }
-GraphqlParser.mapTransactionHistory(data, address, networkName): Transaction[]
+GraphqlParser.createTransactionHistoryRequest(address, publicKey, pagination?): { query, variables }
+GraphqlParser.mapTransactionHistory(data, address, networkId): Transaction[]
 GraphqlParser.unwrapGraphqlEnvelope<T>(response): GraphqlEnvelope<T>
 GraphqlParser.isRecoverableNetworkError(error): boolean
 ```
+
+`mapTransactionHistory` maps both the `transfers` and the `deployments` returned by
+the single history query into `Transaction[]`, de-duplicating by deploy id (a
+transfer wins over its matching deployment, but inherits the deployment's block
+hash) and sorting by timestamp descending. Deployment-only rows map to
+`type: "deploy"`.
 
 `mapper.ts` maps a `RawTransfer` to `Transaction` (`send`/`receive` decided by
 comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`
