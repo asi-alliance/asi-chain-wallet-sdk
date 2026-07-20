@@ -24,7 +24,7 @@ import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter from "@domains/ReservationAdapter";
-import { ITransactionReservation } from "@domains/Transaction";
+import { ITransactionReservation, Transaction } from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
@@ -354,6 +354,62 @@ export default class Client {
             null,
             2,
         );
+    }
+
+    public async getExportedTransactionsData(
+        walletId: string,
+        accountId: string,
+        format: "json" | "csv" = "json",
+        networkId?: string,
+    ) {
+        const currentAccount: Account = this.walletManager.getAccount(
+            walletId,
+            accountId,
+        );
+
+        const transactions: Transaction[] =
+            await currentAccount.getTransactionsHistory(networkId);
+
+        if (format === "json") {
+            return JSON.stringify(transactions, null, 2);
+        }
+
+        const headers: string[] = [
+            "Date",
+            "Time",
+            "Type",
+            "Status",
+            "From",
+            "To",
+            "Amount",
+            "Gas Cost",
+            "Deploy ID",
+            "Block Hash",
+            "Network ID",
+            "Note",
+        ];
+
+        const rows = transactions.map((tx: Transaction) => {
+            const date = new Date(tx.timestamp);
+            return [
+                date.toLocaleDateString(),
+                date.toLocaleTimeString(),
+                tx.type,
+                tx.status,
+                tx.from,
+                tx.to || "",
+                tx.amount || "",
+                tx.gasCost || "",
+                tx.deployId || "",
+                tx.blockHash || "",
+                tx.networkId,
+                tx.note || "",
+            ]
+                .map((val) => `"${val}"`)
+                .join(",");
+        });
+
+        return [headers.join(","), ...rows].join("\n");
     }
 
     public setActiveAccount(walletId: string, accountId: string): void {
