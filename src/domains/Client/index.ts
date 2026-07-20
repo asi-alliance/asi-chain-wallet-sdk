@@ -1,4 +1,7 @@
-import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import {
+    ASI_WALLET_KEYFILE,
+    NATIVE_TOKEN_DECIMALS_AMOUNT,
+} from "@config/index";
 import {
     INetworkConfig,
     INetworkRecord,
@@ -324,6 +327,33 @@ export default class Client {
         await this.walletManager.renameAccount(walletId, accountId, name);
 
         this.emitAccountsChanged(walletId);
+    }
+
+    public getExportedAccountData(walletId: string, accountId: string): string {
+        const targetWallet: Wallet | null = this.walletManager.get(walletId);
+
+        if (!targetWallet) {
+            throw new Error("Client.getExportedAccountData: unknown wallet id");
+        }
+
+        const exportedAccount: Account = this.walletManager.getAccount(
+            walletId,
+            accountId,
+        );
+
+        return JSON.stringify(
+            {
+                version: 1,
+                type: ASI_WALLET_KEYFILE,
+                address: exportedAccount.getAddress(),
+                encryptedPrivateKey: targetWallet
+                    .getSigner()
+                    .getEncryptedSecret(),
+                timestamp: new Date().toISOString(),
+            },
+            null,
+            2,
+        );
     }
 
     public setActiveAccount(walletId: string, accountId: string): void {

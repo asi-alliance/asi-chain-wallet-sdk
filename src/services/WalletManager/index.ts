@@ -147,6 +147,24 @@ export default class WalletManager extends ItemManager<Wallet> {
         await StorageManager.updateAccount(accountId, { name });
     }
 
+    public getAccount(walletId: string, accountId: string): Account {
+        const currentWallet: Wallet | null = this.get(walletId);
+
+        if (!currentWallet) {
+            throw new Error("WalletManager.getAccount: unknown wallet id");
+        }
+
+        const currentAccount: Account | undefined = currentWallet
+            .getAccounts()
+            .find((account: Account) => account.getId() === accountId);
+
+        if (!currentAccount) {
+            throw new Error("WalletManager.getAccount: unknown account id");
+        }
+
+        return currentAccount;
+    }
+
     public setActiveAccount(walletId: string, accountId: string): void {
         const currentWallet: Wallet | null = this.get(walletId);
 
