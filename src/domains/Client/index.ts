@@ -9,6 +9,7 @@ import {
 } from "@domains/Network";
 import { IStorageFabricOptions } from "@fabrics/Storage";
 import StorageManager from "@services/StorageManager";
+import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import Wallet, { Address } from "@domains/Wallet";
@@ -113,14 +114,7 @@ export default class Client {
     }: ICreateClientOptions): Promise<Client> {
         await StorageManager.init(storageOptions);
 
-        const customNetworks: INetworkRecord[] =
-            await StorageManager.getCustomNetworks();
-
-        ApiClientManager.getInstance().initialize(
-            networksConfig,
-            customNetworks,
-            defaultNetwork,
-        );
+        await NetworkManager.initialize(networksConfig, defaultNetwork);
         ApiServiceRegistry.getInstance();
 
         if (flags?.withInsensitiveCacheStorage) {
@@ -458,33 +452,19 @@ export default class Client {
         return ApiClientManager.getInstance().getNetwork(id);
     }
 
-    public async addNetwork(
+    public addNetwork(
         name: NetworkName,
         config: INetworkConfig,
     ): Promise<INetworkRecord> {
-        const record: INetworkRecord =
-            ApiClientManager.getInstance().addNetwork(name, config);
-
-        await StorageManager.saveCustomNetwork(record);
-
-        return record;
+        return NetworkManager.addNetwork(name, config);
     }
 
-    public async updateNetwork(
-        id: NetworkId,
-        update: INetworkUpdate,
-    ): Promise<void> {
-        const apiClientManager = ApiClientManager.getInstance();
-
-        apiClientManager.updateNetwork(id, update);
-
-        await StorageManager.updateCustomNetwork(apiClientManager.getNetwork(id));
+    public updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void> {
+        return NetworkManager.updateNetwork(id, update);
     }
 
-    public async removeNetwork(id: NetworkId): Promise<void> {
-        ApiClientManager.getInstance().removeNetwork(id);
-
-        await StorageManager.deleteCustomNetwork(id);
+    public removeNetwork(id: NetworkId): Promise<void> {
+        return NetworkManager.removeNetwork(id);
     }
 
     private createPasswordProvider(password: string): SecretsProvider {
