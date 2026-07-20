@@ -31,6 +31,16 @@ export default class NetworkConfigProvider {
     }
 
     @EnsureNetworkConfigProviderReady
+    public restoreCustomNetworks(records: INetworkRecord[]): void {
+        records.forEach((record: INetworkRecord) => {
+            this.networksRecords!.set(record.id, {
+                ...record,
+                isDefault: false,
+            });
+        });
+    }
+
+    @EnsureNetworkConfigProviderReady
     public getAll(): INetworkRecord[] {
         return Array.from(this.networksRecords!.values());
     }

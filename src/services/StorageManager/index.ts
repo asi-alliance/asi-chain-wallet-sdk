@@ -9,11 +9,15 @@ import {
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
 import { EncryptedData } from "@services/Crypto";
-import { NetworkId } from "@domains/Network";
+import { INetworkRecord, NetworkId } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
 } from "@domains/TransactionReservationsStorageRepository";
+import {
+    CustomNetworksStorageRepository,
+    ICustomNetworkStorageRecord,
+} from "@domains/CustomNetworksStorageRepository";
 import { IStorageFabricOptions } from "@fabrics/Storage";
 
 export interface ISaveSignerToStorageOptions {
@@ -59,6 +63,7 @@ class StorageManager {
         await TransactionReservationsStorageRepository.getInstance(
             options,
         ).initialize();
+        await CustomNetworksStorageRepository.getInstance(options).initialize();
     };
 
     public static saveSigner = async ({
@@ -312,16 +317,61 @@ class StorageManager {
         );
     };
 
+    public static getCustomNetworks = async (): Promise<INetworkRecord[]> => {
+        const records: ICustomNetworkStorageRecord[] =
+            await CustomNetworksStorageRepository.getInstance().getAllCustomNetworks();
+
+        return records.map((record: ICustomNetworkStorageRecord) => ({
+            id: record.id,
+            name: record.name,
+            config: record.config,
+            isDefault: false,
+        }));
+    };
+
+    public static saveCustomNetwork = async (
+        network: INetworkRecord,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().saveCustomNetwork(
+            network.id,
+            network.name,
+            network.config,
+        );
+    };
+
+    public static updateCustomNetwork = async (
+        network: INetworkRecord,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().updateCustomNetwork(
+            network.id,
+            {
+                name: network.name,
+                config: network.config,
+                updatedAt: Date.now(),
+            },
+        );
+    };
+
+    public static deleteCustomNetwork = async (
+        id: NetworkId,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().deleteCustomNetwork(
+            id,
+        );
+    };
+
     public static clear = async (): Promise<void> => {
         await SignersStorageRepository.getInstance().clearAllData();
         await AccountsStorageRepository.getInstance().clearAllData();
         await TransactionReservationsStorageRepository.getInstance().clearAllData();
+        await CustomNetworksStorageRepository.getInstance().clearAllData();
     };
 
     public static close = (): void => {
         SignersStorageRepository.getInstance().close();
         AccountsStorageRepository.getInstance().close();
         TransactionReservationsStorageRepository.getInstance().close();
+        CustomNetworksStorageRepository.getInstance().close();
     };
 }
 

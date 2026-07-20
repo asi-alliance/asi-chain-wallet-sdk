@@ -113,8 +113,12 @@ export default class Client {
     }: ICreateClientOptions): Promise<Client> {
         await StorageManager.init(storageOptions);
 
+        const customNetworks: INetworkRecord[] =
+            await StorageManager.getCustomNetworks();
+
         ApiClientManager.getInstance().initialize(
             networksConfig,
+            customNetworks,
             defaultNetwork,
         );
         ApiServiceRegistry.getInstance();
@@ -454,19 +458,33 @@ export default class Client {
         return ApiClientManager.getInstance().getNetwork(id);
     }
 
-    public addNetwork(
+    public async addNetwork(
         name: NetworkName,
         config: INetworkConfig,
-    ): INetworkRecord {
-        return ApiClientManager.getInstance().addNetwork(name, config);
+    ): Promise<INetworkRecord> {
+        const record: INetworkRecord =
+            ApiClientManager.getInstance().addNetwork(name, config);
+
+        await StorageManager.saveCustomNetwork(record);
+
+        return record;
     }
 
-    public updateNetwork(id: NetworkId, update: INetworkUpdate): void {
-        ApiClientManager.getInstance().updateNetwork(id, update);
+    public async updateNetwork(
+        id: NetworkId,
+        update: INetworkUpdate,
+    ): Promise<void> {
+        const apiClientManager = ApiClientManager.getInstance();
+
+        apiClientManager.updateNetwork(id, update);
+
+        await StorageManager.updateCustomNetwork(apiClientManager.getNetwork(id));
     }
 
-    public removeNetwork(id: NetworkId): void {
+    public async removeNetwork(id: NetworkId): Promise<void> {
         ApiClientManager.getInstance().removeNetwork(id);
+
+        await StorageManager.deleteCustomNetwork(id);
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

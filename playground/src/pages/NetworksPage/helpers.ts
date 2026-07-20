@@ -34,7 +34,10 @@ export const createNetworksPageHandlers = ({
                     onSubmit: (payload: INetworkModalPayload) =>
                         withLoader(async () => {
                             try {
-                                sdk.addNetwork(payload.name, payload.config);
+                                await sdk.addNetwork(
+                                    payload.name,
+                                    payload.config,
+                                );
                                 closeModal();
                             } catch (error) {
                                 console.error(error);
@@ -59,7 +62,7 @@ export const createNetworksPageHandlers = ({
                     onSubmit: (payload: INetworkModalPayload) =>
                         withLoader(async () => {
                             try {
-                                sdk.updateNetwork(network.id, {
+                                await sdk.updateNetwork(network.id, {
                                     name: payload.name,
                                     config: payload.config,
                                 });
@@ -81,7 +84,7 @@ export const createNetworksPageHandlers = ({
                 if (!window.confirm(`Remove network "${network.name}"?`)) return;
 
                 try {
-                    sdk.removeNetwork(network.id);
+                    await sdk.removeNetwork(network.id);
                 } catch (error) {
                     console.error(error);
                     alert(

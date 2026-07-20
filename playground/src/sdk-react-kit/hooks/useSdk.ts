@@ -258,8 +258,11 @@ const useSdk = () => {
     );
 
     const addNetwork = useCallback(
-        (name: NetworkName, config: INetworkConfig): INetworkRecord => {
-            const record = requireClient().addNetwork(name, config);
+        async (
+            name: NetworkName,
+            config: INetworkConfig,
+        ): Promise<INetworkRecord> => {
+            const record = await requireClient().addNetwork(name, config);
 
             refreshNetworks();
 
@@ -269,10 +272,10 @@ const useSdk = () => {
     );
 
     const updateNetwork = useCallback(
-        (networkId: NetworkId, update: INetworkUpdate): void => {
+        async (networkId: NetworkId, update: INetworkUpdate): Promise<void> => {
             const currentClient = requireClient();
 
-            currentClient.updateNetwork(networkId, update);
+            await currentClient.updateNetwork(networkId, update);
 
             refreshNetworks();
             setCurrentNetwork(currentClient.getCurrentNetwork());
@@ -281,10 +284,10 @@ const useSdk = () => {
     );
 
     const removeNetwork = useCallback(
-        (networkId: NetworkId): void => {
+        async (networkId: NetworkId): Promise<void> => {
             const currentClient = requireClient();
 
-            currentClient.removeNetwork(networkId);
+            await currentClient.removeNetwork(networkId);
 
             refreshNetworks();
             setCurrentNetwork(currentClient.getCurrentNetwork());

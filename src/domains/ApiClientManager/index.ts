@@ -48,6 +48,7 @@ export default class ApiClientManager {
 
     public initialize(
         networksConfig: TNetworksConfig,
+        customNetworks: INetworkRecord[] = [],
         networkName?: NetworkName,
     ): void {
         if (this.isInitialized) {
@@ -55,6 +56,7 @@ export default class ApiClientManager {
         }
 
         this.networkConfigProvider.initialize(networksConfig);
+        this.networkConfigProvider.restoreCustomNetworks(customNetworks);
 
         const records: INetworkRecord[] = this.networkConfigProvider.getAll();
         const defaultRecord: INetworkRecord =
