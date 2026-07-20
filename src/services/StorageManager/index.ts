@@ -1,6 +1,6 @@
-import Wallet, { WalletTypes } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
-import Signer, { ISignerRecord } from "@domains/Signer";
+import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
 import Account, { IAccountRecord } from "@domains/Account";
 import { ISignerStorageRecord } from "@domains/SignersStorageRepository/index";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";

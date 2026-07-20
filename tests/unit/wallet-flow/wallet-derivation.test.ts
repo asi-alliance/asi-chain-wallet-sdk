@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import Wallet, { WalletTypes } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import Account from "@domains/Account";
 
 import SecretsProvider from "@domains/SecretsProvider";
 
 import Bip44Path from "@domains/Bip44Path";
 import KeysManager from "@services/KeysManager";
+import { WalletTypes } from "@domains/Signer";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";

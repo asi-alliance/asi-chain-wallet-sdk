@@ -1,7 +1,11 @@
 import Bip44Path from "@domains/Bip44Path";
 import type SecretsProvider from "@domains/SecretsProvider";
 import { EncryptedData } from "@services/Crypto";
-import { WalletTypes } from "@domains/Wallet";
+
+export enum WalletTypes {
+    PRIVATE_KEY = "private-key",
+    HD = "hd",
+}
 
 export interface ISignerOptions {
     id: string;

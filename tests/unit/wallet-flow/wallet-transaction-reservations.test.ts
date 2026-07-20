@@ -11,8 +11,8 @@ import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import { TransactionReservationsStorageRepository } from "@domains/TransactionReservationsStorageRepository";
 import { ITransactionReservation } from "@domains/Transaction";
 import { IBalanceData } from "@services/AssetsService";
-import { DEFAULT_ASSET } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
+import { DEFAULT_ASSET } from "@domains/Asset";
 
 const PASSWORD = "12345678";
 const NODE_STORAGE_DIR = "./storage-test";

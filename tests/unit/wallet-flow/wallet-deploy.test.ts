@@ -8,12 +8,12 @@ import KeysManager from "@services/KeysManager";
 import StorageManager from "@services/StorageManager";
 import ApiClientManager from "@domains/ApiClientManager";
 import axios, { AxiosError } from "axios";
-import { decryptSignerData } from "@utils/index";
 import { IBalanceData } from "@services/AssetsService";
 import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
-import { DEFAULT_ASSET } from "@config/index";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import { DEFAULT_ASSET } from "@domains/Asset";
+import CryptoService from "@services/Crypto";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -182,10 +182,11 @@ test("manual transfer between two wallets", async () => {
     console.log("    Source address:");
     console.log("   ", sourceAddress);
     console.log("    Source private key:");
-    const sourcePrivateKey: IPrivateKeyCredentials = (await decryptSignerData(
-        destinationWallet.getSigner().getEncryptedSecret(),
-        passwordProvider,
-    )) as IPrivateKeyCredentials;
+    const sourcePrivateKey: IPrivateKeyCredentials =
+        (await CryptoService.decryptSignerData(
+            destinationWallet.getSigner().getEncryptedSecret(),
+            passwordProvider,
+        )) as IPrivateKeyCredentials;
 
     const stringifiedSourcePrivateKey: string = stringifyPrivateKey(
         sourcePrivateKey.privateKey,
@@ -201,7 +202,7 @@ test("manual transfer between two wallets", async () => {
     console.log("   ", destinationAddress);
     console.log("    Destination private key:");
     const destinationPrivateKey: IPrivateKeyCredentials =
-        (await decryptSignerData(
+        (await CryptoService.decryptSignerData(
             destinationWallet.getSigner().getEncryptedSecret(),
             passwordProvider,
         )) as IPrivateKeyCredentials;
