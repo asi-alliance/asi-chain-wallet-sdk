@@ -5,17 +5,27 @@
         "moduleResolution": "Bundler",
         "allowSyntheticDefaultImports": true,
         "paths": {
-            "asi-wallet-sdk": ["./dist"],
-
-            "@services/": ["./src/services"],
-            "@domains/": ["./src/domains"],
-            "@config": ["./src/config"],
-            "@utils": ["./src/utils"],
-
-            "@services/*": ["./src/services/*"],
-            "@domains/*": ["./src/domains/*"],
-            "@config/*": ["./src/config/*"],
-            "@utils/*": ["./src/utils/*"]
+            "asi-wallet-sdk": [
+                "./dist"
+            ],
+            "@services/*": [
+                "./src/services/*"
+            ],
+            "@domains/*": [
+                "./src/domains/*"
+            ],
+            "@config/*": [
+                "./src/config/*"
+            ],
+            "@utils/*": [
+                "./src/utils/*"
+            ],
+            "@scripts/*": [
+                "./src/scripts/*"
+            ],
+            "@fabrics/*": [
+                "./src/fabrics/*"
+            ]
         }
     }
 }

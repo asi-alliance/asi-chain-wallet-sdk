@@ -23,6 +23,7 @@
         "dev": "tsc -p tsconfig.build.json && rollup -c -w",
         "build": "tsc -p tsconfig.build.json && rollup -c",
         "test:security": "node scripts/security/run-security-tests.mjs",
+        "test:unit": "node scripts/security/run-unit-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
         "security:gate": "npm run build && npm run test:security && npm run check:secret-logs && npm audit --omit=dev"
     },
@@ -33,6 +34,9 @@
         "@rollup/plugin-terser": "^0.1.0",
         "@rollup/plugin-typescript": "^11.1.0",
         "@types/node": "^25.4.0",
+        "@types/node-persist": "^3.1.8",
+        "dotenv": "^17.4.2",
+        "fake-indexeddb": "^6.2.5",
         "rollup": "^3.27.0",
         "rollup-plugin-dts": "^6.3.0",
         "tslib": "^2.8.1",
@@ -48,10 +52,12 @@
         "blakejs": "^1.2.1",
         "bs58": "^6.0.0",
         "buffer": "^6.0.3",
-        "js-sha3": "^0.9.3"
+        "js-sha3": "^0.9.3",
+        "node-persist": "^4.0.4"
     },
     "exports": {
         ".": {
+            "types": "./dist/index.d.ts",
             "import": "./dist/index.esm.js",
             "require": "./dist/index.cjs"
         }

@@ -1,213 +1,301 @@
 # Playground Reference
 
-This document summarizes the example React playground in `playground/src` and describes available UI components and their props/usage.
+This document summarizes the example React playground in `playground/src`. The
+playground consumes the SDK through a small integration layer (`sdk-react-kit`)
+and is split into routed pages (Wallets, Transaction History).
+
+The SDK is imported as `asi-wallet-sdk` (a `file:..` dependency in the
+playground's `package.json`). Network endpoints come from Vite env vars (`.env`).
 
 ---
 
-## Entry (playground/src/index.tsx)
+## Entry (`playground/src/index.tsx`)
 
-Renders the demo application root component into `#root` using `react-dom`'s `createRoot`.
-
-Usage: the app is mounted by default — no programmatic API.
-
----
-
-## Application (playground/src/components/Application)
-
-Top-level demo application that wires together the SDK `Vault`, `AssetsService`, modals and `WalletsPage`.
-
-Key exports and behavior:
-
-- `default` (React component) — maintains `vault`, `assetsService`, `modalState`, and `currentPassword` in state; exposes helpers through `ApplicationContext`.
-- `init(config, setVault, setAssetsService)` — initializes `AssetsService`, reads saved vault data and creates a `Vault` instance.
-- Modal helpers: `openUnlockModal()`, `openCreatePasswordForVaultModal()`, `openCreateKeyPairWalletModal()`, `openImportKeyPairWalletModal()`, `openCreateMnemonicWalletModal(words)`, `openRestoreMnemonicWalletModal(words)`, `openDeriveWalletModal(index)` — open corresponding modals via context state.
-- Vault operations: `saveVault(password)`, `unlockVault(password)`, `createKeyPairWallet(payload)`, `handleCreateMnemonicWallet` (async factory calling `createMnemonicWallet` from `meta`), `handleDeriveWallet(name, password, index)`.
-
-Context provided to children (`ApplicationContext`): `{ modalState, setModalState, withLoader }` (see `useLoader` hook in playground/src/hooks).
-
-Example: the `WalletsPage` is rendered with props from the application state (vault, assetsService, and action callbacks).
+Mounts `Application` into `#root` inside a `BrowserRouter` via
+`react-dom/client`'s `createRoot`, and imports the global theme
+(`theme/commonStyles.css`).
 
 ---
 
-## ModalManager (playground/src/components/Application/ModalManager.tsx)
+## sdk-react-kit (`playground/src/sdk-react-kit`)
 
-Component that maps `Modals` enum to concrete modal components and forwards props.
+The bridge between the SDK `Client` and React. This is the recommended place to
+look when integrating the SDK into your own app.
 
-Props:
+### useSdk (`hooks/useSdk.ts`)
 
-- `currentModal: Modals | null` — which modal to show.
-- `modalProps?: ModalProps` — props forwarded to the modal component (typed unions for each modal).
+The core hook. Creates a `Client` on mount (via `helpers.init`), wires an
+`IClientEventDispatcher` into React state, and exposes a flat, memoized API. It
+tears the client down on unmount.
 
-Usage: rendered inside `Application` and switches between `PasswordModal`, `CreateWalletModal`, `TransferModal`, `DeriveWalletModal` and `TransferCompletedModal`.
+Returned value (`UseSdkValue`):
 
----
+- State: `client`, `isReady`, `walletsMetadata: IWalletMetadata[]`,
+  `unlockedWallets: Wallet[]`, `reservationsByWallet`, `networks`, `currentNetwork`.
+- Network: `setNetwork(name)`.
+- Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
+- Wallet lifecycle: `createHDWallet(input, password)`,
+  `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
+  `removeWallet(walletId)`.
+- Account lifecycle: `deriveAccount(walletId, name, password)`,
+  `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`,
+  `setActiveAccount(walletId, accountId)`.
+- Transfers & balances: `transfer(request, password)`, `getBalance(address)`,
+  `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
+- Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
+- Persistence: `clearPersistence()`.
 
-## CreateWalletModal (playground/src/components/CreateWalletModal/index.tsx)
+Input types: `ICreateHDWalletInput = { name, mnemonic }`,
+`ICreatePkWalletInput = { name, privateKey }`.
 
-Form/modal to create or restore wallets either by private key or mnemonic.
+### SdkContext (`SdkContext.ts`)
 
-Props (`IWalletCreateModalProps`):
+React context holding the `useSdk` value.
 
-- `variant?: 12 | 24` — mnemonic length variant.
-- `mode: "privateKey" | "mnemonic"` — selected mode.
-- `isInputMode: boolean` — if `true` the private key / mnemonic is editable.
-- `title?: string` — optional modal title override.
-- `onSubmit(payload: TWalletCreatePayload): void` — submit handler receives either privateKey payload or mnemonic payload.
-- `onClose?(): void` — optional close handler.
-- `initialMnemonic?: string` — optional mnemonic to pre-fill.
-- `initialPrivateKey?: string` — optional private key to pre-fill.
+```ts
+SdkContext                    // Context<UseSdkValue>
+useSdkContext(): SdkContextValue
+```
 
-Key behavior:
+`Application` calls `useSdk()` once and provides the result through
+`SdkContext.Provider`; all pages/components read it via `useSdkContext()`.
 
-- Validates password/re-password match and that required fields are present for selected `mode`.
-- For mnemonic mode it uses `InputsForm` to collect or display words; calls `onSubmit` with normalized words.
+### useWalletBalance (`hooks/useWalletBalance.ts`)
 
-Example submission payloads:
+Loads total balance, available balance, and reservation count for one account.
 
-- Private key mode: `{ mode: 'privateKey', name, privateKey, password }`
-- Mnemonic mode: `{ mode: 'mnemonic', name, mnemonicWords, password }`
+```ts
+useWalletBalance(sdk: UseSdkValue, walletId, accountId, address): UseWalletBalanceValue
+// { balance: { total, available, reservationCount }, isFetching, reload }
+```
 
----
+### helpers.ts
 
-## DeriveWalletModal (playground/src/components/DeriveWalletModal/index.tsx)
+```ts
+init(eventDispatcher: IClientEventDispatcher): Promise<Client>
+```
 
-Props (`IDeriveWalletModalProps`):
+Calls `Client.create({ networksConfig: NETWORKS_CONFIG, defaultNetwork, eventDispatcher })`.
 
-- `onSubmit(name: string, password: string, index: number): void` — called with user inputs.
-- `onClose?(): void`
-- `index: number` — derivation index.
+### networksConfig.ts
 
-Behavior: simple form validating password confirmation and forwarding trimmed name/password/index.
+Builds `NETWORKS_CONFIG: TNetworksConfig` from `import.meta.env` (`DevNet`, `Dev`,
+plus empty `MainNet`/`TestNet` placeholders) and exposes `DEFAULT_NETWORK`
+(default `"DevNet"`).
 
----
+### formatters (`formatters/index.ts`)
 
-## FullScreenLoader (playground/src/components/FullScreenLoader/index.tsx)
-
-Visual fullscreen spinner displayed when `useLoader` reports loading.
-
----
-
-## Input (playground/src/components/Input/index.tsx)
-
-Small controlled text input used by `InputsGrid` and `InputsForm` for mnemonic words.
-
-Props:
-
-- `index: number` — position index (0-based).
-- `value: string` — current input value.
-- `hasError: boolean` — error styling flag.
-- `onChange(index, value): void` — change callback.
-- `onPaste(index, pasted): void` — paste handler for multi-word paste.
-- `inputRef: RefObject<HTMLInputElement | null>` — optional ref.
-
-Behavior: prevents Enter default, supports multi-word paste to populate many inputs.
-
----
-
-## InputsForm (playground/src/components/InputsForm/index.tsx)
-
-Composed form that renders a grid of `Input` components and handles mnemonic validation and submission.
-
-Props (`IInputsFormProps`):
-
-- `variant: 12 | 24` — words count.
-- `formMode: 'input' | 'output'` — determines interactivity.
-- `initialMnemonic: string[]` — initial words array.
-- `validateWords?(words: string[]): string | null` — optional custom validation function returning error message.
-- `onValidSubmit?(normalizedWords: string[]): void` — callback when form is valid.
-- `onClose(): void` — close handler.
-
-Behavior:
-
-- Manages words array, per-word error flags, paste-to-fill behavior, and overall validation.
-- Normalizes words (trim/lowercase) before calling `onValidSubmit`.
+```ts
+formatAddress(address: string): string   // 10-char prefix … 8-char suffix
+formatAmount(amount: bigint | null | undefined): string // "N/A" or fromAtomicAmount(...)
+formatDate(date: Date): string
+```
 
 ---
 
-## InputsGrid (playground/src/components/InputsGrid/index.tsx)
+## Application (`playground/src/components/Application/index.tsx`)
 
-Renders `Input` components in a grid.
+Root component. Instantiates `useLoader` and `useSdk`, provides
+`ApplicationContext` (modal state + loader) and `SdkContext`, and renders the
+`Header`, the persistent page routes, the `ModalManager`, and the fullscreen
+loader.
 
-Props:
-
-- `words: string[]`, `errors: boolean[]`, `inputRefs: RefObject[]`, `onWordChange`, `onPasteWords`, `mode: 'input'|'output'`.
-
----
-
-## InputsFormActionsButtons (playground/src/components/InputsFormActionsButtons/index.tsx)
-
-Renders action buttons for forms; accepts an array of actions with label, type, className and onClick.
-
----
-
-## PasswordModal (playground/src/components/PasswordModal/index.tsx)
-
-Props (`IPasswordModalProps`):
-
-- `title: string` — label shown next to password input.
-- `onSubmit(password: string): void` — invoked with password string.
-- `onClose?(): void` — optional cancel.
+- `context.ts` — `ApplicationContext` with `{ modalState, setModalState, withLoader }`
+  and the `useAppContext()` hook.
+- `meta.tsx` — the `Modals` enum and the `ModalProps` union.
+- `ModalManager.tsx` — maps `Modals` to `PasswordModal`, `TransferModal`,
+  `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`.
+- `Header/` — brand, `ApplicationNavigation`, and a "CLEAR SDK LS" button that
+  calls `sdk.clearPersistence()` and reloads.
 
 ---
 
-## SelectModal (playground/src/components/SelectModal/index.tsx)
+## Routing (`playground/src/router`)
 
-Simple modal list of options.
-
-Props (`ISelectModalProps`):
-
-- `title: string`, `options: { title: string; onClick(): void; disabled?: boolean }[]`, `onClose?(): void`.
-
----
-
-## TransferModal (playground/src/components/TransferModal/index.tsx)
-
-Props (`ITransferModalProps`):
-
-- `currentBalance: bigint`, `toAddress: string`, `amount: bigint`, `commission: number`,
-- `onConfirm(toAddress: string, amount: bigint): void`, `onClose(): void`.
-
-Behavior: reads form fields, converts amount to atomic `bigint` using playground utilities (`toAtomicAmount`) and calls `onConfirm`.
+- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, default `/wallets`).
+- `routes.ts` — `PAGE_ROUTES` mapping each path to a label and page component.
+- `index.tsx` — `ApplicationNavigation` (NavLinks) and `PersistentPageRoutes`,
+  which keep every page mounted and toggle visibility with `hidden` so page state
+  survives navigation. Unknown paths redirect to the default page.
 
 ---
 
-## TransferCompletedModal (playground/src/components/TransferCompletedModal/index.tsx)
+## Pages
 
-Props (`ITransferCompletedModalProps`):
+### WalletsPage (`pages/WalletsPage/index.tsx`)
 
-- `fromAddress: string`, `toAddress: string`, `amount: bigint`, `deployId: string`, `onClose(): void`.
+Two columns — Private Key wallets and Mnemonic (HD) wallets — rendered from
+`sdk.walletsMetadata`. Locked wallets show an "Unlock" button; unlocked wallets
+render their accounts as `AccountCard`s and (for HD) a "Derive" action. HD create/
+import offers a 12/24-word choice.
 
-Behavior: shows transfer details, displays human-readable amount using `fromAtomicAmount`, and supports copying `deployId` to clipboard.
+`helpers.ts` builds `WalletPageHandlers`: `createPk`, `importPk`, `createHd`,
+`importHd`, `unlockWallet`, `deriveAccount`, `removeWallet`, `renameAccount`,
+`removeAccount`. These open the relevant modals and call the matching `useSdk`
+methods through `withLoader`.
 
----
+### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 
-## WalletCard (playground/src/components/WalletCard/index.tsx)
+Lets the user pick an unlocked account (via `SelectFilter`) and lists its
+transactions using `account.getTransactionsHistory()`. Reloads on account or
+network change.
 
-Card component representing a `Wallet` instance from the SDK; shows name, address, balance and actions.
-
-Props (`IWalletCardProps`):
-
-- `wallet: Wallet` — SDK `Wallet` instance.
-- `removeWallet(id: Address): void` — callback to remove wallet from vault.
-- `assetsService: AssetsService` — SDK assets service used to fetch balances and execute transfers.
-
-Behavior & methods:
-
-- `fetchBalance()` — fetches ASI balance via `assetsService.getASIBalance(address)`.
-- `handlePrepareSend()` — opens transfer modal via `ApplicationContext`.
-- `handleSend()` — prompts `PasswordModal` then calls `transfer()`.
-- `transfer(toAddress, amount, password)` — unlocks wallet, calls `assetsService.transfer` with wallet and password provider, locks wallet and shows `TransferCompletedModal` on success.
-
-Example: clicking Send triggers modal flow to unlock wallet and send funds.
+- `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
+- `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
+  deploy id and block hash, and offers a copy-deploy-id button.
 
 ---
 
-## WalletsPage (playground/src/pages/WalletsPage/index.tsx)
+## Components
 
-Page that lists private-key and mnemonic wallets from a `Vault` and provides create/import/derive UI actions.
+### AccountCard (`components/AccountCard/index.tsx`)
 
-Props (`WalletsPageProps`):
+Represents one SDK `Account`. Shows name, address, available balance (via
+`useWalletBalance`), and a `ReservationStatus`. Actions: Send (opens
+`TransferModal` → `PasswordModal` → `sdk.transfer`, then shows
+`TransferCompletedModal`), Reload balance, Rename, and Copy address.
 
-- `vault: Vault`, `assetsService: AssetsService`, `removeWallet(id: Address)`, `importPk()`, `importDk(words)`, `createPk()`, `createDk(words)`, `deriveK(index)`.
+```ts
+interface IAccountCardProps {
+    sdk: UseSdkValue;
+    walletId: string;
+    account: Account;
+    onRename: () => void;
+    onRemove: () => void;
+}
+```
 
-Behavior: separates wallets by `wallet.getIndex()` (null => private key wallets), exposes buttons to create/import/derive wallets, and renders `WalletCard` for each wallet.
+### NetworkSelector (`components/NetworkSelector/index.tsx`)
+
+Renders a button per `sdk.networks`; switching calls `sdk.setNetwork(name)`. The
+active network is disabled.
+
+### ReservationStatus (`components/ReservationStatus/index.tsx`)
+
+Displays total/available balances and, when reservations exist, the reserved
+amount and active-transfer count.
+
+```ts
+interface IReservationStatusProps { balance: WalletBalance; isFetching?: boolean }
+```
+
+### TransferModal (`components/TransferModal/index.tsx`)
+
+Collects recipient and amount, validating the amount against `availableBalance`
+(parsed with `toAtomicAmount` / `NATIVE_TOKEN_DECIMALS_AMOUNT`). Confirms with an
+atomic `bigint`.
+
+```ts
+interface ITransferModalProps {
+    fromAddress: string;
+    availableBalance: bigint;
+    onConfirm: (toAddress: string, amount: bigint) => void;
+    onClose: () => void;
+}
+```
+
+### TransferCompletedModal (`components/TransferCompletedModal/index.tsx`)
+
+Shows the completed transfer (from/to, human amount via `formatAmount`, deploy id)
+and a copy-deploy-id button.
+
+```ts
+interface ITransferCompletedModalProps {
+    fromAddress: string;
+    toAddress: string;
+    amount: bigint;
+    deployId: string;
+    onClose: () => void;
+}
+```
+
+### CreateWalletModal (`components/CreateWalletModal/index.tsx`)
+
+Create or import a wallet by private key or mnemonic. Validates matching
+passwords and required fields; for private keys it parses a JSON byte array; for
+mnemonics it opens a nested `InputsForm`.
+
+```ts
+type TWalletCreatePayload =
+    | { mode: "privateKey"; name: string; privateKey: Uint8Array; password: string }
+    | { mode: "mnemonic";   name: string; mnemonic: string;       password: string };
+
+interface IWalletCreateModalProps {
+    variant?: 12 | 24;
+    mode: "privateKey" | "mnemonic";
+    isInputMode?: boolean;
+    title?: string;
+    onSubmit: (payload: TWalletCreatePayload) => void;
+    onClose?: () => void;
+    initialMnemonic?: string;
+    initialPrivateKey?: Uint8Array;
+}
+```
+
+### DeriveWalletModal (`components/DeriveWalletModal/index.tsx`)
+
+Collects a name + password to derive a new HD account.
+
+```ts
+interface IDeriveWalletModalProps {
+    onSubmit: (name: string, password: string) => void;
+    onClose?: () => void;
+}
+```
+
+### PasswordModal (`components/PasswordModal/index.tsx`)
+
+```ts
+interface IPasswordModalProps {
+    title: string;
+    onSubmit: (password: string) => void;
+    onClose?: () => void;
+}
+```
+
+### SelectModal (`components/SelectModal/index.tsx`)
+
+Simple option list.
+
+```ts
+interface ISelectModalProps {
+    title: string;
+    options: { title: string; onClick(): void; disabled?: boolean }[];
+    onClose?: () => void;
+}
+```
+
+### Mnemonic input components
+
+- **InputsForm** (`components/InputsForm/index.tsx`) — grid of word inputs with
+  paste-to-fill, sanitization, per-word errors, and validation. Props:
+  `variant: 12 | 24`, `formMode: "input" | "output"`, `initialMnemonic: string[]`,
+  `validateWords?`, `onValidSubmit?`, `onClose`.
+- **InputsGrid** (`components/InputsGrid/index.tsx`) — lays out `Input` components;
+  in `output` mode change/paste handlers are omitted (read-only).
+- **Input** (`components/Input/index.tsx`) — one controlled word input; prevents
+  Enter default and supports multi-word paste.
+- **InputsFormActionsButtons** (`components/InputsFormActionsButtons/index.tsx`) —
+  renders an array of `{ type, className, onClick?, label }` buttons.
+
+### FullScreenLoader (`components/FullScreenLoader/index.tsx`)
+
+Fullscreen spinner shown while `useLoader` reports loading.
+
+### Common components (`components/common`)
+
+- **HighlightedRows** — labeled value rows with optional accent/description.
+- **KeyValueTable** — two-column table with an optional per-row state class.
+- **SelectFilter** — labeled `<select>` from `{ label, value }[]` options.
+
+---
+
+## Hooks & utils
+
+- **useLoader** (`hooks/useLoader.ts`) — `{ isLoading, setIsLoading, withLoader }`;
+  `withLoader` toggles the loader and defers the wrapped work to the next tick.
+- **utils/constants** — mnemonic word-count constants (`MIN_WORDS_COUNT` 12,
+  `MAX_WORDS_COUNT` 24, `WordsCountVariants`, `DEFAULT_WORDS_COUNT`).
+- **utils/functions** — `sanitizeWord(raw)` and `clippedWordCount(value)` for
+  mnemonic inputs.
+- **utils/misc** — `copyTextToClipboard(text)`.

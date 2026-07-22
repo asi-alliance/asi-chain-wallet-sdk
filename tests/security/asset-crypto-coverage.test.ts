@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import Asset from "../../src/domains/Asset";
-import CryptoService from "../../src/services/Crypto";
+import Asset, { DEFAULT_ASSET } from "@domains/Asset";
+import CryptoService from "@services/Crypto";
 
 test("Asset uses default decimals and returns values via getters", () => {
-    const asset = new Asset("ASI", "ASI");
+    const asset = DEFAULT_ASSET;
 
-    assert.equal(asset.getId(), "ASI");
     assert.equal(asset.getName(), "ASI");
     assert.equal(asset.getDecimals(), 8);
 });

@@ -1,0 +1,34 @@
+import Signer, {
+    ISignedMessageResponse,
+    TSigningContext,
+} from "@domains/Signer";
+import CryptoService from "@services/Crypto";
+import KeysManager from "@services/KeysManager";
+import { IPrivateKeyCredentials } from "@domains/SecretsProvider";
+import { sign } from "@noble/secp256k1";
+
+export default class PrivateKeySigner extends Signer {
+    public async sign(
+        payload: string,
+        signingContext: TSigningContext,
+    ): Promise<ISignedMessageResponse> {
+        const { privateKey } = (await CryptoService.decryptSignerData(
+            this.encryptedSecret,
+            signingContext.passwordProvider,
+        )) as IPrivateKeyCredentials;
+
+        const publicKey: Uint8Array =
+            KeysManager.getPublicKeyFromPrivateKey(privateKey);
+
+        try {
+            const messageResult: Uint8Array = await sign(payload, privateKey);
+
+            return {
+                signature: messageResult,
+                publicKey,
+            };
+        } finally {
+            privateKey.fill(0);
+        }
+    }
+}

@@ -19,6 +19,8 @@ const aliasEntries = {
     "@domains": path.resolve("src/domains"),
     "@config": path.resolve("src/config"),
     "@utils": path.resolve("src/utils"),
+    "@scripts": path.resolve("src/scripts"),
+    "@fabrics": path.resolve("src/fabrics"),
 };
 
 export default [

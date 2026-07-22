@@ -1,12 +1,12 @@
 import type { Address } from "@domains/Wallet";
 import blakejs from "blakejs";
+import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
     decodeBase16,
     decodeBase58,
     encodeBase16,
     encodeBase58,
 } from "@utils/codec";
-import { ASI_CHAIN_PREFIX } from "@utils/constants";
 
 const { blake2bHex } = blakejs;
 
@@ -14,7 +14,7 @@ const INVALID_ACCOUNT_NAME_CHARS: RegExp = /[<>:"/\\|?*]/;
 
 export const validateAccountName = (
     name: string,
-    maxLength: number = 30
+    maxLength: number = 30,
 ): { isValid: boolean; error?: string } => {
     if (!name || name.trim().length === 0) {
         return { isValid: false, error: "Account name is required" };
@@ -83,8 +83,12 @@ export const validateAddress = (address: string): AddressValidationResult => {
         return getInvalidResult(AddressValidationErrorCode.INVALID_LENGTH);
     }
 
-    if (!ADDRESS_ALPHABET_REGEX.test(address)) { return getInvalidResult(AddressValidationErrorCode.INVALID_ALPHABET); }
-    if (!ADDRESS_BASE58_ALPHABET_REGEX.test(address)) { return getInvalidResult(AddressValidationErrorCode.INVALID_BASE58); }
+    if (!ADDRESS_ALPHABET_REGEX.test(address)) {
+        return getInvalidResult(AddressValidationErrorCode.INVALID_ALPHABET);
+    }
+    if (!ADDRESS_BASE58_ALPHABET_REGEX.test(address)) {
+        return getInvalidResult(AddressValidationErrorCode.INVALID_BASE58);
+    }
     const decodedHex = encodeBase16(decodeBase58(address));
 
     if (decodedHex.length !== ADDRESS_TOTAL_HEX_LENGTH) {
@@ -100,7 +104,9 @@ export const validateAddress = (address: string): AddressValidationResult => {
     const checksumHex = decodedHex.slice(ADDRESS_PAYLOAD_HEX_LENGTH);
 
     if (!payloadHex.startsWith(ADDRESS_PREFIX_HEX)) {
-        return getInvalidResult(AddressValidationErrorCode.INVALID_CHAIN_PREFIX);
+        return getInvalidResult(
+            AddressValidationErrorCode.INVALID_CHAIN_PREFIX,
+        );
     }
 
     const expectedChecksumHex = blake2bHex(

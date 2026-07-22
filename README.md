@@ -12,7 +12,7 @@
 
 Part of the [**Artificial Superintelligence Alliance**](https://superintelligence.io) ecosystem
 
-*Uniting Fetch.ai, SingularityNET, and CUDOS*
+_Uniting Fetch.ai, SingularityNET, and CUDOS_
 
 </div>
 
@@ -35,18 +35,19 @@ Part of the [**Artificial Superintelligence Alliance**](https://superintelligenc
 
 ## Overview
 
-ASI Chain Wallet SDK is a lightweight, modular TypeScript library designed to simplify wallet integration and key management for [ASI Chain](https://github.com/asi-alliance/asi-chain) applications. It provides secure cryptographic operations, BIP-39/BIP-44 key derivation, encrypted storage mechanisms, and direct interaction with ASI Chain nodes.
+ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet integration and key management for [ASI Chain](https://github.com/asi-alliance/asi-chain) applications. It is organized around a high-level [`Client`](docs/DOMAINS.md) facade that manages multi-account HD wallets, secure encrypted storage, multi-network access, and reservation-aware transfers, while keeping secret material behind a strict signing boundary.
 
 ---
 
 ## Key Features
 
-- **Wallet Management** - Create, import, and derive wallets from private keys or mnemonic phrases via [WalletsService](docs/SERVICES.md)
-- **Secure Storage** - Password-based encryption using PBKDF2 + AES via [CryptoService](docs/SERVICES.md)
-- **Key Derivation** - BIP-39 mnemonic generation and BIP-44 hierarchical deterministic key derivation via [KeyDerivationService](docs/SERVICES.md)
-- **Vault System** - Encrypted container for managing multiple wallets and seeds via [Vault](docs/DOMAINS.md)
-- **Chain Interaction** - Transfer and balance operations via [AssetsService](docs/SERVICES.md) and [BlockchainGateway](docs/DOMAINS.md)
-- **Address Generation** - secp256k1 key generation with keccak256/blake2b address derivation via [KeysManager](docs/SERVICES.md)
+- **Client Facade** - Single entry point for wallet lifecycle, networks, balances, and transfers via [Client](docs/DOMAINS.md)
+- **Multi-Account HD Wallets** - Private-key and BIP-39/BIP-44 HD wallets with on-demand account derivation via [Wallet](docs/DOMAINS.md) and [Account](docs/DOMAINS.md)
+- **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
+- **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
+- **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
+- **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
+- **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
 
 ---
 
@@ -60,69 +61,82 @@ npm install @asichain/asi-wallet-sdk
 
 ## Quick Start
 
-### Create a New Wallet
+### Create the Client
+
+The [`Client`](docs/DOMAINS.md) is the single entry point. Provide a per-network
+configuration and (optionally) a default network.
 
 ```typescript
-import { WalletsService, MnemonicService } from '@asichain/asi-wallet-sdk';
+import { Client, type TNetworksConfig } from "@asichain/asi-wallet-sdk";
 
-// Generate a new wallet with random keys
-const wallet = WalletsService.createWallet();
-console.log('Address:', wallet.address);
-console.log('Public Key:', wallet.publicKey);
+const networksConfig: TNetworksConfig = {
+    DevNet: {
+        ValidatorURL: "http://validator-node:40403",
+        ReadOnlyURL: "http://observer-node:40403",
+        IndexerURL: "http://indexer-node:8080",
+    },
+    Dev: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
+    MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
+    TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
+};
 
-// Create wallet from mnemonic
-const mnemonic = MnemonicService.generateMnemonic();
-const derivedWallet = await WalletsService.createWalletFromMnemonic(mnemonic, 0);
-console.log('Derived Address:', derivedWallet.address);
+const client = await Client.create({ networksConfig, defaultNetwork: "DevNet" });
 ```
 
-See [WalletsService](docs/SERVICES.md) and [MnemonicService](docs/SERVICES.md) for full API reference.
-
-### Manage Wallets with Vault
+### Create Wallets
 
 ```typescript
-import { Vault, Wallet } from '@asichain/asi-wallet-sdk';
+import { MnemonicStrength } from "@asichain/asi-wallet-sdk";
 
-// Create vault and add wallet
-const vault = new Vault();
+// HD (mnemonic) wallet
+const mnemonic = client.generateMnemonic(MnemonicStrength.TWELVE_WORDS);
+const hdWallet = await client.createHDWallet(
+    { mnemonic, accountName: "Account 1" },
+    "wallet-password",
+);
 
-// Add wallet to vault
-const wallet = await Wallet.fromPrivateKey('My Wallet', privateKey, 'wallet-password');
-vault.addWallet(wallet);
+// Private-key wallet
+const privateKey = client.generatePrivateKey();
+const pkWallet = await client.createPrivateKeyWallet(
+    { privateKey, accountName: "Imported" },
+    "wallet-password",
+);
 
-// Save vault to localStorage
-await vault.lock('vault-password');
-vault.save();
+// Derive another account on the HD wallet
+const { account } = await client.deriveAccount(
+    hdWallet.getId(),
+    "Account 2",
+    "wallet-password",
+);
+console.log("New address:", account.getAddress());
 ```
 
-See [Vault](docs/DOMAINS.md) and [Wallet](docs/DOMAINS.md) for full API reference.
+See [Client](docs/DOMAINS.md), [Wallet](docs/DOMAINS.md), and [Account](docs/DOMAINS.md) for the full API reference.
 
 ### Check Balance and Transfer
 
 ```typescript
-import { AssetsService, BlockchainGateway } from '@asichain/asi-wallet-sdk';
+const active = hdWallet.getActiveAccount()!;
 
-BlockchainGateway.init({
-  validator: { baseUrl: 'http://validator-node:40403' },
-  indexer: { baseUrl: 'http://observer-node:40403' },
-});
-const assetsService = new AssetsService();
+// Total and reservation-aware available balance
+const balance = await client.getBalance(active.getAddress());
+const available = await client.getAvailableBalance(hdWallet.getId(), active.getId());
+console.log("Balance:", client.toDisplayAmount(balance));
 
-// Get ASI balance
-const balance = await assetsService.getASIBalance(address);
-console.log('Balance:', balance.toString());
-
-// Transfer tokens
-const deployId = await assetsService.transfer(
-  fromAddress,
-  toAddress,
-  BigInt(1000000000), // 10 ASI in atomic units
-  wallet,
-  passwordProvider
+// Transfer tokens (amount in atomic units)
+const deployId = await client.transfer(
+    {
+        walletId: hdWallet.getId(),
+        accountId: active.getId(),
+        to: recipientAddress,
+        amount: client.toAtomicAmount("10"), // 10 ASI
+    },
+    "wallet-password",
 );
+console.log("Deploy id:", deployId);
 ```
 
-See [AssetsService](docs/SERVICES.md) for full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
+See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
 
 ---
 
@@ -140,34 +154,40 @@ See [AssetsService](docs/SERVICES.md) for full API reference. For amount convers
 │                     ASI Wallet SDK                                  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                      Services                                 │  │
-│  │  • WalletsService       - Wallet creation & address derivation│  │
-│  │  • CryptoService        - Password-based encryption (AES)     │  │
-│  │  • KeysManager          - secp256k1 key generation            │  │
-│  │  • KeyDerivationService - BIP-32/BIP-44 derivation            │  │
-│  │  • MnemonicService      - BIP-39 mnemonic handling            │  │
-│  │  • SignerService        - Deploy signing pipeline             │  │
-│  │  • AssetsService        - Balance + transfer operations       │  │
-│  │  • FeeService           - Gas fee calculations                │  │
+│  │                    Client (facade)                            │  │
+│  │  Wallet & account lifecycle • networks • balances • transfers │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │                      Domains                                  │  │
-│  │  • Wallet              - Encrypted wallet with lock/unlock    │  │
-│  │  • Vault               - Multi-wallet container               │  │
+│  │  • Wallet / Account    - Multi-account HD & PK wallets        │  │
+│  │  • Signer (HD / PK)    - No-raw-export signing boundary       │  │
 │  │  • Asset               - Token representation                 │  │
-│  │  • EncryptedRecord     - Encrypted record storage             │  │
-│  │  • BrowserStorage      - Browser persistence adapter          │  │
-│  │  • BlockchainGateway   - Node API gateway                     │  │
+│  │  • ReservationAdapter  - Pending-transaction reservations     │  │
+│  │  • ApiClientManager    - Per-network transport clients        │  │
+│  │  • ApiServiceRegistry  - Service composition root             │  │
+│  │  • Storage repositories- Signers / Accounts / Reservations    │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                       Utils                                   │  │
-│  │  • codec      - Base16/Base58 encoding                        │  │
-│  │  • constants  - Chain prefix, decimals, gas fees              │  │
-│  │  • validators - Address and account name validation           │  │
-│  │  • functions  - Atomic amount conversions                     │  │
-│  │  • polyfills  - Browser Buffer compatibility                  │  │
+│  │                  Services / Managers                          │  │
+│  │  • WalletManager / AccountManager - In-memory ownership       │  │
+│  │  • StorageManager      - Persistence orchestration            │  │
+│  │  • DeployService / BlockService / AccountDataService          │  │
+│  │  • AssetsService / TransactionService / DeployStatusPoller    │  │
+│  │  • CryptoService / KeysManager / KeyDerivation / Mnemonic     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    Storage backends                           │  │
+│  │  • BrowserStorage (IndexedDB) • NodeStorage (node-persist)    │  │
+│  │    selected automatically by environment                      │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    Utils / Config                             │  │
+│  │  • codec / constants / validators / functions / polyfills     │  │
+│  │  • decorators / guards / fabrics                              │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                                │
@@ -176,9 +196,9 @@ See [AssetsService](docs/SERVICES.md) for full API reference. For amount convers
 │                    ASI Chain Network                                │
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
-│  │  Validator   │  │  Validator   │  │  Observer    │               │
-│  │    Nodes     │  │    Nodes     │  │    Node      │               │
-│  │  (Deploys)   │  │  (Deploys)   │  │  (Queries)   │               │
+│  │  Validator   │  │  Observer    │  │  Indexer     │               │
+│  │    Node      │  │    Node      │  │  (GraphQL)   │               │
+│  │  (Deploys)   │  │  (Queries)   │  │  (History)   │               │
 │  └──────────────┘  └──────────────┘  └──────────────┘               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -198,23 +218,25 @@ See [AssetsService](docs/SERVICES.md) for full API reference. For amount convers
 ```
 asi-chain-wallet-sdk/
 ├── src/                        # SDK source code
-│   ├── config/                # Configuration and constants
-│   ├── domains/               # Domain models (→ docs/DOMAINS.md)
-│   ├── services/              # Business logic (→ docs/SERVICES.md)
-│   ├── utils/                 # Utilities (→ docs/UTILS.md)
+│   ├── config/                # Runtime defaults and constants
+│   ├── domains/               # Domain models & transport (→ docs/DOMAINS.md)
+│   ├── services/              # Managers & business logic (→ docs/SERVICES.md)
+│   ├── fabrics/               # Environment-aware factories (storage)
+│   ├── utils/                 # Utilities & guards (→ docs/UTILS.md)
 │   └── index.ts              # Main export
 │
 ├── playground/                # React demo app (→ docs/PLAYGROUND.md)
 │   ├── src/
+│   │   ├── sdk-react-kit/    # SDK ↔ React integration layer (hooks, context)
 │   │   ├── components/       # UI components
-│   │   ├── pages/            # WalletsPage demo
-│   │   └── config/           # Network configuration
+│   │   ├── pages/            # WalletsPage, TxHistoryPage
+│   │   └── router/           # Client-side routing
 │   └── package.json
 │
 ├── docs/                      # API reference
-│   ├── DOMAINS.md            # Domain models
-│   ├── SERVICES.md           # Services
-│   ├── UTILS.md              # Utilities
+│   ├── DOMAINS.md            # Domain models & transport
+│   ├── SERVICES.md           # Managers & services
+│   ├── UTILS.md              # Utilities & config
 │   └── PLAYGROUND.md         # Playground components
 │
 ├── package.json              # SDK dependencies
@@ -228,33 +250,33 @@ asi-chain-wallet-sdk/
 
 ### SDK Reference
 
-| Document | Description |
-|----------|-------------|
-| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain models (`Wallet`, `Vault`, `Asset`, `BlockchainGateway`, and related types) |
-| [docs/SERVICES.md](docs/SERVICES.md) | Service layer (`WalletsService`, `CryptoService`, `KeysManager`, `KeyDerivationService`, `SignerService`, `AssetsService`, `DeployResubmitter`) |
-| [docs/UTILS.md](docs/UTILS.md) | Utility helpers (`codec`, `constants`, `validators`, `functions`, `polyfills`) |
-| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components and usage examples |
+| Document                                 | Description                                                                                                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, storage repositories, and types)      |
+| [docs/SERVICES.md](docs/SERVICES.md)     | Managers & services (`WalletManager`, `AccountManager`, `StorageManager`, `DeployService`, `AssetsService`, `TransactionService`, `CryptoService`)  |
+| [docs/UTILS.md](docs/UTILS.md)           | Utilities & config (`codec`, `constants`, `validators`, `functions`, `guards`, `decorators`, `fabrics`, `polyfills`)                                |
+| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components, the `sdk-react-kit` integration layer, and usage examples                                                                    |
 
 ### Related Resources
 
-| Resource | Link |
-|----------|------|
-| ASI Chain Documentation | https://docs.asichain.io |
-| ASI Chain Node | [github.com/asi-alliance/asi-chain](https://github.com/asi-alliance/asi-chain) |
-| ASI Chain Wallet | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet) |
-| ASI Chain Explorer | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
-| ASI Chain Faucet | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet) |
+| Resource                | Link                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| ASI Chain Documentation | https://docs.asichain.io                                                                         |
+| ASI Chain Node          | [github.com/asi-alliance/asi-chain](https://github.com/asi-alliance/asi-chain)                   |
+| ASI Chain Wallet        | [github.com/asi-alliance/asi-chain-wallet](https://github.com/asi-alliance/asi-chain-wallet)     |
+| ASI Chain Explorer      | [github.com/asi-alliance/asi-chain-explorer](https://github.com/asi-alliance/asi-chain-explorer) |
+| ASI Chain Faucet        | [github.com/asi-alliance/asi-chain-faucet](https://github.com/asi-alliance/asi-chain-faucet)     |
 
 ---
 
 ## Security
 
-| Document | Description |
-|----------|-------------|
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting policy, disclosure process, and supported versions |
-| [THREAT_MODEL.md](THREAT_MODEL.md) | Threat assumptions, trust boundaries, adversary model, and mitigations |
-| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees |
-| [CRYPTO_PROFILE.md](CRYPTO_PROFILE.md) | Versioned crypto parameters, key-handling profile, and migration notes |
+| Document                                         | Description                                                                |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| [SECURITY.md](SECURITY.md)                       | Vulnerability reporting policy, disclosure process, and supported versions |
+| [THREAT_MODEL.md](THREAT_MODEL.md)               | Threat assumptions, trust boundaries, adversary model, and mitigations     |
+| [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md) | Non-negotiable key/storage/signing/documentation security guarantees       |
+| [CRYPTO_PROFILE.md](CRYPTO_PROFILE.md)           | Versioned crypto parameters, key-handling profile, and migration notes     |
 
 ---
 
@@ -289,35 +311,40 @@ The [playground](playground) provides a React-based demo application for testing
 cd playground
 npm install
 
-# Create .env file with network configuration
-# VITE_NETWORKS='[{"name":"DevNet","validatorURL":"...","readOnlyURL":"..."}]'
+# Create .env file with per-network endpoints, e.g.:
+# VITE_DEFAULT_NETWORK=DevNet
+# VITE_DEVNET_VALIDATOR_URL=...
+# VITE_DEVNET_READONLY_URL=...
+# VITE_DEVNET_INDEXER_URL=...
 
 npm run dev
 ```
 
-Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
+Playground available at `http://localhost:3000`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
 
 ### Dependencies
 
 **SDK** ([package.json](package.json)):
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [axios](https://github.com/axios/axios) | 1.13.2 | HTTP client for node communication |
-| [bip32](https://github.com/bitcoinjs/bip32) | 4.0.0 | BIP-32 hierarchical deterministic wallets |
-| [bip39](https://github.com/bitcoinjs/bip39) | 3.1.0 | BIP-39 mnemonic generation |
-| [blakejs](https://github.com/dcposch/blakejs) | 1.2.1 | BLAKE2b hashing for addresses |
-| [bs58](https://github.com/cryptocoinjs/bs58) | 6.0.0 | Base58 encoding |
-| [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.6.0 | Cryptographic hash helpers |
-| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0 | secp256k1 key generation and signing |
-| [js-sha3](https://github.com/nicknisi/js-sha3) | 0.9.3 | keccak256 hashing |
+| Package                                                          | Version | Purpose                                   |
+| ---------------------------------------------------------------- | ------- | ----------------------------------------- |
+| [axios](https://github.com/axios/axios)                          | 1.13.2  | HTTP client for node communication        |
+| [bip32](https://github.com/bitcoinjs/bip32)                      | 4.0.0   | BIP-32 hierarchical deterministic wallets |
+| [bip39](https://github.com/bitcoinjs/bip39)                      | 3.1.0   | BIP-39 mnemonic generation                |
+| [blakejs](https://github.com/dcposch/blakejs)                    | 1.2.1   | BLAKE2b hashing for addresses             |
+| [bs58](https://github.com/cryptocoinjs/bs58)                     | 6.0.0   | Base58 encoding                           |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes)       | 1.6.0   | Cryptographic hash helpers                |
+| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) | 1.7.0   | secp256k1 key generation and signing      |
+| [js-sha3](https://github.com/nicknisi/js-sha3)                   | 0.9.3   | keccak256 hashing                         |
+| [node-persist](https://github.com/simonlast/node-persist)        | 4.0.4   | Node.js storage backend                   |
+| [buffer](https://github.com/feross/buffer)                       | 6.0.3   | Browser Buffer compatibility              |
 
 **Playground** ([playground/package.json](playground/package.json)):
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [react](https://react.dev) | 18.2.0 | UI framework |
-| [vite](https://vite.dev) | 7.2.6 | Build tool and dev server |
+| Package                    | Version | Purpose                   |
+| -------------------------- | ------- | ------------------------- |
+| [react](https://react.dev) | 18.2.0  | UI framework              |
+| [vite](https://vite.dev)   | 7.2.6   | Build tool and dev server |
 
 ---
 

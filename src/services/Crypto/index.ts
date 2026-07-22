@@ -1,4 +1,14 @@
-import { arrayBufferToBase64, base64ToArrayBuffer } from "@utils/codec";
+import Bip44Path from "@domains/Bip44Path";
+import SecretsProvider, {
+    IHDSecret,
+    IHDSecretRecord,
+    IPrivateKeyCredentials,
+} from "@domains/SecretsProvider";
+import {
+    arrayBufferToBase64,
+    base64ToArrayBuffer,
+    toUint8Array,
+} from "@utils/index";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",
@@ -6,7 +16,7 @@ const enum KeyUsage {
     DERIVATION = "deriveKey",
 }
 
-export interface CryptoConfig {
+export type CryptoConfig = {
     readonly VERSION: number;
     readonly IV_LENGTH: number;
     readonly SALT_LENGTH: number;
@@ -17,14 +27,14 @@ export interface CryptoConfig {
     readonly KEY_IMPORT_USAGE: KeyUsage[];
     readonly HASH_FUNCTION: string;
     readonly ALGORITHM: string;
-}
+};
 
-export interface EncryptedData {
+export type EncryptedData = {
     data: string;
     salt: string;
     iv: string;
     version: number;
-}
+};
 
 const CryptoConfig: CryptoConfig = {
     VERSION: 2,
@@ -87,6 +97,35 @@ export default class CryptoService {
         );
 
         return new TextDecoder().decode(decrypted);
+    }
+
+    public static async decryptSignerData(
+        signerData: EncryptedData,
+        passwordProvider: SecretsProvider,
+    ): Promise<IHDSecret | IPrivateKeyCredentials> {
+        const stringifiedKeyMaterial: string =
+            await CryptoService.decryptWithPassword(
+                signerData,
+                passwordProvider.getSecret().password,
+            );
+
+        const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials =
+            JSON.parse(stringifiedKeyMaterial);
+
+        if ("privateKey" in keyMaterial) {
+            const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
+
+            return {
+                privateKey,
+            };
+        }
+
+        const path: Bip44Path = Bip44Path.parse(keyMaterial.rootHDPath);
+
+        return {
+            seed: keyMaterial.seed,
+            rootHDPath: path,
+        };
     }
 
     public static async deriveKey(

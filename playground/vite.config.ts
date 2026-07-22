@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
     plugins: [react(), nodePolyfills()],
     resolve: {
+        preserveSymlinks: true,
         alias: {
             "@api": path.resolve(__dirname, "./src/api"),
             "@components": path.resolve(__dirname, "./src/components"),
@@ -19,10 +20,9 @@ export default defineConfig({
             "@utils": path.resolve(__dirname, "./src/utils"),
             "@data": path.resolve(__dirname, "./src/data"),
             "@store": path.resolve(__dirname, "./src/store"),
-            "asi-wallet-sdk": path.resolve(__dirname, "../dist/index.esm.js"),
-        }
+        },
     },
     optimizeDeps: {
-        include: ["@noble/secp256k1"],
+        force: true,
     },
 });

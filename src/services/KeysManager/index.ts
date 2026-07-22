@@ -1,14 +1,28 @@
-import KeyDerivationService, {
-    Bip44PathOptions,
-} from "@services/KeyDerivation";
-import { PRIVATE_KEY_LENGTH } from "@utils/constants";
+import Bip44Path from "@domains/Bip44Path";
+import KeyDerivationService from "@services/KeyDerivation";
+import { ASI_COIN_TYPE, PRIVATE_KEY_LENGTH } from "@utils/constants";
+import { isCustomCreateHDWalletOptions } from "@utils/guards";
+import { TCreateHDPathWalletOptions } from "@domains/Wallet";
 import { utils, getPublicKey } from "@noble/secp256k1";
 
 const { randomBytes, bytesToHex } = utils;
 
-export interface KeyPair {
+export type KeyPair = {
     privateKey: Uint8Array;
     publicKey: Uint8Array;
+};
+
+export interface IBaseHDWalletPrivateKeyData {
+    path: Bip44Path;
+    privateKey: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromMnemonic extends IBaseHDWalletPrivateKeyData {
+    seed: Uint8Array;
+}
+
+export interface IHDWalletPrivateKeyDataFromSeed extends IBaseHDWalletPrivateKeyData {
+    index: number;
 }
 
 export default class KeysManager {
@@ -25,11 +39,7 @@ export default class KeysManager {
     public static generateKeyPair(
         keyLength: number = PRIVATE_KEY_LENGTH,
     ): KeyPair {
-        if (!keyLength || keyLength < 0 || !Number.isInteger(keyLength)) {
-            throw new Error("PrivateKeyLength must be a positive integer");
-        }
-
-        const privateKey: Uint8Array = randomBytes(keyLength);
+        const privateKey: Uint8Array = this.generateRandomKey(keyLength);
         const publicKey: Uint8Array = getPublicKey(privateKey);
 
         return { privateKey, publicKey };
@@ -51,17 +61,29 @@ export default class KeysManager {
         return bytesToHex(key);
     }
 
-    public static async deriveKeyFromMnemonic(
-        mnemonicWords: string[],
-        options?: Bip44PathOptions,
-    ): Promise<Uint8Array> {
-        return await KeyDerivationService.deriveKeyFromMnemonic(
-            mnemonicWords,
-            options,
-        );
+    public static async getInitialHDPathFromOptions(
+        hdWalletOptions: TCreateHDPathWalletOptions,
+    ): Promise<Bip44Path> {
+        return !isCustomCreateHDWalletOptions(hdWalletOptions)
+            ? new Bip44Path({
+                  coinType: ASI_COIN_TYPE,
+                  account: 0,
+                  change: 0,
+                  index: hdWalletOptions.index,
+              })
+            : hdWalletOptions.customHDPath;
     }
 
-    public static generateMpcKeyPair(): any {
-        throw new Error("MPC key generation is not implemented yet.");
+    public static async getPrivateDataFromSeed(
+        seed: Uint8Array,
+        path: Bip44Path,
+    ): Promise<IHDWalletPrivateKeyDataFromSeed> {
+        const masterNode = KeyDerivationService.seedToMasterNode(seed);
+
+        return {
+            privateKey: KeyDerivationService.derivePrivateKey(masterNode, path),
+            path,
+            index: path.getIndex(),
+        };
     }
 }

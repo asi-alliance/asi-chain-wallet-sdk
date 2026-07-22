@@ -1,6 +1,5 @@
 import InputsForm from "../InputsForm";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-import { MnemonicService } from "asi-wallet-sdk";
 import "./style.css";
 
 export type TWalletCreatePayload =
@@ -13,21 +12,23 @@ export type TWalletCreatePayload =
     | {
           mode: "mnemonic";
           name: string;
-          mnemonicWords: string[];
+          mnemonic: string;
           password: string;
-          seedPassword?: string
       };
 
 export interface IWalletCreateModalProps {
     variant?: 12 | 24;
     mode: "privateKey" | "mnemonic";
-    isInputMode: boolean;
+    isInputMode?: boolean;
     title?: string;
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
     initialMnemonic?: string;
-    initialPrivateKey?: string;
+    initialPrivateKey?: Uint8Array;
 }
+
+const toWordArray = (mnemonic?: string): string[] =>
+    mnemonic ? mnemonic.trim().split(/\s+/).filter(Boolean) : [];
 
 const CreateWalletModal = ({
     variant = 12,
@@ -35,23 +36,21 @@ const CreateWalletModal = ({
     title,
     onSubmit,
     onClose,
-    isInputMode,
+    isInputMode = false,
     initialMnemonic,
-    initialPrivateKey = "",
+    initialPrivateKey = new Uint8Array(),
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
-    const [mnemonicWords, setMnemonicWords] = useState<string[]>(
-        !initialMnemonic
-            ? []
-            : MnemonicService.mnemonicToWordArray(initialMnemonic),
+    const [mnemonicWords, setMnemonicWords] = useState<string[]>(() =>
+        toWordArray(initialMnemonic),
     );
 
     const computedTitle = useMemo(() => {
         if (title) return title;
         return mode === "privateKey"
             ? "Add private key wallet"
-            : "Derive mnemonic wallet";
+            : "Add mnemonic wallet";
     }, [mode, title]);
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -61,7 +60,6 @@ const CreateWalletModal = ({
         const formData = new FormData(event.currentTarget);
 
         const name = (formData.get("name") as string) ?? "";
-        const privateKey = (formData.get("privateKey") as string) ?? "";
         const password = (formData.get("password") as string) ?? "";
         const repassword = (formData.get("repassword") as string) ?? "";
 
@@ -71,19 +69,23 @@ const CreateWalletModal = ({
         }
 
         if (mode === "privateKey") {
+            const privateKey = (formData.get("privateKey") as string) ?? "";
+
             if (!privateKey.trim()) {
                 setLocalError("Private key is required.");
                 return;
             }
 
-            onSubmit({
-                mode: "privateKey",
-                name: name.trim(),
-                privateKey: new Uint8Array(
-                    JSON.parse(`[${privateKey.trim()}]`),
-                ),
-                password,
-            });
+            try {
+                onSubmit({
+                    mode: "privateKey",
+                    name: name.trim(),
+                    privateKey: new Uint8Array(JSON.parse(privateKey.trim())),
+                    password,
+                });
+            } catch {
+                setLocalError("Private key must be a JSON byte array.");
+            }
 
             return;
         }
@@ -96,7 +98,7 @@ const CreateWalletModal = ({
         onSubmit({
             mode: "mnemonic",
             name: name.trim(),
-            mnemonicWords,
+            mnemonic: mnemonicWords.join(" "),
             password,
         });
     };
@@ -146,10 +148,11 @@ const CreateWalletModal = ({
                                 id="privateKey"
                                 name="privateKey"
                                 type="text"
-                                placeholder=""
                                 autoComplete="off"
                                 required
-                                defaultValue={initialPrivateKey}
+                                defaultValue={JSON.stringify(
+                                    Array.from(initialPrivateKey),
+                                )}
                                 readOnly={!isInputMode}
                             />
                         </div>
@@ -241,7 +244,7 @@ const CreateWalletModal = ({
                             variant={variant}
                             onValidSubmit={handleMnemonicSubmit}
                             formMode={isInputMode ? "input" : "output"}
-                            onClose={() => setIsMnemonicModalOpen(false)}
+                            onClose={closeMnemonicModal}
                         />
                     </div>
                 </div>

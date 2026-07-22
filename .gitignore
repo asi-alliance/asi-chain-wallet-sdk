@@ -19,3 +19,14 @@ coverage/
 tmp/
 temp/
 *.bak
+
+# Storage
+/storage*
+
+# Storage tests
+.tmp/
+.persist-test/
+/storage-test
+
+# Playground previous versions
+/playground-last

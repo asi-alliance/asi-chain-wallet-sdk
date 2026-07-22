@@ -1,23 +1,29 @@
-import { DEFAULT_DECIMALS_AMOUNT } from "@config";
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import { generateRandomId } from "@utils/index";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;
 
 export type { AssetId, Assets };
 
-export default class Asset {
-    private id: AssetId;
-    private name: string;
-    private decimals: number;
+export interface IAssetOptions {
+    id: string;
+    name: string;
+    decimals?: number;
+    contractAddress?: string;
+}
 
-    constructor(
-        id: string,
-        name: string,
-        decimals: number = DEFAULT_DECIMALS_AMOUNT
-    ) {
+export default class Asset {
+    private readonly id: AssetId;
+    private readonly name: string;
+    private readonly decimals: number;
+    private readonly contractAddress: string | null;
+
+    constructor({ id, name, decimals, contractAddress }: IAssetOptions) {
         this.id = id;
         this.name = name;
-        this.decimals = decimals;
+        this.decimals = decimals ?? NATIVE_TOKEN_DECIMALS_AMOUNT;
+        this.contractAddress = contractAddress ?? null;
     }
 
     public getId(): string {
@@ -31,4 +37,13 @@ export default class Asset {
     public getDecimals(): number {
         return this.decimals;
     }
+
+    public getContractAddress(): string | null {
+        return this.contractAddress;
+    }
 }
+
+export const DEFAULT_ASSET: Asset = new Asset({
+    id: generateRandomId(),
+    name: "ASI",
+});

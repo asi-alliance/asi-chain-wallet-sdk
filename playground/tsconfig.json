@@ -2,7 +2,11 @@
     "compilerOptions": {
         "target": "ES2020",
         "useDefineForClassFields": true,
-        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "lib": [
+            "ES2020",
+            "DOM",
+            "DOM.Iterable"
+        ],
         "module": "ESNext",
         "skipLibCheck": true,
         "moduleResolution": "bundler",
@@ -17,19 +21,49 @@
         "noFallthroughCasesInSwitch": true,
         "noUncheckedSideEffectImports": true,
         "paths": {
-            "@api/*": ["./src/api/*"],
-            "@pages/*": ["./src/pages/*"],
-            "@layouts/*": ["./src/layouts/*"],
-            "@components/*": ["./src/components/*"],
-            "@context/*": ["./src/context/*"],
-            "@domains/*": ["./src/domains/*"],
-            "@hooks/*": ["./src/hooks/*"],
-            "@router/*": ["./src/router/*"],
-            "@services/*": ["./src/services/*"],
-            "@utils/*": ["./src/utils/*"],
-            "@data/*": ["./src/data/*"],
-            "@store/*": ["./src/store/*"],
+            "@api/*": [
+                "./src/api/*"
+            ],
+            "@pages/*": [
+                "./src/pages/*"
+            ],
+            "@layouts/*": [
+                "./src/layouts/*"
+            ],
+            "@components/*": [
+                "./src/components/*"
+            ],
+            "@context/*": [
+                "./src/context/*"
+            ],
+            "@config/*": [
+                "./src/config/*"
+            ],
+            "@domains/*": [
+                "./src/domains/*"
+            ],
+            "@hooks/*": [
+                "./src/hooks/*"
+            ],
+            "@router/*": [
+                "./src/router/*"
+            ],
+            "@services/*": [
+                "./src/services/*"
+            ],
+            "@utils/*": [
+                "./src/utils/*"
+            ],
+            "@data/*": [
+                "./src/data/*"
+            ],
+            "@store/*": [
+                "./src/store/*"
+            ],
         }
     },
-    "include": ["src", "vite.config.ts"]
+    "include": [
+        "src",
+        "vite.config.ts"
+    ]
 }

@@ -10,13 +10,13 @@ export enum MnemonicStrength {
 
 export default class MnemonicService {
     public static generateMnemonic(
-        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS
+        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS,
     ): string {
         return bip39.generateMnemonic(strength);
     }
 
     public static generateMnemonicArray(
-        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS
+        strength: MnemonicStrength = MnemonicStrength.TWELVE_WORDS,
     ): string[] {
         return this.mnemonicToWordArray(this.generateMnemonic(strength));
     }
@@ -31,5 +31,19 @@ export default class MnemonicService {
 
     public static wordArrayToMnemonic(words: string[]): string {
         return words.join(" ");
+    }
+
+    public static async mnemonicToSeed(
+        mnemonic: string | string[],
+        passphrase = "",
+    ): Promise<Uint8Array> {
+        if (typeof mnemonic === "string") {
+            return await bip39.mnemonicToSeed(mnemonic, passphrase);
+        }
+
+        return await bip39.mnemonicToSeed(
+            this.wordArrayToMnemonic(mnemonic),
+            passphrase,
+        );
     }
 }
