@@ -7,11 +7,12 @@ Services split into a few groups:
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
   `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
   `TransactionReservationsManager`, `DisposableItemManager`).
-- **Persistence orchestration** — `StorageManager`,
+- **Persistence orchestration** — `StorageManager`, `NetworkManager`,
   `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
   `BlockService`, `AccountDataService`, `AssetsService`, `TransactionService`,
   `DeployStatusPoller`, plus the `GraphqlParser` helpers.
+- **Export** — `ExportService` (account keyfile + transactions JSON/CSV).
 - **Crypto / key primitives** — `CryptoService`, `WalletsService`,
   `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
   `BinaryWriter` (documented under domains).
@@ -87,8 +88,10 @@ getAccount(id: string): Account | null
 `DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
 
 ```ts
-create(wallet: Wallet, passwordProvider: SecretsProvider): Promise<ReservationAdapter>
+create(wallet: Wallet): Promise<ReservationAdapter>
 ```
+
+No password is required — reservations are non-secret plaintext records.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
@@ -102,7 +105,7 @@ add(reservation): void
 remove(id: string): boolean
 get(id: string): ITransactionReservation | null
 getAll(): ITransactionReservation[]
-getByAccountAddress(accountAddress: string): ITransactionReservation[]
+getByAccountId(accountId: string): ITransactionReservation[]
 dispose(): void
 ```
 
@@ -122,14 +125,15 @@ interface ITransactionReservationsManagerOptions {
 
 ### StorageManager (`src/services/StorageManager/index.ts`)
 
-Static façade over the three primary repositories (signers, accounts,
-transaction reservations). Handles encrypt-on-write of signer secrets and
-compose/decompose of the `Wallet` aggregate.
+Static façade over the four repositories (signers, accounts, transaction
+reservations, custom networks). Only signer secrets are encrypted on write;
+reservations and custom-network records are non-secret and stored as plaintext.
+Also composes/decomposes the `Wallet` aggregate.
 
 ```ts
 StorageManager.init(options?: IStorageFabricOptions): Promise<void>
 
-// signers
+// signers (encrypted secret)
 saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
 
 // accounts
@@ -141,13 +145,39 @@ saveWallets(options[]): Promise<void[]>
 getWallet({ signerId, passwordProvider }): Promise<Wallet>   // restores + decrypts
 getWallets(): Promise<IWalletStorageData[]>                  // public metadata
 
-// reservations
-saveTransactionReservation / getTransactionReservationsBySignerId /
+// reservations (plaintext privateData)
+saveTransactionReservation({ id, networkId, signerId, privateData }) /
+getTransactionReservationsBySignerId(signerId, networkId) /
 updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
+
+// custom networks
+getCustomNetworks(): Promise<INetworkRecord[]>
+saveCustomNetwork(network: INetworkRecord): Promise<void>
+updateCustomNetwork(network: INetworkRecord): Promise<void>
+deleteCustomNetwork(id: NetworkId): Promise<void>
 
 clear(): Promise<void>
 close(): void
 ```
+
+### NetworkManager (`src/services/NetworkManager/index.ts`)
+
+Static orchestrator for the runtime network registry. Bridges the live
+`ApiClientManager` registry to `StorageManager` persistence so custom networks
+survive reloads. Delegated to by `Client`'s network methods.
+
+```ts
+NetworkManager.initialize(networksConfig: TNetworksConfig, defaultNetwork?: NetworkName): Promise<void>
+// loads persisted custom networks, then ApiClientManager.initialize(built-ins, custom, default)
+
+addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // registers + persists
+updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // updates + re-persists
+removeNetwork(id: NetworkId): Promise<void>                                    // removes + deletes from storage
+```
+
+Built-in networks are never persisted or mutated here; only custom networks flow
+through storage. Validation and the built-in-immutability guard live in
+`NetworkConfigProvider` (see `DOMAINS.md`).
 
 ### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
 
@@ -173,6 +203,29 @@ close(): void
 InsensitiveCacheStorageSerializer.serialize(account: Account): IInsensitiveCacheRecord
 // { id: account.getId(), address: account.getAddress() }
 ```
+
+---
+
+## Export
+
+### ExportService (`src/services/ExportService/index.ts`)
+
+Serializes account and transaction data for download. Pure formatting — it never
+decrypts anything.
+
+```ts
+ExportService.exportAccountKeyfile(input: IAccountKeyfileInput): string
+ExportService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
+
+interface IAccountKeyfileInput { address: string; encryptedPrivateKey: EncryptedData }
+```
+
+`exportAccountKeyfile` wraps the address and the **encrypted** private key in the
+versioned ASI keyfile envelope (`{ version, type: "asi-wallet-keyfile", address,
+encryptedPrivateKey, timestamp }`) — the plaintext key never leaves the signer.
+`exportTransactions` returns pretty-printed JSON (default) or CSV built from
+`TRANSACTIONS_CSV_HEADERS` with RFC-4180 quoting. `Client.getExportedAccountData`
+and `Client.getExportedTransactionsData` are the high-level entry points.
 
 ---
 
@@ -251,7 +304,7 @@ interface ITransferPayload {
     account: Account;
     signer: Signer;
     details: ITransferDetails;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider; // optional when a signing session is active
 }
 interface IDeployPayload {
     walletType: WalletTypes;
@@ -261,7 +314,7 @@ interface IDeployPayload {
     phloLimit?: number;
     phloPrice?: number;
     shardId?: string;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider; // optional when a signing session is active
 }
 ```
 

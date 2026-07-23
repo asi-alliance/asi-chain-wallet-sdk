@@ -52,6 +52,9 @@ Current controls:
 1. WebCrypto (`AES-GCM`, `PBKDF2`) for encryption.
 2. Modern secp256k1 signing path (`@noble/secp256k1`).
 3. Vault lock/unlock flow with encrypted-at-rest storage.
+4. Bounded in-memory signing sessions: the decrypted secret is held only for a
+   fixed, configurable auto-lock window and is zeroized on lock/expiry; the
+   signing path fails closed (`WalletLockedError`) when locked.
 
 Planned/required controls:
 
@@ -64,4 +67,5 @@ Planned/required controls:
 ## 8. Residual Risk
 
 Even with encryption-at-rest, browser XSS remains a major risk vector for wallet SDK consumers.  
+An active signing session widens this window: while unlocked, the decrypted secret is reachable in memory, so integrators should keep `autoLockMs` conservative (or use `every-signature`) for high-risk contexts.  
 Security posture depends on both SDK controls and host-app hardening (CSP, trusted rendering, extension awareness).

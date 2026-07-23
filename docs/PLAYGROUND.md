@@ -2,7 +2,7 @@
 
 This document summarizes the example React playground in `playground/src`. The
 playground consumes the SDK through a small integration layer (`sdk-react-kit`)
-and is split into routed pages (Wallets, Transaction History).
+and is split into routed pages (Wallets, Transaction History, Networks, Deploy).
 
 The SDK is imported as `asi-wallet-sdk` (a `file:..` dependency in the
 playground's `package.json`). Network endpoints come from Vite env vars (`.env`).
@@ -46,15 +46,21 @@ Returned value (`UseSdkValue`):
 - Wallet lifecycle: `createHDWallet(input, password)`,
   `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
   `removeWallet(walletId)`.
+- Signing sessions: `isWalletUnlocked(walletId)` — used by `useSecureAction` to
+  decide whether a password prompt is needed (see below). `unlockWallet` starts
+  the session; the SDK auto-locks it after the policy's timeout.
 - Account lifecycle: `deriveAccount(walletId, name, password)`,
   `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`,
   `setActiveAccount(walletId, accountId)`.
-- Transfers & balances: `transfer(request, password)`, `getBalance(address)`,
+- Transfers & balances: `transfer(request, password?)` (password omitted while a
+  session is active), `getBalance(address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
-- Raw deploys: `deploy(request, password)` (arbitrary Rholang term via
-  `IDeployRequest = { walletId, accountId, term, phloLimit? }`),
-  `exploreDeploy(rholang)` (read-only, no unlock/password),
+- Raw deploys: `deploy(request, password?)` (arbitrary Rholang term via
+  `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
+  rules as `transfer`), `exploreDeploy(rholang)` (read-only, no unlock/password),
   `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
+- Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
+  keyfile JSON (downloaded from `AccountCard`).
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
 - Persistence: `clearPersistence()`.
 
@@ -181,11 +187,13 @@ or confirm removal and call the matching `useSdk` methods through `withLoader`
 Runs arbitrary Rholang against the current network (restores the `Deploy` /
 `DeployLiteModeWidget` flow from the web wallet). Lets the user pick an unlocked
 account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
-example contract), and set a phlo limit. **Deploy** opens `PasswordModal` and calls
-`sdk.deploy({ walletId, accountId, term, phloLimit }, password)`, then tracks
-status with `sdk.watchDeploy(deployId, ...)` (the watch handle is cancelled on
-unmount and before each new run). **Explore** calls `sdk.exploreDeploy(code)` and
-needs no unlock/password. Errors and the explore/deploy result are shown inline.
+example contract), and set a phlo limit. **Deploy** runs
+`sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
+`useSecureAction` (a confirm when the wallet session is active, otherwise a
+`PasswordModal`), then tracks status with `sdk.watchDeploy(deployId, ...)` (the
+watch handle is cancelled on unmount and before each new run). **Explore** calls
+`sdk.exploreDeploy(code)` and needs no unlock/password. Errors and the
+explore/deploy result are shown inline.
 
 ---
 
@@ -195,8 +203,10 @@ needs no unlock/password. Errors and the explore/deploy result are shown inline.
 
 Represents one SDK `Account`. Shows name, address, available balance (via
 `useWalletBalance`), and a `ReservationStatus`. Actions: Send (opens
-`TransferModal` → `PasswordModal` → `sdk.transfer`, then shows
-`TransferCompletedModal`), Reload balance, Rename, and Copy address.
+`TransferModal`, then runs `sdk.transfer` through `useSecureAction` — a confirm
+when a session is active, otherwise a `PasswordModal` — and shows
+`TransferCompletedModal`), Reload balance, Rename, Copy address, and Export
+(downloads the encrypted keyfile from `sdk.getExportedAccountData`).
 
 ```ts
 interface IAccountCardProps {
@@ -356,6 +366,27 @@ Fullscreen spinner shown while `useLoader` reports loading.
 ---
 
 ## Hooks & utils
+
+- **useSecureAction** (`hooks/useSecureAction.ts`) — the single gate for
+  signing operations (transfer and deploy). It encapsulates the
+  "try-with-session → prompt-on-lock" pattern:
+
+  ```ts
+  const runSecureAction = useSecureAction();
+  runSecureAction({ walletId, passwordTitle, confirmMessage, action }): Promise<T | undefined>
+  ```
+
+  - When `isWalletUnlocked(walletId)` is `true`, it first shows a
+    `window.confirm(confirmMessage)` (guards against an accidental click), then
+    calls `action()` without a password. If the SDK throws `WalletLockedError`
+    (session expired between the check and the call), it falls through to the
+    password prompt.
+  - Otherwise (or after a lock error) it opens `PasswordModal` and calls
+    `action(password)`; entering the password is itself the confirmation, so no
+    extra `confirm` is shown. A cancelled prompt returns `undefined`.
+
+  This keeps the blocking browser `confirm`/`prompt` in the app layer — the SDK
+  stays UI-free and its Node tests are unaffected.
 
 - **useLoader** (`hooks/useLoader.ts`) — `{ isLoading, setIsLoading, withLoader }`;
   `withLoader` toggles the loader and defers the wrapped work to the next tick.

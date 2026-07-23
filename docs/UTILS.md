@@ -19,6 +19,19 @@ Runtime defaults used across the SDK.
 - `DEPLOY_STATUS_POLLING_TIMEOUT: number` — reservation deploy watch timeout (3 min).
 - `RESERVATION_EXPIRATION_TIME: number` — reservation TTL (5 min).
 
+Signing-session policy:
+
+- `RequirePassword` — string enum-like const: `"once-per-session"` (default) |
+  `"every-signature"`. Controls whether the client holds an unlocked session.
+- `DEFAULT_AUTO_LOCK_MS: number` — default session auto-lock delay (15 min).
+
+Data export:
+
+- `ExportFormat` — `"json"` | `"csv"` (const object + matching type).
+- `ASI_WALLET_KEYFILE: string` / `ASI_WALLET_KEYFILE_VERSION: number` — keyfile
+  envelope `type` tag and version (`"asi-wallet-keyfile"`, `1`).
+- `TRANSACTIONS_CSV_HEADERS: string[]` — column order for CSV transaction export.
+
 ---
 
 ## Constants (`src/utils/constants/index.ts`)
@@ -111,7 +124,12 @@ Account-name and address validation.
 validateAccountName(name: string, maxLength?: number): { isValid: boolean; error?: string }
 validateAddress(address: string): AddressValidationResult
 isAddress(address: string): address is Address // type-guard over validateAddress
+validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
+isValidUrl(url: string): boolean                               // boolean shorthand
 ```
+
+`validateUrl` powers custom-network endpoint validation in
+`NetworkConfigProvider`.
 
 `validateAccountName` (default `maxLength` 30) rejects empty names, over-length
 names, and forbidden characters `<>:"/\|?*`.
@@ -162,6 +180,14 @@ EnsureActiveAccountExist           // throws when the wallet has no active accou
 EnsureApiClientManagerInitialized  // throws before ApiClientManager.initialize()
 EnsureApiClientManagerConfigured   // throws when the network config isn't ready
 EnsureWithInsensitiveCacheStorage  // throws when the cache-storage flag is off
+```
+
+Network-registry guards (`src/utils/decorators/networkConfigProvider`):
+
+```ts
+EnsureNetworkConfigProviderReady   // throws before the registry is initialized
+EnsureNetworkExist                 // throws when the network id is unknown
+EnsureNetworkNotDefault            // throws when mutating/removing a built-in network
 ```
 
 ---

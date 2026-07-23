@@ -31,8 +31,13 @@ This document defines the current cryptographic profile used by `asi-chain-walle
 - Key-handling boundary:
   - Raw key export is disabled by default.
   - Signing uses scoped decrypted-key callbacks with post-use zeroization.
+  - Decrypted-key lifetime is either ephemeral (per-signature, when no session is
+    held) or bounded by an in-memory signing session with a fixed, configurable
+    auto-lock window; locking/expiry clears and zeroizes the session secret.
 - Source of truth:
   - `src/services/Signer/index.ts`
+  - `src/domains/Signer/index.ts`
+  - `src/domains/AutoTimer/index.ts`
   - `src/domains/Wallet/index.ts`
 
 ## 4. Versioning and Migration Notes
