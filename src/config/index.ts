@@ -38,3 +38,13 @@ export const GasFee = {
 
 export const DEPLOY_STATUS_POLLING_TIMEOUT: number = 3 * 60 * 1000;
 export const RESERVATION_EXPIRATION_TIME: number = 5 * 60 * 1000;
+
+export const RequirePassword = {
+    ONCE_PER_SESSION: "once-per-session",
+    EVERY_SIGNATURE: "every-signature",
+} as const;
+
+export type RequirePassword =
+    (typeof RequirePassword)[keyof typeof RequirePassword];
+
+export const DEFAULT_AUTO_LOCK_MS: number = 15 * 60 * 1000;

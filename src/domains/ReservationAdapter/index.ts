@@ -11,7 +11,6 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import CryptoService, { EncryptedData } from "@services/Crypto";
 import { GasFee, RESERVATION_EXPIRATION_TIME } from "@config/index";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
@@ -52,7 +51,6 @@ export default class ReservationAdapter {
 
     public static async create(
         wallet: Wallet,
-        passwordProvider: SecretsProvider,
         reservationsManagerOptions?: Omit<
             ITransactionReservationsManagerOptions,
             "onConfirmed" | "onExpired"
@@ -68,18 +66,10 @@ export default class ReservationAdapter {
                 networkId,
             );
 
-        const password: string = passwordProvider.getSecret().password;
-
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const decrypted: string = await CryptoService.decryptWithPassword(
-                record.encryptedData,
-                password,
-            );
-
-            const privateData: ITransactionReservationPrivateData =
-                JSON.parse(decrypted);
+            const { privateData } = record;
 
             if (privateData.expirationTime <= Date.now()) {
                 await StorageManager.deleteTransactionReservation(record.id);
@@ -91,7 +81,7 @@ export default class ReservationAdapter {
                 id: record.id,
                 networkId: record.networkId,
                 timestamp: new Date(privateData.timestamp),
-                accountAddress: privateData.accountAddress,
+                accountId: privateData.accountId,
                 pendingAmount: privateData.pendingAmount,
                 deployId: privateData.deployId,
                 expirationTime: privateData.expirationTime,
@@ -101,9 +91,9 @@ export default class ReservationAdapter {
         return new ReservationAdapter(reservations, reservationsManagerOptions);
     }
 
-    private getReservedAmount(accountAddress: string): bigint {
+    private getReservedAmount(accountId: string): bigint {
         const reservations: ITransactionReservation[] =
-            this.reservationsManager.getByAccountAddress(accountAddress);
+            this.reservationsManager.getByAccountId(accountId);
 
         const totalAmount: bigint = reservations.reduce(
             (sum: bigint, reservation: ITransactionReservation) =>
@@ -119,7 +109,7 @@ export default class ReservationAdapter {
     public async getBalance(account: Account): Promise<IBalanceData> {
         const balance: IBalanceData = await account.getBalance();
 
-        const reserved: bigint = this.getReservedAmount(account.getAddress());
+        const reserved: bigint = this.getReservedAmount(account.getId());
 
         return {
             ...balance,
@@ -138,37 +128,29 @@ export default class ReservationAdapter {
     private async persistReservation(
         reservation: ITransactionReservation,
         wallet: Wallet,
-        passwordProvider: SecretsProvider,
     ): Promise<void> {
-        const password: string = passwordProvider.getSecret().password;
-
         const privateData: ITransactionReservationPrivateData = {
             timestamp: reservation.timestamp,
-            accountAddress: reservation.accountAddress,
+            accountId: reservation.accountId,
             pendingAmount: reservation.pendingAmount,
             deployId: reservation.deployId,
             expirationTime: reservation.expirationTime,
         };
 
-        const encryptedData: EncryptedData =
-            await CryptoService.encryptWithPassword(
-                JSON.stringify(privateData),
-                password,
-            );
-
         await StorageManager.saveTransactionReservation({
             id: reservation.id,
             networkId: reservation.networkId,
             signerId: wallet.getSigner().getId(),
-            encryptedData,
+            privateData,
         });
     }
+
     public async validateSufficientBalance(
         account: Account,
         amount: bigint,
     ): Promise<boolean> {
         const totalReservedAmount: bigint =
-            this.getReservedAmount(account.getAddress()) + amount;
+            this.getReservedAmount(account.getId()) + amount;
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
         return remoteBalance - totalReservedAmount > 0n;
@@ -177,7 +159,7 @@ export default class ReservationAdapter {
     public async transfer(
         wallet: Wallet,
         details: ITransferDetails,
-        passwordProvider: SecretsProvider,
+        passwordProvider?: SecretsProvider,
     ): Promise<string> {
         const account: Account = wallet.getActiveAccount()!;
 
@@ -199,13 +181,13 @@ export default class ReservationAdapter {
             id: generateRandomId(),
             deployId,
             timestamp: new Date(),
-            accountAddress: account.getAddress(),
+            accountId: account.getId(),
             pendingAmount: details.amount.toString(),
             networkId: ApiClientManager.getInstance().getCurrentNetworkId(),
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
         };
 
-        await this.persistReservation(reservation, wallet, passwordProvider);
+        await this.persistReservation(reservation, wallet);
 
         this.reservationsManager.add(reservation);
 

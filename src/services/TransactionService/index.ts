@@ -32,7 +32,7 @@ export interface ITransferPayload {
     account: Account;
     signer: Signer;
     details: ITransferDetails;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
 }
 
 export interface IDeployPayload {
@@ -43,7 +43,7 @@ export interface IDeployPayload {
     phloLimit?: number;
     phloPrice?: number;
     shardId?: string;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
 }
 
 export default class TransactionService {

@@ -8,7 +8,7 @@ import {
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
-import { EncryptedData } from "@services/Crypto";
+import { ITransactionReservationPrivateData } from "@domains/Transaction";
 import { INetworkRecord, NetworkId } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
@@ -51,7 +51,7 @@ export interface ISaveTransactionReservationsOptions {
     id: string;
     networkId: NetworkId;
     signerId: string;
-    encryptedData: EncryptedData;
+    privateData: ITransactionReservationPrivateData;
 }
 
 class StorageManager {
@@ -267,13 +267,13 @@ class StorageManager {
         id,
         networkId,
         signerId,
-        encryptedData,
+        privateData,
     }: ISaveTransactionReservationsOptions): Promise<void> => {
         await TransactionReservationsStorageRepository.getInstance().saveTransactionReservation(
             id,
             networkId,
             signerId,
-            encryptedData,
+            privateData,
         );
     };
 

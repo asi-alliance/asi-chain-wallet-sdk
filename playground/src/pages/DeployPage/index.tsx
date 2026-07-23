@@ -7,8 +7,7 @@ import {
     Wallet,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
-import { useAppContext } from "@components/Application/context";
-import { Modals } from "@components/Application/meta";
+import useSecureAction from "@hooks/useSecureAction";
 import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
     type SelectFilterOption,
@@ -42,7 +41,7 @@ const DeployPage = (): ReactElement => {
         watchDeploy,
         getAvailableBalance,
     } = useSdkContext();
-    const { setModalState } = useAppContext();
+    const runSecureAction = useSecureAction();
 
     const [code, setCode] = useState<string>(EXAMPLE_CONTRACT);
     const [phloLimit, setPhloLimit] = useState<string>(DEFAULT_PHLO_LIMIT);
@@ -116,7 +115,7 @@ const DeployPage = (): ReactElement => {
         watchHandleRef.current = null;
     };
 
-    const runDeploy = async (password: string): Promise<void> => {
+    const runDeploy = async (): Promise<void> => {
         if (!selectedEntry) {
             return;
         }
@@ -152,15 +151,26 @@ const DeployPage = (): ReactElement => {
         }
 
         try {
-            const submittedDeployId: string = await deploy(
-                {
+            const submittedDeployId: string | undefined =
+                await runSecureAction({
                     walletId: selectedEntry.walletId,
-                    accountId: selectedEntry.account.getId(),
-                    term: code,
-                    phloLimit: parsedPhloLimit,
-                },
-                password,
-            );
+                    passwordTitle: "Enter wallet password to deploy",
+                    confirmMessage: `Deploy this contract from ${selectedEntry.account.getName()}?`,
+                    action: (password?: string) =>
+                        deploy(
+                            {
+                                walletId: selectedEntry.walletId,
+                                accountId: selectedEntry.account.getId(),
+                                term: code,
+                                phloLimit: parsedPhloLimit,
+                            },
+                            password,
+                        ),
+                });
+
+            if (!submittedDeployId) {
+                return;
+            }
 
             setDeployId(submittedDeployId);
             setStatus("Submitted");
@@ -182,17 +192,7 @@ const DeployPage = (): ReactElement => {
             return;
         }
 
-        setModalState({
-            type: Modals.PASSWORD_MODAL,
-            props: {
-                title: "Enter wallet password to deploy",
-                onSubmit: (password: string) => {
-                    setModalState({ type: null });
-                    void runDeploy(password);
-                },
-                onClose: () => setModalState({ type: null }),
-            },
-        });
+        void runDeploy();
     };
 
     const handleExplore = async (): Promise<void> => {
