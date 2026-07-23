@@ -1,4 +1,9 @@
-import { ExportFormat, NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import {
+    DEFAULT_AUTO_LOCK_MS,
+    ExportFormat,
+    NATIVE_TOKEN_DECIMALS_AMOUNT,
+    RequirePassword,
+} from "@config/index";
 import {
     INetworkConfig,
     INetworkRecord,
@@ -77,6 +82,12 @@ export interface IClientEventDispatcher {
         walletId: string,
         reservations: ITransactionReservation[],
     ): void;
+    onWalletLocked?(walletId: string): void;
+}
+
+export interface ISessionPolicy {
+    autoLockMs?: number;
+    requirePassword?: RequirePassword;
 }
 
 export interface ICreateClientFlags {
@@ -89,6 +100,7 @@ export interface ICreateClientOptions {
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
     flags?: ICreateClientFlags;
+    security?: ISessionPolicy;
 }
 
 interface IClientOptions {
@@ -96,6 +108,7 @@ interface IClientOptions {
     reservationAdaptersMap?: Map<string, ReservationAdapter>;
     eventDispatcher?: IClientEventDispatcher;
     flags?: ICreateClientFlags;
+    security?: ISessionPolicy;
 }
 
 export default class Client {
@@ -103,12 +116,15 @@ export default class Client {
     private readonly reservationAdapterManager: ReservationAdapterManager;
     private readonly eventDispatcher?: IClientEventDispatcher;
     private readonly flags?: ICreateClientFlags;
+    private readonly autoLockMs: number;
+    private readonly requirePassword: RequirePassword;
 
     private constructor({
         walletsMap,
         reservationAdaptersMap,
         eventDispatcher,
         flags,
+        security,
     }: IClientOptions) {
         this.walletManager = new WalletManager(walletsMap);
         this.reservationAdapterManager = new ReservationAdapterManager(
@@ -116,6 +132,9 @@ export default class Client {
         );
         this.eventDispatcher = eventDispatcher;
         this.flags = flags;
+        this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
+        this.requirePassword =
+            security?.requirePassword ?? RequirePassword.ONCE_PER_SESSION;
     }
 
     public static async create({
@@ -124,6 +143,7 @@ export default class Client {
         storageOptions,
         eventDispatcher,
         flags,
+        security,
     }: ICreateClientOptions): Promise<Client> {
         await StorageManager.init(storageOptions);
 
@@ -134,7 +154,17 @@ export default class Client {
             await InsensitiveCacheStorageManager.init();
         }
 
-        return new Client({ eventDispatcher, flags });
+        return new Client({ eventDispatcher, flags, security });
+    }
+
+    private shouldHoldSession(): boolean {
+        return this.requirePassword !== RequirePassword.EVERY_SIGNATURE;
+    }
+
+    private lockAllSessions(): void {
+        for (const wallet of this.walletManager.getAll()) {
+            wallet.lock();
+        }
     }
 
     public getWalletManager(): WalletManager {
@@ -147,6 +177,7 @@ export default class Client {
     }
 
     public async clearPersistence(): Promise<void> {
+        this.lockAllSessions();
         this.walletManager.clear();
         this.reservationAdapterManager.clear();
 
@@ -156,6 +187,7 @@ export default class Client {
     }
 
     public close(): void {
+        this.lockAllSessions();
         this.walletManager.clear();
         this.reservationAdapterManager.clear();
 
@@ -185,7 +217,7 @@ export default class Client {
             passwordProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet, passwordProvider);
+        await this.reservationAdapterManager.create(wallet);
 
         await this.emitWalletsChanged();
 
@@ -214,7 +246,7 @@ export default class Client {
             secretProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet, secretProvider);
+        await this.reservationAdapterManager.create(wallet);
 
         await this.emitWalletsChanged();
 
@@ -231,6 +263,7 @@ export default class Client {
 
     public async removeWallet(walletId: string): Promise<Wallet> {
         const removedWallet: Wallet = await this.walletManager.delete(walletId);
+        removedWallet.lock();
         this.reservationAdapterManager.remove(walletId);
 
         if (this.flags?.withInsensitiveCacheStorage) {
@@ -266,9 +299,29 @@ export default class Client {
             passwordProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet, passwordProvider);
+        if (this.shouldHoldSession()) {
+            await wallet.unlock(passwordProvider, {
+                autoLockMs: this.autoLockMs,
+                onAutoLock: () =>
+                    this.eventDispatcher?.onWalletLocked?.(wallet.getId()),
+            });
+        }
+
+        await this.reservationAdapterManager.create(wallet);
 
         return wallet;
+    }
+
+    public lockWallet(walletId: string): void {
+        const wallet: Wallet = this.getUnlockedWallet(walletId);
+
+        wallet.lock();
+
+        this.eventDispatcher?.onWalletLocked?.(walletId);
+    }
+
+    public isWalletUnlocked(walletId: string): boolean {
+        return this.walletManager.get(walletId)?.isUnlocked() ?? false;
     }
 
     public async deriveAccount(
@@ -432,14 +485,16 @@ export default class Client {
 
     public async transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
-        password: string,
+        password?: string,
     ): Promise<string> {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
 
         wallet.setActiveAccount(accountId);
 
-        const passwordProvider: SecretsProvider =
-            this.createPasswordProvider(password);
+        const passwordProvider: SecretsProvider | undefined =
+            password !== undefined
+                ? this.createPasswordProvider(password)
+                : undefined;
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
@@ -464,7 +519,7 @@ export default class Client {
 
     public async deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
-        password: string,
+        password?: string,
     ): Promise<string> {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
 
@@ -472,17 +527,22 @@ export default class Client {
 
         const account: Account = this.getAccount(wallet, accountId);
 
-        const passwordProvider: SecretsProvider =
-            this.createPasswordProvider(password);
+        const passwordProvider: SecretsProvider | undefined =
+            password !== undefined
+                ? this.createPasswordProvider(password)
+                : undefined;
 
-        return ApiServiceRegistry.getInstance().transactions.deploy({
-            walletType: wallet.getType(),
-            account,
-            signer: wallet.getSigner(),
-            term,
-            phloLimit,
-            passwordProvider,
-        });
+        const deployId: string =
+            await ApiServiceRegistry.getInstance().transactions.deploy({
+                walletType: wallet.getType(),
+                account,
+                signer: wallet.getSigner(),
+                term,
+                phloLimit,
+                passwordProvider,
+            });
+
+        return deployId;
     }
 
     public exploreDeploy(rholang: string): Promise<unknown> {

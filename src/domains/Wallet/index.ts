@@ -1,4 +1,8 @@
-import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
+import Signer, {
+    ISignerRecord,
+    ISignerUnlockOptions,
+    WalletTypes,
+} from "@domains/Signer";
 import Account, {
     IAccountRecord,
     TCreateAccountPayload,
@@ -16,7 +20,7 @@ import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
 import { ITransferDetails } from "@services/TransactionService";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
-import CryptoService from "@services/Crypto";
+import CryptoService, { EncryptedData } from "@services/Crypto";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -80,6 +84,21 @@ export default class Wallet {
 
     public getSigner(): Signer {
         return this.signer;
+    }
+
+    public isUnlocked(): boolean {
+        return this.signer.isUnlocked();
+    }
+
+    public unlock(
+        passwordProvider: SecretsProvider,
+        options?: ISignerUnlockOptions,
+    ): Promise<void> {
+        return this.signer.unlock(passwordProvider, options);
+    }
+
+    public lock(): void {
+        this.signer.lock();
     }
 
     public getAccounts(): Account[] {
@@ -275,7 +294,7 @@ export default class Wallet {
     @EnsureActiveAccountExist
     public async transfer(
         payload: ITransferDetails,
-        passwordProvider: SecretsProvider,
+        passwordProvider?: SecretsProvider,
     ): Promise<string> {
         return ApiServiceRegistry.getInstance().transactions.transfer({
             walletType: this.type,

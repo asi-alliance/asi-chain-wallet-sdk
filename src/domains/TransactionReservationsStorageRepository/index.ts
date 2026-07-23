@@ -2,14 +2,14 @@ import { NetworkId } from "@domains/Network";
 import { ITableRecord } from "@domains/TableService";
 import { IStorageFabricOptions } from "@fabrics/Storage";
 import { BaseStorageRepository } from "@domains/BaseStorageRepository";
-import { EncryptedData } from "@services/Crypto";
+import { ITransactionReservationPrivateData } from "@domains/Transaction";
 
 const TRANSACTION_RESERVATIONS_DATA_KEY: string = "TRANSACTION_RESERVATIONS";
 
 export interface ITransactionReservationsStorageRecord extends ITableRecord {
     networkId: NetworkId;
     signerId: string;
-    encryptedData: EncryptedData;
+    privateData: ITransactionReservationPrivateData;
 
     createdAt: number;
     updatedAt?: number;
@@ -36,13 +36,13 @@ export class TransactionReservationsStorageRepository extends BaseStorageReposit
         id: string,
         networkId: NetworkId,
         signerId: string,
-        encryptedData: EncryptedData,
+        privateData: ITransactionReservationPrivateData,
     ): Promise<void> {
         await this.insertRecord({
             id,
             networkId,
             signerId,
-            encryptedData,
+            privateData,
             createdAt: Date.now(),
         });
     }
