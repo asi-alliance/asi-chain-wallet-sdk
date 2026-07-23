@@ -277,6 +277,32 @@ export default class Client {
         return removedWallet;
     }
 
+    private async holdSession(
+        wallet: Wallet,
+        passwordProvider: SecretsProvider,
+    ): Promise<void> {
+        await wallet.unlock(passwordProvider, {
+            autoLockMs: this.autoLockMs,
+            onAutoLock: () =>
+                this.eventDispatcher?.onWalletLocked?.(wallet.getId()),
+        });
+    }
+
+    private async ensureSession(
+        wallet: Wallet,
+        passwordProvider?: SecretsProvider,
+    ): Promise<void> {
+        if (
+            !passwordProvider ||
+            !this.shouldHoldSession() ||
+            wallet.isUnlocked()
+        ) {
+            return;
+        }
+
+        await this.holdSession(wallet, passwordProvider);
+    }
+
     public async unlockWallet(
         signerId: string,
         password: string,
@@ -300,11 +326,7 @@ export default class Client {
         );
 
         if (this.shouldHoldSession()) {
-            await wallet.unlock(passwordProvider, {
-                autoLockMs: this.autoLockMs,
-                onAutoLock: () =>
-                    this.eventDispatcher?.onWalletLocked?.(wallet.getId()),
-            });
+            await this.holdSession(wallet, passwordProvider);
         }
 
         await this.reservationAdapterManager.create(wallet);
@@ -496,6 +518,8 @@ export default class Client {
                 ? this.createPasswordProvider(password)
                 : undefined;
 
+        await this.ensureSession(wallet, passwordProvider);
+
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
 
@@ -531,6 +555,8 @@ export default class Client {
             password !== undefined
                 ? this.createPasswordProvider(password)
                 : undefined;
+
+        await this.ensureSession(wallet, passwordProvider);
 
         const deployId: string =
             await ApiServiceRegistry.getInstance().transactions.deploy({

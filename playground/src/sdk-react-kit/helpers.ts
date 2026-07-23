@@ -8,6 +8,9 @@ const init = async (
         networksConfig: NETWORKS_CONFIG,
         defaultNetwork: DEFAULT_NETWORK,
         eventDispatcher,
+        security: {
+            autoLockMs: 30 * 1000,
+        },
     });
 };
 

@@ -300,14 +300,20 @@ const useSdk = () => {
     );
 
     const transfer = useCallback(
-        (request: ITransferRequest, password: string): Promise<string> =>
+        (request: ITransferRequest, password?: string): Promise<string> =>
             requireClient().transfer(request, password),
         [requireClient],
     );
 
     const deploy = useCallback(
-        (request: IDeployRequest, password: string): Promise<string> =>
+        (request: IDeployRequest, password?: string): Promise<string> =>
             requireClient().deploy(request, password),
+        [requireClient],
+    );
+
+    const isWalletUnlocked = useCallback(
+        (walletId: string): boolean =>
+            requireClient().isWalletUnlocked(walletId),
         [requireClient],
     );
 
@@ -393,6 +399,7 @@ const useSdk = () => {
         setActiveAccount,
         transfer,
         deploy,
+        isWalletUnlocked,
         exploreDeploy,
         watchDeploy,
         getExportedAccountData,
