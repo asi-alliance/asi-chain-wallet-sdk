@@ -1,0 +1,134 @@
+.networks-page {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 16px;
+}
+
+.networks-page__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.networks-page__title {
+	margin: 0;
+	font-size: 1.2rem;
+	font-weight: 600;
+}
+
+.networks-page__list {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+	gap: 16px;
+}
+
+.networks-page__action {
+	background: #007bff;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 6px 14px;
+	font-size: 0.95em;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.networks-page__action:hover:not(:disabled) {
+	background: #0056b3;
+}
+
+.networks-page__action:disabled {
+	background: #b7c4d1;
+	cursor: default;
+}
+
+.networks-page__action--danger {
+	background: #d00;
+}
+
+.networks-page__action--danger:hover:not(:disabled) {
+	background: #a80000;
+}
+
+.network-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	border: 1px solid #d9dee5;
+	border-radius: 10px;
+	padding: 16px;
+	background: #fff;
+}
+
+.network-card--active {
+	border-color: #007bff;
+	box-shadow: 0 0 0 1px #007bff inset;
+}
+
+.network-card__head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.network-card__name {
+	font-weight: 600;
+	font-size: 1.05rem;
+}
+
+.network-card__badge {
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-weight: 600;
+}
+
+.network-card__badge--default {
+	background: #eef1f4;
+	color: #566575;
+}
+
+.network-card__badge--custom {
+	background: #e6f0ff;
+	color: #0056b3;
+}
+
+.network-card__badge--active {
+	background: #e5f7ec;
+	color: #1a7f4b;
+}
+
+.network-card__config {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.network-card__config-row {
+	display: flex;
+	gap: 8px;
+	font-size: 0.85rem;
+}
+
+.network-card__config-row dt {
+	flex: 0 0 72px;
+	color: #7a8592;
+	font-weight: 500;
+}
+
+.network-card__config-row dd {
+	margin: 0;
+	word-break: break-all;
+	color: #2b3440;
+}
+
+.network-card__actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}

@@ -7,11 +7,12 @@ Services split into a few groups:
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
   `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
   `TransactionReservationsManager`, `DisposableItemManager`).
-- **Persistence orchestration** — `StorageManager`,
+- **Persistence orchestration** — `StorageManager`, `NetworkManager`,
   `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
   `BlockService`, `AccountDataService`, `AssetsService`, `TransactionService`,
   `DeployStatusPoller`, plus the `GraphqlParser` helpers.
+- **Export** — `ExportService` (account keyfile + transactions JSON/CSV).
 - **Crypto / key primitives** — `CryptoService`, `WalletsService`,
   `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
   `BinaryWriter` (documented under domains).
@@ -87,8 +88,10 @@ getAccount(id: string): Account | null
 `DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
 
 ```ts
-create(wallet: Wallet, passwordProvider: SecretsProvider): Promise<ReservationAdapter>
+create(wallet: Wallet): Promise<ReservationAdapter>
 ```
+
+No password is required — reservations are non-secret plaintext records.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
@@ -102,7 +105,7 @@ add(reservation): void
 remove(id: string): boolean
 get(id: string): ITransactionReservation | null
 getAll(): ITransactionReservation[]
-getByAccountAddress(accountAddress: string): ITransactionReservation[]
+getByAccountId(accountId: string): ITransactionReservation[]
 dispose(): void
 ```
 
@@ -122,14 +125,15 @@ interface ITransactionReservationsManagerOptions {
 
 ### StorageManager (`src/services/StorageManager/index.ts`)
 
-Static façade over the three primary repositories (signers, accounts,
-transaction reservations). Handles encrypt-on-write of signer secrets and
-compose/decompose of the `Wallet` aggregate.
+Static façade over the four repositories (signers, accounts, transaction
+reservations, custom networks). Only signer secrets are encrypted on write;
+reservations and custom-network records are non-secret and stored as plaintext.
+Also composes/decomposes the `Wallet` aggregate.
 
 ```ts
 StorageManager.init(options?: IStorageFabricOptions): Promise<void>
 
-// signers
+// signers (encrypted secret)
 saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
 
 // accounts
@@ -141,13 +145,39 @@ saveWallets(options[]): Promise<void[]>
 getWallet({ signerId, passwordProvider }): Promise<Wallet>   // restores + decrypts
 getWallets(): Promise<IWalletStorageData[]>                  // public metadata
 
-// reservations
-saveTransactionReservation / getTransactionReservationsBySignerId /
+// reservations (plaintext privateData)
+saveTransactionReservation({ id, networkId, signerId, privateData }) /
+getTransactionReservationsBySignerId(signerId, networkId) /
 updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
+
+// custom networks
+getCustomNetworks(): Promise<INetworkRecord[]>
+saveCustomNetwork(network: INetworkRecord): Promise<void>
+updateCustomNetwork(network: INetworkRecord): Promise<void>
+deleteCustomNetwork(id: NetworkId): Promise<void>
 
 clear(): Promise<void>
 close(): void
 ```
+
+### NetworkManager (`src/services/NetworkManager/index.ts`)
+
+Static orchestrator for the runtime network registry. Bridges the live
+`ApiClientManager` registry to `StorageManager` persistence so custom networks
+survive reloads. Delegated to by `Client`'s network methods.
+
+```ts
+NetworkManager.initialize(networksConfig: TNetworksConfig, defaultNetwork?: NetworkName): Promise<void>
+// loads persisted custom networks, then ApiClientManager.initialize(built-ins, custom, default)
+
+addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // registers + persists
+updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // updates + re-persists
+removeNetwork(id: NetworkId): Promise<void>                                    // removes + deletes from storage
+```
+
+Built-in networks are never persisted or mutated here; only custom networks flow
+through storage. Validation and the built-in-immutability guard live in
+`NetworkConfigProvider` (see `DOMAINS.md`).
 
 ### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
 
@@ -173,6 +203,29 @@ close(): void
 InsensitiveCacheStorageSerializer.serialize(account: Account): IInsensitiveCacheRecord
 // { id: account.getId(), address: account.getAddress() }
 ```
+
+---
+
+## Export
+
+### ExportService (`src/services/ExportService/index.ts`)
+
+Serializes account and transaction data for download. Pure formatting — it never
+decrypts anything.
+
+```ts
+ExportService.exportAccountKeyfile(input: IAccountKeyfileInput): string
+ExportService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
+
+interface IAccountKeyfileInput { address: string; encryptedPrivateKey: EncryptedData }
+```
+
+`exportAccountKeyfile` wraps the address and the **encrypted** private key in the
+versioned ASI keyfile envelope (`{ version, type: "asi-wallet-keyfile", address,
+encryptedPrivateKey, timestamp }`) — the plaintext key never leaves the signer.
+`exportTransactions` returns pretty-printed JSON (default) or CSV built from
+`TRANSACTIONS_CSV_HEADERS` with RFC-4180 quoting. `Client.getExportedAccountData`
+and `Client.getExportedTransactionsData` are the high-level entry points.
 
 ---
 
@@ -210,11 +263,11 @@ isValidatorActive(): Promise<boolean>
 
 ### AccountDataService (`src/services/AccountDataService/index.ts`)
 
-Reads and maps transaction history from the indexer. Recoverable network/CORS
-errors are swallowed and return an empty list.
+Reads and maps transaction history (transfers + deployments) from the indexer.
+Recoverable network/CORS errors are swallowed and return an empty list.
 
 ```ts
-getTransactionHistory(address: string, networkName?: NetworkName, pagination?: Pagination): Promise<Transaction[]>
+getTransactionHistory(address: string, publicKey: string, pagination?: Pagination, networkId?: NetworkId): Promise<Transaction[]>
 ```
 
 ### AssetsService (`src/services/AssetsService/index.ts`)
@@ -230,10 +283,11 @@ resolves to `{ amount: 0n, asset }`.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
-Builds, signs and submits a transfer deploy end to end.
+Builds, signs and submits deploys end to end.
 
 ```ts
 transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
+deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
 ```
 
 ```ts
@@ -250,14 +304,26 @@ interface ITransferPayload {
     account: Account;
     signer: Signer;
     details: ITransferDetails;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider; // optional when a signing session is active
+}
+interface IDeployPayload {
+    walletType: WalletTypes;
+    account: Account;
+    signer: Signer;
+    term: string;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
+    passwordProvider?: SecretsProvider; // optional when a signing session is active
 }
 ```
 
-Flow: validate recipient + amount → generate transfer RhoLang → read latest block
-number → build the appropriate `TSigningContext` (HD adds `index`) → serialize +
-`blake2b-256` hash + sign → submit via `DeployService`. Defaults `phloLimit`/
-`phloPrice` from config and `shardId` to `"root"`.
+`transfer` validates recipient + amount, then generates the transfer RhoLang;
+`deploy` takes an arbitrary `term` (rejects an empty one). Both share a private
+`signAndSubmit`: read latest block number → build the appropriate `TSigningContext`
+(HD adds `index`) → serialize + `blake2b-256` hash + sign → submit via
+`DeployService`. Defaults `phloLimit`/`phloPrice` from config and `shardId` to
+`"root"`.
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 
@@ -277,11 +343,17 @@ Anti-corruption layer between the indexer's GraphQL shape and the domain
 `Transaction`.
 
 ```ts
-GraphqlParser.createTransactionHistoryRequest(address, pagination?): { query, variables }
-GraphqlParser.mapTransactionHistory(data, address, networkName): Transaction[]
+GraphqlParser.createTransactionHistoryRequest(address, publicKey, pagination?): { query, variables }
+GraphqlParser.mapTransactionHistory(data, address, networkId): Transaction[]
 GraphqlParser.unwrapGraphqlEnvelope<T>(response): GraphqlEnvelope<T>
 GraphqlParser.isRecoverableNetworkError(error): boolean
 ```
+
+`mapTransactionHistory` maps both the `transfers` and the `deployments` returned by
+the single history query into `Transaction[]`, de-duplicating by deploy id (a
+transfer wins over its matching deployment, but inherits the deployment's block
+hash) and sorting by timestamp descending. Deployment-only rows map to
+`type: "deploy"`.
 
 `mapper.ts` maps a `RawTransfer` to `Transaction` (`send`/`receive` decided by
 comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`

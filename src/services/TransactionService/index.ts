@@ -32,7 +32,18 @@ export interface ITransferPayload {
     account: Account;
     signer: Signer;
     details: ITransferDetails;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
+}
+
+export interface IDeployPayload {
+    walletType: WalletTypes;
+    account: Account;
+    signer: Signer;
+    term: string;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
+    passwordProvider?: SecretsProvider;
 }
 
 export default class TransactionService {
@@ -73,10 +84,6 @@ export default class TransactionService {
         details,
         passwordProvider,
     }: ITransferPayload): Promise<string> {
-        if (!account) {
-            throw new Error("Wallet has no active account");
-        }
-
         const fromAddress: Address = account.getAddress();
 
         const validation: AddressValidationResult = validateAddress(details.to);
@@ -99,19 +106,65 @@ export default class TransactionService {
             throw new Error("Phlo price must be greater than zero");
         }
 
-        const deploy: string = createTransferDeploy(
+        const term: string = createTransferDeploy(
             fromAddress,
             details.to,
             details.amount,
         );
 
+        return this.signAndSubmit({
+            walletType,
+            account,
+            signer,
+            term,
+            phloLimit: details.phloLimit,
+            phloPrice: details.phloPrice,
+            shardId: details.shardId,
+            passwordProvider,
+        });
+    }
+
+    public async deploy({
+        walletType,
+        account,
+        signer,
+        term,
+        phloLimit,
+        phloPrice,
+        shardId,
+        passwordProvider,
+    }: IDeployPayload): Promise<string> {
+        if (!term.trim()) {
+            throw new Error("Deploy term must not be empty");
+        }
+
+        return this.signAndSubmit({
+            walletType,
+            account,
+            signer,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+            passwordProvider,
+        });
+    }
+
+    private async signAndSubmit({
+        walletType,
+        account,
+        signer,
+        term,
+        phloLimit,
+        phloPrice,
+        shardId,
+        passwordProvider,
+    }: IDeployPayload): Promise<string> {
         const latestBlockNumber: number =
             await this.blockService.getLatestBlockNumber();
 
         if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
-            throw new Error(
-                "TransactionService.transfer: Invalid block number",
-            );
+            throw new Error("TransactionService: Invalid block number");
         }
 
         const signingContext: TSigningContext =
@@ -127,29 +180,25 @@ export default class TransactionService {
         const signedDeploy = await this.signDeploy(
             signer,
             {
-                term: deploy,
-                phloLimit: details.phloLimit ?? DEFAULT_PHLO_LIMIT,
-                phloPrice: details.phloPrice ?? DEFAULT_PHLO_PRICE,
+                term,
+                phloLimit: phloLimit ?? DEFAULT_PHLO_LIMIT,
+                phloPrice: phloPrice ?? DEFAULT_PHLO_PRICE,
                 validAfterBlockNumber: latestBlockNumber - 1,
                 timestamp: Date.now(),
-                shardId: details.shardId ?? "root",
+                shardId: shardId ?? "root",
             },
             signingContext,
         );
 
-        try {
-            const submittedDeployId: string | undefined =
-                await this.deployService.submitSignedDeploy(signedDeploy);
+        const submittedDeployId: string | undefined =
+            await this.deployService.submitSignedDeploy(signedDeploy);
 
-            if (!submittedDeployId) {
-                throw new Error(
-                    "Error on submitted deploy parsing - not found deploy id",
-                );
-            }
-
-            return submittedDeployId;
-        } catch (error: unknown) {
-            throw error;
+        if (!submittedDeployId) {
+            throw new Error(
+                "Error on submitted deploy parsing - not found deploy id",
+            );
         }
+
+        return submittedDeployId;
     }
 }

@@ -10,6 +10,19 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 4. Raw key export must be disabled by default and only enabled explicitly for legacy migration.
 5. SDK APIs should prefer capability-based signing over raw key export.
 
+### 1a. Signing Session Invariants
+
+1. An unlocked signing session holds the decrypted secret only in volatile
+   in-memory state; it is never persisted.
+2. Session lifetime is bounded and fixed: it is set at unlock time
+   (`autoLockMs`, default 15 min) and is not extended by later activity.
+3. Auto-lock and explicit `lock()` must clear the session timer and zeroize
+   in-memory key bytes.
+4. When there is no active session and no password is supplied, the signing
+   path must fail closed (`WalletLockedError`) rather than sign.
+5. The session policy is configurable; `every-signature` disables session
+   holding entirely and requires the password for each signature.
+
 ## 2. Storage Invariants
 
 1. Vault data persisted to browser storage must remain encrypted at rest.

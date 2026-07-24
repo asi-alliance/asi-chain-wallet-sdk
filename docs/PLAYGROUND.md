@@ -2,7 +2,7 @@
 
 This document summarizes the example React playground in `playground/src`. The
 playground consumes the SDK through a small integration layer (`sdk-react-kit`)
-and is split into routed pages (Wallets, Transaction History).
+and is split into routed pages (Wallets, Transaction History, Networks, Deploy).
 
 The SDK is imported as `asi-wallet-sdk` (a `file:..` dependency in the
 playground's `package.json`). Network endpoints come from Vite env vars (`.env`).
@@ -31,17 +31,36 @@ tears the client down on unmount.
 Returned value (`UseSdkValue`):
 
 - State: `client`, `isReady`, `walletsMetadata: IWalletMetadata[]`,
-  `unlockedWallets: Wallet[]`, `reservationsByWallet`, `networks`, `currentNetwork`.
-- Network: `setNetwork(name)`.
+  `unlockedWallets: Wallet[]`, `reservationsByWallet`,
+  `networkRecords: INetworkRecord[]`, `currentNetwork: INetworkRecord | null`.
+- Network: `setNetwork(id)`, `addNetwork(name, config): INetworkRecord`,
+  `updateNetwork(id, update)`, `removeNetwork(id)`. Networks are identified by a
+  stable `id` (`INetworkRecord = { id, name, config, isDefault }`); `name` is
+  editable data, not the key. `networkRecords` comes straight from
+  `client.getNetworks()` and is refreshed after every CRUD call.
+  `updateNetwork`/`removeNetwork` also re-sync `currentNetwork` from
+  `getCurrentNetwork()`, since the SDK switches the active network internally
+  without emitting `onNetworkChanged`. `onNetworkChanged(record)` delivers the
+  full active-network record.
 - Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
 - Wallet lifecycle: `createHDWallet(input, password)`,
   `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
   `removeWallet(walletId)`.
+- Signing sessions: `isWalletUnlocked(walletId)` — used by `useSecureAction` to
+  decide whether a password prompt is needed (see below). `unlockWallet` starts
+  the session; the SDK auto-locks it after the policy's timeout.
 - Account lifecycle: `deriveAccount(walletId, name, password)`,
   `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`,
   `setActiveAccount(walletId, accountId)`.
-- Transfers & balances: `transfer(request, password)`, `getBalance(address)`,
+- Transfers & balances: `transfer(request, password?)` (password omitted while a
+  session is active), `getBalance(address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
+- Raw deploys: `deploy(request, password?)` (arbitrary Rholang term via
+  `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
+  rules as `transfer`), `exploreDeploy(rholang)` (read-only, no unlock/password),
+  `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
+- Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
+  keyfile JSON (downloaded from `AccountCard`).
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
 - Persistence: `clearPersistence()`.
 
@@ -104,7 +123,8 @@ loader.
   and the `useAppContext()` hook.
 - `meta.tsx` — the `Modals` enum and the `ModalProps` union.
 - `ModalManager.tsx` — maps `Modals` to `PasswordModal`, `TransferModal`,
-  `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`.
+  `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`,
+  `NetworkModal`.
 - `Header/` — brand, `ApplicationNavigation`, and a "CLEAR SDK LS" button that
   calls `sdk.clearPersistence()` and reloads.
 
@@ -112,7 +132,7 @@ loader.
 
 ## Routing (`playground/src/router`)
 
-- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, default `/wallets`).
+- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, `/networks`, default `/wallets`).
 - `routes.ts` — `PAGE_ROUTES` mapping each path to a label and page component.
 - `index.tsx` — `ApplicationNavigation` (NavLinks) and `PersistentPageRoutes`,
   which keep every page mounted and toggle visibility with `hidden` so page state
@@ -137,12 +157,43 @@ methods through `withLoader`.
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 
 Lets the user pick an unlocked account (via `SelectFilter`) and lists its
-transactions using `account.getTransactionsHistory()`. Reloads on account or
-network change.
+transactions using `account.getTransactionsHistory()` (transfers plus the
+account's deployments, merged and de-duplicated by deploy id). Reloads on account
+or network change.
 
 - `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
   deploy id and block hash, and offers a copy-deploy-id button.
+
+### NetworksPage (`pages/NetworksPage/index.tsx`)
+
+Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
+as cards showing the network name, a `default`/`custom` badge, an `active` badge
+when the card id equals `sdk.currentNetwork?.id`, and the Validator/Read-only/
+Indexer URLs. Actions per card: **Switch** (disabled for the active network), and
+— only for `custom` (`!isDefault`) networks — **Edit** and **Remove**. A header
+**Add network** button opens the create form. Everything is keyed by the stable
+`network.id`; the editable `name` is just data. Default networks cannot be edited
+or removed (the SDK `@EnsureNetworkNotDefault` decorator throws; such errors
+surface via `alert`).
+
+`helpers.ts` builds `NetworksPageHandlers`: `addNetwork`, `editNetwork(record)`,
+`removeNetwork(record)`, `switchNetwork(id)`. They open `NetworkModal` (add/edit)
+or confirm removal and call the matching `useSdk` methods through `withLoader`
+(`updateNetwork(id, { name, config })`).
+
+### DeployPage (`pages/DeployPage/index.tsx`)
+
+Runs arbitrary Rholang against the current network (restores the `Deploy` /
+`DeployLiteModeWidget` flow from the web wallet). Lets the user pick an unlocked
+account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
+example contract), and set a phlo limit. **Deploy** runs
+`sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
+`useSecureAction` (a confirm when the wallet session is active, otherwise a
+`PasswordModal`), then tracks status with `sdk.watchDeploy(deployId, ...)` (the
+watch handle is cancelled on unmount and before each new run). **Explore** calls
+`sdk.exploreDeploy(code)` and needs no unlock/password. Errors and the
+explore/deploy result are shown inline.
 
 ---
 
@@ -152,8 +203,10 @@ network change.
 
 Represents one SDK `Account`. Shows name, address, available balance (via
 `useWalletBalance`), and a `ReservationStatus`. Actions: Send (opens
-`TransferModal` → `PasswordModal` → `sdk.transfer`, then shows
-`TransferCompletedModal`), Reload balance, Rename, and Copy address.
+`TransferModal`, then runs `sdk.transfer` through `useSecureAction` — a confirm
+when a session is active, otherwise a `PasswordModal` — and shows
+`TransferCompletedModal`), Reload balance, Rename, Copy address, and Export
+(downloads the encrypted keyfile from `sdk.getExportedAccountData`).
 
 ```ts
 interface IAccountCardProps {
@@ -167,8 +220,30 @@ interface IAccountCardProps {
 
 ### NetworkSelector (`components/NetworkSelector/index.tsx`)
 
-Renders a button per `sdk.networks`; switching calls `sdk.setNetwork(name)`. The
-active network is disabled.
+Renders a button per `sdk.networkRecords` (shows `name`, keyed by `id`); switching
+calls `sdk.setNetwork(id)`. The active network (`id === currentNetwork?.id`) is
+disabled.
+
+### NetworkModal (`components/NetworkModal/index.tsx`)
+
+Add or edit a network. Collects `name` (editable in both modes) and the Validator/
+Read-only/Indexer URLs. Only `name` is required locally; empty URLs are allowed
+(matching the placeholder default networks). On submit it emits an
+`INetworkModalPayload`; the page maps that to `addNetwork(name, config)` or
+`updateNetwork(id, { name, config })`.
+
+```ts
+interface INetworkModalPayload { name: NetworkName; config: INetworkConfig }
+
+interface INetworkModalProps {
+    mode: "add" | "edit";
+    title?: string;
+    initialName?: string;
+    initialConfig?: INetworkConfig;
+    onSubmit: (payload: INetworkModalPayload) => void;
+    onClose?: () => void;
+}
+```
 
 ### ReservationStatus (`components/ReservationStatus/index.tsx`)
 
@@ -291,6 +366,27 @@ Fullscreen spinner shown while `useLoader` reports loading.
 ---
 
 ## Hooks & utils
+
+- **useSecureAction** (`hooks/useSecureAction.ts`) — the single gate for
+  signing operations (transfer and deploy). It encapsulates the
+  "try-with-session → prompt-on-lock" pattern:
+
+  ```ts
+  const runSecureAction = useSecureAction();
+  runSecureAction({ walletId, passwordTitle, confirmMessage, action }): Promise<T | undefined>
+  ```
+
+  - When `isWalletUnlocked(walletId)` is `true`, it first shows a
+    `window.confirm(confirmMessage)` (guards against an accidental click), then
+    calls `action()` without a password. If the SDK throws `WalletLockedError`
+    (session expired between the check and the call), it falls through to the
+    password prompt.
+  - Otherwise (or after a lock error) it opens `PasswordModal` and calls
+    `action(password)`; entering the password is itself the confirmation, so no
+    extra `confirm` is shown. A cancelled prompt returns `undefined`.
+
+  This keeps the blocking browser `confirm`/`prompt` in the app layer — the SDK
+  stays UI-free and its Node tests are unaffected.
 
 - **useLoader** (`hooks/useLoader.ts`) — `{ isLoading, setIsLoading, withLoader }`;
   `withLoader` toggles the loader and defers the wrapped work to the next tick.

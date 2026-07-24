@@ -16,6 +16,8 @@ import DeriveWalletModal, {
 
 import TransferModal, { ITransferModalProps } from "@components/TransferModal";
 
+import NetworkModal, { INetworkModalProps } from "@components/NetworkModal";
+
 import { ModalProps, Modals } from "./meta";
 import { type ReactElement } from "react";
 
@@ -55,6 +57,8 @@ const ModalManager = ({
                     {...(commonProps as ITransferCompletedModalProps)}
                 />
             );
+        case Modals.NETWORK_MODAL:
+            return <NetworkModal {...(commonProps as INetworkModalProps)} />;
         default:
             return null;
     }

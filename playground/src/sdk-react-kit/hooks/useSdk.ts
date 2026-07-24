@@ -3,10 +3,18 @@ import {
     Client,
     IClientEventDispatcher,
     ICreatedAccountData,
+    IDeployRequest,
+    IDeployWatchCallbacks,
+    IDeployWatchHandle,
+    IDeployWatchOptions,
+    INetworkConfig,
+    INetworkRecord,
+    INetworkUpdate,
     ITransactionReservation,
     ITransferRequest,
     IWalletMetadata,
     MnemonicStrength,
+    NetworkId,
     NetworkName,
     Wallet,
 } from "asi-wallet-sdk";
@@ -28,10 +36,9 @@ const useSdk = () => {
         [],
     );
     const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
-    const [networks, setNetworks] = useState<NetworkName[]>([]);
-    const [currentNetwork, setCurrentNetwork] = useState<NetworkName | null>(
-        null,
-    );
+    const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
+    const [currentNetwork, setCurrentNetwork] =
+        useState<INetworkRecord | null>(null);
     const [reservationsByWallet, setReservationsByWallet] = useState<
         Record<string, ITransactionReservation[]>
     >({});
@@ -54,6 +61,16 @@ const useSdk = () => {
         [],
     );
 
+    const refreshNetworks = useCallback((activeClient?: Client): void => {
+        const currentClient = activeClient ?? clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        setNetworkRecords(currentClient.getNetworks());
+    }, []);
+
     const eventDispatcher = useMemo<IClientEventDispatcher>(
         () => ({
             onWalletsChanged: () => {
@@ -62,8 +79,8 @@ const useSdk = () => {
             onAccountsChanged: () => {
                 void refresh();
             },
-            onNetworkChanged: (networkName: NetworkName) => {
-                setCurrentNetwork(networkName);
+            onNetworkChanged: (network: INetworkRecord) => {
+                setCurrentNetwork(network);
             },
             onReservationsChanged: (
                 walletId: string,
@@ -92,7 +109,7 @@ const useSdk = () => {
 
             clientRef.current = createdClient;
             setClient(createdClient);
-            setNetworks(createdClient.getNetworksNames());
+            refreshNetworks(createdClient);
             setCurrentNetwork(createdClient.getCurrentNetwork());
 
             await refresh(createdClient);
@@ -105,7 +122,7 @@ const useSdk = () => {
             clientRef.current?.close();
             clientRef.current = null;
         };
-    }, [eventDispatcher, refresh]);
+    }, [eventDispatcher, refresh, refreshNetworks]);
 
     const requireClient = useCallback((): Client => {
         if (!clientRef.current) {
@@ -234,19 +251,91 @@ const useSdk = () => {
     );
 
     const setNetwork = useCallback(
-        (networkName: NetworkName): void => {
+        (networkId: NetworkId): void => {
             const currentClient = requireClient();
 
-            currentClient.setNetwork(networkName);
+            currentClient.setNetwork(networkId);
 
             setCurrentNetwork(currentClient.getCurrentNetwork());
         },
         [requireClient],
     );
 
+    const addNetwork = useCallback(
+        async (
+            name: NetworkName,
+            config: INetworkConfig,
+        ): Promise<INetworkRecord> => {
+            const record = await requireClient().addNetwork(name, config);
+
+            refreshNetworks();
+
+            return record;
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const updateNetwork = useCallback(
+        async (networkId: NetworkId, update: INetworkUpdate): Promise<void> => {
+            const currentClient = requireClient();
+
+            await currentClient.updateNetwork(networkId, update);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const removeNetwork = useCallback(
+        async (networkId: NetworkId): Promise<void> => {
+            const currentClient = requireClient();
+
+            await currentClient.removeNetwork(networkId);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
     const transfer = useCallback(
-        (request: ITransferRequest, password: string): Promise<string> =>
+        (request: ITransferRequest, password?: string): Promise<string> =>
             requireClient().transfer(request, password),
+        [requireClient],
+    );
+
+    const deploy = useCallback(
+        (request: IDeployRequest, password?: string): Promise<string> =>
+            requireClient().deploy(request, password),
+        [requireClient],
+    );
+
+    const isWalletUnlocked = useCallback(
+        (walletId: string): boolean =>
+            requireClient().isWalletUnlocked(walletId),
+        [requireClient],
+    );
+
+    const exploreDeploy = useCallback(
+        (rholang: string): Promise<unknown> =>
+            requireClient().exploreDeploy(rholang),
+        [requireClient],
+    );
+
+    const watchDeploy = useCallback(
+        (
+            deployId: string,
+            callbacks?: IDeployWatchCallbacks,
+            options?: IDeployWatchOptions,
+        ): IDeployWatchHandle =>
+            requireClient().watchDeploy(deployId, callbacks, options),
+        [requireClient],
+    );
+
+    const getExportedAccountData = useCallback(
+        (walletId: string, accountId: string): string =>
+            requireClient().getExportedAccountData(walletId, accountId),
         [requireClient],
     );
 
@@ -292,9 +381,12 @@ const useSdk = () => {
         walletsMetadata,
         unlockedWallets,
         reservationsByWallet,
-        networks,
+        networkRecords,
         currentNetwork,
         setNetwork,
+        addNetwork,
+        updateNetwork,
+        removeNetwork,
         generateMnemonic,
         generatePrivateKey,
         createHDWallet,
@@ -306,6 +398,11 @@ const useSdk = () => {
         removeAccount,
         setActiveAccount,
         transfer,
+        deploy,
+        isWalletUnlocked,
+        exploreDeploy,
+        watchDeploy,
+        getExportedAccountData,
         getBalance,
         getAvailableBalance,
         getReservations,

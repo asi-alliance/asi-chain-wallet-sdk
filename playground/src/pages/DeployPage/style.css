@@ -1,0 +1,169 @@
+.deploy-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-height: 100vh;
+    padding: 2rem;
+    background: #f7f8fa;
+    font-family: "Inter", Arial, sans-serif;
+}
+
+.deploy-page__panel {
+    background: #fff;
+    border-radius: 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.deploy-page__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.deploy-page__title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #222;
+    margin-right: auto;
+}
+
+.deploy-page__network {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #4338ca;
+    background: #e0e7ff;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+}
+
+.deploy-page__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+.deploy-page__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #444;
+}
+
+.deploy-page__field select,
+.deploy-page__field input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    background: #fff;
+}
+
+.deploy-page__editor {
+    width: 100%;
+    min-height: 260px;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-family: "Fira Code", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.deploy-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.deploy-page__action {
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.deploy-page__action:hover:not(:disabled) {
+    background: #4338ca;
+}
+
+.deploy-page__action--ghost {
+    background: #eef2ff;
+    color: #4338ca;
+}
+
+.deploy-page__action--ghost:hover:not(:disabled) {
+    background: #e0e7ff;
+}
+
+.deploy-page__action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.deploy-page__empty {
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+.deploy-page__working {
+    color: #4338ca;
+    font-weight: 500;
+}
+
+.deploy-page__error {
+    padding: 0.9rem 1rem;
+    border-radius: 0.5rem;
+    background: #fdecea;
+    color: #c62828;
+    border: 1px solid #f5c6c2;
+    word-break: break-word;
+}
+
+.deploy-page__success {
+    padding: 0.9rem 1rem;
+    border-radius: 0.5rem;
+    background: #e8f5ec;
+    color: #1e824c;
+    border: 1px solid #bce3c9;
+    word-break: break-all;
+}
+
+.deploy-page__deploy-id {
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    font-family: "Fira Mono", "Consolas", monospace;
+    opacity: 0.9;
+}
+
+.deploy-page__result {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+    background: #fafafa;
+}
+
+.deploy-page__result h4 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.deploy-page__result pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+}

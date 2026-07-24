@@ -7,6 +7,8 @@ import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { formatAmount } from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
+import { downloadTextFile } from "@utils/functions";
+import useSecureAction from "@hooks/useSecureAction";
 
 export interface IAccountCardProps {
     sdk: UseSdkValue;
@@ -23,7 +25,8 @@ const AccountCard = ({
     onRename,
     onRemove,
 }: IAccountCardProps): ReactElement => {
-    const { setModalState, withLoader } = useAppContext();
+    const { setModalState } = useAppContext();
+    const runSecureAction = useSecureAction();
 
     const address = account.getAddress();
     const accountId = account.getId();
@@ -43,51 +46,49 @@ const AccountCard = ({
 
     const closeModal = () => setModalState({ type: null });
 
-    const transfer = (toAddress: string, amount: bigint, password: string) =>
-        withLoader(async () => {
-            try {
-                setIsSending(true);
+    const transfer = async (toAddress: string, amount: bigint) => {
+        try {
+            setIsSending(true);
 
-                const deployId = await sdk.transfer(
-                    { walletId, accountId, to: toAddress as never, amount },
-                    password,
-                );
+            const deployId = await runSecureAction({
+                walletId,
+                passwordTitle: "Enter wallet password to send",
+                confirmMessage: `Send ${formatAmount(amount)} ASI to ${toAddress}?`,
+                action: (password?: string) =>
+                    sdk.transfer(
+                        { walletId, accountId, to: toAddress as never, amount },
+                        password,
+                    ),
+            });
 
-                ApiServiceRegistry.getInstance().poller.watch(deployId, {
-                    onConfirmed: reload,
-                    onError: reload,
-                });
-
-                await reload();
-
-                setModalState({
-                    type: Modals.TRANSFER_COMPLETED_MODAL,
-                    props: {
-                        deployId,
-                        fromAddress: address,
-                        toAddress,
-                        amount,
-                        onClose: closeModal,
-                    },
-                });
-            } catch (error) {
-                console.error(error);
-                alert((error as Error)?.message ?? "Transfer failed");
-            } finally {
-                setIsSending(false);
+            if (!deployId) {
+                return;
             }
-        });
 
-    const openPasswordForTransfer = (toAddress: string, amount: bigint) =>
-        setModalState({
-            type: Modals.PASSWORD_MODAL,
-            props: {
-                title: "Enter wallet password to send",
-                onSubmit: (password: string) =>
-                    transfer(toAddress, amount, password),
-                onClose: closeModal,
-            },
-        });
+            ApiServiceRegistry.getInstance().poller.watch(deployId, {
+                onConfirmed: reload,
+                onError: reload,
+            });
+
+            await reload();
+
+            setModalState({
+                type: Modals.TRANSFER_COMPLETED_MODAL,
+                props: {
+                    deployId,
+                    fromAddress: address,
+                    toAddress,
+                    amount,
+                    onClose: closeModal,
+                },
+            });
+        } catch (error) {
+            console.error(error);
+            alert((error as Error)?.message ?? "Transfer failed");
+        } finally {
+            setIsSending(false);
+        }
+    };
 
     const openTransferModal = () =>
         setModalState({
@@ -95,10 +96,28 @@ const AccountCard = ({
             props: {
                 fromAddress: address,
                 availableBalance: balance.available ?? 0n,
-                onConfirm: openPasswordForTransfer,
+                onConfirm: (toAddress: string, amount: bigint) => {
+                    closeModal();
+                    void transfer(toAddress, amount);
+                },
                 onClose: closeModal,
             },
         });
+
+    const exportAccount = () => {
+        try {
+            const keyfile = sdk.getExportedAccountData(walletId, accountId);
+
+            downloadTextFile(
+                `asi-keyfile-${account.getName()}.json`,
+                keyfile,
+                "application/json",
+            );
+        } catch (error) {
+            console.error(error);
+            alert((error as Error)?.message ?? "Export failed");
+        }
+    };
 
     const copyAddress = async () => {
         try {
@@ -177,6 +196,12 @@ const AccountCard = ({
                         disabled={isCopied}
                     >
                         {isCopied ? "Copied" : "Copy address"}
+                    </button>
+                    <button
+                        className="account-card-button"
+                        onClick={exportAccount}
+                    >
+                        Export
                     </button>
                 </div>
             </div>

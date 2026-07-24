@@ -76,12 +76,10 @@ export default class TransactionReservationsManager implements IDisposable {
         return Array.from(this.reservations.values());
     }
 
-    public getByAccountAddress(
-        accountAddress: string,
-    ): ITransactionReservation[] {
+    public getByAccountId(accountId: string): ITransactionReservation[] {
         return this.getAll().filter(
             (reservation: ITransactionReservation) =>
-                reservation.accountAddress === accountAddress,
+                reservation.accountId === accountId,
         );
     }
 

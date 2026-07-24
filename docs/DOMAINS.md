@@ -30,12 +30,33 @@ interface ICreateClientOptions {
     defaultNetwork?: NetworkName;
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
-    flags?: ICreateClientFlags; // { withInsensitiveCacheStorage?: boolean }
+    flags?: ICreateClientFlags;  // { withInsensitiveCacheStorage?: boolean }
+    security?: ISessionPolicy;   // signing-session policy (see below)
 }
 ```
 
-`create()` initializes `StorageManager`, `ApiClientManager`, `ApiServiceRegistry`,
-and (when the flag is set) `InsensitiveCacheStorageManager`.
+`create()` initializes `StorageManager`, `NetworkManager` (which restores any
+persisted custom networks into `ApiClientManager`), `ApiServiceRegistry`, and
+(when the flag is set) `InsensitiveCacheStorageManager`.
+
+Signing-session policy (optional): the client can hold a wallet unlocked in
+memory so repeated signatures don't re-prompt for the password. See the
+_Signing sessions_ note below.
+
+```ts
+interface ISessionPolicy {
+    autoLockMs?: number;            // default DEFAULT_AUTO_LOCK_MS (15 min)
+    requirePassword?: RequirePassword;
+}
+
+// RequirePassword: "once-per-session" (default) | "every-signature"
+```
+
+With `requirePassword: "once-per-session"`, unlocking (or the first
+password-carrying transfer/deploy) starts a fixed-duration session; subsequent
+operations reuse the in-memory secret until it auto-locks. With
+`"every-signature"`, no session is held and every signature requires the
+password again.
 
 Wallet & account lifecycle:
 
@@ -45,11 +66,11 @@ generatePrivateKey(): Uint8Array
 
 createHDWallet(payload: ICreateHDWalletPayload, password: string): Promise<Wallet>
 createPrivateKeyWallet(payload: ICreatePrivateKeyWalletPayload, password: string): Promise<Wallet>
-unlockWallet(signerId: string, password: string): Promise<Wallet>
-removeWallet(walletId: string): Promise<void>
+unlockWallet(signerId: string, password: string): Promise<Wallet> // starts a session when policy holds one
+removeWallet(walletId: string): Promise<Wallet>
 
 deriveAccount(walletId: string, accountName: string, password: string): Promise<ICreatedAccountData>
-removeAccount(walletId: string, accountId: string): Promise<void>
+removeAccount(walletId: string, accountId: string): Promise<Account>
 renameAccount(walletId: string, accountId: string, name: string): Promise<void>
 setActiveAccount(walletId: string, accountId: string): void
 
@@ -57,13 +78,38 @@ getWalletManager(): WalletManager
 getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> // requires withInsensitiveCacheStorage flag
 ```
 
-Network:
+Signing sessions:
 
 ```ts
-getNetworksNames(): NetworkName[]
-getCurrentNetwork(): NetworkName
-setNetwork(networkName: NetworkName): void
+isWalletUnlocked(walletId: string): boolean // true while an in-memory session is active
+lockWallet(walletId: string): void          // clears the session + zeroizes the secret, fires onWalletLocked
 ```
+
+`unlockWallet` decrypts the signer secret and, when the policy holds a session
+(`requirePassword !== "every-signature"`), keeps it in memory until it
+auto-locks after `autoLockMs`. The session is **fixed-duration**: activity does
+not extend it. When a session expires, signing without a password throws a
+`WalletLockedError` (HTTP-style status `403`) so callers can distinguish an
+expired session from a server error and re-prompt for the password.
+
+Network (runtime registry — see `NetworkManager` / `ApiClientManager`):
+
+```ts
+getNetworks(): INetworkRecord[]
+getNetwork(id: NetworkId): INetworkRecord
+getCurrentNetwork(): INetworkRecord
+getCurrentNetworkId(): NetworkId
+setNetwork(networkId: NetworkId): void                     // switch active network by id, fires onNetworkChanged
+
+addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // custom network
+updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // custom only
+removeNetwork(id: NetworkId): Promise<void>                                    // custom only
+```
+
+Built-in networks (those provided to `Client.create`) are marked
+`isDefault: true` and are immutable: `updateNetwork` / `removeNetwork` reject
+them. Custom networks are addressed by a generated `id` (not by `name`, which is
+editable data) and are persisted so they survive a reload.
 
 Balances, reservations & transfers:
 
@@ -71,8 +117,37 @@ Balances, reservations & transfers:
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
-transfer(request: ITransferRequest, password: string): Promise<string> // returns deployId
+transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
 ```
+
+`password` is optional: when a session is active it is omitted; when it is
+supplied and the policy holds sessions, the transfer (re-)establishes the
+session before signing.
+
+Raw deploys (arbitrary Rholang, no reservation adapter):
+
+```ts
+deploy(request: IDeployRequest, password?: string): Promise<string> // returns deployId; same session rules as transfer
+exploreDeploy(rholang: string): Promise<unknown>                    // read-only, no unlock/password
+watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle     // poll deploy status
+```
+
+Data export:
+
+```ts
+getExportedAccountData(walletId: string, accountId: string): string // encrypted keyfile JSON (ASI keyfile format)
+getExportedTransactionsData(
+    walletId: string,
+    accountId: string,
+    format?: ExportFormat,   // "json" (default) | "csv"
+    networkId?: string,
+): Promise<string>
+```
+
+`getExportedAccountData` returns the account's address plus its **encrypted**
+private key wrapped in the versioned ASI keyfile envelope — the plaintext key is
+never exposed. `getExportedTransactionsData` serializes the account's history
+(transfers + deployments) as JSON or CSV.
 
 Amount helpers (bound to the native token decimals):
 
@@ -94,17 +169,19 @@ Event callbacks are delivered through `IClientEventDispatcher`:
 interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
-    onNetworkChanged?(networkName: NetworkName): void;
+    onNetworkChanged?(network: INetworkRecord): void;
     onReservationsChanged?(
         walletId: string,
         reservations: ITransactionReservation[],
     ): void;
+    onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
 }
 ```
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
-`ITransferRequest` (`{ walletId, accountId, to, amount }`).
+`ITransferRequest` (`{ walletId, accountId, to, amount }`),
+`IDeployRequest` (`{ walletId, accountId, term, phloLimit? }`).
 
 ---
 
@@ -149,6 +226,14 @@ getActiveAccount(): Account | null
 setActiveAccount(id: string): void
 ```
 
+Session (delegated to the `Signer`):
+
+```ts
+isUnlocked(): boolean
+unlock(passwordProvider: SecretsProvider, options?: ISignerUnlockOptions): Promise<void>
+lock(): void
+```
+
 Mutations:
 
 ```ts
@@ -160,7 +245,7 @@ updateAccount(id: string, payload: TEditableAccountOptions): void
 Signing / transfer:
 
 ```ts
-transfer(payload: ITransferDetails, passwordProvider: SecretsProvider): Promise<string>
+transfer(payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
 ```
 
 Behavior notes:
@@ -168,7 +253,9 @@ Behavior notes:
 - `deriveAccount` is guarded by the `@OnlyHDWallet` decorator; calling it on a
   private-key wallet throws. It auto-computes the next free derivation index.
 - `transfer` is guarded by `@EnsureActiveAccountExist` and delegates to
-  `ApiServiceRegistry.transactions.transfer(...)`.
+  `ApiServiceRegistry.transactions.transfer(...)`. `passwordProvider` is optional
+  — when a session is active the signer uses the in-memory secret; otherwise the
+  password is required or a `WalletLockedError` is thrown.
 
 ---
 
@@ -187,6 +274,7 @@ interface IAccountOptions {
     name: string;
     index: number | null; // null for private-key accounts
     address: Address;
+    publicKey: Uint8Array; // used for deployment-history lookups
     portfolioOptions?: IPortfolioOptions;
 }
 ```
@@ -198,17 +286,22 @@ getId(): string
 getName(): string
 getIndex(): number | null
 getAddress(): Address
+getPublicKey(): Uint8Array
 listAssets(): Asset[]
 getAsset(id: string): Asset | null
 registerAsset(asset: Asset): void
 setPrimaryAsset(id: string): void
 update(options: TEditableAccountOptions): void   // { name? }
 getBalance(): Promise<IBalanceData>
-getTransactionsHistory(networkName?: NetworkName, pagination?: Pagination): Promise<Transaction[]>
+getTransactionsHistory(networkId?: NetworkId, pagination?: Pagination): Promise<Transaction[]>
 ```
 
 `getBalance` and `getTransactionsHistory` read through
-`ApiServiceRegistry.getInstance()`. Associated record shape:
+`ApiServiceRegistry.getInstance()`. `getTransactionsHistory` passes both the
+address and the account's public key (`encodeBase16(getPublicKey())`) to
+`AccountDataService`, so the result combines the account's **transfers** (matched
+by address) and its **deployments** (matched by deployer public key),
+de-duplicated by deploy id and sorted newest-first. Associated record shape:
 `IAccountRecord = { id, signerId, name, index }`.
 
 ---
@@ -231,14 +324,21 @@ Associated types: `AssetId = string`, `Assets = Map<AssetId, Asset>`.
 
 ## Signer (`src/domains/Signer/index.ts`, `Signer/HD`, `Signer/PK`)
 
-Abstract signing boundary. Stores only the `EncryptedData` secret and produces
+Abstract signing boundary. Stores the `EncryptedData` secret and produces
 signatures without leaking key bytes to callers. Concrete implementations are
-`HDSigner` and `PrivateKeySigner`.
+`HDSigner` and `PrivateKeySigner`. It also owns the optional in-memory **signing
+session**.
 
 ```ts
 abstract class Signer {
     getId(): string;
     getEncryptedSecret(): EncryptedData;
+
+    // session
+    isUnlocked(): boolean;
+    unlock(passwordProvider: SecretsProvider, options?: ISignerUnlockOptions): Promise<void>;
+    lock(): void;
+
     abstract sign(
         payload: string,
         signingContext: TSigningContext,
@@ -248,9 +348,14 @@ abstract class Signer {
 
 ```ts
 type ISignedMessageResponse = { signature: Uint8Array; publicKey: Uint8Array };
-type TPKSigningContext = { passwordProvider: SecretsProvider };
-type THDSigningContext = { passwordProvider: SecretsProvider; index: number };
+type TPKSigningContext = { passwordProvider?: SecretsProvider };
+type THDSigningContext = { passwordProvider?: SecretsProvider; index: number };
 type TSigningContext = TPKSigningContext | THDSigningContext;
+
+interface ISignerUnlockOptions {
+    autoLockMs?: number;   // 0 / omitted -> no auto-lock timer
+    onAutoLock?: () => void;
+}
 
 interface ISignerRecord {
     id: string;
@@ -259,9 +364,65 @@ interface ISignerRecord {
 }
 ```
 
-Both implementations decrypt the secret, derive the private key (HD derives at
+Session lifecycle:
+
+- `unlock` decrypts the secret once and stores it together with an `AutoTimer`.
+  The timer is started immediately and is **fixed-duration** — it is never
+  restarted on activity, so the session ends `autoLockMs` after unlock.
+- The protected `resolveSecret(signingContext)` returns the in-memory secret when
+  a session is active; otherwise it decrypts using `signingContext.passwordProvider`,
+  and throws `WalletLockedError` when no password is available (locked/expired).
+- `lock` clears the timer, zeroizes the private-key bytes when present, and drops
+  the session. It is idempotent.
+
+Both implementations derive the private key (HD derives at
 `signingContext.index` from the stored root path), sign with `@noble/secp256k1`,
-and zeroize the private key in a `finally` block.
+and zeroize any ephemeral private key after signing.
+
+---
+
+## AutoTimer (`src/domains/AutoTimer/index.ts`)
+
+One-shot, restartable timer used by the `Signer` to auto-lock a session. A fresh
+`start()` cancels any pending timer first; `delayMs <= 0` is a no-op (no
+auto-lock).
+
+```ts
+interface IAutoTimerOptions { delayMs: number; onElapsed: () => void }
+
+new AutoTimer(options: IAutoTimerOptions)
+isActive(): boolean
+start(): void   // (re)arm; clears first, then schedules onElapsed after delayMs
+clear(): void   // cancel a pending timer
+```
+
+The signing session arms the timer once at unlock and never restarts it, giving
+a **fixed** (non-sliding) session lifetime.
+
+---
+
+## CustomError (`src/domains/CustomError/index.ts`)
+
+Public error taxonomy so integrators can branch on a machine-readable `code` and
+an HTTP-style `status` instead of matching message strings.
+
+```ts
+enum CustomErrorCode { WALLET_LOCKED = "WALLET_LOCKED" }
+
+class CustomError extends Error {
+    readonly code: CustomErrorCode;
+    readonly status: number;
+}
+
+class WalletLockedError extends CustomError {
+    // code WALLET_LOCKED, status 403
+}
+```
+
+`WalletLockedError` is thrown by the signing path when there is no active session
+and no password was supplied — i.e. the session is locked or expired. Its `403`
+status lets a frontend treat it like an expired auth token and re-prompt for the
+password, distinct from a transport/server error.
 
 ---
 
@@ -326,10 +487,13 @@ nextIndex(): Bip44Path // clone with index + 1
 
 ## Network (`src/domains/Network/index.ts`)
 
-Network naming and per-network endpoint config.
+Network identity, per-network endpoint config, and the runtime-registry record
+shape. `NetworkId` and `NetworkName` are both `string`: the `id` is the stable
+key, the `name` is editable display data.
 
 ```ts
-type NetworkName = "Dev" | "MainNet" | "TestNet" | "DevNet";
+type NetworkId = string;
+type NetworkName = string;
 
 interface INetworkConfig {
     ValidatorURL: string;
@@ -337,48 +501,89 @@ interface INetworkConfig {
     IndexerURL: string;
 }
 
-type TNetworksConfig = Record<NetworkName, INetworkConfig>;
+type TNetworksConfig = Record<NetworkName, INetworkConfig>; // built-in config keyed by name
+
+interface INetworkRecord {
+    id: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig;
+    isDefault: boolean; // true = built-in (immutable); false = custom (editable/removable)
+}
+
+interface INetworkUpdate {
+    name?: NetworkName;
+    config?: Partial<INetworkConfig>;
+}
 ```
+
+Built-in networks come from the `TNetworksConfig` passed to `Client.create`
+(their `id` equals their `name`). Custom networks get a generated `id` and are
+persisted via `CustomNetworksStorageRepository`.
 
 ---
 
 ## NetworkConfigProvider (`src/domains/NetworkConfigProvider/index.ts`)
 
-Holds the `TNetworksConfig` and resolves per-network configs. Used internally by
-`ApiClientManager`.
+The in-memory network registry behind `ApiClientManager`. Holds every network as
+an `INetworkRecord` keyed by `id`, distinguishes built-in (`isDefault`) from
+custom entries, and validates endpoint URLs on write.
 
 ```ts
-initialize(config: TNetworksConfig): void
-get(network: NetworkName): INetworkConfig
-getNetworkNames(): NetworkName[]
+initialize(config: TNetworksConfig): void          // seed built-ins (isDefault: true)
+restoreCustomNetworks(records: INetworkRecord[]): void // re-add persisted custom entries
+
+getAll(): INetworkRecord[]
+get(id: NetworkId): INetworkRecord                  // @EnsureNetworkExist
+getIds(): NetworkId[]
+
+add(name: NetworkName, config: INetworkConfig): INetworkRecord // generates id, isDefault: false
+update(id: NetworkId, update: INetworkUpdate): void            // @EnsureNetworkNotDefault
+remove(id: NetworkId): INetworkRecord                          // @EnsureNetworkNotDefault
 isReady(): boolean
 ```
+
+`add`/`update` validate URLs with `validateUrl` (must be non-empty http/https for
+custom networks; built-in seed config may contain empty placeholder URLs).
+`update`/`remove` are guarded by `@EnsureNetworkNotDefault`, so built-in networks
+cannot be modified or deleted.
 
 ---
 
 ## ApiClientManager (`src/domains/ApiClientManager/index.ts`)
 
 Singleton that owns the transport clients (`ValidatorClient`, `ObserverClient`,
-`IndexerClient`) and the currently selected network. Switching a network rebuilds
-the three clients from that network's URLs.
+`IndexerClient`), the `NetworkConfigProvider` registry, and the currently
+selected network id. Switching a network rebuilds the three clients from that
+network's URLs.
 
 ```ts
 ApiClientManager.getInstance(): ApiClientManager
-initialize(networksConfig: TNetworksConfig, network?: NetworkName): void
-switchNetwork(network: NetworkName): void
+initialize(networksConfig: TNetworksConfig, customNetworks?: INetworkRecord[], networkName?: NetworkName): void
+switchNetwork(networkId: NetworkId): void
 getValidatorClient(): ValidatorClient
 getObserverClient(): ObserverClient
 getIndexerClient(): IndexerClient
 getClients(): IApiClients
-getNetwork(): NetworkName
-getNetworkNames(): NetworkName[]
+
+// network registry
+getCurrentNetworkId(): NetworkId
+getCurrentNetwork(): INetworkRecord
+getNetworkIds(): NetworkId[]
+getNetworks(): INetworkRecord[]
+getNetwork(id: NetworkId): INetworkRecord
+addNetwork(name: NetworkName, config: INetworkConfig): INetworkRecord
+updateNetwork(id: NetworkId, update: INetworkUpdate): void  // re-switches clients if it's the active network
+removeNetwork(id: NetworkId): void                          // falls back to the first network if the active one is removed
+
 isReady(): boolean
 close(): void
 ```
 
 Accessors are guarded by `@EnsureApiClientManagerInitialized` /
 `@EnsureApiClientManagerConfigured` decorators and throw when used before
-`initialize()`.
+`initialize()`. `initialize` is idempotent (a second call is a no-op).
+Persistence of custom networks is orchestrated by `NetworkManager`, not here —
+this manager only holds the live registry.
 
 ---
 
@@ -470,39 +675,48 @@ interface Transaction {
     status: "pending" | "confirmed" | "failed";
     contractCode?: string;
     note?: string;
-    networkName: NetworkName;
+    networkId: NetworkId;
     detectedBy?: "balance_change" | "manual" | "auto";
 }
 
 interface ITransactionReservation
     extends ITransactionReservationPrivateData, ITableRecord {
-    networkName: NetworkName;
+    networkId: NetworkId;
 }
 ```
 
-`ITransactionReservationPrivateData` holds `timestamp`, `accountAddress`,
-`pendingAmount`, `deployId`, and `expirationTime` — the fields encrypted at rest.
+`ITransactionReservationPrivateData` holds `timestamp`, `accountId`,
+`pendingAmount`, `deployId`, and `expirationTime`. Reservations are non-secret
+(they reference a public deploy id and an internal account id) and are stored
+**as plaintext** `privateData` — they are no longer encrypted at rest.
 
 ---
 
 ## ReservationAdapter (`src/domains/ReservationAdapter/index.ts`)
 
-Bridges a wallet to the persistent, encrypted reservation store and the in-memory
-`TransactionReservationsManager`. Reservations represent funds temporarily locked
-by a pending transfer, so the _available_ balance excludes them plus their gas fee.
+Bridges a wallet to the persistent (plaintext) reservation store and the
+in-memory `TransactionReservationsManager`. Reservations represent funds
+temporarily locked by a pending transfer, so the _available_ balance excludes
+them plus their gas fee. No password is needed to build the adapter — it only
+reads/writes non-secret reservation records; the password is only required by the
+signing path inside `transfer`.
 
 ```ts
-ReservationAdapter.create(wallet, passwordProvider, reservationsManagerOptions?): Promise<ReservationAdapter>
+ReservationAdapter.create(wallet, reservationsManagerOptions?): Promise<ReservationAdapter>
 
 getBalance(account: Account): Promise<IBalanceData> // total minus reserved (amount + GasFee.MAX per reservation)
 getReservations(): ITransactionReservation[]
-transfer(wallet: Wallet, details: ITransferDetails, passwordProvider: SecretsProvider): Promise<string>
+validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
+transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
 dispose(): void
 ```
 
-`transfer` performs the on-chain transfer, persists an encrypted reservation
-(expiring after `RESERVATION_EXPIRATION_TIME`), and tracks it until confirmation
-or expiry. Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
+`create` loads this wallet's reservations for the current network id, dropping
+expired ones. Reserved amounts are keyed by `accountId`. `transfer` validates the
+balance, performs the on-chain transfer (forwarding the optional `passwordProvider`
+to the signer), persists a plaintext reservation (expiring after
+`RESERVATION_EXPIRATION_TIME`), and tracks it until confirmation or expiry.
+Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
 (a `DisposableItemManager`).
 
 ---
@@ -601,9 +815,13 @@ Each repository is a singleton over a named table, with `initialize()` /
   `IAccountStorageRecord` (`{ id, signerId, name, index, createdAt }`).
 - **TransactionReservationsStorageRepository** (`TRANSACTION_RESERVATIONS` table) —
   persists `ITransactionReservationsStorageRecord`
-  (`{ id, networkName, signerId, encryptedData, createdAt }`).
+  (`{ id, networkId, signerId, privateData, createdAt }`), where `privateData` is
+  the plaintext `ITransactionReservationPrivateData`.
+- **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
+  `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
+  runtime-registered custom networks survive a reload.
 - **InsensitiveCacheStorageRepository** (`INSENSITIVE_CACHE` table) — persists
   `IInsensitiveCacheRecord` (`{ id, address }`) for the optional address cache.
 
-These repositories are orchestrated by `StorageManager` and
-`InsensitiveCacheStorageManager` in the service layer — see `SERVICES.md`.
+These repositories are orchestrated by `StorageManager` (and
+`InsensitiveCacheStorageManager`) in the service layer — see `SERVICES.md`.
