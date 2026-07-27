@@ -5,6 +5,7 @@ const INSENSITIVE_CACHE_TABLE_KEY = "INSENSITIVE_CACHE";
 
 export interface IInsensitiveCacheRecord extends ITableRecord {
     address: string;
+    publicKey: string;
 }
 
 export class InsensitiveCacheStorageRepository extends BaseStorageRepository<IInsensitiveCacheRecord> {

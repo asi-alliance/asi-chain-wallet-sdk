@@ -40,6 +40,7 @@ export * from "./SignersStorageRepository";
 export * from "./TableService";
 export * from "./Transaction";
 export * from "./TransactionReservationsStorageRepository";
+export * from "./InsensitiveCacheStorageRepository";
 export * from "./ValidatorClient";
 export { default as ValidatorClient } from "./ValidatorClient";
 export * from "./Wallet";
