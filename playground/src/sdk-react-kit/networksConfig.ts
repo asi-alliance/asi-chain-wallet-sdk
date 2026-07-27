@@ -8,11 +8,12 @@ export const NETWORKS_CONFIG: TNetworksConfig = {
         ReadOnlyURL: env.VITE_DEVNET_READONLY_URL ?? "",
         IndexerURL: env.VITE_DEVNET_INDEXER_URL ?? "",
     },
-    Dev: {
-        ValidatorURL: env.VITE_DEV_VALIDATOR_URL ?? "",
-        ReadOnlyURL: env.VITE_DEV_READONLY_URL ?? "",
-        IndexerURL: env.VITE_DEV_INDEXER_URL ?? "",
-    },
+    //TODO: Wait until the Dev network is stable.
+    // Dev: {
+    //     ValidatorURL: env.VITE_DEV_VALIDATOR_URL ?? "",
+    //     ReadOnlyURL: env.VITE_DEV_READONLY_URL ?? "",
+    //     IndexerURL: env.VITE_DEV_INDEXER_URL ?? "",
+    // },
     MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
     TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
 };
