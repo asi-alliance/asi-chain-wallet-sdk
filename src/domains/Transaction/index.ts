@@ -1,12 +1,13 @@
 import { NetworkId } from "@domains/Network";
 import { ITableRecord } from "@domains/TableService";
 
-type TransactionStatus = "pending" | "confirmed" | "failed";
+export type TransactionStatus = "pending" | "completed" | "failed";
+export type TransactionType = "send" | "receive" | "deploy";
 
 export interface Transaction {
     id: string;
     timestamp: Date;
-    type: "send" | "receive" | "deploy";
+    type: TransactionType;
     from: string;
     to?: string;
     amount?: string;

@@ -30,8 +30,8 @@ interface ICreateClientOptions {
     defaultNetwork?: NetworkName;
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
-    flags?: ICreateClientFlags;  // { withInsensitiveCacheStorage?: boolean }
-    security?: ISessionPolicy;   // signing-session policy (see below)
+    flags?: ICreateClientFlags; // { withInsensitiveCacheStorage?: boolean }
+    security?: ISessionPolicy; // signing-session policy (see below)
 }
 ```
 
@@ -45,7 +45,7 @@ _Signing sessions_ note below.
 
 ```ts
 interface ISessionPolicy {
-    autoLockMs?: number;            // default DEFAULT_AUTO_LOCK_MS (15 min)
+    autoLockMs?: number; // default DEFAULT_AUTO_LOCK_MS (15 min)
     requirePassword?: RequirePassword;
 }
 
@@ -336,7 +336,10 @@ abstract class Signer {
 
     // session
     isUnlocked(): boolean;
-    unlock(passwordProvider: SecretsProvider, options?: ISignerUnlockOptions): Promise<void>;
+    unlock(
+        passwordProvider: SecretsProvider,
+        options?: ISignerUnlockOptions,
+    ): Promise<void>;
     lock(): void;
 
     abstract sign(
@@ -353,7 +356,7 @@ type THDSigningContext = { passwordProvider?: SecretsProvider; index: number };
 type TSigningContext = TPKSigningContext | THDSigningContext;
 
 interface ISignerUnlockOptions {
-    autoLockMs?: number;   // 0 / omitted -> no auto-lock timer
+    autoLockMs?: number; // 0 / omitted -> no auto-lock timer
     onAutoLock?: () => void;
 }
 
@@ -407,7 +410,9 @@ Public error taxonomy so integrators can branch on a machine-readable `code` and
 an HTTP-style `status` instead of matching message strings.
 
 ```ts
-enum CustomErrorCode { WALLET_LOCKED = "WALLET_LOCKED" }
+enum CustomErrorCode {
+    WALLET_LOCKED = "WALLET_LOCKED",
+}
 
 class CustomError extends Error {
     readonly code: CustomErrorCode;
@@ -672,7 +677,7 @@ interface Transaction {
     deployId?: string;
     blockHash?: string;
     gasCost?: string;
-    status: "pending" | "confirmed" | "failed";
+    status: "pending" | "completed" | "failed";
     contractCode?: string;
     note?: string;
     networkId: NetworkId;

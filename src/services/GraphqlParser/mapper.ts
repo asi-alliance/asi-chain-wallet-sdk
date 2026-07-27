@@ -36,7 +36,7 @@ export function mapRawTransferToTransaction(
         amount: toOptionalString(transfer.amount_asi),
         deployId: transfer.deploy_id,
         blockHash: transfer.block_hash,
-        status: "confirmed",
+        status: "completed",
         networkId: context.networkId,
         detectedBy: "auto",
     };
@@ -59,7 +59,7 @@ export function mapRawDeploymentToTransaction(
         from,
         deployId: deployment.deploy_id,
         blockHash: deployment.block?.block_hash,
-        status: "confirmed",
+        status: "completed",
         networkId: context.networkId,
         detectedBy: "auto",
     };
