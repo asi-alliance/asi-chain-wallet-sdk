@@ -3,3 +3,5 @@ export * from "./polyfills";
 export * from "./codec";
 export * from "./functions";
 export * from "./validators";
+export * from "./guards";
+export * from "./fabrics";

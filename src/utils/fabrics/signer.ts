@@ -26,12 +26,25 @@ export const createSigner = async (
         password,
     );
 
+    const encryptedDataKey = await CryptoService.encryptWithPassword(
+        CryptoService.generateDataKeySecret(),
+        password,
+    );
+
     switch (payload.type) {
         case WalletTypes.PRIVATE_KEY:
-            return new PrivateKeySigner({ id: payload.id, encryptedSecret });
+            return new PrivateKeySigner({
+                id: payload.id,
+                encryptedSecret,
+                encryptedDataKey,
+            });
 
         case WalletTypes.HD: {
-            return new HDSigner({ id: payload.id, encryptedSecret });
+            return new HDSigner({
+                id: payload.id,
+                encryptedSecret,
+                encryptedDataKey,
+            });
         }
     }
 };
@@ -40,12 +53,21 @@ export const restoreSigner = ({
     id,
     type,
     encryptedData,
+    encryptedDataKey,
 }: ISignerRecord): Signer => {
     switch (type) {
         case WalletTypes.PRIVATE_KEY:
-            return new PrivateKeySigner({ id, encryptedSecret: encryptedData });
+            return new PrivateKeySigner({
+                id,
+                encryptedSecret: encryptedData,
+                encryptedDataKey,
+            });
 
         case WalletTypes.HD:
-            return new HDSigner({ id, encryptedSecret: encryptedData });
+            return new HDSigner({
+                id,
+                encryptedSecret: encryptedData,
+                encryptedDataKey,
+            });
     }
 };

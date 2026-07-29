@@ -12,7 +12,7 @@ import {
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
-import { IStorageFabricOptions } from "@fabrics/Storage";
+import { IStorageFabricOptions } from "@utils/fabrics/storage";
 import StorageManager from "@services/StorageManager";
 import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -32,6 +32,7 @@ import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import ExportService from "@services/ExportService";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
+import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
 import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
@@ -40,6 +41,8 @@ import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageReposit
 import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { WalletTypes } from "@domains/Signer";
+import { createReservationAdapter } from "@utils/fabrics/client/reservationAdapter";
+import TransactionsHistoryAggregator from "@services/TransactionsHistoryAggregator";
 
 export interface IUnlockedWallet {
     id: string;
@@ -217,7 +220,12 @@ export default class Client {
             passwordProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         await this.emitWalletsChanged();
 
@@ -246,7 +254,12 @@ export default class Client {
             secretProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider: secretProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         await this.emitWalletsChanged();
 
@@ -329,7 +342,12 @@ export default class Client {
             await this.holdSession(wallet, passwordProvider);
         }
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         return wallet;
     }
@@ -503,6 +521,31 @@ export default class Client {
         }
 
         return reservationAdapter.getReservations();
+    }
+
+    public async getTransactionsHistory(
+        walletId: string,
+        accountId: string,
+        pagination?: Pagination,
+    ): Promise<Transaction[]> {
+        const wallet: Wallet = this.getUnlockedWallet(walletId);
+        const account: Account = this.getAccount(wallet, accountId);
+
+        const confirmedTransactions: Transaction[] =
+            await account.getTransactionsHistory(undefined, pagination);
+
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            return confirmedTransactions;
+        }
+
+        return TransactionsHistoryAggregator.aggregate(
+            confirmedTransactions,
+            reservationAdapter.getPendingTransactions(accountId),
+            ApiClientManager.getInstance().getCurrentNetworkId(),
+        );
     }
 
     public async transfer(

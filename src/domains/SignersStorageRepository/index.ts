@@ -1,4 +1,4 @@
-import { IStorageFabricOptions } from "@fabrics/Storage";
+import { IStorageFabricOptions } from "@utils/fabrics/storage";
 import { BaseStorageRepository } from "@domains/BaseStorageRepository";
 import { EncryptedData } from "@services/Crypto";
 import { ITableRecord } from "@domains/TableService";
@@ -18,6 +18,7 @@ export interface IHDSignerEncryptedFields {
 export interface ISignerStorageRecord extends ITableRecord {
     type: WalletTypes;
     encryptedData: EncryptedData;
+    encryptedDataKey: EncryptedData;
 
     createdAt: number;
     updatedAt?: number;
@@ -45,11 +46,13 @@ export class SignersStorageRepository extends BaseStorageRepository<ISignerStora
         signerId: string,
         type: WalletTypes,
         encryptedData: EncryptedData,
+        encryptedDataKey: EncryptedData,
     ): Promise<void> {
         await this.insertRecord({
             id: signerId,
             type,
             encryptedData,
+            encryptedDataKey,
             createdAt: Date.now(),
         });
     }

@@ -31,7 +31,7 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { unlockedWallets, currentNetwork } = useSdkContext();
+    const { client, unlockedWallets, currentNetwork } = useSdkContext();
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [exportFormat, setExportFormat] = useState<ExportFormat>(
@@ -65,26 +65,43 @@ const TxHistoryPage = (): ReactElement => {
         [accounts, selectedAccountId],
     );
 
-    const load = useCallback(async (account: Account): Promise<void> => {
-        setIsLoading(true);
+    const selectedWallet = useMemo(
+        () =>
+            unlockedWallets.find((wallet) =>
+                wallet.getAccountsMap().has(selectedAccountId),
+            ) ?? null,
+        [unlockedWallets, selectedAccountId],
+    );
 
-        try {
-            setTransactions(await account.getTransactionsHistory());
-        } catch (error) {
-            console.error(error);
-            setTransactions(null);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+    const load = useCallback(
+        async (walletId: string, accountId: string): Promise<void> => {
+            if (!client) {
+                return;
+            }
+
+            setIsLoading(true);
+
+            try {
+                setTransactions(
+                    await client.getTransactionsHistory(walletId, accountId),
+                );
+            } catch (error) {
+                console.error(error);
+                setTransactions(null);
+            } finally {
+                setIsLoading(false);
+            }
+        },
+        [client],
+    );
 
     useEffect(() => {
-        if (selectedAccount) {
-            void load(selectedAccount);
+        if (selectedWallet && selectedAccount) {
+            void load(selectedWallet.getId(), selectedAccount.getId());
         } else {
             setTransactions(null);
         }
-    }, [selectedAccount, currentNetwork, load]);
+    }, [selectedWallet, selectedAccount, currentNetwork, load]);
 
     const canExport = Boolean(
         selectedAccount && transactions && transactions.length,
@@ -160,7 +177,11 @@ const TxHistoryPage = (): ReactElement => {
                             type="button"
                             className="tx-history-page__action tx-history-page__action--ghost"
                             onClick={() =>
-                                selectedAccount && void load(selectedAccount)
+                                selectedAccount &&
+                                void load(
+                                    selectedWallet.getId(),
+                                    selectedAccount.getId(),
+                                )
                             }
                             disabled={!selectedAccount || isLoading}
                         >

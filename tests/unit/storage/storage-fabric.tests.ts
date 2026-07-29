@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { storageFabric } from "@fabrics/Storage";
+import { storageFabric } from "@utils/fabrics/storage";
 import NodeStorage from "@domains/NodeStorage";
 import BrowserStorage from "@domains/BrowserStorage";
 

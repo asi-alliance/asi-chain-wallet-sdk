@@ -8,7 +8,7 @@ import {
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
-import { ITransactionReservationPrivateData } from "@domains/Transaction";
+import { EncryptedData } from "@services/Crypto";
 import { INetworkRecord, NetworkId } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
@@ -18,7 +18,7 @@ import {
     CustomNetworksStorageRepository,
     ICustomNetworkStorageRecord,
 } from "@domains/CustomNetworksStorageRepository";
-import { IStorageFabricOptions } from "@fabrics/Storage";
+import { IStorageFabricOptions } from "@utils/fabrics/storage";
 
 export interface ISaveSignerToStorageOptions {
     id: string;
@@ -43,7 +43,7 @@ export interface IGetWalletFromStorageOptions {
 }
 
 export interface IWalletStorageData {
-    signer: ISignerRecord;
+    signer: ISignerStorageRecord;
     accounts: IAccountRecord[];
 }
 
@@ -51,7 +51,7 @@ export interface ISaveTransactionReservationsOptions {
     id: string;
     networkId: NetworkId;
     signerId: string;
-    privateData: ITransactionReservationPrivateData;
+    encryptedData: EncryptedData;
 }
 
 class StorageManager {
@@ -75,6 +75,7 @@ class StorageManager {
             id,
             type,
             signer.getEncryptedSecret(),
+            signer.getEncryptedDataKey(),
         );
     };
 
@@ -87,6 +88,7 @@ class StorageManager {
                     signerOption.id,
                     signerOption.type,
                     signerOption.signer.getEncryptedSecret(),
+                    signerOption.signer.getEncryptedDataKey(),
                 ),
             ),
         );
@@ -104,16 +106,17 @@ class StorageManager {
             id: signerStorageRecord.id,
             type: signerStorageRecord.type,
             encryptedData: signerStorageRecord.encryptedData,
+            encryptedDataKey: signerStorageRecord.encryptedDataKey,
         };
     };
 
-    public static getSigners = async (): Promise<ISignerRecord[]> => {
+    public static getSigners = async (): Promise<ISignerStorageRecord[]> => {
         return SignersStorageRepository.getInstance().getAllSigners();
     };
 
     public static updateSigner = async (
         id: string,
-        updates: Partial<ISignerRecord>,
+        updates: Partial<ISignerStorageRecord>,
     ): Promise<void> => {
         await SignersStorageRepository.getInstance().updateSigner(id, updates);
     };
@@ -248,13 +251,13 @@ class StorageManager {
     };
 
     public static getWallets = async (): Promise<IWalletStorageData[]> => {
-        const signerRecords: ISignerRecord[] =
+        const signerRecords: ISignerStorageRecord[] =
             await StorageManager.getSigners();
 
         const accountRecords: IAccountRecord[] =
             await StorageManager.getAccounts();
 
-        return signerRecords.map((signerRecord: ISignerRecord) => ({
+        return signerRecords.map((signerRecord: ISignerStorageRecord) => ({
             signer: signerRecord,
             accounts: accountRecords.filter(
                 (accountRecord: IAccountRecord) =>
@@ -267,13 +270,13 @@ class StorageManager {
         id,
         networkId,
         signerId,
-        privateData,
+        encryptedData,
     }: ISaveTransactionReservationsOptions): Promise<void> => {
         await TransactionReservationsStorageRepository.getInstance().saveTransactionReservation(
             id,
             networkId,
             signerId,
-            privateData,
+            encryptedData,
         );
     };
 
@@ -286,8 +289,7 @@ class StorageManager {
 
         return records.filter(
             (record: ITransactionReservationsStorageRecord) =>
-                record.signerId === signerId &&
-                record.networkId === networkId,
+                record.signerId === signerId && record.networkId === networkId,
         );
     };
 

@@ -96,16 +96,14 @@ input. `fromAtomicAmount` trims trailing zeros and a bare trailing `.0`.
 `fromAtomicAmountToNumber` warns and returns a possibly-imprecise `Number` when the
 integer part exceeds `Number.MAX_SAFE_INTEGER`.
 
-### Byte / secret helpers
+### Byte helpers
 
 ```ts
 toUint8Array(value: unknown): Uint8Array // accepts Uint8Array, Buffer JSON, arrays, plain objects
-decryptSignerData(signerData: EncryptedData, passwordProvider: SecretsProvider): Promise<IHDSecret | IPrivateKeyCredentials>
 ```
 
-`decryptSignerData` decrypts the stored signer secret and returns either
-private-key credentials or an HD secret (with the `rootHDPath` re-parsed into a
-`Bip44Path`).
+Secret decryption is not a util: `decryptSignerData` lives on `CryptoService`
+(see `SERVICES.md`).
 
 ### URL & address helpers
 
@@ -206,16 +204,29 @@ missing. No-op outside the browser. Called by `MnemonicService` and
 
 ## Fabrics
 
+All fabrics live under `src/utils/fabrics`. Its `index.ts` re-exports the signer,
+storage, and client fabrics, and `src/utils/index.ts` re-exports the folder, so
+they are reachable from the package root. The transaction reservation fabric is
+imported by its own path.
+
 ### Signer fabric (`src/utils/fabrics/signer.ts`)
 
 Builds and restores the correct `Signer` subclass from encrypted material.
 
 ```ts
-createSigner(payload: TCreateSignerPayload): Promise<Signer>  // encrypts secret, returns HDSigner / PrivateKeySigner
+createSigner(payload: TCreateSignerPayload): Promise<Signer>  // HDSigner / PrivateKeySigner
 restoreSigner(record: ISignerRecord): Signer
 ```
 
-### Storage fabric (`src/fabrics/Storage/index.ts`)
+`createSigner` encrypts two things with the wallet password: the secret itself
+and a freshly generated data key (`CryptoService.generateDataKeySecret`). Both
+live on the signer as `encryptedSecret` / `encryptedDataKey`, and `restoreSigner`
+rebuilds it from the stored record. The data key is what encrypts non-secret user
+data such as transaction reservations; it is resolved through
+`Signer.resolveDataKey(passwordProvider?)` — an active session already holds it,
+otherwise the password decrypts it.
+
+### Storage fabric (`src/utils/fabrics/storage.ts`)
 
 Selects `BrowserStorage` or `NodeStorage` for the current environment — see the
 storage section of `DOMAINS.md`.
@@ -223,3 +234,41 @@ storage section of `DOMAINS.md`.
 ```ts
 storageFabric(options?: IStorageFabricOptions): ITableService<ITableRecord>
 ```
+
+### Transaction reservation fabric (`src/utils/fabrics/transactionReservation.ts`)
+
+The single place that shapes an `ITransactionReservation`, so `ReservationAdapter`
+never assembles the record inline.
+
+```ts
+TransactionReservationFabric.create(
+    payload: ICreateTransactionReservationPayload, // { deployId, networkId, account, details }
+): ITransactionReservation
+
+TransactionReservationFabric.fromStorage(
+    record: ITransactionReservationsStorageRecord,
+    privateData: ITransactionReservationPrivateData,
+): ITransactionReservation
+```
+
+`create` builds the pending `Transaction` (`status: "pending"`,
+`detectedBy: "manual"`, `amount` and `gasCost` in display units), generates the
+reservation id, and stamps `expirationTime` as now plus
+`RESERVATION_EXPIRATION_TIME`. `fromStorage` recombines a stored record with its
+decrypted private data and revives `transaction.timestamp` into a `Date`.
+
+### Client fabrics (`src/utils/fabrics/client/`)
+
+Composition helpers for `Client`.
+
+```ts
+createReservationAdapter(
+    options: IAddReservationAdapterToManagerOptions, // { reservationAdapterManager, wallet, passwordProvider, eventDispatcher? }
+): Promise<ReservationAdapter>
+```
+
+Creates the wallet's `ReservationAdapter` through `ReservationAdapterManager`,
+forwarding the `passwordProvider` that resolves the signer data key, and
+subscribes `onConfirmed` / `onExpired` / `onFailed` so each of them re-emits
+`IClientEventDispatcher.onReservationsChanged` with the adapter's current
+reservations. `Client` goes through it on wallet create, import, and unlock.

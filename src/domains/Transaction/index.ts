@@ -22,11 +22,10 @@ export interface Transaction {
 }
 
 export interface ITransactionReservationPrivateData {
-    timestamp: Date;
     accountId: string;
     pendingAmount: string;
-    deployId: string;
     expirationTime: number;
+    transaction: Transaction;
 }
 
 export interface ITransactionReservation

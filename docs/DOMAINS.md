@@ -117,12 +117,21 @@ Balances, reservations & transfers:
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
+getTransactionsHistory(walletId: string, accountId: string, pagination?: Pagination): Promise<Transaction[]>
 transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
 ```
 
 `password` is optional: when a session is active it is omitted; when it is
 supplied and the policy holds sessions, the transfer (re-)establishes the
 session before signing.
+
+`getTransactionsHistory` is the only history entry point that knows about
+pending transactions: it merges the indexed history of the account with the
+pending transactions held by this wallet's reservation adapter for the current
+network, dedupes by deploy id (the indexed row wins once confirmed), and sorts
+newest first. The lower-level bricks stay unaware of reservations —
+`Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
+return indexed transactions only.
 
 Raw deploys (arbitrary Rholang, no reservation adapter):
 
@@ -177,6 +186,12 @@ interface IClientEventDispatcher {
     onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
 }
 ```
+
+`onReservationsChanged` is wired by the `createReservationAdapter` fabric
+(`src/utils/fabrics/client/reservationAdapter.ts`), which every `Client` path
+that builds an adapter (create, import, unlock) goes through: it forwards the
+`passwordProvider` needed for the data key and re-emits the wallet's
+reservations on confirmation, expiry, and watch failure.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -690,39 +705,52 @@ interface ITransactionReservation
 }
 ```
 
-`ITransactionReservationPrivateData` holds `timestamp`, `accountId`,
-`pendingAmount`, `deployId`, and `expirationTime`. Reservations are non-secret
-(they reference a public deploy id and an internal account id) and are stored
-**as plaintext** `privateData` — they are no longer encrypted at rest.
+`ITransactionReservationPrivateData` holds `accountId`, `pendingAmount`
+(atomic units — the balance-lock semantics), `expirationTime`, and the full
+pending `transaction` (`status: "pending"`, `detectedBy: "manual"`, `amount` and
+`gasCost` in display units so they match indexed rows). The whole payload is
+stored **encrypted at rest** with the signer's data key, so reading it requires
+an active session or an explicit password.
 
 ---
 
 ## ReservationAdapter (`src/domains/ReservationAdapter/index.ts`)
 
-Bridges a wallet to the persistent (plaintext) reservation store and the
-in-memory `TransactionReservationsManager`. Reservations represent funds
-temporarily locked by a pending transfer, so the _available_ balance excludes
-them plus their gas fee. No password is needed to build the adapter — it only
-reads/writes non-secret reservation records; the password is only required by the
-signing path inside `transfer`.
+Bridges a wallet to the encrypted reservation store and the in-memory
+`TransactionReservationsManager`. Reservations represent funds temporarily locked
+by a pending transfer, so the _available_ balance excludes them plus their gas
+fee, and they double as the only local source of pending transactions.
 
 ```ts
-ReservationAdapter.create(wallet, reservationsManagerOptions?): Promise<ReservationAdapter>
+ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
 
 getBalance(account: Account): Promise<IBalanceData> // total minus reserved (amount + GasFee.MAX per reservation)
 getReservations(): ITransactionReservation[]
+getPendingTransactions(accountId?: string): Transaction[]
 validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
 transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
 dispose(): void
 ```
 
-`create` loads this wallet's reservations for the current network id, dropping
-expired ones. Reserved amounts are keyed by `accountId`. `transfer` validates the
-balance, performs the on-chain transfer (forwarding the optional `passwordProvider`
-to the signer), persists a plaintext reservation (expiring after
-`RESERVATION_EXPIRATION_TIME`), and tracks it until confirmation or expiry.
-Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
-(a `DisposableItemManager`).
+Both reading and writing reservations need the signer's data key, resolved
+through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
+otherwise the optional `passwordProvider` does. `create` loads this wallet's
+reservations for the current network id, deleting the expired ones (a record that
+fails to decrypt rejects the whole `create` call) and rebuilding the rest
+through `TransactionReservationFabric.fromStorage`.
+Reserved amounts are keyed by `accountId`. `transfer` validates the balance,
+performs the on-chain transfer (forwarding the optional `passwordProvider` to the
+signer), builds the reservation through `TransactionReservationFabric.create`,
+persists it encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and tracks
+it until confirmation or expiry. Only those two outcomes delete the stored
+record — a failed deploy watch leaves the reservation to its expiration timer,
+so memory and storage never disagree. Implements `IDisposable`, so it is owned
+by `ReservationAdapterManager` (a `DisposableItemManager`).
+
+Reservation shaping (`ITransactionReservation` from a fresh transfer or from a
+storage record plus its decrypted private data) lives in
+`TransactionReservationFabric` (`src/utils/fabrics/transactionReservation.ts`),
+so the adapter never assembles the record shape inline.
 
 ---
 
@@ -800,7 +828,7 @@ Guarded by `@EnsureDatabaseInitialized` / `@EnsureTableExists` decorators.
 `node-persist`-backed `ITableService` singleton (`getInstance(storageDir?)`) for
 non-browser environments. Default directory `DEFAULT_NODE_STORAGE_DIR`.
 
-### storageFabric (`src/fabrics/Storage/index.ts`)
+### storageFabric (`src/utils/fabrics/storage.ts`)
 
 Returns the right backend for the current environment.
 
@@ -815,13 +843,13 @@ Each repository is a singleton over a named table, with `initialize()` /
 `ensureInitialized()` and typed CRUD.
 
 - **SignersStorageRepository** (`SIGNERS` table) — persists `ISignerStorageRecord`
-  (`{ id, type, encryptedData, createdAt }`).
+  (`{ id, type, encryptedData, encryptedDataKey, createdAt }`).
 - **AccountsStorageRepository** (`ACCOUNTS` table) — persists
   `IAccountStorageRecord` (`{ id, signerId, name, index, createdAt }`).
 - **TransactionReservationsStorageRepository** (`TRANSACTION_RESERVATIONS` table) —
   persists `ITransactionReservationsStorageRecord`
-  (`{ id, networkId, signerId, privateData, createdAt }`), where `privateData` is
-  the plaintext `ITransactionReservationPrivateData`.
+  (`{ id, networkId, signerId, encryptedData, createdAt }`), where `encryptedData`
+  is `ITransactionReservationPrivateData` encrypted with the signer's data key.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
   runtime-registered custom networks survive a reload.
