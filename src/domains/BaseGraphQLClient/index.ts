@@ -21,18 +21,10 @@ export default class BaseGraphQLClient {
         const response = await this.client.post<{
             data: T;
             errors?: unknown[];
-        }>(
-            "",
-            {
-                query,
-                variables,
-            },
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            },
-        );
+        }>("", {
+            query,
+            variables,
+        });
 
         if (response.data.errors?.length) {
             throw new Error(JSON.stringify(response.data.errors));

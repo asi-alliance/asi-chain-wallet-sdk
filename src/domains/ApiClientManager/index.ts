@@ -14,12 +14,19 @@ import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
 } from "@utils/decorators/apiClientManager";
+import { AxiosRequestConfig } from "axios";
 
 export interface IApiClients {
     validator: ValidatorClient;
     observer: ObserverClient;
     indexer: IndexerClient;
 }
+
+const DEFAULT_AXIOS_CONFIG: AxiosRequestConfig = {
+    headers: {
+        "Content-Type": "application/json",
+    },
+};
 
 export default class ApiClientManager {
     private static instance: ApiClientManager;
@@ -75,14 +82,17 @@ export default class ApiClientManager {
 
         this.validatorClient = new ValidatorClient({
             baseUrl: config.ValidatorURL,
+            axiosConfig: DEFAULT_AXIOS_CONFIG,
         });
 
         this.observerClient = new ObserverClient({
             baseUrl: config.ReadOnlyURL,
+            axiosConfig: DEFAULT_AXIOS_CONFIG,
         });
 
         this.indexerClient = new IndexerClient({
             baseUrl: config.IndexerURL,
+            axiosConfig: DEFAULT_AXIOS_CONFIG,
         });
 
         this.currentNetworkId = networkId;
