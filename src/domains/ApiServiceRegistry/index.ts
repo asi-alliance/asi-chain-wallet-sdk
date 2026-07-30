@@ -31,8 +31,12 @@ export default class ApiServiceRegistry {
             apiClientManager,
         );
 
-        this.assets = new AssetsService(this.deploy);
-        this.transactions = new TransactionService(this.deploy, this.blocks);
+        this.assets = new AssetsService(this.deploy, nodeApiProvider);
+        this.transactions = new TransactionService(
+            this.deploy,
+            this.blocks,
+            nodeApiProvider,
+        );
         this.poller = new DeployStatusPoller(this.deploy);
     }
 

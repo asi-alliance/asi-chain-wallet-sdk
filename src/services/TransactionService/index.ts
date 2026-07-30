@@ -1,7 +1,8 @@
 import blakejs from "blakejs";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Asset from "@domains/Asset";
-import { createTransferDeploy } from "@domains/Deploy/factory";
+import { IDeployTermFactory } from "@domains/Deploy/factory";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
 import { Address } from "@domains/Wallet";
 import {
@@ -10,6 +11,7 @@ import {
     INVALID_BLOCK_NUMBER,
     validateAddress,
 } from "@utils/index";
+import { createDeployTermFactory } from "@utils/fabrics/deployTermFactory";
 import SignerService, { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
 import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
@@ -49,10 +51,23 @@ export interface IDeployPayload {
 export default class TransactionService {
     private readonly deployService: DeployService;
     private readonly blockService: BlockService;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(deployService: DeployService, blockService: BlockService) {
+    constructor(
+        deployService: DeployService,
+        blockService: BlockService,
+        nodeApiProvider?: NodeApiProvider,
+    ) {
         this.deployService = deployService;
         this.blockService = blockService;
+        this.nodeApiProvider =
+            nodeApiProvider ?? NodeApiProvider.getInstance();
+    }
+
+    private get terms(): IDeployTermFactory {
+        return createDeployTermFactory(
+            this.nodeApiProvider.getApi().getProfile(),
+        );
     }
 
     private async signDeploy(
@@ -106,7 +121,7 @@ export default class TransactionService {
             throw new Error("Phlo price must be greater than zero");
         }
 
-        const term: string = createTransferDeploy(
+        const term: string = this.terms.createTransferDeploy(
             fromAddress,
             details.to,
             details.amount,

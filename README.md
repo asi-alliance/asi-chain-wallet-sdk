@@ -80,7 +80,10 @@ const networksConfig: TNetworksConfig = {
     TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
 };
 
-const client = await Client.create({ networksConfig, defaultNetwork: "DevNet" });
+const client = await Client.create({
+    networksConfig,
+    defaultNetwork: "DevNet",
+});
 ```
 
 ### Create Wallets
@@ -120,7 +123,10 @@ const active = hdWallet.getActiveAccount()!;
 
 // Total and reservation-aware available balance
 const balance = await client.getBalance(active.getAddress());
-const available = await client.getAvailableBalance(hdWallet.getId(), active.getId());
+const available = await client.getAvailableBalance(
+    hdWallet.getId(),
+    active.getId(),
+);
 console.log("Balance:", client.toDisplayAmount(balance));
 
 // Transfer tokens (amount in atomic units)
@@ -250,12 +256,12 @@ asi-chain-wallet-sdk/
 
 ### SDK Reference
 
-| Document                                 | Description                                                                                                                                          |
+| Document                                 | Description                                                                                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, storage repositories, and types)      |
-| [docs/SERVICES.md](docs/SERVICES.md)     | Managers & services (`WalletManager`, `AccountManager`, `StorageManager`, `DeployService`, `AssetsService`, `TransactionService`, `CryptoService`)  |
-| [docs/UTILS.md](docs/UTILS.md)           | Utilities & config (`codec`, `constants`, `validators`, `functions`, `guards`, `decorators`, `fabrics`, `polyfills`)                                |
-| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components, the `sdk-react-kit` integration layer, and usage examples                                                                    |
+| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, storage repositories, and types)     |
+| [docs/SERVICES.md](docs/SERVICES.md)     | Managers & services (`WalletManager`, `AccountManager`, `StorageManager`, `DeployService`, `AssetsService`, `TransactionService`, `CryptoService`) |
+| [docs/UTILS.md](docs/UTILS.md)           | Utilities & config (`codec`, `constants`, `validators`, `functions`, `guards`, `decorators`, `fabrics`, `polyfills`)                               |
+| [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components, the `sdk-react-kit` integration layer, and usage examples                                                                   |
 
 ### Related Resources
 
@@ -320,7 +326,7 @@ npm install
 npm run dev
 ```
 
-Playground available at `http://localhost:3000`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
+Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
 
 ### Dependencies
 

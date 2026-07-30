@@ -1,7 +1,7 @@
 import { Address } from "@domains/Wallet";
 import { escapeRholangString } from "./index";
 
-export const createDevCheckBalanceDeploy = (address: Address): string => {
+export const createRustCheckBalanceDeploy = (address: Address): string => {
     const escapedAddress = escapeRholangString(address);
 
     return `
@@ -27,7 +27,7 @@ export const createDevCheckBalanceDeploy = (address: Address): string => {
     `;
 };
 
-export const createDevTransferDeploy = (
+export const createRustTransferDeploy = (
     fromAddress: Address,
     toAddress: Address,
     amount: bigint,
@@ -41,7 +41,7 @@ export const createDevTransferDeploy = (
     const amountString: string = amount.toString();
 
     return `
-        new 
+        new
             deployerId(\`rho:system:deployerId\`),
             stdout(\`rho:io:stdout\`),
              rl(\`rho:registry:lookup\`),
