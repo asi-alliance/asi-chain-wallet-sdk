@@ -1,4 +1,5 @@
-import ApiClientManager from "@domains/ApiClientManager";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
 import { SignedResult } from "@services/Signer";
 
@@ -22,11 +23,15 @@ export type IDeployStatusResult =
       };
 
 export default class DeployService {
-    private readonly apiClientManager: ApiClientManager;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    constructor(nodeApiProvider?: NodeApiProvider) {
+        this.nodeApiProvider =
+            nodeApiProvider ?? NodeApiProvider.getInstance();
+    }
+
+    private get api(): NodeApiAdapter {
+        return this.nodeApiProvider.getApi();
     }
 
     private extractDeployId(result: unknown): string | undefined {
@@ -52,9 +57,7 @@ export default class DeployService {
         deploy: SignedResult,
     ): Promise<string | undefined> {
         try {
-            const result = await this.apiClientManager
-                .getValidatorClient()
-                .submitDeploy(deploy);
+            const result = await this.api.submitDeploy(deploy);
 
             return this.extractDeployId(result);
         } catch (error) {
@@ -68,9 +71,9 @@ export default class DeployService {
 
     public async exploreDeployData(rholangCode: string): Promise<any> {
         try {
-            const result = await this.apiClientManager
-                .getValidatorClient()
-                .submitExploratoryDeploy(rholangCode);
+            const result = (await this.api.exploreDeploy(rholangCode)) as {
+                expr?: unknown;
+            };
 
             return result.expr;
         } catch (error) {
@@ -82,7 +85,7 @@ export default class DeployService {
     }
 
     public async getDeploy(deployHash: string): Promise<any> {
-        return this.apiClientManager.getObserverClient().getDeploy(deployHash);
+        return this.api.getDeploy(deployHash);
     }
 
     public async isDeployFinalized(deploy: any): Promise<boolean> {

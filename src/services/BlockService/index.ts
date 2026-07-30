@@ -1,28 +1,28 @@
-import ObserverClient, { IBlockDto } from "@domains/ObserverClient";
-import ApiClientManager from "@domains/ApiClientManager";
+import { IBlockDto } from "@domains/ObserverClient";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { INVALID_BLOCK_NUMBER } from "@utils/index";
 
 export default class BlockService {
-    private readonly apiClientManager: ApiClientManager;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    constructor(nodeApiProvider?: NodeApiProvider) {
+        this.nodeApiProvider =
+            nodeApiProvider ?? NodeApiProvider.getInstance();
+    }
+
+    private get api(): NodeApiAdapter {
+        return this.nodeApiProvider.getApi();
     }
 
     public async getBlock(blockHash: string): Promise<string> {
-        const observerClient: ObserverClient =
-            this.apiClientManager.getObserverClient();
-
-        const response: IBlockDto = await observerClient.getBlock(blockHash);
+        const response: IBlockDto = await this.api.getBlock(blockHash);
 
         return response.blockInfo;
     }
 
     public async getLatestBlock(): Promise<IBlockDto> {
-        const blocks: IBlockDto[] = await this.apiClientManager
-            .getObserverClient()
-            .getBlocks();
+        const blocks: IBlockDto[] = await this.api.getBlocks();
 
         if (!blocks?.length) {
             throw new Error(
@@ -45,7 +45,7 @@ export default class BlockService {
 
     public async isValidatorActive(): Promise<boolean> {
         try {
-            await this.apiClientManager.getValidatorClient().getStatus();
+            await this.api.getValidatorStatus();
 
             return true;
         } catch {

@@ -5,12 +5,25 @@ import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
 
 export default class NodeApiProvider {
+    private static instance: NodeApiProvider;
+
     private readonly apiClientManager: ApiClientManager;
     private readonly adapters: Map<NodeApiProfile, NodeApiAdapter> = new Map();
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    private constructor(apiClientManager: ApiClientManager) {
+        this.apiClientManager = apiClientManager;
+    }
+
+    public static getInstance(
+        apiClientManager?: ApiClientManager,
+    ): NodeApiProvider {
+        if (!NodeApiProvider.instance) {
+            NodeApiProvider.instance = new NodeApiProvider(
+                apiClientManager ?? ApiClientManager.getInstance(),
+            );
+        }
+
+        return NodeApiProvider.instance;
     }
 
     public getApi(): NodeApiAdapter {
