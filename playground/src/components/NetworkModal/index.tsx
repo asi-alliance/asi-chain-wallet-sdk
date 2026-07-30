@@ -1,5 +1,12 @@
 import { useState, type FormEvent, type ReactElement } from "react";
-import { INetworkConfig, NetworkName, validateUrl } from "asi-wallet-sdk";
+import {
+    DEFAULT_NODE_API_PROFILE,
+    INetworkConfig,
+    NODE_API_PROFILE_DESCRIPTORS,
+    NetworkName,
+    NodeApiProfile,
+    validateUrl,
+} from "asi-wallet-sdk";
 import "./style.css";
 
 export interface INetworkModalPayload {
@@ -45,6 +52,7 @@ const NetworkModal = ({
             ValidatorURL: ((formData.get("validatorUrl") as string) ?? "").trim(),
             ReadOnlyURL: ((formData.get("readOnlyUrl") as string) ?? "").trim(),
             IndexerURL: ((formData.get("indexerUrl") as string) ?? "").trim(),
+            nodeApiProfile: formData.get("nodeApiProfile") as NodeApiProfile,
         };
 
         const urlFields: { label: string; value: string }[] = [
@@ -91,6 +99,29 @@ const NetworkModal = ({
                             defaultValue={initialName}
                             required
                         />
+                    </div>
+
+                    <div className="network-modal__row">
+                        <label htmlFor="nodeApiProfile">Node API profile</label>
+                        <select
+                            id="nodeApiProfile"
+                            name="nodeApiProfile"
+                            defaultValue={
+                                initialConfig?.nodeApiProfile ??
+                                DEFAULT_NODE_API_PROFILE
+                            }
+                        >
+                            {Object.values(NODE_API_PROFILE_DESCRIPTORS).map(
+                                (descriptor) => (
+                                    <option
+                                        key={descriptor.profile}
+                                        value={descriptor.profile}
+                                    >
+                                        {`${descriptor.label} (${descriptor.stability})`}
+                                    </option>
+                                ),
+                            )}
+                        </select>
                     </div>
 
                     <div className="network-modal__row">
