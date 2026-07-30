@@ -28,6 +28,7 @@ export { default as IndexerClient } from "./IndexerClient";
 export * from "./Network";
 export * from "./NetworkConfigProvider";
 export { default as NetworkConfigProvider } from "./NetworkConfigProvider";
+export * from "./NodeApiProfile";
 export * from "./NodeStorage";
 export { default as NodeStorage } from "./NodeStorage";
 export * from "./ObserverClient";
