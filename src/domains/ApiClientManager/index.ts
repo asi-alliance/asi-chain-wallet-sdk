@@ -6,6 +6,7 @@ import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
+    IPersistedNetworkRecord,
     NetworkId,
     NetworkName,
     TNetworksConfig,
@@ -55,7 +56,7 @@ export default class ApiClientManager {
 
     public initialize(
         networksConfig: TNetworksConfig,
-        customNetworks: INetworkRecord[] = [],
+        customNetworks: IPersistedNetworkRecord[] = [],
         networkName?: NetworkName,
     ): void {
         if (this.isInitialized) {
@@ -114,7 +115,7 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
-    public getClients() {
+    public getClients(): IApiClients {
         return {
             validator: this.validatorClient!,
             observer: this.observerClient!,

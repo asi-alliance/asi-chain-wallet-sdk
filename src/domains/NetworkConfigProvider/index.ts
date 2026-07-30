@@ -1,12 +1,20 @@
 import {
     INetworkConfig,
+    INetworkEndpoints,
     INetworkRecord,
     INetworkUpdate,
+    IPersistedNetworkRecord,
+    NETWORK_URL_FIELDS,
     NetworkId,
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
-import { generateRandomId, validateUrl } from "@utils/index";
+import {
+    generateRandomId,
+    validateNodeApiProfile,
+    validateUrl,
+} from "@utils/index";
+import { isNodeApiProfile } from "@utils/guards";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -20,24 +28,39 @@ export default class NetworkConfigProvider {
         config: Partial<INetworkConfig>,
         { allowEmpty }: { allowEmpty: boolean },
     ): void {
-        (Object.entries(config) as [keyof INetworkConfig, string][]).forEach(
-            ([field, url]) => {
-                if (allowEmpty && (url ?? "").trim().length === 0) {
-                    return;
-                }
+        NETWORK_URL_FIELDS.forEach((field: keyof INetworkEndpoints) => {
+            const url: string | undefined = config[field];
 
-                const { isValid, error } = validateUrl(url);
+            if (url === undefined) {
+                return;
+            }
 
-                if (!isValid) {
-                    throw new Error(`Invalid ${field}: ${error}`);
-                }
-            },
+            if (allowEmpty && url.trim().length === 0) {
+                return;
+            }
+
+            const { isValid, error } = validateUrl(url);
+
+            if (!isValid) {
+                throw new Error(`Invalid ${field}: ${error}`);
+            }
+        });
+    }
+
+    private validateConfigProfile(config: Partial<INetworkConfig>): void {
+        const { isValid, error } = validateNodeApiProfile(
+            config.nodeApiProfile,
         );
+
+        if (!isValid) {
+            throw new Error(`Invalid nodeApiProfile: ${error}`);
+        }
     }
 
     public initialize(config: TNetworksConfig): void {
         Object.values(config).forEach((networkConfig: INetworkConfig) => {
             this.validateConfigUrls(networkConfig, { allowEmpty: true });
+            this.validateConfigProfile(networkConfig);
         });
 
         this.networksRecords = new Map<NetworkId, INetworkRecord>(
@@ -54,10 +77,20 @@ export default class NetworkConfigProvider {
     }
 
     @EnsureNetworkConfigProviderReady
-    public restoreCustomNetworks(records: INetworkRecord[]): void {
-        records.forEach((record: INetworkRecord) => {
+    public restoreCustomNetworks(records: IPersistedNetworkRecord[]): void {
+        records.forEach((record: IPersistedNetworkRecord) => {
+            if (!isNodeApiProfile(record.config.nodeApiProfile)) {
+                console.warn(
+                    `NetworkConfigProvider: Skipped stored network "${record.name}" with unknown nodeApiProfile "${String(record.config.nodeApiProfile)}"`,
+                );
+
+                return;
+            }
+
             this.networksRecords!.set(record.id, {
-                ...record,
+                id: record.id,
+                name: record.name,
+                config: record.config,
                 isDefault: false,
             });
         });
@@ -85,6 +118,7 @@ export default class NetworkConfigProvider {
         networkConfig: INetworkConfig,
     ): INetworkRecord {
         this.validateConfigUrls(networkConfig, { allowEmpty: false });
+        this.validateConfigProfile(networkConfig);
 
         const record: INetworkRecord = {
             id: generateRandomId(),
@@ -117,6 +151,10 @@ export default class NetworkConfigProvider {
             this.validateConfigUrls(update.config, { allowEmpty: false });
         }
 
+        if (update.config && update.config.nodeApiProfile !== undefined) {
+            this.validateConfigProfile(update.config);
+        }
+
         const record: INetworkRecord = this.networksRecords!.get(id)!;
 
         if (update.name !== undefined) {
@@ -124,7 +162,13 @@ export default class NetworkConfigProvider {
         }
 
         if (update.config) {
-            record.config = { ...record.config, ...update.config };
+            const { nodeApiProfile, ...endpoints } = update.config;
+
+            record.config = {
+                ...record.config,
+                ...endpoints,
+                nodeApiProfile: nodeApiProfile ?? record.config.nodeApiProfile,
+            };
         }
     }
 

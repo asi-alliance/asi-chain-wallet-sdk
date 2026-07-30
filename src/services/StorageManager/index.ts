@@ -9,7 +9,11 @@ import {
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
 import { ITransactionReservationPrivateData } from "@domains/Transaction";
-import { INetworkRecord, NetworkId } from "@domains/Network";
+import {
+    INetworkRecord,
+    IPersistedNetworkRecord,
+    NetworkId,
+} from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
@@ -317,7 +321,9 @@ class StorageManager {
         );
     };
 
-    public static getCustomNetworks = async (): Promise<INetworkRecord[]> => {
+    public static getCustomNetworks = async (): Promise<
+        IPersistedNetworkRecord[]
+    > => {
         const records: ICustomNetworkStorageRecord[] =
             await CustomNetworksStorageRepository.getInstance().getAllCustomNetworks();
 
@@ -325,7 +331,6 @@ class StorageManager {
             id: record.id,
             name: record.name,
             config: record.config,
-            isDefault: false,
         }));
     };
 

@@ -4,6 +4,7 @@ import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
+    IPersistedNetworkRecord,
     NetworkId,
     NetworkName,
     TNetworksConfig,
@@ -14,7 +15,7 @@ class NetworkManager {
         networksConfig: TNetworksConfig,
         defaultNetwork?: NetworkName,
     ): Promise<void> => {
-        const customNetworks: INetworkRecord[] =
+        const customNetworks: IPersistedNetworkRecord[] =
             await StorageManager.getCustomNetworks();
 
         ApiClientManager.getInstance().initialize(
