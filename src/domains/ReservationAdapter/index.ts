@@ -17,7 +17,7 @@ import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails } from "@services/TransactionService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import TransactionReservationFabric from "@utils/fabrics/transactionReservation";
+import TransactionReservationFabric from "@fabrics/transactionReservation";
 
 export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;

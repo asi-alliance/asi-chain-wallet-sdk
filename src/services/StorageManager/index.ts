@@ -18,7 +18,7 @@ import {
     CustomNetworksStorageRepository,
     ICustomNetworkStorageRecord,
 } from "@domains/CustomNetworksStorageRepository";
-import { IStorageFabricOptions } from "@utils/fabrics/storage";
+import { IStorageFabricOptions } from "@fabrics/storage";
 
 export interface ISaveSignerToStorageOptions {
     id: string;

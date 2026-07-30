@@ -1,4 +1,4 @@
-import { IStorageFabricOptions } from "@utils/fabrics/storage";
+import { IStorageFabricOptions } from "@fabrics/storage";
 import { BaseStorageRepository } from "@domains/BaseStorageRepository";
 import { EncryptedData } from "@services/Crypto";
 import { ITableRecord } from "@domains/TableService";

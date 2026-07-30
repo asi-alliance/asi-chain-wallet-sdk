@@ -12,7 +12,7 @@ import {
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
-import { IStorageFabricOptions } from "@utils/fabrics/storage";
+import { IStorageFabricOptions } from "@fabrics/storage";
 import StorageManager from "@services/StorageManager";
 import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -41,7 +41,7 @@ import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageReposit
 import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { WalletTypes } from "@domains/Signer";
-import { createReservationAdapter } from "@utils/fabrics/client/reservationAdapter";
+import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
 import TransactionsHistoryAggregator from "@services/TransactionsHistoryAggregator";
 
 export interface IUnlockedWallet {

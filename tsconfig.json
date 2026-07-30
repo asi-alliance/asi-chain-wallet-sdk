@@ -23,6 +23,9 @@
             "@scripts/*": [
                 "./src/scripts/*"
             ],
+            "@fabrics/*": [
+                "./src/fabrics/*"
+            ],
         }
     }
 }
