@@ -47,6 +47,7 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
+- **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
 
 ---
@@ -67,17 +68,37 @@ The [`Client`](docs/DOMAINS.md) is the single entry point. Provide a per-network
 configuration and (optionally) a default network.
 
 ```typescript
-import { Client, type TNetworksConfig } from "@asichain/asi-wallet-sdk";
+import {
+    Client,
+    NodeApiProfile,
+    type TNetworksConfig,
+} from "@asichain/asi-wallet-sdk";
 
 const networksConfig: TNetworksConfig = {
     DevNet: {
         ValidatorURL: "http://validator-node:40403",
         ReadOnlyURL: "http://observer-node:40403",
         IndexerURL: "http://indexer-node:8080",
+        nodeApiProfile: NodeApiProfile.SCALA,
     },
-    Dev: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
-    MainNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
-    TestNet: { ValidatorURL: "", ReadOnlyURL: "", IndexerURL: "" },
+    Dev: {
+        ValidatorURL: "",
+        ReadOnlyURL: "",
+        IndexerURL: "",
+        nodeApiProfile: NodeApiProfile.RUST,
+    },
+    MainNet: {
+        ValidatorURL: "",
+        ReadOnlyURL: "",
+        IndexerURL: "",
+        nodeApiProfile: NodeApiProfile.SCALA,
+    },
+    TestNet: {
+        ValidatorURL: "",
+        ReadOnlyURL: "",
+        IndexerURL: "",
+        nodeApiProfile: NodeApiProfile.SCALA,
+    },
 };
 
 const client = await Client.create({
@@ -85,6 +106,14 @@ const client = await Client.create({
     defaultNetwork: "DevNet",
 });
 ```
+
+`nodeApiProfile` is required on every network. It selects which f1r3node
+implementation the SDK talks to — `SCALA` for the legacy node, `RUST` for the new
+one — and that choice drives the HTTP request shape, the endpoint a given call
+targets, and which Rholang vault contract the built-in terms address. There is no
+default: an omitted or unknown profile throws at `Client.create`, because guessing
+it would silently send legacy-shaped requests to a new node. Custom networks added
+at runtime through `client.addNetwork` must supply it too.
 
 ### Create Wallets
 
@@ -258,7 +287,7 @@ asi-chain-wallet-sdk/
 
 | Document                                 | Description                                                                                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, storage repositories, and types)     |
+| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, `NodeApiAdapter`, storage repositories, and types) |
 | [docs/SERVICES.md](docs/SERVICES.md)     | Managers & services (`WalletManager`, `AccountManager`, `StorageManager`, `DeployService`, `AssetsService`, `TransactionService`, `CryptoService`) |
 | [docs/UTILS.md](docs/UTILS.md)           | Utilities & config (`codec`, `constants`, `validators`, `functions`, `guards`, `decorators`, `fabrics`, `polyfills`)                               |
 | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components, the `sdk-react-kit` integration layer, and usage examples                                                                   |

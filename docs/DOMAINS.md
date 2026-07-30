@@ -9,6 +9,24 @@ through the singletons `ApiClientManager` (transport) and `ApiServiceRegistry`
 is never exposed directly — it flows through `SecretsProvider` closures and the
 `Signer` boundary.
 
+Node access is layered, because two f1r3node implementations (legacy Scala, new
+Rust) expose different HTTP contracts:
+
+```
+ApiServiceRegistry → services
+        ↓
+NodeApiProvider → NodeApiAdapter (Scala | Rust)   per-profile request shaping
+        ↓
+ApiClientManager ── NetworkConfigProvider          client ownership + network registry
+        ↓
+ValidatorClient · ObserverClient · IndexerClient
+        ↓
+BaseHttpClient · BaseGraphQLClient
+```
+
+The active network's `nodeApiProfile` picks the adapter. Nothing above the adapter
+knows which node implementation it is talking to.
+
 Everything is re-exported from the package root (`@config`, `@domains`,
 `@services`, `@utils`).
 
@@ -500,10 +518,14 @@ key, the `name` is editable display data.
 type NetworkId = string;
 type NetworkName = string;
 
-interface INetworkConfig {
+interface INetworkEndpoints {
     ValidatorURL: string;
     ReadOnlyURL: string;
     IndexerURL: string;
+}
+
+interface INetworkConfig extends INetworkEndpoints {
+    nodeApiProfile: NodeApiProfile; // required: which node implementation this network runs
 }
 
 type TNetworksConfig = Record<NetworkName, INetworkConfig>; // built-in config keyed by name
@@ -515,15 +537,34 @@ interface INetworkRecord {
     isDefault: boolean; // true = built-in (immutable); false = custom (editable/removable)
 }
 
+interface IPersistedNetworkRecord {
+    id: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig; // storage rows carry no isDefault flag
+}
+
 interface INetworkUpdate {
     name?: NetworkName;
     config?: Partial<INetworkConfig>;
 }
+
+const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[]; // allowlist used by URL validation
 ```
 
 Built-in networks come from the `TNetworksConfig` passed to `Client.create`
 (their `id` equals their `name`). Custom networks get a generated `id` and are
 persisted via `CustomNetworksStorageRepository`.
+
+`INetworkEndpoints` exists so URL validation iterates a type-derived allowlist
+(`NETWORK_URL_FIELDS`) instead of every config key — without it, adding the
+non-URL `nodeApiProfile` field would make validation reject it as an invalid URL.
+`NETWORK_URL_FIELDS` is derived from a `Record<keyof INetworkEndpoints, true>`
+map, so adding a fourth endpoint without updating the allowlist fails to compile.
+
+`nodeApiProfile` is required on every network, built-in and custom alike: it
+decides which HTTP contract and which Rholang terms are used, and a silent
+default would send legacy-shaped requests to a new node. See
+[NodeApiProfile](#nodeapiprofile-srcdomainsnodeapiprofileindexts).
 
 ---
 
@@ -531,11 +572,11 @@ persisted via `CustomNetworksStorageRepository`.
 
 The in-memory network registry behind `ApiClientManager`. Holds every network as
 an `INetworkRecord` keyed by `id`, distinguishes built-in (`isDefault`) from
-custom entries, and validates endpoint URLs on write.
+custom entries, and validates endpoint URLs and the node API profile on write.
 
 ```ts
 initialize(config: TNetworksConfig): void          // seed built-ins (isDefault: true)
-restoreCustomNetworks(records: INetworkRecord[]): void // re-add persisted custom entries
+restoreCustomNetworks(records: IPersistedNetworkRecord[]): void // re-add persisted custom entries
 
 getAll(): INetworkRecord[]
 get(id: NetworkId): INetworkRecord                  // @EnsureNetworkExist
@@ -547,8 +588,20 @@ remove(id: NetworkId): INetworkRecord                          // @EnsureNetwork
 isReady(): boolean
 ```
 
-`add`/`update` validate URLs with `validateUrl` (must be non-empty http/https for
-custom networks; built-in seed config may contain empty placeholder URLs).
+`initialize`/`add` validate URLs with `validateUrl` over `NETWORK_URL_FIELDS`
+(must be non-empty http/https for custom networks; built-in seed config may
+contain empty placeholder URLs) and the profile with `validateNodeApiProfile`,
+throwing `Invalid nodeApiProfile: …` on an unknown value. `update` validates
+whatever fields it receives; an absent `nodeApiProfile` keeps the stored one, so
+a partial update never resets the profile.
+
+`restoreCustomNetworks` is the only lenient path, because storage rows are not
+typed by us: a record whose `nodeApiProfile` is unknown or missing is skipped
+with a `console.warn` rather than dropped into a default. Falling back to a
+default here would reintroduce the silent wrong-contract guess; throwing would
+brick `Client.create` over one stale row. URLs on this path are still trusted
+verbatim, exactly as before this profile work.
+
 `update`/`remove` are guarded by `@EnsureNetworkNotDefault`, so built-in networks
 cannot be modified or deleted.
 
@@ -563,7 +616,7 @@ network's URLs.
 
 ```ts
 ApiClientManager.getInstance(): ApiClientManager
-initialize(networksConfig: TNetworksConfig, customNetworks?: INetworkRecord[], networkName?: NetworkName): void
+initialize(networksConfig: TNetworksConfig, customNetworks?: IPersistedNetworkRecord[], networkName?: NetworkName): void
 switchNetwork(networkId: NetworkId): void
 getValidatorClient(): ValidatorClient
 getObserverClient(): ObserverClient
@@ -590,6 +643,135 @@ Accessors are guarded by `@EnsureApiClientManagerInitialized` /
 Persistence of custom networks is orchestrated by `NetworkManager`, not here —
 this manager only holds the live registry.
 
+Services no longer reach for the per-client getters; they go through
+`NodeApiAdapter`, which reads `getClients()` on every access. The three single
+client getters remain part of the public surface but have no callers inside the
+SDK or the playground.
+
+---
+
+## NodeApiProfile (`src/domains/NodeApiProfile/index.ts`)
+
+The discriminator that says which node implementation a network runs. Data only,
+no runtime dependencies, so `@domains/Network` can reference it without pulling
+in the adapter graph.
+
+```ts
+enum NodeApiProfile {
+    SCALA = "scala", // legacy f1r3node
+    RUST = "rust",   // new f1r3node
+}
+
+enum NodeApiProfileStability {
+    STABLE = "stable",
+    EXPERIMENTAL = "experimental",
+}
+
+const DEFAULT_NODE_API_PROFILE: NodeApiProfile;      // SCALA
+const NODE_API_PROFILES: NodeApiProfile[];
+
+interface INodeApiProfileDescriptor {
+    profile: NodeApiProfile;
+    label: string;
+    description: string;
+    stability: NodeApiProfileStability;
+}
+
+const NODE_API_PROFILE_DESCRIPTORS: Record<NodeApiProfile, INodeApiProfileDescriptor>;
+```
+
+The profile identifies the *implementation*, not its maturity: `STABLE` /
+`EXPERIMENTAL` in the profile name would go stale the day Rust ships and would
+leave no name for a third profile. Maturity is a descriptor attribute instead, and
+the playground reads its select label and badge from there.
+
+`DEFAULT_NODE_API_PROFILE` is a UI default only — nothing in the domain
+substitutes it. The playground uses it to preselect the profile in the add-network
+form. Validation lives in `validateNodeApiProfile` (`src/utils/validators`) with
+the narrowing guard `isNodeApiProfile` (`src/utils/guards`) on top of it.
+
+---
+
+## NodeApiAdapter (`src/domains/NodeApiAdapter/index.ts`, `NodeApiAdapter/Scala`, `NodeApiAdapter/Rust`)
+
+Per-profile request router. It sits **above** `ApiClientManager` and **below**
+`ApiServiceRegistry`: services call the adapter, the adapter picks the client, the
+endpoint, and the request body. The abstract base holds the Scala behavior as its
+default; a subclass overrides only what its node does differently.
+
+```ts
+abstract class NodeApiAdapter {
+    constructor(apiClientManager: ApiClientManager)
+
+    protected get clients(): IApiClients          // resolved on every access
+    abstract getProfile(): NodeApiProfile
+
+    submitDeploy(deploy: SignedResult): Promise<unknown>
+    exploreDeploy(term: string): Promise<unknown>
+    getDeploy(deployHash: string): Promise<unknown>
+    getBlock(blockHash: string): Promise<IBlockDto>
+    getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]>
+    getValidatorStatus(): Promise<unknown>
+    getTransactionHistory(address, publicKey, pagination?): Promise<TransactionHistoryQueryData>
+
+    // override points
+    protected getExploreDeployClient(): IExploratoryDeployClient // base: clients.validator
+    protected buildExploreDeployBody(term: string): unknown      // base: the raw term
+}
+```
+
+Every public member performs one request and returns the node's response
+untouched. Response interpretation stays in the services — `DeployService` reads
+`expr` and extracts the deploy id, `BlockService` reads `blockInfo` and picks the
+latest block, `AssetsService` parses `ExprInt` / `ExprString`.
+
+`protected get clients()` is the load-bearing detail: the adapter holds no client,
+no URL, and no network id, so `switchNetwork` cannot make it stale and it never
+needs invalidating.
+
+`ScalaNodeApiAdapter` is `getProfile()` and nothing else — the base *is* the Scala
+behavior. `RustNodeApiAdapter` overrides three members: the profile, the
+exploratory-deploy target (read-only observer instead of validator), and the body
+shape (`{ term }`, the node's `SimpleExploreDeployRequest`). `Content-Type:
+application/json` needs no override; `DEFAULT_AXIOS_CONFIG` applies it to every
+client.
+
+Subclasses are not re-exported from the barrel, following `Signer/HD` and
+`Signer/PK`; instances come from `createNodeApiAdapter`
+(`src/utils/fabrics/nodeApiAdapter.ts`), whose `switch` has no `default` clause so
+a new profile fails to compile until it is handled.
+
+Adding a profile costs one entry in the enum, one descriptor, one `case`, and one
+subclass. Nothing in the service layer changes.
+
+---
+
+## NodeApiProvider (`src/domains/NodeApiProvider/index.ts`)
+
+Singleton that resolves the adapter for the active network and caches adapters by
+profile.
+
+```ts
+NodeApiProvider.getInstance(apiClientManager?: ApiClientManager): NodeApiProvider
+getApi(): NodeApiAdapter
+```
+
+`getApi()` reads `apiClientManager.getCurrentNetwork().config.nodeApiProfile` on
+every call, so services see the right adapter immediately after `switchNetwork`
+without anything being rebuilt. Services hold the provider and resolve per call
+through a private getter:
+
+```ts
+private get api(): NodeApiAdapter {
+    return this.nodeApiProvider.getApi();
+}
+```
+
+The cache is keyed by profile, not by network, because adapters carry no
+per-network state: two networks on the same profile share one instance, at most
+one instance exists per profile, and the cache survives an
+`ApiClientManager.close()` / re-`initialize()` cycle without going stale.
+
 ---
 
 ## ApiServiceRegistry (`src/domains/ApiServiceRegistry/index.ts`)
@@ -609,6 +791,12 @@ assets: AssetsService
 transactions: TransactionService
 poller: DeployStatusPoller
 ```
+
+It resolves `NodeApiProvider.getInstance(apiClientManager)` once and hands that
+provider to every service that talks to a node. The registry is built one time
+per session, so it deliberately passes the *provider* rather than a resolved
+adapter — a resolved adapter would freeze the profile of whichever network was
+active at construction time and survive `switchNetwork` unchanged.
 
 ---
 
@@ -637,9 +825,9 @@ query<T>(query: string, variables?: Record<string, unknown>): Promise<T>
 ### ValidatorClient (`src/domains/ValidatorClient/index.ts`)
 
 ```ts
-submitDeploy(deploy): Promise<any>          // POST /api/deploy
-submitExploratoryDeploy(rholangCode): Promise<any> // POST /api/explore-deploy
-getStatus(): Promise<any>                   // GET  /status
+submitDeploy(deploy): Promise<any>              // POST /api/deploy
+submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
+getStatus(): Promise<any>                       // GET  /status
 ```
 
 ### ObserverClient (`src/domains/ObserverClient/index.ts`)
@@ -648,9 +836,14 @@ getStatus(): Promise<any>                   // GET  /status
 getDeploy(deployHash): Promise<any>         // GET /api/deploy/:hash
 getBlock(blockHash): Promise<IBlockDto>     // GET /api/block/:hash
 getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> // GET /api/blocks
+submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
 ```
 
 `IBlockDto = { blockInfo: string; blockNumber: number }`.
+
+Both `submitExploratoryDeploy` methods take an already-built request body. The
+clients do not know that one profile sends a raw term string and another sends
+`{ term }` — that decision belongs to `NodeApiAdapter`.
 
 ### IndexerClient (`src/domains/IndexerClient/index.ts`)
 
@@ -741,17 +934,45 @@ interface DeployData {
 }
 ```
 
-Factory helpers (`Deploy/factory/index.ts`):
+Factory helpers (`Deploy/factory/index.ts`) — the Scala-profile terms, plus the
+shared escaper and the contract both profiles implement:
 
 ```ts
+interface IDeployTermFactory {
+    createCheckBalanceDeploy(address: Address): string;
+    createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): string;
+}
+
 escapeRholangString(value: string): string
 createCheckBalanceDeploy(address: Address): string
 createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): string // throws if amount <= 0
 ```
 
-`Deploy/factory/dev.ts` provides `createDevCheckBalanceDeploy` and
-`createDevTransferDeploy`, which target the `rho:vault:system` registry instead
-of `rho:rchain:asiVault` for dev networks.
+`Deploy/factory/rust.ts` provides `createRustCheckBalanceDeploy` and
+`createRustTransferDeploy`, which address the `rho:vault:system` registry and
+`rho:system:deployerId` instead of `rho:rchain:asiVault` and
+`rho:rchain:deployerId`.
+
+`createDeployTermFactory(profile)`
+(`src/utils/fabrics/deployTermFactory.ts`) selects between the two sets. It
+returns module-level constant tables of function references, so there is nothing
+to allocate or cache, and its `switch` has no `default` clause for the same
+exhaustiveness reason as the adapter fabric. `AssetsService` and
+`TransactionService` resolve it per call through `getApi().getProfile()`:
+
+```ts
+private get terms(): IDeployTermFactory {
+    return createDeployTermFactory(this.nodeApiProvider.getApi().getProfile());
+}
+```
+
+Note that the terms are keyed off `nodeApiProfile` today, but they are really a
+property of the chain, not of the node binary: they encode which vault contract is
+deployed in the registry. The two axes happen to coincide right now. If an
+ASI-vault chain ever runs on a Rust node, change what feeds
+`createDeployTermFactory` (a dedicated config field, say) — the transport adapters
+stay untouched. That separation is why term selection lives here and not on
+`NodeApiAdapter`.
 
 ---
 
@@ -824,7 +1045,9 @@ Each repository is a singleton over a named table, with `initialize()` /
   the plaintext `ITransactionReservationPrivateData`.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
-  runtime-registered custom networks survive a reload.
+  runtime-registered custom networks survive a reload. `config` is a full
+  `INetworkConfig`, `nodeApiProfile` included; rows written before that field
+  existed are skipped with a warning on restore (no schema migration).
 - **InsensitiveCacheStorageRepository** (`INSENSITIVE_CACHE` table) — persists
   `IInsensitiveCacheRecord` (`{ id, address }`) for the optional address cache.
 

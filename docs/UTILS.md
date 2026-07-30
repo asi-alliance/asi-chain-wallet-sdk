@@ -118,7 +118,7 @@ normalizeAddress(address: string | undefined): string     // trim + lowercase
 
 ## Validators (`src/utils/validators/index.ts`)
 
-Account-name and address validation.
+Account-name, address, URL, and node-profile validation.
 
 ```ts
 validateAccountName(name: string, maxLength?: number): { isValid: boolean; error?: string }
@@ -126,10 +126,13 @@ validateAddress(address: string): AddressValidationResult
 isAddress(address: string): address is Address // type-guard over validateAddress
 validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
 isValidUrl(url: string): boolean                               // boolean shorthand
+validateNodeApiProfile(profile: unknown): { isValid: boolean; error?: string } // membership in NodeApiProfile
 ```
 
 `validateUrl` powers custom-network endpoint validation in
-`NetworkConfigProvider`.
+`NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
+field on the same write paths and is the source of truth behind the
+`isNodeApiProfile` guard.
 
 `validateAccountName` (default `maxLength` 30) rejects empty names, over-length
 names, and forbidden characters `<>:"/\|?*`.
@@ -150,12 +153,18 @@ names, and forbidden characters `<>:"/\|?*`.
 
 ## Guards (`src/utils/guards/index.ts`)
 
-Type guards for wallet/secret discriminated unions.
+Type guards for wallet/secret discriminated unions and the node API profile.
 
 ```ts
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
+isNodeApiProfile(value: unknown): value is NodeApiProfile // delegates to validateNodeApiProfile
 ```
+
+`isNodeApiProfile` narrows untyped values at the storage boundary
+(`restoreCustomNetworks`), mirroring how `isValidUrl` sits on top of
+`validateUrl`. `src/utils/index.ts` does not re-export `./guards`, so these stay
+internal to the SDK.
 
 ---
 
@@ -214,6 +223,29 @@ Builds and restores the correct `Signer` subclass from encrypted material.
 createSigner(payload: TCreateSignerPayload): Promise<Signer>  // encrypts secret, returns HDSigner / PrivateKeySigner
 restoreSigner(record: ISignerRecord): Signer
 ```
+
+### Node API adapter fabric (`src/utils/fabrics/nodeApiAdapter.ts`)
+
+Builds the `NodeApiAdapter` subclass for a profile — see the adapter section of
+`DOMAINS.md`.
+
+```ts
+createNodeApiAdapter(profile: NodeApiProfile, apiClientManager: ApiClientManager): NodeApiAdapter
+```
+
+### Deploy term fabric (`src/utils/fabrics/deployTermFactory.ts`)
+
+Selects the Rholang term set for a profile: the `Deploy/factory/index.ts` terms for
+`SCALA`, the `Deploy/factory/rust.ts` terms for `RUST`.
+
+```ts
+createDeployTermFactory(profile: NodeApiProfile): IDeployTermFactory
+```
+
+Both fabrics `switch` over `NodeApiProfile` with no `default` clause, so adding a
+profile without handling it fails to compile. Unlike the adapter fabric, this one
+returns module-level constant tables of function references — there is nothing to
+construct or cache.
 
 ### Storage fabric (`src/fabrics/Storage/index.ts`)
 

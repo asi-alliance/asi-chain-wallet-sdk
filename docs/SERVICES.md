@@ -151,7 +151,7 @@ getTransactionReservationsBySignerId(signerId, networkId) /
 updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
 
 // custom networks
-getCustomNetworks(): Promise<INetworkRecord[]>
+getCustomNetworks(): Promise<IPersistedNetworkRecord[]> // no isDefault: restore assigns it
 saveCustomNetwork(network: INetworkRecord): Promise<void>
 updateCustomNetwork(network: INetworkRecord): Promise<void>
 deleteCustomNetwork(id: NetworkId): Promise<void>
@@ -178,6 +178,9 @@ removeNetwork(id: NetworkId): Promise<void>                                    /
 Built-in networks are never persisted or mutated here; only custom networks flow
 through storage. Validation and the built-in-immutability guard live in
 `NetworkConfigProvider` (see `DOMAINS.md`).
+
+Because `addNetwork`/`updateNetwork` persist the record the provider returns, a
+stored config always carries a validated `nodeApiProfile`.
 
 ### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
 
@@ -233,9 +236,36 @@ and `Client.getExportedTransactionsData` are the high-level entry points.
 
 Instantiated once by `ApiServiceRegistry` over an `ApiClientManager`.
 
+None of them touch a transport client directly. Every node call goes through
+`NodeApiAdapter`, resolved per call from the injected `NodeApiProvider`:
+
+```ts
+new DeployService(nodeApiProvider?: NodeApiProvider)
+new BlockService(nodeApiProvider?: NodeApiProvider)
+new AccountDataService(nodeApiProvider?: NodeApiProvider, apiClientManager?: ApiClientManager)
+new AssetsService(deployService: DeployService, nodeApiProvider?: NodeApiProvider)
+new TransactionService(deployService: DeployService, blockService: BlockService, nodeApiProvider?: NodeApiProvider)
+```
+
+Each declares a private getter so call sites read as ordinary API calls while
+resolution stays per call — a stored adapter would freeze the profile of whichever
+network was active when the registry was built:
+
+```ts
+private get api(): NodeApiAdapter {
+    return this.nodeApiProvider.getApi();
+}
+```
+
+`AccountDataService` also keeps an `ApiClientManager` because it needs
+`getCurrentNetworkId()` for history mapping. `AssetsService` and
+`TransactionService` use the provider only to pick Rholang terms by profile, via a
+`private get terms()`. The division of labour: the adapter shapes and sends the
+request, the service owns response interpretation and its own fallbacks.
+
 ### DeployService (`src/services/DeployService/index.ts`)
 
-Submits deploys and reads deploy status through the validator/observer clients.
+Submits deploys and reads deploy status through the node API adapter.
 
 ```ts
 submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
@@ -279,7 +309,11 @@ getBalance(address: Address, asset: Asset): Promise<IBalanceData> // { amount: b
 ```
 
 Validates the address first (throws on invalid); any exploration/parse failure
-resolves to `{ amount: 0n, asset }`.
+resolves to `{ amount: 0n, asset }`. The balance term comes from
+`this.terms.createCheckBalanceDeploy(address)`, so the vault contract it addresses
+follows the active network's profile. Note that the catch-all fallback means a
+transport failure is reported as a zero balance, not as an error — callers cannot
+distinguish "no funds" from "node unreachable" here.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
@@ -289,6 +323,10 @@ Builds, signs and submits deploys end to end.
 transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
 deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
 ```
+
+`transfer` builds its term with `this.terms.createTransferDeploy(...)`, so the
+vault contract follows the active network's profile. `deploy` takes the term from
+the caller and does not touch the term factory.
 
 ```ts
 interface ITransferDetails {

@@ -102,6 +102,23 @@ Builds `NETWORKS_CONFIG: TNetworksConfig` from `import.meta.env` (`DevNet`, `Dev
 plus empty `MainNet`/`TestNet` placeholders) and exposes `DEFAULT_NETWORK`
 (default `"DevNet"`).
 
+`nodeApiProfile` is read from env per network rather than hardcoded, the same way
+`DEFAULT_NETWORK` already was:
+
+```ts
+nodeApiProfile: env.VITE_DEVNET_NODE_API_PROFILE as NodeApiProfile,
+```
+
+Env keys: `VITE_DEVNET_NODE_API_PROFILE=scala`, `VITE_DEV_NODE_API_PROFILE=rust`,
+`VITE_MAINNET_NODE_API_PROFILE`, `VITE_TESTNET_NODE_API_PROFILE`. New keys must
+also be declared in `playground/src/vite-env.d.ts`. There is no fallback on
+purpose — a missing key makes `Client.create` throw
+`Invalid nodeApiProfile: Node API profile is required` at startup instead of
+quietly assuming a profile.
+
+`DevNet` runs the legacy Scala node, `Dev` the new Rust node. `AlexanderNet` exists
+only in the repository-root `.env` (`VITE_NETWORKS`) so far, not in the playground.
+
 ### formatters (`formatters/index.ts`)
 
 ```ts
@@ -169,8 +186,9 @@ or network change.
 
 Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
 as cards showing the network name, a `default`/`custom` badge, an `active` badge
-when the card id equals `sdk.currentNetwork?.id`, and the Validator/Read-only/
-Indexer URLs. Actions per card: **Switch** (disabled for the active network), and
+when the card id equals `sdk.currentNetwork?.id`, the Validator/Read-only/Indexer
+URLs, and a **Node API** row with the raw `config.nodeApiProfile` value (`scala` /
+`rust`). Actions per card: **Switch** (disabled for the active network), and
 — only for `custom` (`!isDefault`) networks — **Edit** and **Remove**. A header
 **Add network** button opens the create form. Everything is keyed by the stable
 `network.id`; the editable `name` is just data. Default networks cannot be edited
@@ -226,11 +244,18 @@ disabled.
 
 ### NetworkModal (`components/NetworkModal/index.tsx`)
 
-Add or edit a network. Collects `name` (editable in both modes) and the Validator/
-Read-only/Indexer URLs. Only `name` is required locally; empty URLs are allowed
-(matching the placeholder default networks). On submit it emits an
-`INetworkModalPayload`; the page maps that to `addNetwork(name, config)` or
-`updateNetwork(id, { name, config })`.
+Add or edit a network. Collects `name` (editable in both modes), the node API
+profile, and the Validator/Read-only/Indexer URLs. Only `name` is required
+locally; empty URLs are allowed (matching the placeholder default networks). On
+submit it emits an `INetworkModalPayload`; the page maps that to
+`addNetwork(name, config)` or `updateNetwork(id, { name, config })`.
+
+The profile is a `<select>` populated from `NODE_API_PROFILE_DESCRIPTORS`, with
+options labelled `"<label> (<stability>)"` — e.g. `Rust node (experimental)`. It
+defaults to `initialConfig?.nodeApiProfile ?? DEFAULT_NODE_API_PROFILE`, so
+editing preselects the network's current profile and adding preselects `scala`.
+This is the one place a default profile is applied, and it belongs here: the UI
+offers a starting value, the SDK never guesses one.
 
 ```ts
 interface INetworkModalPayload { name: NetworkName; config: INetworkConfig }
