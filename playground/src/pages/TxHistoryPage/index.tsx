@@ -5,11 +5,13 @@ import {
     useState,
     type ReactElement,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import "./styles.css";
 import {
     Account,
     ExportFormat,
     ExportService,
+    THistorySource,
     Transaction,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
@@ -18,7 +20,26 @@ import TxList from "./TxList";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
+import Pagination from "@components/common/Pagination";
 import { downloadTextFile } from "@utils/functions";
+
+const PAGE_SIZE: number = 10;
+
+const PAGE_QUERY_PARAM: string = "page";
+
+type HistoryMode = "all" | "pending" | "executed";
+
+const MODE_OPTIONS: SelectFilterOption[] = [
+    { label: "All", value: "all" },
+    { label: "Pending only", value: "pending" },
+    { label: "Executed only", value: "executed" },
+];
+
+const MODE_SOURCES: Record<HistoryMode, THistorySource[] | undefined> = {
+    all: undefined,
+    pending: ["pending"],
+    executed: ["executed"],
+};
 
 const FORMAT_OPTIONS: SelectFilterOption[] = [
     { label: "JSON", value: ExportFormat.JSON },
@@ -31,9 +52,13 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { client, unlockedWallets, currentNetwork } = useSdkContext();
+    const { client, unlockedWallets, currentNetwork, reservationsByWallet } =
+        useSdkContext();
+
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+    const [historyMode, setHistoryMode] = useState<HistoryMode>("all");
     const [exportFormat, setExportFormat] = useState<ExportFormat>(
         ExportFormat.JSON,
     );
@@ -41,6 +66,8 @@ const TxHistoryPage = (): ReactElement => {
         null,
     );
     const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    const page = Math.max(1, Number(searchParams.get(PAGE_QUERY_PARAM)) || 1);
 
     const accounts = useMemo<Account[]>(
         () => unlockedWallets.flatMap((wallet) => wallet.getAccounts()),
@@ -73,39 +100,75 @@ const TxHistoryPage = (): ReactElement => {
         [unlockedWallets, selectedAccountId],
     );
 
-    const load = useCallback(
-        async (walletId: string, accountId: string): Promise<void> => {
-            if (!client) {
-                return;
-            }
-
-            setIsLoading(true);
-
-            try {
-                setTransactions(
-                    await client.getTransactionsHistory(walletId, accountId),
-                );
-            } catch (error) {
-                console.error(error);
-                setTransactions(null);
-            } finally {
-                setIsLoading(false);
-            }
-        },
-        [client],
-    );
-
-    useEffect(() => {
-        if (selectedWallet && selectedAccount) {
-            void load(selectedWallet.getId(), selectedAccount.getId());
-        } else {
+    const load = useCallback(async (): Promise<void> => {
+        if (!client || !selectedWallet || !selectedAccount) {
             setTransactions(null);
+
+            return;
         }
-    }, [selectedWallet, selectedAccount, currentNetwork, load]);
+
+        setIsLoading(true);
+
+        try {
+            const loadedTransactions: Transaction[] =
+                await client.getTransactionsHistory(
+                    selectedWallet.getId(),
+                    selectedAccount.getId(),
+                    {
+                        sources: MODE_SOURCES[historyMode],
+                        pagination: {
+                            offset: (page - 1) * PAGE_SIZE,
+                            limit: PAGE_SIZE,
+                        },
+                    },
+                );
+
+            setTransactions(loadedTransactions);
+        } catch (error) {
+            console.error(error);
+            setTransactions(null);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [client, selectedWallet, selectedAccount, historyMode, page]);
+
+    const walletReservations = selectedWallet
+        ? reservationsByWallet[selectedWallet.getId()]
+        : undefined;
 
     useEffect(() => {
-        console.log("TRANSACTIONS: ", transactions);
-    }, [transactions]);
+        void load();
+    }, [load, currentNetwork, walletReservations]);
+
+    const goToPage = (nextPage: number): void => {
+        const params = new URLSearchParams(searchParams);
+
+        params.set(PAGE_QUERY_PARAM, String(nextPage));
+
+        setSearchParams(params);
+    };
+
+    const resetToFirstPage = (): void => {
+        const params = new URLSearchParams(searchParams);
+
+        params.delete(PAGE_QUERY_PARAM);
+
+        setSearchParams(params, { replace: true });
+    };
+
+    const handleAccountChange = (value: string): void => {
+        setSelectedAccountId(value);
+        resetToFirstPage();
+    };
+
+    const handleModeChange = (value: string): void => {
+        setHistoryMode(value as HistoryMode);
+        resetToFirstPage();
+    };
+
+    const hasNextPage = transactions?.length === PAGE_SIZE;
+
+    const showPagination = Boolean(transactions) && (page > 1 || hasNextPage);
 
     const canExport = Boolean(
         selectedAccount && transactions && transactions.length,
@@ -155,7 +218,16 @@ const TxHistoryPage = (): ReactElement => {
                                 label="Account:"
                                 value={selectedAccountId}
                                 options={accountOptions}
-                                onChange={setSelectedAccountId}
+                                onChange={handleAccountChange}
+                            />
+                        </div>
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-mode"
+                                label="Show:"
+                                value={historyMode}
+                                options={MODE_OPTIONS}
+                                onChange={handleModeChange}
                             />
                         </div>
                         <div className="tx-history-page__field">
@@ -180,13 +252,7 @@ const TxHistoryPage = (): ReactElement => {
                         <button
                             type="button"
                             className="tx-history-page__action tx-history-page__action--ghost"
-                            onClick={() =>
-                                selectedAccount &&
-                                void load(
-                                    selectedWallet.getId(),
-                                    selectedAccount.getId(),
-                                )
-                            }
+                            onClick={() => void load()}
                             disabled={!selectedAccount || isLoading}
                         >
                             Reload
@@ -202,6 +268,14 @@ const TxHistoryPage = (): ReactElement => {
                     </p>
                 ) : (
                     <TxList transactions={transactions} />
+                )}
+
+                {showPagination && (
+                    <Pagination
+                        page={page}
+                        hasNextPage={hasNextPage}
+                        onChange={goToPage}
+                    />
                 )}
             </section>
         </main>
