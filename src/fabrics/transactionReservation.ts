@@ -9,8 +9,8 @@ import {
     RESERVATION_EXPIRATION_TIME,
 } from "@config/index";
 import {
+    ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
-    ITransactionReservationPrivateData,
     Transaction,
 } from "@domains/Transaction";
 
@@ -58,9 +58,26 @@ export default class TransactionReservationFabric {
         };
     }
 
+    public static toPrivateData({
+        accountId,
+        pendingAmount,
+        expirationTime,
+        transaction,
+    }: ITransactionReservation): ISerializedTransactionReservationPrivateData {
+        return {
+            accountId,
+            pendingAmount,
+            expirationTime,
+            transaction: {
+                ...transaction,
+                timestamp: transaction.timestamp.toISOString(),
+            },
+        };
+    }
+
     public static fromStorage(
         record: ITransactionReservationsStorageRecord,
-        privateData: ITransactionReservationPrivateData,
+        privateData: ISerializedTransactionReservationPrivateData,
     ): ITransactionReservation {
         return {
             id: record.id,

@@ -3,8 +3,8 @@ import TransactionReservationsManager, {
     ITransactionReservationsManagerOptions,
 } from "@services/TransactionReservationsManager";
 import {
+    ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
-    ITransactionReservationPrivateData,
     Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
@@ -59,7 +59,7 @@ export default class ReservationAdapter {
     private static async readPrivateData(
         record: ITransactionReservationsStorageRecord,
         dataKeySecret: string,
-    ): Promise<ITransactionReservationPrivateData> {
+    ): Promise<ISerializedTransactionReservationPrivateData> {
         const decrypted: string = await CryptoService.decryptWithPassword(
             record.encryptedData,
             dataKeySecret,
@@ -90,7 +90,7 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const privateData: ITransactionReservationPrivateData =
+            const privateData: ISerializedTransactionReservationPrivateData =
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (privateData.expirationTime <= Date.now()) {
@@ -156,12 +156,8 @@ export default class ReservationAdapter {
         wallet: Wallet,
         passwordProvider?: SecretsProvider,
     ): Promise<void> {
-        const privateData: ITransactionReservationPrivateData = {
-            accountId: reservation.accountId,
-            pendingAmount: reservation.pendingAmount,
-            expirationTime: reservation.expirationTime,
-            transaction: reservation.transaction,
-        };
+        const privateData: ISerializedTransactionReservationPrivateData =
+            TransactionReservationFabric.toPrivateData(reservation);
 
         const dataKeySecret: string = await wallet
             .getSigner()

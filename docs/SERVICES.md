@@ -7,7 +7,7 @@ Services split into a few groups:
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
   `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
   `TransactionReservationsManager`, `DisposableItemManager`).
-- **Read models** — `TransactionsHistoryAggregator`.
+- **Read models** — `TransactionsHistoryAggregator`, `CollectionQueryService`.
 - **Persistence orchestration** — `StorageManager`, `NetworkManager`,
   `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
@@ -133,23 +133,66 @@ and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
 
 ## Read models
 
+### CollectionQueryService (`src/services/CollectionQuery/index.ts`)
+
+Generic in-memory sorting and pagination over any array. Pure and static — no
+state, no I/O.
+
+```ts
+CollectionQueryService.sortByComparator<TItem>(items, comparator): TItem[]
+CollectionQueryService.sortByDate<TItem>(items, getDate: (item) => Date, order?: Order): TItem[]
+CollectionQueryService.paginate<TItem>(items, pagination?: Pagination): IPaginatedChunk<TItem>
+
+interface IPaginatedChunk<TItem> {
+    items: TItem[];
+    restPagination: Pagination;
+}
+```
+
+Both sorts copy the input instead of mutating it; `sortByDate` defaults to
+`"desc"`. `paginate` is built for a page that spans **two sequential sources**:
+besides the slice it returns `restPagination` — what is left of the requested
+window once this source has been consumed
+(`offset - items.length`, floored at `0`; `limit - slice.length`). A
+`restPagination.limit` of `0` means the page is already full and the next source
+must not be queried.
+
 ### TransactionsHistoryAggregator (`src/services/TransactionsHistoryAggregator/index.ts`)
 
 Merges indexed history with the reservation adapter's pending transactions for
 `Client.getTransactionsHistory`. Pure and static — no state, no I/O.
 
 ```ts
+TransactionsHistoryAggregator.paginatePendingTransactions(
+    pending: Transaction[],
+    networkId: NetworkId,
+    pagination?: Pagination,
+): IPaginatedPendingTransactions
+
 TransactionsHistoryAggregator.aggregate(
     confirmed: Transaction[],
     pending: Transaction[],
-    networkId: NetworkId,
 ): Transaction[]
+
+interface IPaginatedPendingTransactions {
+    pendingTransactions: Transaction[];
+    confirmedPagination: Pagination;
+}
 ```
 
-Pending rows from other networks are dropped, rows are deduped by transaction id
-(which equals the deploy id for pending ones, so an indexed row replaces its
-pending twin once confirmed), and the result is sorted by `timestamp`, newest
-first.
+Pending transactions are local and always newer than indexed ones, so they head
+the merged history and the requested page is **split** between the two sources:
+`paginatePendingTransactions` drops pending rows from other networks, sorts the
+rest newest-first, cuts the part of the window they cover, and hands back the
+`confirmedPagination` to query the indexer with. Applying the caller's
+`offset`/`limit` to both sources instead would skip indexed rows and return short
+pages.
+
+`aggregate` dedupes by transaction id (which equals the deploy id for pending
+ones, so an indexed row replaces its pending twin once confirmed) and sorts by
+`timestamp`, newest first. A page may therefore come back one row short while a
+confirmed transaction still has a live reservation — over-fetching to compensate
+would shift every following offset.
 
 ---
 

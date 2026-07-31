@@ -21,11 +21,20 @@ export interface Transaction {
     detectedBy?: "balance_change" | "manual" | "auto";
 }
 
+export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
+    timestamp: string;
+};
+
 export interface ITransactionReservationPrivateData {
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
     transaction: Transaction;
+}
+
+export interface ISerializedTransactionReservationPrivateData
+    extends Omit<ITransactionReservationPrivateData, "transaction"> {
+    transaction: TSerializedTransaction;
 }
 
 export interface ITransactionReservation

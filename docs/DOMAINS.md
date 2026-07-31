@@ -133,6 +133,14 @@ newest first. The lower-level bricks stay unaware of reservations —
 `Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
 return indexed transactions only.
 
+`pagination` covers the merged history, not the indexed part alone. Pending rows
+are local and newer, so they head the list and
+`TransactionsHistoryAggregator.paginatePendingTransactions` splits the requested
+window: the pending slice is taken first, and only the remainder
+(`confirmedPagination`) is asked from the indexer — a page fully covered by
+pending rows skips the request entirely. Without a reservation adapter the
+pagination goes to the indexer untouched.
+
 Raw deploys (arbitrary Rholang, no reservation adapter):
 
 ```ts
@@ -712,6 +720,14 @@ pending `transaction` (`status: "pending"`, `detectedBy: "manual"`, `amount` and
 stored **encrypted at rest** with the signer's data key, so reading it requires
 an active session or an explicit password.
 
+Storage needs a serializable payload, so what is actually written is
+`ISerializedTransactionReservationPrivateData`, whose `transaction` is a
+`TSerializedTransaction` — `Transaction` with `timestamp` as an ISO string
+instead of a `Date`. `TransactionReservationFabric.toPrivateData` produces it and
+`fromStorage` parses the timestamp back into a `Date`, so the in-memory
+`Transaction` contract stays unchanged and no consumer ever meets a string
+`timestamp`.
+
 ---
 
 ## ReservationAdapter (`src/domains/ReservationAdapter/index.ts`)
@@ -748,9 +764,10 @@ so memory and storage never disagree. Implements `IDisposable`, so it is owned
 by `ReservationAdapterManager` (a `DisposableItemManager`).
 
 Reservation shaping (`ITransactionReservation` from a fresh transfer or from a
-storage record plus its decrypted private data) lives in
-`TransactionReservationFabric` (`src/utils/fabrics/transactionReservation.ts`),
-so the adapter never assembles the record shape inline.
+storage record plus its decrypted private data, and back into the serialized
+private data written to storage) lives in `TransactionReservationFabric`
+(`src/fabrics/transactionReservation.ts`), so the adapter never assembles the
+record shape inline.
 
 ---
 
