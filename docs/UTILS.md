@@ -204,12 +204,13 @@ missing. No-op outside the browser. Called by `MnemonicService` and
 
 ## Fabrics
 
-All fabrics live under `src/utils/fabrics`. Its `index.ts` re-exports the signer,
-storage, and client fabrics, and `src/utils/index.ts` re-exports the folder, so
-they are reachable from the package root. The transaction reservation fabric is
-imported by its own path.
+All fabrics live under `src/fabrics`, a top-level folder next to `src/utils`. Its
+`index.ts` re-exports the signer, storage, and client fabrics; the transaction
+reservation fabric is imported by its own path. The folder is internal —
+`src/index.ts` does not re-export it, so fabrics are not part of the package
+public surface; SDK code reaches them through the `@fabrics/*` alias.
 
-### Signer fabric (`src/utils/fabrics/signer.ts`)
+### Signer fabric (`src/fabrics/signer.ts`)
 
 Builds and restores the correct `Signer` subclass from encrypted material.
 
@@ -226,7 +227,7 @@ data such as transaction reservations; it is resolved through
 `Signer.resolveDataKey(passwordProvider?)` — an active session already holds it,
 otherwise the password decrypts it.
 
-### Storage fabric (`src/utils/fabrics/storage.ts`)
+### Storage fabric (`src/fabrics/storage.ts`)
 
 Selects `BrowserStorage` or `NodeStorage` for the current environment — see the
 storage section of `DOMAINS.md`.
@@ -235,29 +236,39 @@ storage section of `DOMAINS.md`.
 storageFabric(options?: IStorageFabricOptions): ITableService<ITableRecord>
 ```
 
-### Transaction reservation fabric (`src/utils/fabrics/transactionReservation.ts`)
+### Transaction reservation fabric (`src/fabrics/transactionReservation.ts`)
 
 The single place that shapes an `ITransactionReservation`, so `ReservationAdapter`
-never assembles the record inline.
+never assembles the record inline. It also owns both directions of the storage
+serialization boundary.
 
 ```ts
 TransactionReservationFabric.create(
     payload: ICreateTransactionReservationPayload, // { deployId, networkId, account, details }
 ): ITransactionReservation
 
+TransactionReservationFabric.toPrivateData(
+    reservation: ITransactionReservation,
+): ISerializedTransactionReservationPrivateData
+
 TransactionReservationFabric.fromStorage(
     record: ITransactionReservationsStorageRecord,
-    privateData: ITransactionReservationPrivateData,
+    privateData: ISerializedTransactionReservationPrivateData,
 ): ITransactionReservation
 ```
 
 `create` builds the pending `Transaction` (`status: "pending"`,
 `detectedBy: "manual"`, `amount` and `gasCost` in display units), generates the
 reservation id, and stamps `expirationTime` as now plus
-`RESERVATION_EXPIRATION_TIME`. `fromStorage` recombines a stored record with its
-decrypted private data and revives `transaction.timestamp` into a `Date`.
+`RESERVATION_EXPIRATION_TIME`.
 
-### Client fabrics (`src/utils/fabrics/client/`)
+`toPrivateData` drops the storage-owned fields (`id`, `networkId` — they live on
+the record itself) and serializes `transaction.timestamp` into an ISO string, so
+the payload survives `JSON.stringify` and an `IndexedDB` round trip.
+`fromStorage` is its inverse: it recombines a stored record with its decrypted
+private data and revives `transaction.timestamp` into a `Date`.
+
+### Client fabrics (`src/fabrics/client/`)
 
 Composition helpers for `Client`.
 

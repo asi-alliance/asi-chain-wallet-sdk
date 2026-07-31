@@ -16,8 +16,8 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    in-memory state; it is never persisted.
 2. Session lifetime is bounded and fixed: it is set at unlock time
    (`autoLockMs`, default 15 min) and is not extended by later activity.
-3. Auto-lock and explicit `lock()` must clear the session timer and zeroize
-   in-memory key bytes.
+3. Auto-lock and explicit `lock()` must clear the session timer, zeroize
+   in-memory key bytes, and drop the resolved data key held by the session.
 4. When there is no active session and no password is supplied, the signing
    path must fail closed (`WalletLockedError`) rather than sign.
 5. The session policy is configurable; `every-signature` disables session
@@ -26,9 +26,15 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 ## 2. Storage Invariants
 
 1. Vault data persisted to browser storage must remain encrypted at rest.
-2. Decryption requires the correct user password.
+2. Decryption requires the correct user password, either directly or through the
+   active session it unlocked.
 3. Locking the vault must clear unlocked in-memory wallet/seed collections.
 4. Storage adapters must be explicit about environment assumptions.
+5. Non-secret user data persisted per signer (transaction reservations) must be
+   encrypted with that signer's data key, never with the signing secret and never
+   in plaintext.
+6. Reading or writing that data must fail closed (`WalletLockedError`) when there
+   is neither an active session nor a supplied password.
 
 ## 3. Deploy Integrity Invariants
 

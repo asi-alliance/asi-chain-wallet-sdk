@@ -14,6 +14,23 @@ This document defines the current cryptographic profile used by `asi-chain-walle
 - IV length: `12` bytes
 - Source of truth: `src/services/Crypto/index.ts`
 
+## 1a. Data Key Profile
+
+- Purpose: encrypt non-signing user data at rest (currently transaction
+  reservations) without exposing the signing secret to persistence code.
+- Generation: `32` random bytes from `crypto.getRandomValues`, base64-encoded.
+- Storage: kept per signer as `encryptedDataKey`, encrypted with the wallet
+  password under the profile in section 1.
+- Usage: the decrypted data key is the passphrase input to the same
+  `AES-GCM` + `PBKDF2` profile when encrypting reservation payloads, so stored
+  ciphertext carries its own `salt` / `iv` / `version` like any other payload.
+- Availability: resolved through `Signer.resolveDataKey` — an active signing
+  session holds it, otherwise the wallet password decrypts it on demand.
+- Source of truth:
+  - `src/services/Crypto/index.ts`
+  - `src/fabrics/signer.ts`
+  - `src/domains/Signer/index.ts`
+
 ## 2. Address Derivation Profile
 
 - Public key curve: `secp256k1`
