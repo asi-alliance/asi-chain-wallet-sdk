@@ -103,6 +103,10 @@ const TxHistoryPage = (): ReactElement => {
         }
     }, [selectedWallet, selectedAccount, currentNetwork, load]);
 
+    useEffect(() => {
+        console.log("TRANSACTIONS: ", transactions);
+    }, [transactions]);
+
     const canExport = Boolean(
         selectedAccount && transactions && transactions.length,
     );

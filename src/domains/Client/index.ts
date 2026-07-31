@@ -42,7 +42,9 @@ import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { WalletTypes } from "@domains/Signer";
 import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
-import TransactionsHistoryAggregator from "@services/TransactionsHistoryAggregator";
+import TransactionsHistoryAggregator, {
+    ITransactionsHistoryWindow,
+} from "@services/TransactionsHistoryAggregator";
 
 export interface IUnlockedWallet {
     id: string;
@@ -76,6 +78,15 @@ export interface IDeployRequest {
     term: string;
     phloLimit?: number;
 }
+
+export type THistorySource = "pending" | "executed";
+
+export interface ITransactionsHistoryOptions {
+    sources?: THistorySource[];
+    pagination?: Pagination;
+}
+
+const DEFAULT_HISTORY_SOURCES: THistorySource[] = ["pending", "executed"];
 
 export interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
@@ -526,38 +537,52 @@ export default class Client {
     public async getTransactionsHistory(
         walletId: string,
         accountId: string,
-        pagination?: Pagination,
+        options?: ITransactionsHistoryOptions,
     ): Promise<Transaction[]> {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
         const account: Account = this.getAccount(wallet, accountId);
 
+        const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
+
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
 
-        if (!reservationAdapter) {
+        const pendingTransactions: Transaction[] =
+            sources.includes("pending") && reservationAdapter
+                ? reservationAdapter.getPendingTransactions(accountId)
+                : [];
+
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
+        if (!sources.includes("executed")) {
+            return TransactionsHistoryAggregator.paginatePendingTransactions(
+                pendingTransactions,
+                networkId,
+                pagination,
+            );
+        }
+
+        if (!pendingTransactions.length) {
             return account.getTransactionsHistory(undefined, pagination);
         }
 
-        const { pendingTransactions, confirmedPagination } =
-            TransactionsHistoryAggregator.paginatePendingTransactions(
-                reservationAdapter.getPendingTransactions(accountId),
-                ApiClientManager.getInstance().getCurrentNetworkId(),
+        const historyWindow: ITransactionsHistoryWindow =
+            TransactionsHistoryAggregator.createHistoryWindow(
+                pendingTransactions,
+                networkId,
                 pagination,
             );
 
-        if (confirmedPagination.limit === 0) {
-            return pendingTransactions;
-        }
-
-        const confirmedTransactions: Transaction[] =
+        const executedTransactions: Transaction[] =
             await account.getTransactionsHistory(
                 undefined,
-                confirmedPagination,
+                historyWindow.executedPagination,
             );
 
-        return TransactionsHistoryAggregator.aggregate(
-            confirmedTransactions,
-            pendingTransactions,
+        return TransactionsHistoryAggregator.mergeHistoryPage(
+            historyWindow,
+            executedTransactions,
         );
     }
 

@@ -1,14 +1,14 @@
 import { Order, Pagination } from "@services/GraphqlParser/queryOptions";
 
-export interface IPaginatedChunk<TItem> {
-    items: TItem[];
-    restPagination: Pagination;
-}
+export type TCollectionComparator<TItem> = (
+    firstItem: TItem,
+    secondItem: TItem,
+) => number;
 
 export default class CollectionQueryService {
     public static sortByComparator<TItem>(
         items: TItem[],
-        comparator: (firstItem: TItem, secondItem: TItem) => number,
+        comparator: TCollectionComparator<TItem>,
     ): TItem[] {
         return [...items].sort(comparator);
     }
@@ -28,26 +28,53 @@ export default class CollectionQueryService {
         );
     }
 
-    public static paginate<TItem>(
+    public static mergeSorted<TItem>(
+        primary: TItem[],
+        secondary: TItem[],
+        comparator: TCollectionComparator<TItem>,
+    ): TItem[] {
+        const merged: TItem[] = [];
+
+        let primaryIndex: number = 0;
+        let secondaryIndex: number = 0;
+
+        while (
+            primaryIndex < primary.length &&
+            secondaryIndex < secondary.length
+        ) {
+            if (
+                comparator(primary[primaryIndex], secondary[secondaryIndex]) <=
+                0
+            ) {
+                merged.push(primary[primaryIndex]);
+
+                primaryIndex++;
+
+                continue;
+            }
+
+            merged.push(secondary[secondaryIndex]);
+
+            secondaryIndex++;
+        }
+
+        return [
+            ...merged,
+            ...primary.slice(primaryIndex),
+            ...secondary.slice(secondaryIndex),
+        ];
+    }
+
+    public static slice<TItem>(
         items: TItem[],
         pagination?: Pagination,
-    ): IPaginatedChunk<TItem> {
+    ): TItem[] {
         const offset: number = pagination?.offset ?? 0;
         const limit: number | undefined = pagination?.limit;
 
-        const paginatedItems: TItem[] = items.slice(
+        return items.slice(
             offset,
             limit === undefined ? undefined : offset + limit,
         );
-
-        const restPagination: Pagination = {
-            offset: Math.max(0, offset - items.length),
-        };
-
-        if (limit !== undefined) {
-            restPagination.limit = limit - paginatedItems.length;
-        }
-
-        return { items: paginatedItems, restPagination };
     }
 }
