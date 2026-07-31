@@ -19,7 +19,7 @@ async function findTestFiles(dir) {
             results.push(...(await findTestFiles(fullPath)));
         } else if (
             entry.isFile() &&
-            entry.name.endsWith("transactions-history.test.ts") &&
+            entry.name.endsWith(".test.ts") &&
             !EXCLUDE_PATTERNS.includes(entry.name)
         ) {
             results.push(fullPath);

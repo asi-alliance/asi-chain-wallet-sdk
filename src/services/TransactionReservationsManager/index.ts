@@ -10,6 +10,7 @@ import {
 } from "@services/DeployStatusPoller";
 
 export interface ITransactionReservationsManagerOptions {
+    onAdded?: (reservation: ITransactionReservation) => void;
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
     onFailed?: (reservation: ITransactionReservation, error: Error) => void;
@@ -26,6 +27,7 @@ export default class TransactionReservationsManager implements IDisposable {
         ReturnType<typeof setTimeout>
     > = new Map();
 
+    private readonly onAdded?: (reservation: ITransactionReservation) => void;
     private readonly onConfirmed?: (
         reservation: ITransactionReservation,
     ) => void;
@@ -41,6 +43,7 @@ export default class TransactionReservationsManager implements IDisposable {
         reservations: ITransactionReservation[],
         options: ITransactionReservationsManagerOptions = {},
     ) {
+        this.onAdded = options.onAdded;
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
         this.onFailed = options.onFailed;
@@ -59,6 +62,8 @@ export default class TransactionReservationsManager implements IDisposable {
 
     public add(reservation: ITransactionReservation): void {
         this.track(reservation);
+
+        this.onAdded?.(reservation);
     }
 
     public remove(id: string): boolean {

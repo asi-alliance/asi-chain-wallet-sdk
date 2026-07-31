@@ -32,6 +32,7 @@ export const createReservationAdapter = async ({
     };
 
     return reservationAdapterManager.create(wallet, passwordProvider, {
+        onAdded: emitReservationsChanged,
         onConfirmed: emitReservationsChanged,
         onExpired: emitReservationsChanged,
         onFailed: emitReservationsChanged,
