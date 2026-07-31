@@ -531,20 +531,33 @@ export default class Client {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
         const account: Account = this.getAccount(wallet, accountId);
 
-        const confirmedTransactions: Transaction[] =
-            await account.getTransactionsHistory(undefined, pagination);
-
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
 
         if (!reservationAdapter) {
-            return confirmedTransactions;
+            return account.getTransactionsHistory(undefined, pagination);
         }
+
+        const { pendingTransactions, confirmedPagination } =
+            TransactionsHistoryAggregator.paginatePendingTransactions(
+                reservationAdapter.getPendingTransactions(accountId),
+                ApiClientManager.getInstance().getCurrentNetworkId(),
+                pagination,
+            );
+
+        if (confirmedPagination.limit === 0) {
+            return pendingTransactions;
+        }
+
+        const confirmedTransactions: Transaction[] =
+            await account.getTransactionsHistory(
+                undefined,
+                confirmedPagination,
+            );
 
         return TransactionsHistoryAggregator.aggregate(
             confirmedTransactions,
-            reservationAdapter.getPendingTransactions(accountId),
-            ApiClientManager.getInstance().getCurrentNetworkId(),
+            pendingTransactions,
         );
     }
 
