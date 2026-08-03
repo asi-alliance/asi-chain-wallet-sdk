@@ -83,6 +83,7 @@ export interface IClientEventDispatcher {
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(network: INetworkRecord): void;
     onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
+    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
     onWalletLocked?(walletId: string): void;
 }
 
@@ -508,67 +509,73 @@ export default class Client {
         return reservationAdapter.getReservations();
     }
 
-    public async transfer(
+    public transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
     ): Promise<string> {
-        const wallet: Wallet = this.getUnlockedWallet(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getUnlockedWallet(walletId);
 
-        wallet.setActiveAccount(accountId);
+            wallet.setActiveAccount(accountId);
 
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
 
-        await this.ensureSession(wallet, passwordProvider);
+            await this.ensureSession(wallet, passwordProvider);
 
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(walletId);
 
-        if (!reservationAdapter) {
-            throw new Error("Client.transfer: Not found reservation adapter");
-        }
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.transfer: Not found reservation adapter",
+                );
+            }
 
-        const deployId: string = await reservationAdapter.transfer(
-            wallet,
-            { to, amount, asset: DEFAULT_ASSET },
-            passwordProvider,
-        );
+            const deployId: string = await reservationAdapter.transfer(
+                wallet,
+                { to, amount, asset: DEFAULT_ASSET },
+                passwordProvider,
+            );
 
-        this.emitReservationsChanged();
+            this.emitReservationsChanged();
 
-        return deployId;
+            return deployId;
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
-    public async deploy(
+    public deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
     ): Promise<string> {
-        const wallet: Wallet = this.getUnlockedWallet(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getUnlockedWallet(walletId);
 
-        wallet.setActiveAccount(accountId);
+            wallet.setActiveAccount(accountId);
 
-        const account: Account = this.getAccount(wallet, accountId);
+            const account: Account = this.getAccount(wallet, accountId);
 
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
 
-        await this.ensureSession(wallet, passwordProvider);
+            await this.ensureSession(wallet, passwordProvider);
 
-        const deployId: string =
-            await ApiServiceRegistry.getInstance().transactions.deploy({
-                walletType: wallet.getType(),
-                account,
-                signer: wallet.getSigner(),
-                term,
-                phloLimit,
-                passwordProvider,
-            });
+            const deployId: string =
+                await ApiServiceRegistry.getInstance().transactions.deploy({
+                    walletType: wallet.getType(),
+                    account,
+                    signer: wallet.getSigner(),
+                    term,
+                    phloLimit,
+                    passwordProvider,
+                });
 
-        return deployId;
+            return deployId;
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
     public exploreDeploy(rholang: string): Promise<unknown> {
@@ -627,6 +634,15 @@ export default class Client {
         return ApiClientManager.getInstance().getNetwork(id);
     }
 
+    public isNetworkBusy(networkId?: NetworkId): boolean {
+        const apiClientManager: ApiClientManager =
+            ApiClientManager.getInstance();
+
+        return apiClientManager.isNetworkBusy(
+            networkId ?? apiClientManager.getCurrentNetworkId(),
+        );
+    }
+
     public addNetwork(
         name: NetworkName,
         config: INetworkConfig,
@@ -639,9 +655,9 @@ export default class Client {
     }
 
     public async removeNetwork(id: NetworkId): Promise<void> {
-        await this.reservationAdapterManager.removeNetworkReservations(id);
-
         await NetworkManager.removeNetwork(id);
+
+        await this.reservationAdapterManager.removeNetworkReservations(id);
 
         this.emitReservationsChanged();
     }
@@ -654,6 +670,10 @@ export default class Client {
         this.eventDispatcher?.onReservationsChanged?.(
             this.reservationAdapterManager.getReservationsByWallet(),
         );
+    }
+
+    private emitNetworkBusyChanged(networkId: NetworkId, isBusy: boolean): void {
+        this.eventDispatcher?.onNetworkBusyChanged?.(networkId, isBusy);
     }
 
     private emitAccountsChanged(walletId: string): void {

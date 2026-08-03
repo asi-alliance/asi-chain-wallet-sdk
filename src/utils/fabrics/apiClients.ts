@@ -3,12 +3,14 @@ import ObserverClient from "@domains/ObserverClient";
 import ValidatorClient from "@domains/ValidatorClient";
 import type { IApiClients } from "@domains/ApiClientManager";
 import { INetworkConfig } from "@domains/Network";
+import { DEFAULT_REQUEST_TIMEOUT } from "@config/index";
 import { AxiosRequestConfig } from "axios";
 
 const DEFAULT_AXIOS_CONFIG: AxiosRequestConfig = {
     headers: {
         "Content-Type": "application/json",
     },
+    timeout: DEFAULT_REQUEST_TIMEOUT,
 };
 
 export const createApiClients = (config: INetworkConfig): IApiClients => ({

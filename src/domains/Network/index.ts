@@ -36,6 +36,11 @@ export interface INetworkUpdate {
     config?: Partial<INetworkConfig>;
 }
 
+export type TNetworkBusyListener = (
+    networkId: NetworkId,
+    isBusy: boolean,
+) => void;
+
 export interface INetworkContext {
     networkId: NetworkId;
     name: NetworkName;

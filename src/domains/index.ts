@@ -28,6 +28,8 @@ export * from "./Deploy";
 export * from "./IndexerClient";
 export { default as IndexerClient } from "./IndexerClient";
 export * from "./Network";
+export * from "./NetworkBusyRegistry";
+export { default as NetworkBusyRegistry } from "./NetworkBusyRegistry";
 export * from "./NetworkConfigProvider";
 export { default as NetworkConfigProvider } from "./NetworkConfigProvider";
 export * from "./NodeApiAdapter";
