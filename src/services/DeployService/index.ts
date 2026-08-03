@@ -7,8 +7,7 @@ export default class DeployService {
     private readonly nodeApiProvider: NodeApiProvider;
 
     constructor(nodeApiProvider?: NodeApiProvider) {
-        this.nodeApiProvider =
-            nodeApiProvider ?? NodeApiProvider.getInstance();
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
     }
 
     private get api(): NodeApiAdapter {

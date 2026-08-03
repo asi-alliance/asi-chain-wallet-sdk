@@ -2,7 +2,13 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
-import { MnemonicStrength, Wallet, WalletTypes } from "asi-wallet-sdk";
+import {
+    decodeBase16,
+    KeysManager,
+    MnemonicStrength,
+    Wallet,
+    WalletTypes,
+} from "asi-wallet-sdk";
 
 type CreateWalletPageHandlersParams = {
     sdk: UseSdkValue;
@@ -39,7 +45,10 @@ export const createWalletPageHandlers = ({
             try {
                 if (payload.mode === "privateKey") {
                     await sdk.createPrivateKeyWallet(
-                        { name: payload.name, privateKey: payload.privateKey },
+                        {
+                            name: payload.name,
+                            privateKey: decodeBase16(payload.privateKey),
+                        },
                         payload.password,
                     );
                 } else {
@@ -79,7 +88,7 @@ export const createWalletPageHandlers = ({
                         : undefined,
                 initialPrivateKey:
                     mode === "privateKey" && !isInputMode
-                        ? sdk.generatePrivateKey()
+                        ? KeysManager.convertKeyToHex(sdk.generatePrivateKey())
                         : undefined,
             },
         });

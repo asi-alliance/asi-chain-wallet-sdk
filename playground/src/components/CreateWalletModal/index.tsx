@@ -1,4 +1,5 @@
 import InputsForm from "../InputsForm";
+import { PRIVATE_KEY_LENGTH } from "asi-wallet-sdk";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
@@ -6,7 +7,7 @@ export type TWalletCreatePayload =
     | {
           mode: "privateKey";
           name: string;
-          privateKey: Uint8Array;
+          privateKey: string;
           password: string;
       }
     | {
@@ -24,11 +25,23 @@ export interface IWalletCreateModalProps {
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
     initialMnemonic?: string;
-    initialPrivateKey?: Uint8Array;
+    initialPrivateKey?: string;
 }
 
 const toWordArray = (mnemonic?: string): string[] =>
     mnemonic ? mnemonic.trim().split(/\s+/).filter(Boolean) : [];
+
+const normalizePrivateKeyHex = (hex: string): string => {
+    return hex.trim().replace(/^0x/i, "");
+};
+
+const isPrivateKeyHexValid = (hex: string): boolean => {
+    const clean = normalizePrivateKeyHex(hex);
+
+    return (
+        clean.length === PRIVATE_KEY_LENGTH * 2 && !/[^0-9a-fA-F]/.test(clean)
+    );
+};
 
 const CreateWalletModal = ({
     variant = 12,
@@ -38,7 +51,7 @@ const CreateWalletModal = ({
     onClose,
     isInputMode = false,
     initialMnemonic,
-    initialPrivateKey = new Uint8Array(),
+    initialPrivateKey = "",
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
@@ -69,10 +82,19 @@ const CreateWalletModal = ({
         }
 
         if (mode === "privateKey") {
-            const privateKey = (formData.get("privateKey") as string) ?? "";
+            const privateKey = (
+                (formData.get("privateKey") as string) ?? ""
+            ).trim();
 
-            if (!privateKey.trim()) {
+            if (!privateKey) {
                 setLocalError("Private key is required.");
+                return;
+            }
+
+            if (!isPrivateKeyHexValid(privateKey)) {
+                setLocalError(
+                    "Invalid private key: expected 64 hexadecimal characters",
+                );
                 return;
             }
 
@@ -80,11 +102,11 @@ const CreateWalletModal = ({
                 onSubmit({
                     mode: "privateKey",
                     name: name.trim(),
-                    privateKey: new Uint8Array(JSON.parse(privateKey.trim())),
+                    privateKey,
                     password,
                 });
             } catch {
-                setLocalError("Private key must be a JSON byte array.");
+                setLocalError("Invalid private key.");
             }
 
             return;
@@ -150,9 +172,7 @@ const CreateWalletModal = ({
                                 type="text"
                                 autoComplete="off"
                                 required
-                                defaultValue={JSON.stringify(
-                                    Array.from(initialPrivateKey),
-                                )}
+                                defaultValue={initialPrivateKey}
                                 readOnly={!isInputMode}
                             />
                         </div>

@@ -29,7 +29,7 @@ export default abstract class NodeApiAdapter {
     }
 
     protected getExploreDeployClient(): IExploratoryDeployClient {
-        return this.clients.validator;
+        return this.clients.observer;
     }
 
     protected buildExploreDeployBody(term: string): unknown {

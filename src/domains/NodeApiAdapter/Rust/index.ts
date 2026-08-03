@@ -12,10 +12,6 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
         return NodeApiProfile.RUST;
     }
 
-    protected getExploreDeployClient(): IExploratoryDeployClient {
-        return this.clients.observer;
-    }
-
     protected buildExploreDeployBody(
         term: string,
     ): ISimpleExploreDeployRequest {

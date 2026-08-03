@@ -15,6 +15,12 @@ export const NETWORKS_CONFIG: TNetworksConfig = {
         IndexerURL: env.VITE_DEV_INDEXER_URL ?? "",
         nodeApiProfile: env.VITE_DEV_NODE_API_PROFILE as NodeApiProfile,
     },
+    AlexanderNet: {
+        ValidatorURL: env.VITE_ALEXANDERNET_VALIDATOR_URL ?? "",
+        ReadOnlyURL: env.VITE_ALEXANDERNET_READONLY_URL ?? "",
+        IndexerURL: env.VITE_ALEXANDERNET_INDEXER_URL ?? "",
+        nodeApiProfile: env.VITE_ALEXANDERNET_NODE_API_PROFILE as NodeApiProfile,
+    },
     MainNet: {
         ValidatorURL: "",
         ReadOnlyURL: "",
