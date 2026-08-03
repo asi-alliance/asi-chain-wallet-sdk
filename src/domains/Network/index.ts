@@ -1,4 +1,6 @@
 import { NodeApiProfile } from "@domains/NodeApiProfile";
+import type { IApiClients } from "@domains/ApiClientManager";
+import type NodeApiAdapter from "@domains/NodeApiAdapter";
 
 export type NetworkId = string;
 
@@ -32,6 +34,14 @@ export interface IPersistedNetworkRecord {
 export interface INetworkUpdate {
     name?: NetworkName;
     config?: Partial<INetworkConfig>;
+}
+
+export interface INetworkContext {
+    networkId: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig;
+    clients: IApiClients;
+    api: NodeApiAdapter;
 }
 
 const NETWORK_URL_FIELD_MAP: Record<keyof INetworkEndpoints, true> = {

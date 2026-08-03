@@ -1,26 +1,7 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
-import { FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
+import { IDeployInfo, IDeployStatusResult } from "@domains/Deploy";
 import { SignedResult } from "@services/Signer";
-
-export enum DeployStatus {
-    DEPLOYING = "Deploying",
-    INCLUDED_IN_BLOCK = "IncludedInBlock",
-    FINALIZED = "Finalized",
-    CHECK_ERROR = "CheckingError",
-}
-
-export type IDeployStatusResult =
-    | {
-          status:
-              | DeployStatus.DEPLOYING
-              | DeployStatus.INCLUDED_IN_BLOCK
-              | DeployStatus.FINALIZED;
-      }
-    | {
-          status: DeployStatus.CHECK_ERROR;
-          errorMessage: string;
-      };
 
 export default class DeployService {
     private readonly nodeApiProvider: NodeApiProvider;
@@ -88,35 +69,11 @@ export default class DeployService {
         return this.api.getDeploy(deployHash);
     }
 
-    public async isDeployFinalized(deploy: any): Promise<boolean> {
-        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
+    public async isDeployFinalized(deploy: IDeployInfo): Promise<boolean> {
+        return this.api.isDeployFinalized(deploy);
     }
 
-    public async getDeployStatus(
-        deployHash: string,
-    ): Promise<IDeployStatusResult> {
-        try {
-            const deploy = await this.getDeploy(deployHash);
-
-            if (!deploy?.blockHash) {
-                return {
-                    status: DeployStatus.DEPLOYING,
-                };
-            }
-
-            const finalized = await this.isDeployFinalized(deploy);
-
-            return {
-                status: finalized
-                    ? DeployStatus.FINALIZED
-                    : DeployStatus.INCLUDED_IN_BLOCK,
-            };
-        } catch (error) {
-            return {
-                status: DeployStatus.CHECK_ERROR,
-                errorMessage:
-                    error instanceof Error ? error.message : String(error),
-            };
-        }
+    public getDeployStatus(deployHash: string): Promise<IDeployStatusResult> {
+        return this.api.getDeployStatus(deployHash);
     }
 }

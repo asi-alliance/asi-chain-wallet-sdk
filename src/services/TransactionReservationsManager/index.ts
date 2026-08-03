@@ -1,8 +1,8 @@
 import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
-import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservation } from "@domains/Transaction";
-import {
+import DeployStatusPoller, {
     IDeployConfirmedResult,
     IDeployWatchCallbacks,
     IDeployWatchHandle,
@@ -106,24 +106,29 @@ export default class TransactionReservationsManager implements IDisposable {
             return;
         }
 
-        const handle: IDeployWatchHandle =
-            ApiServiceRegistry.getInstance().poller.watch(
-                reservation.deployId,
-                {
-                    ...this.watchCallbacks,
-                    onConfirmed: (result: IDeployConfirmedResult) => {
-                        this.watchCallbacks?.onConfirmed?.(result);
+        const poller: DeployStatusPoller = new DeployStatusPoller(
+            ApiClientManager.getInstance().createNetworkContext(
+                reservation.networkId,
+            ),
+        );
 
-                        this.handleConfirmed(reservation);
-                    },
-                    onError: (error: Error) => {
-                        this.watchCallbacks?.onError?.(error);
+        const handle: IDeployWatchHandle = poller.watch(
+            reservation.deployId,
+            {
+                ...this.watchCallbacks,
+                onConfirmed: (result: IDeployConfirmedResult) => {
+                    this.watchCallbacks?.onConfirmed?.(result);
 
-                        this.handleFailed(reservation, error);
-                    },
+                    this.handleConfirmed(reservation);
                 },
-                this.watchOptions,
-            );
+                onError: (error: Error) => {
+                    this.watchCallbacks?.onError?.(error);
+
+                    this.handleFailed(reservation, error);
+                },
+            },
+            this.watchOptions,
+        );
 
         this.watchers.set(reservation.id, handle);
     }

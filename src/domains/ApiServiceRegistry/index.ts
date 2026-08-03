@@ -10,6 +10,8 @@ import NodeApiProvider from "@domains/NodeApiProvider";
 export default class ApiServiceRegistry {
     private static instance: ApiServiceRegistry;
 
+    private readonly apiClientManager: ApiClientManager;
+
     //CORE SERVICES
     public readonly deploy: DeployService;
     public readonly blocks: BlockService;
@@ -18,11 +20,19 @@ export default class ApiServiceRegistry {
     //COMPOSITE SERVICES
     public readonly assets: AssetsService;
     public readonly transactions: TransactionService;
-    public readonly poller: DeployStatusPoller;
+
+    //API WORKERS
+    public get poller(): DeployStatusPoller {
+        return new DeployStatusPoller(
+            this.apiClientManager.createNetworkContext(),
+        );
+    }
 
     private constructor(apiClientManager: ApiClientManager) {
         const nodeApiProvider: NodeApiProvider =
             NodeApiProvider.getInstance(apiClientManager);
+
+        this.apiClientManager = apiClientManager;
 
         this.deploy = new DeployService(nodeApiProvider);
         this.blocks = new BlockService(nodeApiProvider);
@@ -37,7 +47,6 @@ export default class ApiServiceRegistry {
             this.blocks,
             nodeApiProvider,
         );
-        this.poller = new DeployStatusPoller(this.deploy);
     }
 
     public static getInstance(

@@ -4,6 +4,7 @@ import ValidatorClient from "@domains/ValidatorClient";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import {
     INetworkConfig,
+    INetworkContext,
     INetworkRecord,
     INetworkUpdate,
     IPersistedNetworkRecord,
@@ -15,19 +16,14 @@ import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
 } from "@utils/decorators/apiClientManager";
-import { AxiosRequestConfig } from "axios";
+import { createApiClients } from "@utils/fabrics/apiClients";
+import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
 
 export interface IApiClients {
     validator: ValidatorClient;
     observer: ObserverClient;
     indexer: IndexerClient;
 }
-
-const DEFAULT_AXIOS_CONFIG: AxiosRequestConfig = {
-    headers: {
-        "Content-Type": "application/json",
-    },
-};
 
 export default class ApiClientManager {
     private static instance: ApiClientManager;
@@ -81,20 +77,12 @@ export default class ApiClientManager {
     public switchNetwork(networkId: NetworkId): void {
         const { config } = this.networkConfigProvider.get(networkId);
 
-        this.validatorClient = new ValidatorClient({
-            baseUrl: config.ValidatorURL,
-            axiosConfig: DEFAULT_AXIOS_CONFIG,
-        });
+        const { validator, observer, indexer }: IApiClients =
+            createApiClients(config);
 
-        this.observerClient = new ObserverClient({
-            baseUrl: config.ReadOnlyURL,
-            axiosConfig: DEFAULT_AXIOS_CONFIG,
-        });
-
-        this.indexerClient = new IndexerClient({
-            baseUrl: config.IndexerURL,
-            axiosConfig: DEFAULT_AXIOS_CONFIG,
-        });
+        this.validatorClient = validator;
+        this.observerClient = observer;
+        this.indexerClient = indexer;
 
         this.currentNetworkId = networkId;
     }
@@ -147,6 +135,22 @@ export default class ApiClientManager {
     @EnsureApiClientManagerInitialized
     public getNetwork(id: NetworkId): INetworkRecord {
         return this.networkConfigProvider.get(id);
+    }
+
+    @EnsureApiClientManagerInitialized
+    public createNetworkContext(networkId?: NetworkId): INetworkContext {
+        const { id, name, config }: INetworkRecord =
+            this.networkConfigProvider.get(networkId ?? this.currentNetworkId!);
+
+        const clients: IApiClients = createApiClients(config);
+
+        return {
+            networkId: id,
+            name,
+            config,
+            clients,
+            api: createNodeApiAdapter(config.nodeApiProfile, clients),
+        };
     }
 
     @EnsureApiClientManagerInitialized

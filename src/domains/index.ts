@@ -5,6 +5,8 @@ export * from "./ApiClientManager";
 export { default as ApiClientManager } from "./ApiClientManager";
 export * from "./ApiServiceRegistry";
 export { default as ApiServiceRegistry } from "./ApiServiceRegistry";
+export * from "./ApiWorker";
+export { default as ApiWorker } from "./ApiWorker";
 export * from "./Asset";
 export { default as Asset } from "./Asset";
 export * from "./AutoTimer";

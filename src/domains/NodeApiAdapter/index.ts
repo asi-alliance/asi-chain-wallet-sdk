@@ -1,6 +1,12 @@
-import ApiClientManager, { IApiClients } from "@domains/ApiClientManager";
 import { IBlockDto, IGetBlocksParams } from "@domains/ObserverClient";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
+import {
+    DeployStatus,
+    IDeployInfo,
+    IDeployStatusResult,
+} from "@domains/Deploy";
+import { FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
+import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
 import type { SignedResult } from "@services/Signer";
@@ -10,14 +16,10 @@ export interface IExploratoryDeployClient {
 }
 
 export default abstract class NodeApiAdapter {
-    protected readonly apiClientManager: ApiClientManager;
+    protected readonly clients: IApiClients;
 
-    constructor(apiClientManager: ApiClientManager) {
-        this.apiClientManager = apiClientManager;
-    }
-
-    protected get clients(): IApiClients {
-        return this.apiClientManager.getClients();
+    constructor(clients: IApiClients) {
+        this.clients = clients;
     }
 
     public abstract getProfile(): NodeApiProfile;
@@ -42,6 +44,36 @@ export default abstract class NodeApiAdapter {
 
     public getDeploy(deployHash: string): Promise<unknown> {
         return this.clients.observer.getDeploy(deployHash);
+    }
+
+    public isDeployFinalized(deploy: IDeployInfo): boolean {
+        return (deploy.faultTolerance ?? 0) >= FAULT_TOLERANCE_THRESHOLD;
+    }
+
+    public async getDeployStatus(
+        deployHash: string,
+    ): Promise<IDeployStatusResult> {
+        try {
+            const deploy = (await this.getDeploy(deployHash)) as IDeployInfo;
+
+            if (!deploy?.blockHash) {
+                return {
+                    status: DeployStatus.DEPLOYING,
+                };
+            }
+
+            return {
+                status: this.isDeployFinalized(deploy)
+                    ? DeployStatus.FINALIZED
+                    : DeployStatus.INCLUDED_IN_BLOCK,
+            };
+        } catch (error) {
+            return {
+                status: DeployStatus.CHECK_ERROR,
+                errorMessage:
+                    error instanceof Error ? error.message : String(error),
+            };
+        }
     }
 
     public getBlock(blockHash: string): Promise<IBlockDto> {

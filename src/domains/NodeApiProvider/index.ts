@@ -1,14 +1,12 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { INetworkConfig } from "@domains/Network";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
 
 export default class NodeApiProvider {
     private static instance: NodeApiProvider;
 
     private readonly apiClientManager: ApiClientManager;
-    private readonly adapters: Map<NodeApiProfile, NodeApiAdapter> = new Map();
 
     private constructor(apiClientManager: ApiClientManager) {
         this.apiClientManager = apiClientManager;
@@ -30,21 +28,9 @@ export default class NodeApiProvider {
         const { config }: { config: INetworkConfig } =
             this.apiClientManager.getCurrentNetwork();
 
-        const cached: NodeApiAdapter | undefined = this.adapters.get(
+        return createNodeApiAdapter(
             config.nodeApiProfile,
+            this.apiClientManager.getClients(),
         );
-
-        if (cached) {
-            return cached;
-        }
-
-        const adapter: NodeApiAdapter = createNodeApiAdapter(
-            config.nodeApiProfile,
-            this.apiClientManager,
-        );
-
-        this.adapters.set(config.nodeApiProfile, adapter);
-
-        return adapter;
     }
 }
