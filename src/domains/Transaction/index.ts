@@ -33,3 +33,5 @@ export interface ITransactionReservation
     extends ITransactionReservationPrivateData, ITableRecord {
     networkId: NetworkId;
 }
+
+export type TReservationsByWallet = Record<string, ITransactionReservation[]>;

@@ -1,6 +1,7 @@
 import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiClientManager from "@domains/ApiClientManager";
+import { NetworkId } from "@domains/Network";
 import { ITransactionReservation } from "@domains/Transaction";
 import DeployStatusPoller, {
     IDeployConfirmedResult,
@@ -76,8 +77,18 @@ export default class TransactionReservationsManager implements IDisposable {
         return Array.from(this.reservations.values());
     }
 
-    public getByAccountId(accountId: string): ITransactionReservation[] {
+    public getByNetworkId(networkId: NetworkId): ITransactionReservation[] {
         return this.getAll().filter(
+            (reservation: ITransactionReservation) =>
+                reservation.networkId === networkId,
+        );
+    }
+
+    public getByAccountId(
+        accountId: string,
+        networkId: NetworkId,
+    ): ITransactionReservation[] {
+        return this.getByNetworkId(networkId).filter(
             (reservation: ITransactionReservation) =>
                 reservation.accountId === accountId,
         );

@@ -16,6 +16,7 @@ import {
     MnemonicStrength,
     NetworkId,
     NetworkName,
+    TReservationsByWallet,
     Wallet,
 } from "asi-wallet-sdk";
 import { init } from "../helpers";
@@ -39,9 +40,8 @@ const useSdk = () => {
     const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
     const [currentNetwork, setCurrentNetwork] =
         useState<INetworkRecord | null>(null);
-    const [reservationsByWallet, setReservationsByWallet] = useState<
-        Record<string, ITransactionReservation[]>
-    >({});
+    const [reservationsByWallet, setReservationsByWallet] =
+        useState<TReservationsByWallet>({});
 
     const clientRef = useRef<Client | null>(null);
 
@@ -83,13 +83,9 @@ const useSdk = () => {
                 setCurrentNetwork(network);
             },
             onReservationsChanged: (
-                walletId: string,
-                reservations: ITransactionReservation[],
+                reservationsByWallet: TReservationsByWallet,
             ) => {
-                setReservationsByWallet((previous) => ({
-                    ...previous,
-                    [walletId]: reservations,
-                }));
+                setReservationsByWallet(reservationsByWallet);
             },
         }),
         [refresh],

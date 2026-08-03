@@ -56,22 +56,23 @@ export default class ReservationAdapter {
             "onConfirmed" | "onExpired"
         >,
     ): Promise<ReservationAdapter> {
-        const networkId: NetworkId =
-            ApiClientManager.getInstance().getCurrentNetworkId();
+        const knownNetworkIds: Set<NetworkId> = new Set(
+            ApiClientManager.getInstance().getNetworkIds(),
+        );
         const signerId: string = wallet.getSigner().getId();
 
         const records: ITransactionReservationsStorageRecord[] =
-            await StorageManager.getTransactionReservationsBySignerId(
-                signerId,
-                networkId,
-            );
+            await StorageManager.getTransactionReservationsBySignerId(signerId);
 
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
             const { privateData } = record;
 
-            if (privateData.expirationTime <= Date.now()) {
+            if (
+                privateData.expirationTime <= Date.now() ||
+                !knownNetworkIds.has(record.networkId)
+            ) {
                 await StorageManager.deleteTransactionReservation(record.id);
 
                 continue;
@@ -93,7 +94,10 @@ export default class ReservationAdapter {
 
     private getReservedAmount(accountId: string): bigint {
         const reservations: ITransactionReservation[] =
-            this.reservationsManager.getByAccountId(accountId);
+            this.reservationsManager.getByAccountId(
+                accountId,
+                ApiClientManager.getInstance().getCurrentNetworkId(),
+            );
 
         const totalAmount: bigint = reservations.reduce(
             (sum: bigint, reservation: ITransactionReservation) =>
@@ -118,7 +122,26 @@ export default class ReservationAdapter {
     }
 
     public getReservations(): ITransactionReservation[] {
-        return this.reservationsManager.getAll();
+        return this.reservationsManager.getByNetworkId(
+            ApiClientManager.getInstance().getCurrentNetworkId(),
+        );
+    }
+
+    public async removeNetworkReservations(
+        networkId: NetworkId,
+    ): Promise<void> {
+        const reservations: ITransactionReservation[] =
+            this.reservationsManager.getByNetworkId(networkId);
+
+        reservations.forEach((reservation: ITransactionReservation) =>
+            this.reservationsManager.remove(reservation.id),
+        );
+
+        await StorageManager.deleteMultipleTransactionReservations(
+            reservations.map(
+                (reservation: ITransactionReservation) => reservation.id,
+            ),
+        );
     }
 
     public dispose(): void {
@@ -162,6 +185,8 @@ export default class ReservationAdapter {
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
         const account: Account = wallet.getActiveAccount()!;
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
 
         const isSufficientBalance: boolean =
             await this.validateSufficientBalance(account, details.amount);
@@ -183,7 +208,7 @@ export default class ReservationAdapter {
             timestamp: new Date(),
             accountId: account.getId(),
             pendingAmount: details.amount.toString(),
-            networkId: ApiClientManager.getInstance().getCurrentNetworkId(),
+            networkId,
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
         };
 

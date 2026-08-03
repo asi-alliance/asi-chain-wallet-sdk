@@ -26,7 +26,11 @@ import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter from "@domains/ReservationAdapter";
-import { ITransactionReservation, Transaction } from "@domains/Transaction";
+import {
+    ITransactionReservation,
+    TReservationsByWallet,
+    Transaction,
+} from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
@@ -78,10 +82,7 @@ export interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(
-        walletId: string,
-        reservations: ITransactionReservation[],
-    ): void;
+    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
     onWalletLocked?(walletId: string): void;
 }
 
@@ -457,6 +458,8 @@ export default class Client {
         this.eventDispatcher?.onNetworkChanged?.(
             apiClientManager.getCurrentNetwork(),
         );
+
+        this.emitReservationsChanged();
     }
 
     public async getBalance(address: Address): Promise<bigint> {
@@ -533,10 +536,7 @@ export default class Client {
             passwordProvider,
         );
 
-        this.eventDispatcher?.onReservationsChanged?.(
-            walletId,
-            reservationAdapter.getReservations(),
-        );
+        this.emitReservationsChanged();
 
         return deployId;
     }
@@ -638,12 +638,22 @@ export default class Client {
         return NetworkManager.updateNetwork(id, update);
     }
 
-    public removeNetwork(id: NetworkId): Promise<void> {
-        return NetworkManager.removeNetwork(id);
+    public async removeNetwork(id: NetworkId): Promise<void> {
+        await this.reservationAdapterManager.removeNetworkReservations(id);
+
+        await NetworkManager.removeNetwork(id);
+
+        this.emitReservationsChanged();
     }
 
     private createPasswordProvider(password: string): SecretsProvider {
         return new SecretsProvider(() => ({ password }));
+    }
+
+    private emitReservationsChanged(): void {
+        this.eventDispatcher?.onReservationsChanged?.(
+            this.reservationAdapterManager.getReservationsByWallet(),
+        );
     }
 
     private emitAccountsChanged(walletId: string): void {

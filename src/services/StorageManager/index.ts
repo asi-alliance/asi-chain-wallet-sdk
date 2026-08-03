@@ -283,15 +283,13 @@ class StorageManager {
 
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
-        networkId: NetworkId,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
         const records =
             await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
 
         return records.filter(
             (record: ITransactionReservationsStorageRecord) =>
-                record.signerId === signerId &&
-                record.networkId === networkId,
+                record.signerId === signerId,
         );
     };
 
