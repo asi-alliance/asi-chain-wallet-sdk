@@ -92,12 +92,9 @@ export default class ReservationAdapter {
         return new ReservationAdapter(reservations, reservationsManagerOptions);
     }
 
-    private getReservedAmount(accountId: string): bigint {
+    private getReservedAmount(accountId: string, networkId: NetworkId): bigint {
         const reservations: ITransactionReservation[] =
-            this.reservationsManager.getByAccountId(
-                accountId,
-                ApiClientManager.getInstance().getCurrentNetworkId(),
-            );
+            this.reservationsManager.getByAccountId(accountId, networkId);
 
         const totalAmount: bigint = reservations.reduce(
             (sum: bigint, reservation: ITransactionReservation) =>
@@ -111,9 +108,15 @@ export default class ReservationAdapter {
     }
 
     public async getBalance(account: Account): Promise<IBalanceData> {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
         const balance: IBalanceData = await account.getBalance();
 
-        const reserved: bigint = this.getReservedAmount(account.getId());
+        const reserved: bigint = this.getReservedAmount(
+            account.getId(),
+            networkId,
+        );
 
         return {
             ...balance,
@@ -172,8 +175,11 @@ export default class ReservationAdapter {
         account: Account,
         amount: bigint,
     ): Promise<boolean> {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
         const totalReservedAmount: bigint =
-            this.getReservedAmount(account.getId()) + amount;
+            this.getReservedAmount(account.getId(), networkId) + amount;
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
         return remoteBalance - totalReservedAmount > 0n;
