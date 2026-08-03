@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account, ApiServiceRegistry } from "asi-wallet-sdk";
+import { Account } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -50,7 +50,7 @@ const AccountCard = ({
         try {
             setIsSending(true);
 
-            const deployId = await runSecureAction({
+            const reserved = await runSecureAction({
                 walletId,
                 passwordTitle: "Enter wallet password to send",
                 confirmMessage: `Send ${formatAmount(amount)} ASI to ${toAddress}?`,
@@ -61,11 +61,11 @@ const AccountCard = ({
                     ),
             });
 
-            if (!deployId) {
+            if (!reserved) {
                 return;
             }
 
-            ApiServiceRegistry.getInstance().poller.watch(deployId, {
+            reserved.subscribe({
                 onConfirmed: reload,
                 onError: reload,
             });
@@ -75,7 +75,7 @@ const AccountCard = ({
             setModalState({
                 type: Modals.TRANSFER_COMPLETED_MODAL,
                 props: {
-                    deployId,
+                    deployId: reserved.deployId,
                     fromAddress: address,
                     toAddress,
                     amount,

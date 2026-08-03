@@ -3,7 +3,7 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_PRICE,
-    IDeployWatchHandle,
+    IReservedOperationResult,
     Wallet,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
@@ -38,7 +38,6 @@ const DeployPage = (): ReactElement => {
         currentNetwork,
         deploy,
         exploreDeploy,
-        watchDeploy,
         getAvailableBalance,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
@@ -52,11 +51,11 @@ const DeployPage = (): ReactElement => {
     const [deployId, setDeployId] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
 
-    const watchHandleRef = useRef<IDeployWatchHandle | null>(null);
+    const unsubscribeRef = useRef<(() => void) | null>(null);
 
     useEffect(
         () => () => {
-            watchHandleRef.current?.cancel();
+            unsubscribeRef.current?.();
         },
         [],
     );
@@ -111,8 +110,8 @@ const DeployPage = (): ReactElement => {
         setResult(null);
         setDeployId(null);
         setStatus(null);
-        watchHandleRef.current?.cancel();
-        watchHandleRef.current = null;
+        unsubscribeRef.current?.();
+        unsubscribeRef.current = null;
     };
 
     const runDeploy = async (): Promise<void> => {
@@ -151,7 +150,7 @@ const DeployPage = (): ReactElement => {
         }
 
         try {
-            const submittedDeployId: string | undefined =
+            const reserved: IReservedOperationResult | undefined =
                 await runSecureAction({
                     walletId: selectedEntry.walletId,
                     passwordTitle: "Enter wallet password to deploy",
@@ -168,14 +167,14 @@ const DeployPage = (): ReactElement => {
                         ),
                 });
 
-            if (!submittedDeployId) {
+            if (!reserved) {
                 return;
             }
 
-            setDeployId(submittedDeployId);
+            setDeployId(reserved.deployId);
             setStatus("Submitted");
 
-            watchHandleRef.current = watchDeploy(submittedDeployId, {
+            unsubscribeRef.current = reserved.subscribe({
                 onStatus: (deployStatus) => setStatus(deployStatus.status),
                 onConfirmed: () => setStatus("Finalized"),
                 onError: (watchError) => setError(watchError.message),

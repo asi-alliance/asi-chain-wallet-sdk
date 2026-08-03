@@ -48,6 +48,11 @@ export interface IDeployPayload {
     passwordProvider?: SecretsProvider;
 }
 
+export type TDeployDetails = Omit<
+    IDeployPayload,
+    "walletType" | "account" | "signer" | "passwordProvider"
+>;
+
 export default class TransactionService {
     private readonly deployService: DeployService;
     private readonly blockService: BlockService;

@@ -11,11 +11,29 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { GasFee, RESERVATION_EXPIRATION_TIME } from "@config/index";
+import {
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+    GasFee,
+    RESERVATION_EXPIRATION_TIME,
+} from "@config/index";
+import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
-import { ITransferDetails } from "@services/TransactionService";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import { generateRandomId } from "@utils/index";
+
+export interface IReservedOperationResult {
+    deployId: string;
+    subscribe: (callbacks: IDeployWatchCallbacks) => () => void;
+}
+
+interface IReserveOptions {
+    deployId: string;
+    accountId: string;
+    networkId: NetworkId;
+    pendingAmount: bigint;
+}
 
 export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
@@ -181,11 +199,36 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount > 0n;
     }
 
+    private async reserve(
+        wallet: Wallet,
+        { deployId, accountId, networkId, pendingAmount }: IReserveOptions,
+    ): Promise<IReservedOperationResult> {
+        const reservation: ITransactionReservation = {
+            id: generateRandomId(),
+            deployId,
+            timestamp: new Date(),
+            accountId,
+            pendingAmount: pendingAmount.toString(),
+            networkId,
+            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
+        };
+
+        await this.persistReservation(reservation, wallet);
+
+        this.reservationsManager.add(reservation);
+
+        return {
+            deployId,
+            subscribe: (callbacks: IDeployWatchCallbacks) =>
+                this.reservationsManager.subscribe(reservation.id, callbacks),
+        };
+    }
+
     public async transfer(
         wallet: Wallet,
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
-    ): Promise<string> {
+    ): Promise<IReservedOperationResult> {
         const account: Account = wallet.getActiveAccount()!;
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
@@ -206,20 +249,41 @@ export default class ReservationAdapter {
             passwordProvider,
         );
 
-        const reservation: ITransactionReservation = {
-            id: generateRandomId(),
+        return this.reserve(wallet, {
             deployId,
-            timestamp: new Date(),
             accountId: account.getId(),
-            pendingAmount: pendingAmount.toString(),
             networkId,
-            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-        };
+            pendingAmount,
+        });
+    }
 
-        await this.persistReservation(reservation, wallet);
+    public async deploy(
+        wallet: Wallet,
+        details: TDeployDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<IReservedOperationResult> {
+        const account: Account = wallet.getActiveAccount()!;
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
 
-        this.reservationsManager.add(reservation);
+        const pendingAmount: bigint =
+            BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
+            BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
 
-        return deployId;
+        const isSufficientBalance: boolean =
+            await this.validateSufficientBalance(account, pendingAmount);
+
+        if (!isSufficientBalance) {
+            throw new Error("ReservationAdapter.deploy: Insufficient balance");
+        }
+
+        const deployId: string = await wallet.deploy(details, passwordProvider);
+
+        return this.reserve(wallet, {
+            deployId,
+            accountId: account.getId(),
+            networkId,
+            pendingAmount,
+        });
     }
 }

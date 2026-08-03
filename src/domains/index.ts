@@ -41,6 +41,8 @@ export * from "./NodeStorage";
 export { default as NodeStorage } from "./NodeStorage";
 export * from "./ObserverClient";
 export { default as ObserverClient } from "./ObserverClient";
+export * from "./ReservationAdapter";
+export { default as ReservationAdapter } from "./ReservationAdapter";
 export * from "./SecretsProvider";
 export { default as SecretsProvider } from "./SecretsProvider";
 export * from "./Signer";

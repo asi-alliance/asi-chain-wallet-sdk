@@ -25,7 +25,9 @@ import {
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
-import ReservationAdapter from "@domains/ReservationAdapter";
+import ReservationAdapter, {
+    IReservedOperationResult,
+} from "@domains/ReservationAdapter";
 import {
     ITransactionReservation,
     TReservationsByWallet,
@@ -512,7 +514,7 @@ export default class Client {
     public transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
-    ): Promise<string> {
+    ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getUnlockedWallet(walletId);
 
@@ -534,28 +536,27 @@ export default class Client {
                 );
             }
 
-            const deployId: string = await reservationAdapter.transfer(
-                wallet,
-                { to, amount, asset: DEFAULT_ASSET },
-                passwordProvider,
-            );
+            const result: IReservedOperationResult =
+                await reservationAdapter.transfer(
+                    wallet,
+                    { to, amount, asset: DEFAULT_ASSET },
+                    passwordProvider,
+                );
 
             this.emitReservationsChanged();
 
-            return deployId;
+            return result;
         }, this.emitNetworkBusyChanged.bind(this));
     }
 
     public deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
-    ): Promise<string> {
+    ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getUnlockedWallet(walletId);
 
             wallet.setActiveAccount(accountId);
-
-            const account: Account = this.getAccount(wallet, accountId);
 
             const passwordProvider: SecretsProvider | undefined =
                 password !== undefined
@@ -564,17 +565,23 @@ export default class Client {
 
             await this.ensureSession(wallet, passwordProvider);
 
-            const deployId: string =
-                await ApiServiceRegistry.getInstance().transactions.deploy({
-                    walletType: wallet.getType(),
-                    account,
-                    signer: wallet.getSigner(),
-                    term,
-                    phloLimit,
-                    passwordProvider,
-                });
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(walletId);
 
-            return deployId;
+            if (!reservationAdapter) {
+                throw new Error("Client.deploy: Not found reservation adapter");
+            }
+
+            const result: IReservedOperationResult =
+                await reservationAdapter.deploy(
+                    wallet,
+                    { term, phloLimit },
+                    passwordProvider,
+                );
+
+            this.emitReservationsChanged();
+
+            return result;
         }, this.emitNetworkBusyChanged.bind(this));
     }
 

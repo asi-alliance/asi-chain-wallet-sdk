@@ -10,6 +10,7 @@ import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
+    IReservedOperationResult,
     ITransactionReservation,
     ITransferRequest,
     IWalletMetadata,
@@ -296,13 +297,19 @@ const useSdk = () => {
     );
 
     const transfer = useCallback(
-        (request: ITransferRequest, password?: string): Promise<string> =>
+        (
+            request: ITransferRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
             requireClient().transfer(request, password),
         [requireClient],
     );
 
     const deploy = useCallback(
-        (request: IDeployRequest, password?: string): Promise<string> =>
+        (
+            request: IDeployRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
             requireClient().deploy(request, password),
         [requireClient],
     );
