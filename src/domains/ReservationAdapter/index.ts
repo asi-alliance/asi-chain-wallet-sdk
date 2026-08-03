@@ -96,15 +96,11 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] =
             this.reservationsManager.getByAccountId(accountId, networkId);
 
-        const totalAmount: bigint = reservations.reduce(
+        return reservations.reduce(
             (sum: bigint, reservation: ITransactionReservation) =>
                 sum + BigInt(reservation.pendingAmount),
             0n,
         );
-
-        const totalFee: bigint = BigInt(reservations.length) * GasFee.MAX;
-
-        return totalAmount + totalFee;
     }
 
     public async getBalance(account: Account): Promise<IBalanceData> {
@@ -194,8 +190,10 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
+        const pendingAmount: bigint = details.amount + GasFee.MAX;
+
         const isSufficientBalance: boolean =
-            await this.validateSufficientBalance(account, details.amount);
+            await this.validateSufficientBalance(account, pendingAmount);
 
         if (!isSufficientBalance) {
             throw new Error(
@@ -213,7 +211,7 @@ export default class ReservationAdapter {
             deployId,
             timestamp: new Date(),
             accountId: account.getId(),
-            pendingAmount: details.amount.toString(),
+            pendingAmount: pendingAmount.toString(),
             networkId,
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
         };
