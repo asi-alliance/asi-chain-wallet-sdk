@@ -157,10 +157,21 @@ methods through `withLoader`.
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 
 Lets the user pick an unlocked account (via `SelectFilter`) and lists its
-transactions using `account.getTransactionsHistory()` (transfers plus the
-account's deployments, merged and de-duplicated by deploy id). Reloads on account
-or network change.
+transactions using `client.getTransactionsHistory(walletId, accountId, options)`
+— pending reservations merged with the indexed history.
 
+- A second `SelectFilter` picks the source: **All** (default, `sources`
+  omitted), **Pending only** (`["pending"]`), **Executed only** (`["executed"]`).
+- Pages hold `PAGE_SIZE` 10 rows and the current page lives in the `?page=`
+  query param, so a page survives a reload and is shareable. Changing the
+  account or the mode resets it (`replace: true`, no history entry). "Next" is
+  offered while the page came back full — the SDK returns no total count.
+- Reloads on account, mode, page, network change, and on this wallet's entry in
+  `reservationsByWallet`, so a fresh transfer shows up as pending without a
+  manual refresh.
+- Because the poller and the indexer advance independently, a just confirmed
+  transaction can flicker — see the eventual-consistency note in
+  [SERVICES.md](SERVICES.md).
 - `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
   deploy id and block hash, and offers a copy-deploy-id button.
@@ -362,6 +373,9 @@ Fullscreen spinner shown while `useLoader` reports loading.
 - **HighlightedRows** — labeled value rows with optional accent/description.
 - **KeyValueTable** — two-column table with an optional per-row state class.
 - **SelectFilter** — labeled `<select>` from `{ label, value }[]` options.
+- **Pagination** — `{ page, hasNextPage, onChange }` pager for sources with no
+  known total: it renders a trailing window of up to five page numbers ending at
+  `page + 1` when a next page is assumed, plus prev/next arrows.
 
 ---
 

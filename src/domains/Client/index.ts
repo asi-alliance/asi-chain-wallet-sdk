@@ -12,7 +12,7 @@ import {
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
-import { IStorageFabricOptions } from "@fabrics/Storage";
+import { IStorageFabricOptions } from "@fabrics/storage";
 import StorageManager from "@services/StorageManager";
 import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -32,6 +32,7 @@ import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import ExportService from "@services/ExportService";
 import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
+import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
 import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
@@ -40,6 +41,10 @@ import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageReposit
 import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { WalletTypes } from "@domains/Signer";
+import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
+import TransactionsHistoryAggregator, {
+    ITransactionsHistoryWindow,
+} from "@services/TransactionsHistoryAggregator";
 
 export interface IUnlockedWallet {
     id: string;
@@ -73,6 +78,15 @@ export interface IDeployRequest {
     term: string;
     phloLimit?: number;
 }
+
+export type THistorySource = "pending" | "executed";
+
+export interface ITransactionsHistoryOptions {
+    sources?: THistorySource[];
+    pagination?: Pagination;
+}
+
+const DEFAULT_HISTORY_SOURCES: THistorySource[] = ["pending", "executed"];
 
 export interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
@@ -217,7 +231,12 @@ export default class Client {
             passwordProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         await this.emitWalletsChanged();
 
@@ -246,7 +265,12 @@ export default class Client {
             secretProvider,
         );
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider: secretProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         await this.emitWalletsChanged();
 
@@ -329,7 +353,12 @@ export default class Client {
             await this.holdSession(wallet, passwordProvider);
         }
 
-        await this.reservationAdapterManager.create(wallet);
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider,
+            eventDispatcher: this.eventDispatcher,
+        });
 
         return wallet;
     }
@@ -503,6 +532,58 @@ export default class Client {
         }
 
         return reservationAdapter.getReservations();
+    }
+
+    public async getTransactionsHistory(
+        walletId: string,
+        accountId: string,
+        options?: ITransactionsHistoryOptions,
+    ): Promise<Transaction[]> {
+        const wallet: Wallet = this.getUnlockedWallet(walletId);
+        const account: Account = this.getAccount(wallet, accountId);
+
+        const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
+
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        const pendingTransactions: Transaction[] =
+            sources.includes("pending") && reservationAdapter
+                ? reservationAdapter.getPendingTransactions(accountId)
+                : [];
+
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
+        if (!sources.includes("executed")) {
+            return TransactionsHistoryAggregator.paginatePendingTransactions(
+                pendingTransactions,
+                networkId,
+                pagination,
+            );
+        }
+
+        if (!pendingTransactions.length) {
+            return account.getTransactionsHistory(undefined, pagination);
+        }
+
+        const historyWindow: ITransactionsHistoryWindow =
+            TransactionsHistoryAggregator.createHistoryWindow(
+                pendingTransactions,
+                networkId,
+                pagination,
+            );
+
+        const executedTransactions: Transaction[] =
+            await account.getTransactionsHistory(
+                undefined,
+                historyWindow.executedPagination,
+            );
+
+        return TransactionsHistoryAggregator.mergeHistoryPage(
+            historyWindow,
+            executedTransactions,
+        );
     }
 
     public async transfer(

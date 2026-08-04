@@ -3,29 +3,28 @@ import TransactionReservationsManager, {
     ITransactionReservationsManagerOptions,
 } from "@services/TransactionReservationsManager";
 import {
+    ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
-    ITransactionReservationPrivateData,
+    Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { GasFee, RESERVATION_EXPIRATION_TIME } from "@config/index";
+import { GasFee } from "@config/index";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails } from "@services/TransactionService";
-import { generateRandomId } from "@utils/index";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import TransactionReservationFabric from "@fabrics/transactionReservation";
 
 export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
         reservations: ITransactionReservation[],
-        reservationsManagerOptions?: Omit<
-            ITransactionReservationsManagerOptions,
-            "onConfirmed" | "onExpired"
-        >,
+        reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
         const releaseFromStorage = (
             reservation: ITransactionReservation,
@@ -42,23 +41,45 @@ export default class ReservationAdapter {
         this.reservationsManager = new TransactionReservationsManager(
             reservations,
             {
-                onConfirmed: releaseFromStorage,
-                onExpired: releaseFromStorage,
                 ...reservationsManagerOptions,
+                onConfirmed: (reservation: ITransactionReservation) => {
+                    releaseFromStorage(reservation);
+
+                    reservationsManagerOptions.onConfirmed?.(reservation);
+                },
+                onExpired: (reservation: ITransactionReservation) => {
+                    releaseFromStorage(reservation);
+
+                    reservationsManagerOptions.onExpired?.(reservation);
+                },
             },
         );
     }
 
+    private static async readPrivateData(
+        record: ITransactionReservationsStorageRecord,
+        dataKeySecret: string,
+    ): Promise<ISerializedTransactionReservationPrivateData> {
+        const decrypted: string = await CryptoService.decryptWithPassword(
+            record.encryptedData,
+            dataKeySecret,
+        );
+
+        return JSON.parse(decrypted);
+    }
+
     public static async create(
         wallet: Wallet,
-        reservationsManagerOptions?: Omit<
-            ITransactionReservationsManagerOptions,
-            "onConfirmed" | "onExpired"
-        >,
+        passwordProvider?: SecretsProvider,
+        reservationsManagerOptions?: ITransactionReservationsManagerOptions,
     ): Promise<ReservationAdapter> {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
         const signerId: string = wallet.getSigner().getId();
+
+        const dataKeySecret: string = await wallet
+            .getSigner()
+            .resolveDataKey(passwordProvider);
 
         const records: ITransactionReservationsStorageRecord[] =
             await StorageManager.getTransactionReservationsBySignerId(
@@ -69,7 +90,8 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const { privateData } = record;
+            const privateData: ISerializedTransactionReservationPrivateData =
+                await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (privateData.expirationTime <= Date.now()) {
                 await StorageManager.deleteTransactionReservation(record.id);
@@ -77,15 +99,9 @@ export default class ReservationAdapter {
                 continue;
             }
 
-            reservations.push({
-                id: record.id,
-                networkId: record.networkId,
-                timestamp: new Date(privateData.timestamp),
-                accountId: privateData.accountId,
-                pendingAmount: privateData.pendingAmount,
-                deployId: privateData.deployId,
-                expirationTime: privateData.expirationTime,
-            });
+            reservations.push(
+                TransactionReservationFabric.fromStorage(record, privateData),
+            );
         }
 
         return new ReservationAdapter(reservations, reservationsManagerOptions);
@@ -121,6 +137,16 @@ export default class ReservationAdapter {
         return this.reservationsManager.getAll();
     }
 
+    public getPendingTransactions(accountId?: string): Transaction[] {
+        const reservations: ITransactionReservation[] = accountId
+            ? this.reservationsManager.getByAccountId(accountId)
+            : this.reservationsManager.getAll();
+
+        return reservations.map(
+            (reservation: ITransactionReservation) => reservation.transaction,
+        );
+    }
+
     public dispose(): void {
         this.reservationsManager.dispose();
     }
@@ -128,20 +154,26 @@ export default class ReservationAdapter {
     private async persistReservation(
         reservation: ITransactionReservation,
         wallet: Wallet,
+        passwordProvider?: SecretsProvider,
     ): Promise<void> {
-        const privateData: ITransactionReservationPrivateData = {
-            timestamp: reservation.timestamp,
-            accountId: reservation.accountId,
-            pendingAmount: reservation.pendingAmount,
-            deployId: reservation.deployId,
-            expirationTime: reservation.expirationTime,
-        };
+        const privateData: ISerializedTransactionReservationPrivateData =
+            TransactionReservationFabric.toPrivateData(reservation);
+
+        const dataKeySecret: string = await wallet
+            .getSigner()
+            .resolveDataKey(passwordProvider);
+
+        const encryptedData: EncryptedData =
+            await CryptoService.encryptWithPassword(
+                JSON.stringify(privateData),
+                dataKeySecret,
+            );
 
         await StorageManager.saveTransactionReservation({
             id: reservation.id,
             networkId: reservation.networkId,
             signerId: wallet.getSigner().getId(),
-            privateData,
+            encryptedData,
         });
     }
 
@@ -177,17 +209,18 @@ export default class ReservationAdapter {
             passwordProvider,
         );
 
-        const reservation: ITransactionReservation = {
-            id: generateRandomId(),
-            deployId,
-            timestamp: new Date(),
-            accountId: account.getId(),
-            pendingAmount: details.amount.toString(),
-            networkId: ApiClientManager.getInstance().getCurrentNetworkId(),
-            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-        };
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
 
-        await this.persistReservation(reservation, wallet);
+        const reservation: ITransactionReservation =
+            TransactionReservationFabric.create({
+                deployId,
+                networkId,
+                account,
+                details,
+            });
+
+        await this.persistReservation(reservation, wallet, passwordProvider);
 
         this.reservationsManager.add(reservation);
 

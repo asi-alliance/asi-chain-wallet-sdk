@@ -117,12 +117,63 @@ Balances, reservations & transfers:
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
+getTransactionsHistory(walletId: string, accountId: string, options?: ITransactionsHistoryOptions): Promise<Transaction[]>
 transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
 ```
 
 `password` is optional: when a session is active it is omitted; when it is
 supplied and the policy holds sessions, the transfer (re-)establishes the
 session before signing.
+
+`getTransactionsHistory` is the only history entry point that knows about
+pending transactions: it merges the indexed history of the account with the
+pending transactions held by this wallet's reservation adapter for the current
+network, dedupes by deploy id (the indexed row wins once confirmed), and sorts
+newest first. The lower-level bricks stay unaware of reservations —
+`Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
+return indexed transactions only.
+
+```ts
+type THistorySource = "pending" | "executed";
+
+interface ITransactionsHistoryOptions {
+    sources?: THistorySource[]; // defaults to ["pending", "executed"]
+    pagination?: Pagination;
+}
+```
+
+`sources` narrows the merge to one side: `["pending"]` reads the reservation
+adapter only and never touches the indexer, `["executed"]` ignores pending rows.
+
+`pagination` covers the merged history, not the indexed part alone. Pending and
+executed rows are interleaved by `timestamp`, so the page cannot be split
+between the two sources; instead
+`TransactionsHistoryAggregator.createHistoryWindow` widens the indexer request
+by the number of pending rows, and `mergeHistoryPage` cuts the requested page
+out of the merged result. Without a reservation adapter, or with no pending rows
+for the current network, the pagination goes to the indexer untouched.
+
+### Pending → executed is eventually consistent
+
+The two sides of the merge come from different backends. A reservation is
+released when `DeployStatusPoller` sees the deploy confirmed **on the node**,
+while the executed side is served by the **indexer**, which ingests the block
+afterwards. There is no shared cursor between node status and indexer ingestion,
+so the client cannot detect or close that lag.
+
+For the width of that window the same transaction may therefore be:
+
+- in **neither** list — the reservation is already released, the indexed row has
+  not arrived yet;
+- in **both** lists — the indexer is ahead of the poller and the reservation is
+  still alive.
+
+`mergeHistoryPage` dedupes pending rows against the executed rows **of the same
+page** (a pending transaction id equals its deploy id), so a duplicate is
+invisible whenever both twins fall into one page. When they land on different
+pages the pending twin is not filtered out. Transient cross-page duplicates and
+the brief gap are accepted behaviour for now; the next reload after the indexer
+catches up settles the list.
 
 Raw deploys (arbitrary Rholang, no reservation adapter):
 
@@ -177,6 +228,15 @@ interface IClientEventDispatcher {
     onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
 }
 ```
+
+`onReservationsChanged` is wired by the `createReservationAdapter` fabric
+(`src/fabrics/client/reservationAdapter.ts`), which every `Client` path
+that builds an adapter (create, import, unlock) goes through: it forwards the
+`passwordProvider` needed for the data key and re-emits the wallet's
+reservations when one is added, confirmed, expired, or its watch fails. The
+`added` edge is what lets a history view reload as soon as a transfer reserves
+its funds; `Client.transfer` also emits the event directly once the adapter
+returns.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -327,12 +387,17 @@ Associated types: `AssetId = string`, `Assets = Map<AssetId, Asset>`.
 Abstract signing boundary. Stores the `EncryptedData` secret and produces
 signatures without leaking key bytes to callers. Concrete implementations are
 `HDSigner` and `PrivateKeySigner`. It also owns the optional in-memory **signing
-session**.
+session** and the **data key** — the second encrypted secret, used for non-secret
+user data at rest (currently transaction reservations).
 
 ```ts
 abstract class Signer {
     getId(): string;
     getEncryptedSecret(): EncryptedData;
+    getEncryptedDataKey(): EncryptedData;
+
+    // data key
+    resolveDataKey(passwordProvider?: SecretsProvider): Promise<string>;
 
     // session
     isUnlocked(): boolean;
@@ -364,19 +429,34 @@ interface ISignerRecord {
     id: string;
     type: WalletTypes;
     encryptedData: EncryptedData;
+    encryptedDataKey: EncryptedData;
 }
 ```
 
 Session lifecycle:
 
-- `unlock` decrypts the secret once and stores it together with an `AutoTimer`.
-  The timer is started immediately and is **fixed-duration** — it is never
-  restarted on activity, so the session ends `autoLockMs` after unlock.
+- `unlock` decrypts the secret **and** the data key once and stores both together
+  with an `AutoTimer`. The timer is started immediately and is **fixed-duration**
+  — it is never restarted on activity, so the session ends `autoLockMs` after
+  unlock.
 - The protected `resolveSecret(signingContext)` returns the in-memory secret when
   a session is active; otherwise it decrypts using `signingContext.passwordProvider`,
   and throws `WalletLockedError` when no password is available (locked/expired).
 - `lock` clears the timer, zeroizes the private-key bytes when present, and drops
-  the session. It is idempotent.
+  the session (including the resolved data key). It is idempotent.
+
+Data key:
+
+- Generated by the signer fabric (`CryptoService.generateDataKeySecret`) at wallet
+  creation and stored as `encryptedDataKey`, encrypted with the wallet password —
+  so it is never derivable without the password.
+- `resolveDataKey` mirrors `resolveSecret`: an active session returns the key it
+  already holds, otherwise the optional `passwordProvider` decrypts it, and a
+  missing provider fails closed with `WalletLockedError`.
+- It never signs anything, which is the point of the separation: code that
+  persists user data (today only `ReservationAdapter`) gets a key it can encrypt
+  and decrypt with, while the signing secret stays behind the `Signer` boundary
+  and is never handed out.
 
 Both implementations derive the private key (HD derives at
 `signingContext.index` from the stored root path), sign with `@noble/secp256k1`,
@@ -690,39 +770,70 @@ interface ITransactionReservation
 }
 ```
 
-`ITransactionReservationPrivateData` holds `timestamp`, `accountId`,
-`pendingAmount`, `deployId`, and `expirationTime`. Reservations are non-secret
-(they reference a public deploy id and an internal account id) and are stored
-**as plaintext** `privateData` — they are no longer encrypted at rest.
+`ITransactionReservationPrivateData` holds `accountId`, `pendingAmount`
+(atomic units — the balance-lock semantics), `expirationTime`, and the full
+pending `transaction` (`status: "pending"`, `detectedBy: "manual"`, `amount` and
+`gasCost` in display units so they match indexed rows). The whole payload is
+stored **encrypted at rest** with the signer's data key, so reading it requires
+an active session or an explicit password.
+
+Storage needs a serializable payload, so what is actually written is
+`ISerializedTransactionReservationPrivateData`, whose `transaction` is a
+`TSerializedTransaction` — `Transaction` with `timestamp` as an ISO string
+instead of a `Date`. `TransactionReservationFabric.toPrivateData` produces it and
+`fromStorage` parses the timestamp back into a `Date`, so the in-memory
+`Transaction` contract stays unchanged and no consumer ever meets a string
+`timestamp`.
 
 ---
 
 ## ReservationAdapter (`src/domains/ReservationAdapter/index.ts`)
 
-Bridges a wallet to the persistent (plaintext) reservation store and the
-in-memory `TransactionReservationsManager`. Reservations represent funds
-temporarily locked by a pending transfer, so the _available_ balance excludes
-them plus their gas fee. No password is needed to build the adapter — it only
-reads/writes non-secret reservation records; the password is only required by the
-signing path inside `transfer`.
+Bridges a wallet to the encrypted reservation store and the in-memory
+`TransactionReservationsManager`. Reservations represent funds temporarily locked
+by a pending transfer, so the _available_ balance excludes them plus their gas
+fee, and they double as the only local source of pending transactions.
 
 ```ts
-ReservationAdapter.create(wallet, reservationsManagerOptions?): Promise<ReservationAdapter>
+ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
 
 getBalance(account: Account): Promise<IBalanceData> // total minus reserved (amount + GasFee.MAX per reservation)
 getReservations(): ITransactionReservation[]
+getPendingTransactions(accountId?: string): Transaction[]
 validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
 transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
 dispose(): void
 ```
 
-`create` loads this wallet's reservations for the current network id, dropping
-expired ones. Reserved amounts are keyed by `accountId`. `transfer` validates the
-balance, performs the on-chain transfer (forwarding the optional `passwordProvider`
-to the signer), persists a plaintext reservation (expiring after
-`RESERVATION_EXPIRATION_TIME`), and tracks it until confirmation or expiry.
-Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
-(a `DisposableItemManager`).
+Both reading and writing reservations need the signer's data key, resolved
+through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
+otherwise the optional `passwordProvider` does. `create` loads this wallet's
+reservations for the current network id, deleting the expired ones (a record that
+fails to decrypt rejects the whole `create` call) and rebuilding the rest
+through `TransactionReservationFabric.fromStorage`.
+Reserved amounts are keyed by `accountId`. `transfer` validates the balance,
+performs the on-chain transfer (forwarding the optional `passwordProvider` to the
+signer), builds the reservation through `TransactionReservationFabric.create`,
+persists it encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and tracks
+it until confirmation or expiry. Only those two outcomes delete the stored
+record — a failed deploy watch leaves the reservation to its expiration timer,
+so memory and storage never disagree. Implements `IDisposable`, so it is owned
+by `ReservationAdapterManager` (a `DisposableItemManager`).
+
+`create` reads only the current network's records, but `Client.setNetwork` does
+not rebuild the adapter, so a live adapter can accumulate reservations from
+several networks within one session. Nothing inside the adapter filters by
+network id: `getReservations`, `getPendingTransactions`, and the reserved amount
+behind `getBalance` all cover everything it holds. Only
+`Client.getTransactionsHistory` narrows to the current network, through
+`TransactionsHistoryAggregator`, which drops pending rows belonging to another
+network before merging or paginating them.
+
+Reservation shaping (`ITransactionReservation` from a fresh transfer or from a
+storage record plus its decrypted private data, and back into the serialized
+private data written to storage) lives in `TransactionReservationFabric`
+(`src/fabrics/transactionReservation.ts`), so the adapter never assembles the
+record shape inline.
 
 ---
 
@@ -800,7 +911,7 @@ Guarded by `@EnsureDatabaseInitialized` / `@EnsureTableExists` decorators.
 `node-persist`-backed `ITableService` singleton (`getInstance(storageDir?)`) for
 non-browser environments. Default directory `DEFAULT_NODE_STORAGE_DIR`.
 
-### storageFabric (`src/fabrics/Storage/index.ts`)
+### storageFabric (`src/fabrics/storage.ts`)
 
 Returns the right backend for the current environment.
 
@@ -815,13 +926,14 @@ Each repository is a singleton over a named table, with `initialize()` /
 `ensureInitialized()` and typed CRUD.
 
 - **SignersStorageRepository** (`SIGNERS` table) — persists `ISignerStorageRecord`
-  (`{ id, type, encryptedData, createdAt }`).
+  (`{ id, type, encryptedData, encryptedDataKey, createdAt }`).
 - **AccountsStorageRepository** (`ACCOUNTS` table) — persists
   `IAccountStorageRecord` (`{ id, signerId, name, index, createdAt }`).
 - **TransactionReservationsStorageRepository** (`TRANSACTION_RESERVATIONS` table) —
   persists `ITransactionReservationsStorageRecord`
-  (`{ id, networkId, signerId, privateData, createdAt }`), where `privateData` is
-  the plaintext `ITransactionReservationPrivateData`.
+  (`{ id, networkId, signerId, encryptedData, createdAt }`), where `encryptedData`
+  is the JSON of `ISerializedTransactionReservationPrivateData` encrypted with the
+  signer's data key.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
   runtime-registered custom networks survive a reload.

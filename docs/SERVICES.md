@@ -7,6 +7,7 @@ Services split into a few groups:
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
   `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
   `TransactionReservationsManager`, `DisposableItemManager`).
+- **Read models** — `TransactionsHistoryAggregator`, `CollectionQueryService`.
 - **Persistence orchestration** — `StorageManager`, `NetworkManager`,
   `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
@@ -88,16 +89,21 @@ getAccount(id: string): Account | null
 `DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
 
 ```ts
-create(wallet: Wallet): Promise<ReservationAdapter>
+create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
 ```
 
-No password is required — reservations are non-secret plaintext records.
+Reservations are encrypted with the signer's data key, so building the adapter
+needs an active session or the optional `passwordProvider` — `Client` forwards
+the provider it already has when creating, importing, or unlocking a wallet.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
 In-memory tracker for active reservations. Each reservation is watched by the
-`DeployStatusPoller` and also gets an expiration timer; confirmation, expiry, or
-failure removes it and fires the matching callback. Implements `IDisposable`.
+`DeployStatusPoller` and also gets an expiration timer; confirmation or expiry
+removes it and fires the matching callback. A poller failure (error or watch
+timeout) only stops the watcher and fires `onFailed` — the reservation and its
+expiration timer stay, so the deploy status being unknown keeps the funds locked
+until the reservation genuinely expires. Implements `IDisposable`.
 
 ```ts
 new TransactionReservationsManager(reservations, options?: ITransactionReservationsManagerOptions)
@@ -111,6 +117,7 @@ dispose(): void
 
 ```ts
 interface ITransactionReservationsManagerOptions {
+    onAdded?(reservation): void;
     onConfirmed?(reservation): void;
     onExpired?(reservation): void;
     onFailed?(reservation, error: Error): void;
@@ -119,6 +126,99 @@ interface ITransactionReservationsManagerOptions {
 }
 ```
 
+`onAdded` fires from `add` only, so reservations restored through the
+constructor stay silent — the caller already knows about them.
+
+`onFailed` is a notification, not a release signal: the reservation survives it
+and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
+`ReservationAdapter` uses to delete the stored record.
+
+---
+
+## Read models
+
+### CollectionQueryService (`src/services/CollectionQuery/index.ts`)
+
+Generic in-memory sorting and pagination over any array. Pure and static — no
+state, no I/O.
+
+```ts
+CollectionQueryService.sortByComparator<TItem>(items, comparator): TItem[]
+CollectionQueryService.sortByDate<TItem>(items, getDate: (item) => Date, order?: Order): TItem[]
+CollectionQueryService.mergeSorted<TItem>(primary, secondary, comparator): TItem[]
+CollectionQueryService.slice<TItem>(items, pagination?: Pagination): TItem[]
+```
+
+Both sorts copy the input instead of mutating it; `sortByDate` defaults to
+`"desc"`. `mergeSorted` interleaves two lists that are **already sorted by the
+same comparator**, keeping `primary` ahead of `secondary` on ties. `slice`
+applies `offset` / `limit`, where an absent `limit` means "to the end".
+
+### TransactionsHistoryAggregator (`src/services/TransactionsHistoryAggregator/index.ts`)
+
+Merges indexed history with the reservation adapter's pending transactions for
+`Client.getTransactionsHistory`. Pure and static — no state, no I/O.
+
+```ts
+TransactionsHistoryAggregator.paginatePendingTransactions(
+    pending: Transaction[],
+    networkId: NetworkId,
+    pagination?: Pagination,
+): Transaction[]
+
+TransactionsHistoryAggregator.createHistoryWindow(
+    pending: Transaction[],
+    networkId: NetworkId,
+    pagination?: Pagination,
+): ITransactionsHistoryWindow
+
+TransactionsHistoryAggregator.mergeHistoryPage(
+    historyWindow: ITransactionsHistoryWindow,
+    executed: Transaction[],
+): Transaction[]
+
+interface ITransactionsHistoryWindow {
+    pendingTransactions: Transaction[];
+    executedPagination: Pagination;
+    pageOffset: number;
+    pageLimit?: number;
+}
+```
+
+Every entry point first drops pending rows belonging to another network and
+sorts the rest newest-first. `paginatePendingTransactions` serves the
+pending-only source and is a plain slice of that list.
+
+A pending row is not necessarily newer than every indexed one — a reservation
+lives up to `RESERVATION_EXPIRATION_TIME`, and the indexer keeps returning older
+history — so the requested page cannot be split between the two sources.
+`createHistoryWindow` widens the indexer request instead: the executed offset is
+the caller's offset minus the pending count (floored at `0`) and the executed
+limit is the caller's limit plus the pending count, which guarantees the merged
+window covers the requested page whatever the interleaving turns out to be.
+
+`mergeHistoryPage` drops pending rows whose id already appears in the executed
+page (a pending transaction id equals its deploy id, so an indexed row replaces
+its pending twin), merges both sorted lists by `timestamp` descending, and
+slices the caller's page out. Past the first page the slice offset is corrected
+by `aheadCount` — the pending rows that sit newer than the indexer window that
+came back, i.e. the ones earlier pages already consumed.
+
+#### Eventual consistency of the pending → executed transition
+
+The two sources are not updated by the same actor: a reservation is released
+when `DeployStatusPoller` observes the deploy confirmed on the node, whereas the
+executed side only shows the transaction once the indexer has ingested its
+block. The client has no way to observe or bridge that lag, so a transaction can
+briefly appear in neither source (reservation already released, row not yet
+indexed) or in both (indexer ahead of the poller, reservation still alive).
+
+Deduplication is per page, since only the executed rows of the current page are
+available to compare against. Two twins that fall on different pages therefore
+both survive. Transient cross-page duplicates are accepted for now — the
+alternative is fetching the whole history to dedupe globally — and a reload once
+the indexer has caught up resolves them.
+
 ---
 
 ## Persistence orchestration
@@ -126,14 +226,15 @@ interface ITransactionReservationsManagerOptions {
 ### StorageManager (`src/services/StorageManager/index.ts`)
 
 Static façade over the four repositories (signers, accounts, transaction
-reservations, custom networks). Only signer secrets are encrypted on write;
-reservations and custom-network records are non-secret and stored as plaintext.
-Also composes/decomposes the `Wallet` aggregate.
+reservations, custom networks). Signer secrets and reservations are encrypted on
+write (the former with the wallet password, the latter with the signer's data
+key); custom-network records are non-secret and stored as plaintext. Also
+composes/decomposes the `Wallet` aggregate.
 
 ```ts
 StorageManager.init(options?: IStorageFabricOptions): Promise<void>
 
-// signers (encrypted secret)
+// signers (encrypted secret + encrypted data key)
 saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
 
 // accounts
@@ -145,8 +246,8 @@ saveWallets(options[]): Promise<void[]>
 getWallet({ signerId, passwordProvider }): Promise<Wallet>   // restores + decrypts
 getWallets(): Promise<IWalletStorageData[]>                  // public metadata
 
-// reservations (plaintext privateData)
-saveTransactionReservation({ id, networkId, signerId, privateData }) /
+// reservations (encrypted with the signer data key)
+saveTransactionReservation({ id, networkId, signerId, encryptedData }) /
 getTransactionReservationsBySignerId(signerId, networkId) /
 updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
 
@@ -337,6 +438,10 @@ waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult
 `IDeployWatchHandle = { cancel(): void; done: Promise<IDeployConfirmedResult> }`.
 Defaults: 5s interval, 180s timeout. Re-entrancy is guarded so ticks never overlap.
 
+Deploy status comes from the node, which runs ahead of the indexer that serves
+transaction history: a deploy is confirmed here before the transaction shows up
+in `Client.getTransactionsHistory`.
+
 ### GraphqlParser (`src/services/GraphqlParser/`)
 
 Anti-corruption layer between the indexer's GraphQL shape and the domain
@@ -368,8 +473,10 @@ defines `Pagination` (`{ offset?, limit? }`), `Order`, and `QueryOptions`.
 Password-based encryption via WebCrypto.
 
 ```ts
+CryptoService.generateDataKeySecret(): string
 CryptoService.encryptWithPassword(data: string, password: string): Promise<EncryptedData>
 CryptoService.decryptWithPassword(payload: EncryptedData, passphrase: string): Promise<string>
+CryptoService.decryptSignerData(signerData: EncryptedData, passwordProvider: SecretsProvider): Promise<IHDSecret | IPrivateKeyCredentials>
 CryptoService.deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 ```
 
@@ -378,9 +485,18 @@ CryptoService.deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 - Version `2`
 - KDF `PBKDF2`, `100_000` iterations, `SHA-256`
 - Cipher `AES-GCM`, 256-bit key
-- Salt `16` bytes, IV `12` bytes
+- Salt `16` bytes, IV `12` bytes, data key `32` bytes
 
 Decryption throws on an unsupported version or invalid credentials.
+
+`decryptSignerData` decrypts the stored signer secret and returns either
+private-key credentials or an HD secret (with the `rootHDPath` re-parsed into a
+`Bip44Path`).
+
+`generateDataKeySecret` returns 32 random bytes as base64. It is a
+high-entropy secret used in place of a password in the same
+`encryptWithPassword` / `decryptWithPassword` pair, so records encrypted with a
+data key share the exact same envelope and profile as password-encrypted ones.
 
 ### WalletsService (`src/services/Wallets/index.ts`)
 

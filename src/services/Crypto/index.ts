@@ -20,6 +20,7 @@ export type CryptoConfig = {
     readonly VERSION: number;
     readonly IV_LENGTH: number;
     readonly SALT_LENGTH: number;
+    readonly DATA_KEY_LENGTH: number;
     readonly KEY_SIZE_BITS: number;
     readonly KEY_IMPORT_FORMAT: "raw" | "pkcs8" | "spki";
     readonly KEY_DERIVATION_ITERATIONS: number;
@@ -40,6 +41,7 @@ const CryptoConfig: CryptoConfig = {
     VERSION: 2,
     IV_LENGTH: 12,
     SALT_LENGTH: 16,
+    DATA_KEY_LENGTH: 32,
     KEY_SIZE_BITS: 256,
     ALGORITHM: "AES-GCM",
     HASH_FUNCTION: "SHA-256",
@@ -50,6 +52,16 @@ const CryptoConfig: CryptoConfig = {
 };
 
 export default class CryptoService {
+    public static generateDataKeySecret(): string {
+        const material: ArrayBuffer = new ArrayBuffer(
+            CryptoConfig.DATA_KEY_LENGTH,
+        );
+
+        crypto.getRandomValues(new Uint8Array(material));
+
+        return arrayBufferToBase64(material);
+    }
+
     public static async encryptWithPassword(
         data: string,
         password: string,

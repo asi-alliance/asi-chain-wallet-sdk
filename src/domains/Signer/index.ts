@@ -16,6 +16,7 @@ export enum WalletTypes {
 export interface ISignerOptions {
     id: string;
     encryptedSecret: EncryptedData;
+    encryptedDataKey: EncryptedData;
 }
 
 export type TPKSigningContext = {
@@ -43,6 +44,7 @@ export interface ISignerUnlockOptions {
 
 interface ISignerSession {
     secret: TDecryptedSecret;
+    dataKeySecret: string;
     timer: AutoTimer;
 }
 
@@ -50,16 +52,19 @@ export interface ISignerRecord {
     id: string;
     type: WalletTypes;
     encryptedData: EncryptedData;
+    encryptedDataKey: EncryptedData;
 }
 
 export default abstract class Signer {
     protected readonly id: string;
     protected encryptedSecret: EncryptedData;
+    protected encryptedDataKey: EncryptedData;
     private session: ISignerSession | null = null;
 
-    constructor({ id, encryptedSecret }: ISignerOptions) {
+    constructor({ id, encryptedSecret, encryptedDataKey }: ISignerOptions) {
         this.id = id;
         this.encryptedSecret = encryptedSecret;
+        this.encryptedDataKey = encryptedDataKey;
     }
 
     public getId(): string {
@@ -68,6 +73,10 @@ export default abstract class Signer {
 
     public getEncryptedSecret(): EncryptedData {
         return this.encryptedSecret;
+    }
+
+    public getEncryptedDataKey(): EncryptedData {
+        return this.encryptedDataKey;
     }
 
     public isUnlocked(): boolean {
@@ -83,6 +92,11 @@ export default abstract class Signer {
             passwordProvider,
         );
 
+        const dataKeySecret: string = await CryptoService.decryptWithPassword(
+            this.encryptedDataKey,
+            passwordProvider.getSecret().password,
+        );
+
         const onAutoLock: (() => void) | undefined = options?.onAutoLock;
 
         const timer: AutoTimer = new AutoTimer({
@@ -94,9 +108,26 @@ export default abstract class Signer {
             },
         });
 
-        this.session = { secret, timer };
+        this.session = { secret, dataKeySecret, timer };
 
         timer.start();
+    }
+
+    public async resolveDataKey(
+        passwordProvider?: SecretsProvider,
+    ): Promise<string> {
+        if (this.session) {
+            return this.session.dataKeySecret;
+        }
+
+        if (!passwordProvider) {
+            throw new WalletLockedError();
+        }
+
+        return CryptoService.decryptWithPassword(
+            this.encryptedDataKey,
+            passwordProvider.getSecret().password,
+        );
     }
 
     protected async resolveSecret(

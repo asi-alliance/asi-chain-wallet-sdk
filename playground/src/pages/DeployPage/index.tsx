@@ -151,8 +151,8 @@ const DeployPage = (): ReactElement => {
         }
 
         try {
-            const submittedDeployId: string | undefined =
-                await runSecureAction({
+            const submittedDeployId: string | undefined = await runSecureAction(
+                {
                     walletId: selectedEntry.walletId,
                     passwordTitle: "Enter wallet password to deploy",
                     confirmMessage: `Deploy this contract from ${selectedEntry.account.getName()}?`,
@@ -166,7 +166,8 @@ const DeployPage = (): ReactElement => {
                             },
                             password,
                         ),
-                });
+                },
+            );
 
             if (!submittedDeployId) {
                 return;
@@ -204,9 +205,7 @@ const DeployPage = (): ReactElement => {
         resetOutput();
 
         try {
-            const exploredDeploy = await exploreDeploy(code);
-
-            console.log("EXPLORED DEPLOY: ", exploredDeploy);
+            await exploreDeploy(code);
 
             setResult(await exploreDeploy(code));
         } catch (exploreError) {

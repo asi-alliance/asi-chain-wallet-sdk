@@ -221,7 +221,7 @@ asi-chain-wallet-sdk/
 │   ├── config/                # Runtime defaults and constants
 │   ├── domains/               # Domain models & transport (→ docs/DOMAINS.md)
 │   ├── services/              # Managers & business logic (→ docs/SERVICES.md)
-│   ├── fabrics/               # Environment-aware factories (storage)
+│   ├── fabrics/               # Factories: signer, storage, client, reservations (→ docs/UTILS.md)
 │   ├── utils/                 # Utilities & guards (→ docs/UTILS.md)
 │   └── index.ts              # Main export
 │
