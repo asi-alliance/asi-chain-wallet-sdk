@@ -117,7 +117,7 @@ Balances, reservations & transfers:
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
-getTransactionsHistory(walletId: string, accountId: string, pagination?: Pagination): Promise<Transaction[]>
+getTransactionsHistory(walletId: string, accountId: string, options?: ITransactionsHistoryOptions): Promise<Transaction[]>
 transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
 ```
 
@@ -133,13 +133,47 @@ newest first. The lower-level bricks stay unaware of reservations —
 `Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
 return indexed transactions only.
 
-`pagination` covers the merged history, not the indexed part alone. Pending rows
-are local and newer, so they head the list and
-`TransactionsHistoryAggregator.paginatePendingTransactions` splits the requested
-window: the pending slice is taken first, and only the remainder
-(`confirmedPagination`) is asked from the indexer — a page fully covered by
-pending rows skips the request entirely. Without a reservation adapter the
-pagination goes to the indexer untouched.
+```ts
+type THistorySource = "pending" | "executed";
+
+interface ITransactionsHistoryOptions {
+    sources?: THistorySource[]; // defaults to ["pending", "executed"]
+    pagination?: Pagination;
+}
+```
+
+`sources` narrows the merge to one side: `["pending"]` reads the reservation
+adapter only and never touches the indexer, `["executed"]` ignores pending rows.
+
+`pagination` covers the merged history, not the indexed part alone. Pending and
+executed rows are interleaved by `timestamp`, so the page cannot be split
+between the two sources; instead
+`TransactionsHistoryAggregator.createHistoryWindow` widens the indexer request
+by the number of pending rows, and `mergeHistoryPage` cuts the requested page
+out of the merged result. Without a reservation adapter, or with no pending rows
+for the current network, the pagination goes to the indexer untouched.
+
+### Pending → executed is eventually consistent
+
+The two sides of the merge come from different backends. A reservation is
+released when `DeployStatusPoller` sees the deploy confirmed **on the node**,
+while the executed side is served by the **indexer**, which ingests the block
+afterwards. There is no shared cursor between node status and indexer ingestion,
+so the client cannot detect or close that lag.
+
+For the width of that window the same transaction may therefore be:
+
+- in **neither** list — the reservation is already released, the indexed row has
+  not arrived yet;
+- in **both** lists — the indexer is ahead of the poller and the reservation is
+  still alive.
+
+`mergeHistoryPage` dedupes pending rows against the executed rows **of the same
+page** (a pending transaction id equals its deploy id), so a duplicate is
+invisible whenever both twins fall into one page. When they land on different
+pages the pending twin is not filtered out. Transient cross-page duplicates and
+the brief gap are accepted behaviour for now; the next reload after the indexer
+catches up settles the list.
 
 Raw deploys (arbitrary Rholang, no reservation adapter):
 
@@ -199,7 +233,10 @@ interface IClientEventDispatcher {
 (`src/fabrics/client/reservationAdapter.ts`), which every `Client` path
 that builds an adapter (create, import, unlock) goes through: it forwards the
 `passwordProvider` needed for the data key and re-emits the wallet's
-reservations on confirmation, expiry, and watch failure.
+reservations when one is added, confirmed, expired, or its watch fails. The
+`added` edge is what lets a history view reload as soon as a transfer reserves
+its funds; `Client.transfer` also emits the event directly once the adapter
+returns.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -789,7 +826,8 @@ several networks within one session. Nothing inside the adapter filters by
 network id: `getReservations`, `getPendingTransactions`, and the reserved amount
 behind `getBalance` all cover everything it holds. Only
 `Client.getTransactionsHistory` narrows to the current network, through
-`TransactionsHistoryAggregator.paginatePendingTransactions`.
+`TransactionsHistoryAggregator`, which drops pending rows belonging to another
+network before merging or paginating them.
 
 Reservation shaping (`ITransactionReservation` from a fresh transfer or from a
 storage record plus its decrypted private data, and back into the serialized

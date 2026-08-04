@@ -117,6 +117,7 @@ dispose(): void
 
 ```ts
 interface ITransactionReservationsManagerOptions {
+    onAdded?(reservation): void;
     onConfirmed?(reservation): void;
     onExpired?(reservation): void;
     onFailed?(reservation, error: Error): void;
@@ -124,6 +125,9 @@ interface ITransactionReservationsManagerOptions {
     watchOptions?: IDeployWatchOptions;
 }
 ```
+
+`onAdded` fires from `add` only, so reservations restored through the
+constructor stay silent — the caller already knows about them.
 
 `onFailed` is a notification, not a release signal: the reservation survives it
 and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
@@ -141,21 +145,14 @@ state, no I/O.
 ```ts
 CollectionQueryService.sortByComparator<TItem>(items, comparator): TItem[]
 CollectionQueryService.sortByDate<TItem>(items, getDate: (item) => Date, order?: Order): TItem[]
-CollectionQueryService.paginate<TItem>(items, pagination?: Pagination): IPaginatedChunk<TItem>
-
-interface IPaginatedChunk<TItem> {
-    items: TItem[];
-    restPagination: Pagination;
-}
+CollectionQueryService.mergeSorted<TItem>(primary, secondary, comparator): TItem[]
+CollectionQueryService.slice<TItem>(items, pagination?: Pagination): TItem[]
 ```
 
 Both sorts copy the input instead of mutating it; `sortByDate` defaults to
-`"desc"`. `paginate` is built for a page that spans **two sequential sources**:
-besides the slice it returns `restPagination` — what is left of the requested
-window once this source has been consumed
-(`offset - items.length`, floored at `0`; `limit - slice.length`). A
-`restPagination.limit` of `0` means the page is already full and the next source
-must not be queried.
+`"desc"`. `mergeSorted` interleaves two lists that are **already sorted by the
+same comparator**, keeping `primary` ahead of `secondary` on ties. `slice`
+applies `offset` / `limit`, where an absent `limit` means "to the end".
 
 ### TransactionsHistoryAggregator (`src/services/TransactionsHistoryAggregator/index.ts`)
 
@@ -167,32 +164,60 @@ TransactionsHistoryAggregator.paginatePendingTransactions(
     pending: Transaction[],
     networkId: NetworkId,
     pagination?: Pagination,
-): IPaginatedPendingTransactions
-
-TransactionsHistoryAggregator.aggregate(
-    confirmed: Transaction[],
-    pending: Transaction[],
 ): Transaction[]
 
-interface IPaginatedPendingTransactions {
+TransactionsHistoryAggregator.createHistoryWindow(
+    pending: Transaction[],
+    networkId: NetworkId,
+    pagination?: Pagination,
+): ITransactionsHistoryWindow
+
+TransactionsHistoryAggregator.mergeHistoryPage(
+    historyWindow: ITransactionsHistoryWindow,
+    executed: Transaction[],
+): Transaction[]
+
+interface ITransactionsHistoryWindow {
     pendingTransactions: Transaction[];
-    confirmedPagination: Pagination;
+    executedPagination: Pagination;
+    pageOffset: number;
+    pageLimit?: number;
 }
 ```
 
-Pending transactions are local and always newer than indexed ones, so they head
-the merged history and the requested page is **split** between the two sources:
-`paginatePendingTransactions` drops pending rows from other networks, sorts the
-rest newest-first, cuts the part of the window they cover, and hands back the
-`confirmedPagination` to query the indexer with. Applying the caller's
-`offset`/`limit` to both sources instead would skip indexed rows and return short
-pages.
+Every entry point first drops pending rows belonging to another network and
+sorts the rest newest-first. `paginatePendingTransactions` serves the
+pending-only source and is a plain slice of that list.
 
-`aggregate` dedupes by transaction id (which equals the deploy id for pending
-ones, so an indexed row replaces its pending twin once confirmed) and sorts by
-`timestamp`, newest first. A page may therefore come back one row short while a
-confirmed transaction still has a live reservation — over-fetching to compensate
-would shift every following offset.
+A pending row is not necessarily newer than every indexed one — a reservation
+lives up to `RESERVATION_EXPIRATION_TIME`, and the indexer keeps returning older
+history — so the requested page cannot be split between the two sources.
+`createHistoryWindow` widens the indexer request instead: the executed offset is
+the caller's offset minus the pending count (floored at `0`) and the executed
+limit is the caller's limit plus the pending count, which guarantees the merged
+window covers the requested page whatever the interleaving turns out to be.
+
+`mergeHistoryPage` drops pending rows whose id already appears in the executed
+page (a pending transaction id equals its deploy id, so an indexed row replaces
+its pending twin), merges both sorted lists by `timestamp` descending, and
+slices the caller's page out. Past the first page the slice offset is corrected
+by `aheadCount` — the pending rows that sit newer than the indexer window that
+came back, i.e. the ones earlier pages already consumed.
+
+#### Eventual consistency of the pending → executed transition
+
+The two sources are not updated by the same actor: a reservation is released
+when `DeployStatusPoller` observes the deploy confirmed on the node, whereas the
+executed side only shows the transaction once the indexer has ingested its
+block. The client has no way to observe or bridge that lag, so a transaction can
+briefly appear in neither source (reservation already released, row not yet
+indexed) or in both (indexer ahead of the poller, reservation still alive).
+
+Deduplication is per page, since only the executed rows of the current page are
+available to compare against. Two twins that fall on different pages therefore
+both survive. Transient cross-page duplicates are accepted for now — the
+alternative is fetching the whole history to dedupe globally — and a reload once
+the indexer has caught up resolves them.
 
 ---
 
@@ -412,6 +437,10 @@ waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult
 
 `IDeployWatchHandle = { cancel(): void; done: Promise<IDeployConfirmedResult> }`.
 Defaults: 5s interval, 180s timeout. Re-entrancy is guarded so ticks never overlap.
+
+Deploy status comes from the node, which runs ahead of the indexer that serves
+transaction history: a deploy is confirmed here before the transaction shows up
+in `Client.getTransactionsHistory`.
 
 ### GraphqlParser (`src/services/GraphqlParser/`)
 

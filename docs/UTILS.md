@@ -280,6 +280,6 @@ createReservationAdapter(
 
 Creates the wallet's `ReservationAdapter` through `ReservationAdapterManager`,
 forwarding the `passwordProvider` that resolves the signer data key, and
-subscribes `onConfirmed` / `onExpired` / `onFailed` so each of them re-emits
-`IClientEventDispatcher.onReservationsChanged` with the adapter's current
+subscribes `onAdded` / `onConfirmed` / `onExpired` / `onFailed` so each of them
+re-emits `IClientEventDispatcher.onReservationsChanged` with the adapter's current
 reservations. `Client` goes through it on wallet create, import, and unlock.
