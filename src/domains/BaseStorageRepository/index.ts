@@ -1,5 +1,5 @@
 import { ITableRecord, ITableService } from "@domains/TableService";
-import { IStorageFabricOptions, storageFabric } from "@fabrics/Storage";
+import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
 
 export abstract class BaseStorageRepository<T extends ITableRecord> {
     protected readonly tableName: string;

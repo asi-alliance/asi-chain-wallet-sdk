@@ -96,16 +96,14 @@ input. `fromAtomicAmount` trims trailing zeros and a bare trailing `.0`.
 `fromAtomicAmountToNumber` warns and returns a possibly-imprecise `Number` when the
 integer part exceeds `Number.MAX_SAFE_INTEGER`.
 
-### Byte / secret helpers
+### Byte helpers
 
 ```ts
 toUint8Array(value: unknown): Uint8Array // accepts Uint8Array, Buffer JSON, arrays, plain objects
-decryptSignerData(signerData: EncryptedData, passwordProvider: SecretsProvider): Promise<IHDSecret | IPrivateKeyCredentials>
 ```
 
-`decryptSignerData` decrypts the stored signer secret and returns either
-private-key credentials or an HD secret (with the `rootHDPath` re-parsed into a
-`Bip44Path`).
+Secret decryption is not a util: `decryptSignerData` lives on `CryptoService`
+(see `SERVICES.md`).
 
 ### URL & address helpers
 
@@ -199,6 +197,18 @@ EnsureNetworkExist                 // throws when the network id is unknown
 EnsureNetworkNotDefault            // throws when mutating/removing a built-in network
 ```
 
+Network-busy guards (`src/utils/decorators/apiClientManager`):
+
+```ts
+EnsureCurrentNetworkNotBusy        // throws NetworkBusyError when the active network has work in flight
+EnsureTargetNetworkNotBusy         // same check against the network id in the first argument
+```
+
+Both read `ApiClientManager`'s `NetworkBusyRegistry` and protect
+`switchNetwork` / `updateNetwork` / `removeNetwork`.
+`EnsureCurrentNetworkNotBusy` passes through untouched while the manager is not
+ready yet, because there is no active network to protect at that point.
+
 ---
 
 ## Polyfills (`src/utils/polyfills/index.ts`)
@@ -215,16 +225,30 @@ missing. No-op outside the browser. Called by `MnemonicService` and
 
 ## Fabrics
 
-### Signer fabric (`src/utils/fabrics/signer.ts`)
+All fabrics live under `src/fabrics`, a top-level folder next to `src/utils`. Its
+`index.ts` re-exports the signer, storage, and client fabrics; the transaction
+reservation fabric is imported by its own path. The folder is internal —
+`src/index.ts` does not re-export it, so fabrics are not part of the package
+public surface; SDK code reaches them through the `@fabrics/*` alias.
+
+### Signer fabric (`src/fabrics/signer.ts`)
 
 Builds and restores the correct `Signer` subclass from encrypted material.
 
 ```ts
-createSigner(payload: TCreateSignerPayload): Promise<Signer>  // encrypts secret, returns HDSigner / PrivateKeySigner
+createSigner(payload: TCreateSignerPayload): Promise<Signer>  // HDSigner / PrivateKeySigner
 restoreSigner(record: ISignerRecord): Signer
 ```
 
-### Node API adapter fabric (`src/utils/fabrics/nodeApiAdapter.ts`)
+`createSigner` encrypts two things with the wallet password: the secret itself
+and a freshly generated data key (`CryptoService.generateDataKeySecret`). Both
+live on the signer as `encryptedSecret` / `encryptedDataKey`, and `restoreSigner`
+rebuilds it from the stored record. The data key is what encrypts non-secret user
+data such as transaction reservations; it is resolved through
+`Signer.resolveDataKey(passwordProvider?)` — an active session already holds it,
+otherwise the password decrypts it.
+
+### Node API adapter fabric (`src/fabrics/nodeApiAdapter.ts`)
 
 Builds the `NodeApiAdapter` subclass for a profile — see the adapter section of
 `DOMAINS.md`.
@@ -233,7 +257,7 @@ Builds the `NodeApiAdapter` subclass for a profile — see the adapter section o
 createNodeApiAdapter(profile: NodeApiProfile, apiClientManager: ApiClientManager): NodeApiAdapter
 ```
 
-### Deploy term fabric (`src/utils/fabrics/deployTermFactory.ts`)
+### Deploy term fabric (`src/fabrics/deployTermFactory.ts`)
 
 Selects the Rholang term set for a profile: the `Deploy/factory/index.ts` terms for
 `SCALA`, the `Deploy/factory/rust.ts` terms for `RUST`.
@@ -247,7 +271,7 @@ profile without handling it fails to compile. Unlike the adapter fabric, this on
 returns module-level constant tables of function references — there is nothing to
 construct or cache.
 
-### Storage fabric (`src/fabrics/Storage/index.ts`)
+### Storage fabric (`src/fabrics/storage.ts`)
 
 Selects `BrowserStorage` or `NodeStorage` for the current environment — see the
 storage section of `DOMAINS.md`.
@@ -255,3 +279,57 @@ storage section of `DOMAINS.md`.
 ```ts
 storageFabric(options?: IStorageFabricOptions): ITableService<ITableRecord>
 ```
+
+### Transaction reservation fabric (`src/fabrics/transactionReservation.ts`)
+
+The single place that shapes an `ITransactionReservation`, so `ReservationAdapter`
+never assembles the record inline. It also owns both directions of the storage
+serialization boundary.
+
+```ts
+TransactionReservationFabric.createTransfer(
+    payload: ICreateTransferReservationPayload, // { deployId, networkId, account, pendingAmount, details }
+): ITransactionReservation
+
+TransactionReservationFabric.createDeploy(
+    payload: ICreateDeployReservationPayload, // { deployId, networkId, account, pendingAmount, term }
+): ITransactionReservation
+
+TransactionReservationFabric.toPrivateData(
+    reservation: ITransactionReservation,
+): ISerializedTransactionReservationPrivateData
+
+TransactionReservationFabric.fromStorage(
+    record: ITransactionReservationsStorageRecord,
+    privateData: ISerializedTransactionReservationPrivateData,
+): ITransactionReservation
+```
+
+`create` builds the pending `Transaction` (`status: "pending"`,
+`detectedBy: "manual"`, `amount` and `gasCost` in display units), generates the
+reservation id, and stamps `expirationTime` as now plus
+`RESERVATION_EXPIRATION_TIME`.
+
+`toPrivateData` drops the storage-owned fields (`id`, `networkId` — they live on
+the record itself) and serializes `transaction.timestamp` into an ISO string, so
+the payload survives `JSON.stringify` and an `IndexedDB` round trip.
+`fromStorage` is its inverse: it recombines a stored record with its decrypted
+private data and revives `transaction.timestamp` into a `Date`.
+
+### Client fabrics (`src/fabrics/client/`)
+
+Composition helpers for `Client`.
+
+```ts
+createReservationAdapter(
+    options: IAddReservationAdapterToManagerOptions, // { reservationAdapterManager, wallet, passwordProvider, eventDispatcher? }
+): Promise<ReservationAdapter>
+```
+
+Creates the wallet's `ReservationAdapter` through `ReservationAdapterManager`,
+forwarding the `passwordProvider` that resolves the signer data key, and
+subscribes `onAdded` / `onConfirmed` / `onExpired` / `onFailed` so each of them
+re-emits `IClientEventDispatcher.onReservationsChanged` with every unlocked
+wallet's current reservations, read back through
+`ReservationAdapterManager.getReservationsByWallet`. `Client` goes through it on
+wallet create, import, and unlock.

@@ -55,10 +55,13 @@ Returned value (`UseSdkValue`):
 - Transfers & balances: `transfer(request, password?)` (password omitted while a
   session is active), `getBalance(address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
-- Raw deploys: `deploy(request, password?)` (arbitrary Rholang term via
+- Deploys: `deploy(request, password?)` (arbitrary Rholang term via
   `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
   rules as `transfer`), `exploreDeploy(rholang)` (read-only, no unlock/password),
   `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
+  `transfer` and `deploy` both resolve to an `IReservedOperationResult`
+  (`{ deployId, subscribe }`), so the caller follows the deploy through
+  `subscribe` instead of a separate watch handle.
 - Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
   keyfile JSON (downloaded from `AccountCard`).
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
@@ -174,10 +177,21 @@ methods through `withLoader`.
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 
 Lets the user pick an unlocked account (via `SelectFilter`) and lists its
-transactions using `account.getTransactionsHistory()` (transfers plus the
-account's deployments, merged and de-duplicated by deploy id). Reloads on account
-or network change.
+transactions using `client.getTransactionsHistory(walletId, accountId, options)`
+— pending reservations merged with the indexed history.
 
+- A second `SelectFilter` picks the source: **All** (default, `sources`
+  omitted), **Pending only** (`["pending"]`), **Executed only** (`["executed"]`).
+- Pages hold `PAGE_SIZE` 10 rows and the current page lives in the `?page=`
+  query param, so a page survives a reload and is shareable. Changing the
+  account or the mode resets it (`replace: true`, no history entry). "Next" is
+  offered while the page came back full — the SDK returns no total count.
+- Reloads on account, mode, page, network change, and on this wallet's entry in
+  `reservationsByWallet`, so a fresh transfer shows up as pending without a
+  manual refresh.
+- Because the poller and the indexer advance independently, a just confirmed
+  transaction can flicker — see the eventual-consistency note in
+  [SERVICES.md](SERVICES.md).
 - `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
   deploy id and block hash, and offers a copy-deploy-id button.
@@ -208,8 +222,9 @@ account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
 example contract), and set a phlo limit. **Deploy** runs
 `sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
 `useSecureAction` (a confirm when the wallet session is active, otherwise a
-`PasswordModal`), then tracks status with `sdk.watchDeploy(deployId, ...)` (the
-watch handle is cancelled on unmount and before each new run). **Explore** calls
+`PasswordModal`), then tracks status through the returned
+`IReservedOperationResult`: `reserved.subscribe({ onStatus, onConfirmed, onError })`
+(the unsubscribe is called on unmount and before each new run). **Explore** calls
 `sdk.exploreDeploy(code)` and needs no unlock/password. Errors and the
 explore/deploy result are shown inline.
 
@@ -387,6 +402,9 @@ Fullscreen spinner shown while `useLoader` reports loading.
 - **HighlightedRows** — labeled value rows with optional accent/description.
 - **KeyValueTable** — two-column table with an optional per-row state class.
 - **SelectFilter** — labeled `<select>` from `{ label, value }[]` options.
+- **Pagination** — `{ page, hasNextPage, onChange }` pager for sources with no
+  known total: it renders a trailing window of up to five page numbers ending at
+  `page + 1` when a next page is assumed, plus prev/next arrows.
 
 ---
 

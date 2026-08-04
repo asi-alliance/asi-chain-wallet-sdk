@@ -3,36 +3,26 @@ import TransactionReservationsManager, {
     ITransactionReservationsManagerOptions,
 } from "@services/TransactionReservationsManager";
 import {
+    ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
-    ITransactionReservationPrivateData,
+    Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import {
-    DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
-    GasFee,
-    RESERVATION_EXPIRATION_TIME,
-} from "@config/index";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
-import { generateRandomId } from "@utils/index";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import TransactionReservationFabric from "@fabrics/transactionReservation";
 
 export interface IReservedOperationResult {
     deployId: string;
     subscribe: (callbacks: IDeployWatchCallbacks) => () => void;
-}
-
-interface IReserveOptions {
-    deployId: string;
-    accountId: string;
-    networkId: NetworkId;
-    pendingAmount: bigint;
 }
 
 export default class ReservationAdapter {
@@ -40,10 +30,7 @@ export default class ReservationAdapter {
 
     constructor(
         reservations: ITransactionReservation[],
-        reservationsManagerOptions?: Omit<
-            ITransactionReservationsManagerOptions,
-            "onConfirmed" | "onExpired"
-        >,
+        reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
         const releaseFromStorage = (
             reservation: ITransactionReservation,
@@ -60,24 +47,46 @@ export default class ReservationAdapter {
         this.reservationsManager = new TransactionReservationsManager(
             reservations,
             {
-                onConfirmed: releaseFromStorage,
-                onExpired: releaseFromStorage,
                 ...reservationsManagerOptions,
+                onConfirmed: (reservation: ITransactionReservation) => {
+                    releaseFromStorage(reservation);
+
+                    reservationsManagerOptions.onConfirmed?.(reservation);
+                },
+                onExpired: (reservation: ITransactionReservation) => {
+                    releaseFromStorage(reservation);
+
+                    reservationsManagerOptions.onExpired?.(reservation);
+                },
             },
         );
     }
 
+    private static async readPrivateData(
+        record: ITransactionReservationsStorageRecord,
+        dataKeySecret: string,
+    ): Promise<ISerializedTransactionReservationPrivateData> {
+        const decrypted: string = await CryptoService.decryptWithPassword(
+            record.encryptedData,
+            dataKeySecret,
+        );
+
+        return JSON.parse(decrypted);
+    }
+
     public static async create(
         wallet: Wallet,
-        reservationsManagerOptions?: Omit<
-            ITransactionReservationsManagerOptions,
-            "onConfirmed" | "onExpired"
-        >,
+        passwordProvider?: SecretsProvider,
+        reservationsManagerOptions?: ITransactionReservationsManagerOptions,
     ): Promise<ReservationAdapter> {
         const knownNetworkIds: Set<NetworkId> = new Set(
             ApiClientManager.getInstance().getNetworkIds(),
         );
         const signerId: string = wallet.getSigner().getId();
+
+        const dataKeySecret: string = await wallet
+            .getSigner()
+            .resolveDataKey(passwordProvider);
 
         const records: ITransactionReservationsStorageRecord[] =
             await StorageManager.getTransactionReservationsBySignerId(signerId);
@@ -85,7 +94,8 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const { privateData } = record;
+            const privateData: ISerializedTransactionReservationPrivateData =
+                await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
                 privateData.expirationTime <= Date.now() ||
@@ -96,15 +106,9 @@ export default class ReservationAdapter {
                 continue;
             }
 
-            reservations.push({
-                id: record.id,
-                networkId: record.networkId,
-                timestamp: new Date(privateData.timestamp),
-                accountId: privateData.accountId,
-                pendingAmount: privateData.pendingAmount,
-                deployId: privateData.deployId,
-                expirationTime: privateData.expirationTime,
-            });
+            reservations.push(
+                TransactionReservationFabric.fromStorage(record, privateData),
+            );
         }
 
         return new ReservationAdapter(reservations, reservationsManagerOptions);
@@ -144,6 +148,19 @@ export default class ReservationAdapter {
         );
     }
 
+    public getPendingTransactions(accountId?: string): Transaction[] {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
+        const reservations: ITransactionReservation[] = accountId
+            ? this.reservationsManager.getByAccountId(accountId, networkId)
+            : this.reservationsManager.getByNetworkId(networkId);
+
+        return reservations.map(
+            (reservation: ITransactionReservation) => reservation.transaction,
+        );
+    }
+
     public async removeNetworkReservations(
         networkId: NetworkId,
     ): Promise<void> {
@@ -168,21 +185,44 @@ export default class ReservationAdapter {
     private async persistReservation(
         reservation: ITransactionReservation,
         wallet: Wallet,
+        passwordProvider?: SecretsProvider,
     ): Promise<void> {
-        const privateData: ITransactionReservationPrivateData = {
-            timestamp: reservation.timestamp,
-            accountId: reservation.accountId,
-            pendingAmount: reservation.pendingAmount,
-            deployId: reservation.deployId,
-            expirationTime: reservation.expirationTime,
-        };
+        const privateData: ISerializedTransactionReservationPrivateData =
+            TransactionReservationFabric.toPrivateData(reservation);
+
+        const dataKeySecret: string = await wallet
+            .getSigner()
+            .resolveDataKey(passwordProvider);
+
+        const encryptedData: EncryptedData =
+            await CryptoService.encryptWithPassword(
+                JSON.stringify(privateData),
+                dataKeySecret,
+            );
 
         await StorageManager.saveTransactionReservation({
             id: reservation.id,
             networkId: reservation.networkId,
             signerId: wallet.getSigner().getId(),
-            privateData,
+            encryptedData,
         });
+    }
+
+    private async reserve(
+        wallet: Wallet,
+        deployId: string,
+        reservation: ITransactionReservation,
+        passwordProvider?: SecretsProvider,
+    ): Promise<IReservedOperationResult> {
+        await this.persistReservation(reservation, wallet, passwordProvider);
+
+        this.reservationsManager.add(reservation);
+
+        return {
+            deployId,
+            subscribe: (callbacks: IDeployWatchCallbacks) =>
+                this.reservationsManager.subscribe(reservation.id, callbacks),
+        };
     }
 
     public async validateSufficientBalance(
@@ -197,31 +237,6 @@ export default class ReservationAdapter {
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
         return remoteBalance - totalReservedAmount > 0n;
-    }
-
-    private async reserve(
-        wallet: Wallet,
-        { deployId, accountId, networkId, pendingAmount }: IReserveOptions,
-    ): Promise<IReservedOperationResult> {
-        const reservation: ITransactionReservation = {
-            id: generateRandomId(),
-            deployId,
-            timestamp: new Date(),
-            accountId,
-            pendingAmount: pendingAmount.toString(),
-            networkId,
-            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-        };
-
-        await this.persistReservation(reservation, wallet);
-
-        this.reservationsManager.add(reservation);
-
-        return {
-            deployId,
-            subscribe: (callbacks: IDeployWatchCallbacks) =>
-                this.reservationsManager.subscribe(reservation.id, callbacks),
-        };
     }
 
     public async transfer(
@@ -249,12 +264,16 @@ export default class ReservationAdapter {
             passwordProvider,
         );
 
-        return this.reserve(wallet, {
-            deployId,
-            accountId: account.getId(),
-            networkId,
-            pendingAmount,
-        });
+        const reservation: ITransactionReservation =
+            TransactionReservationFabric.createTransfer({
+                deployId,
+                networkId,
+                account,
+                pendingAmount,
+                details,
+            });
+
+        return this.reserve(wallet, deployId, reservation, passwordProvider);
     }
 
     public async deploy(
@@ -279,11 +298,15 @@ export default class ReservationAdapter {
 
         const deployId: string = await wallet.deploy(details, passwordProvider);
 
-        return this.reserve(wallet, {
-            deployId,
-            accountId: account.getId(),
-            networkId,
-            pendingAmount,
-        });
+        const reservation: ITransactionReservation =
+            TransactionReservationFabric.createDeploy({
+                deployId,
+                networkId,
+                account,
+                pendingAmount,
+                term: details.term,
+            });
+
+        return this.reserve(wallet, deployId, reservation, passwordProvider);
     }
 }

@@ -3,7 +3,7 @@ import { IDeployTermFactory } from "@domains/Deploy/factory";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import { Address } from "@domains/Wallet";
 import { validateAddress } from "@utils/index";
-import { createDeployTermFactory } from "@utils/fabrics/deployTermFactory";
+import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import DeployService from "@services/DeployService";
 
 export interface IBalanceData {
@@ -20,8 +20,7 @@ export default class AssetsService {
         nodeApiProvider?: NodeApiProvider,
     ) {
         this.deployService = deployService;
-        this.nodeApiProvider =
-            nodeApiProvider ?? NodeApiProvider.getInstance();
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
     }
 
     private get terms(): IDeployTermFactory {

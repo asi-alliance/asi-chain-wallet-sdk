@@ -159,7 +159,7 @@ const available = await client.getAvailableBalance(
 console.log("Balance:", client.toDisplayAmount(balance));
 
 // Transfer tokens (amount in atomic units)
-const deployId = await client.transfer(
+const reserved = await client.transfer(
     {
         walletId: hdWallet.getId(),
         accountId: active.getId(),
@@ -168,7 +168,13 @@ const deployId = await client.transfer(
     },
     "wallet-password",
 );
-console.log("Deploy id:", deployId);
+console.log("Deploy id:", reserved.deployId);
+
+// Follow the deploy until the node confirms it
+const unsubscribe = reserved.subscribe({
+    onStatus: (status) => console.log("Status:", status.status),
+    onConfirmed: () => console.log("Confirmed"),
+});
 ```
 
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
@@ -256,7 +262,7 @@ asi-chain-wallet-sdk/
 │   ├── config/                # Runtime defaults and constants
 │   ├── domains/               # Domain models & transport (→ docs/DOMAINS.md)
 │   ├── services/              # Managers & business logic (→ docs/SERVICES.md)
-│   ├── fabrics/               # Environment-aware factories (storage)
+│   ├── fabrics/               # Factories: signer, storage, client, reservations (→ docs/UTILS.md)
 │   ├── utils/                 # Utilities & guards (→ docs/UTILS.md)
 │   └── index.ts              # Main export
 │

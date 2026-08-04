@@ -203,9 +203,7 @@ const DeployPage = (): ReactElement => {
         resetOutput();
 
         try {
-            const exploredDeploy = await exploreDeploy(code);
-
-            console.log("EXPLORED DEPLOY: ", exploredDeploy);
+            await exploreDeploy(code);
 
             setResult(await exploreDeploy(code));
         } catch (exploreError) {

@@ -8,7 +8,7 @@ import Account, {
     TCreateAccountPayload,
     TEditableAccountOptions,
 } from "@domains/Account";
-import { createSigner, restoreSigner } from "@utils/fabrics/signer";
+import { createSigner, restoreSigner } from "@fabrics/signer";
 import { generateRandomId } from "@utils/index";
 import SecretsProvider, {
     IHDSecret,

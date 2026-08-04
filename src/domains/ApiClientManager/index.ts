@@ -20,8 +20,8 @@ import {
     EnsureCurrentNetworkNotBusy,
     EnsureTargetNetworkNotBusy,
 } from "@utils/decorators/apiClientManager";
-import { createApiClients } from "@utils/fabrics/apiClients";
-import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
+import { createApiClients } from "@fabrics/apiClients";
+import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 
 export interface IApiClients {
     validator: ValidatorClient;

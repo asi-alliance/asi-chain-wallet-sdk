@@ -12,6 +12,7 @@ import DeployStatusPoller, {
 } from "@services/DeployStatusPoller";
 
 export interface ITransactionReservationsManagerOptions {
+    onAdded?: (reservation: ITransactionReservation) => void;
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
     onFailed?: (reservation: ITransactionReservation, error: Error) => void;
@@ -30,6 +31,7 @@ export default class TransactionReservationsManager implements IDisposable {
         ReturnType<typeof setTimeout>
     > = new Map();
 
+    private readonly onAdded?: (reservation: ITransactionReservation) => void;
     private readonly onConfirmed?: (
         reservation: ITransactionReservation,
     ) => void;
@@ -45,6 +47,7 @@ export default class TransactionReservationsManager implements IDisposable {
         reservations: ITransactionReservation[],
         options: ITransactionReservationsManagerOptions = {},
     ) {
+        this.onAdded = options.onAdded;
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
         this.onFailed = options.onFailed;
@@ -63,6 +66,8 @@ export default class TransactionReservationsManager implements IDisposable {
 
     public add(reservation: ITransactionReservation): void {
         this.track(reservation);
+
+        this.onAdded?.(reservation);
     }
 
     public subscribe(
@@ -132,7 +137,9 @@ export default class TransactionReservationsManager implements IDisposable {
     }
 
     private watch(reservation: ITransactionReservation): void {
-        if (!reservation.deployId) {
+        const { deployId } = reservation.transaction;
+
+        if (!deployId) {
             return;
         }
 
@@ -143,7 +150,7 @@ export default class TransactionReservationsManager implements IDisposable {
         );
 
         const handle: IDeployWatchHandle = poller.watch(
-            reservation.deployId,
+            deployId,
             {
                 onStatus: (status: IDeployStatusResult, deployId: string) =>
                     this.notify(reservation.id, (callbacks) =>
@@ -235,8 +242,6 @@ export default class TransactionReservationsManager implements IDisposable {
         error: Error,
     ): void {
         this.stopWatch(reservation.id);
-        this.clearExpiration(reservation.id);
-        this.reservations.delete(reservation.id);
 
         this.onFailed?.(reservation, error);
     }

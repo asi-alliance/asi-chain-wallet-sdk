@@ -8,7 +8,7 @@ import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
-import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
+import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
 

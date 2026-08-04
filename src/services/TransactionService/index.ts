@@ -11,7 +11,7 @@ import {
     INVALID_BLOCK_NUMBER,
     validateAddress,
 } from "@utils/index";
-import { createDeployTermFactory } from "@utils/fabrics/deployTermFactory";
+import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import SignerService, { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
 import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
@@ -65,8 +65,7 @@ export default class TransactionService {
     ) {
         this.deployService = deployService;
         this.blockService = blockService;
-        this.nodeApiProvider =
-            nodeApiProvider ?? NodeApiProvider.getInstance();
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
     }
 
     private get terms(): IDeployTermFactory {

@@ -1,7 +1,7 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { INetworkConfig } from "@domains/Network";
-import { createNodeApiAdapter } from "@utils/fabrics/nodeApiAdapter";
+import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 
 export default class NodeApiProvider {
     private static instance: NodeApiProvider;

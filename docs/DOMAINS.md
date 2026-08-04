@@ -122,6 +122,8 @@ setNetwork(networkId: NetworkId): void                     // switch active netw
 addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // custom network
 updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // custom only
 removeNetwork(id: NetworkId): Promise<void>                                    // custom only
+
+isNetworkBusy(networkId?: NetworkId): boolean              // defaults to the active network
 ```
 
 Built-in networks (those provided to `Client.create`) are marked
@@ -129,26 +131,90 @@ Built-in networks (those provided to `Client.create`) are marked
 them. Custom networks are addressed by a generated `id` (not by `name`, which is
 editable data) and are persisted so they survive a reload.
 
+A network with an operation in flight cannot be switched, updated, or removed:
+`setNetwork`, `updateNetwork`, and `removeNetwork` throw `NetworkBusyError`
+(status `409`) until it goes idle. `isNetworkBusy` and the `onNetworkBusyChanged`
+event let a UI disable those controls instead of catching the error. Removing a
+network also drops that network's reservations from memory and storage.
+
 Balances, reservations & transfers:
 
 ```ts
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
-transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
+getTransactionsHistory(walletId: string, accountId: string, options?: ITransactionsHistoryOptions): Promise<Transaction[]>
+transfer(request: ITransferRequest, password?: string): Promise<IReservedOperationResult>
 ```
 
 `password` is optional: when a session is active it is omitted; when it is
 supplied and the policy holds sessions, the transfer (re-)establishes the
 session before signing.
 
-Raw deploys (arbitrary Rholang, no reservation adapter):
+`getTransactionsHistory` is the only history entry point that knows about
+pending transactions: it merges the indexed history of the account with the
+pending transactions held by this wallet's reservation adapter for the current
+network, dedupes by deploy id (the indexed row wins once confirmed), and sorts
+newest first. The lower-level bricks stay unaware of reservations —
+`Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
+return indexed transactions only.
 
 ```ts
-deploy(request: IDeployRequest, password?: string): Promise<string> // returns deployId; same session rules as transfer
-exploreDeploy(rholang: string): Promise<unknown>                    // read-only, no unlock/password
-watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle     // poll deploy status
+type THistorySource = "pending" | "executed";
+
+interface ITransactionsHistoryOptions {
+    sources?: THistorySource[]; // defaults to ["pending", "executed"]
+    pagination?: Pagination;
+}
 ```
+
+`sources` narrows the merge to one side: `["pending"]` reads the reservation
+adapter only and never touches the indexer, `["executed"]` ignores pending rows.
+
+`pagination` covers the merged history, not the indexed part alone. Pending and
+executed rows are interleaved by `timestamp`, so the page cannot be split
+between the two sources; instead
+`TransactionsHistoryAggregator.createHistoryWindow` widens the indexer request
+by the number of pending rows, and `mergeHistoryPage` cuts the requested page
+out of the merged result. Without a reservation adapter, or with no pending rows
+for the current network, the pagination goes to the indexer untouched.
+
+### Pending → executed is eventually consistent
+
+The two sides of the merge come from different backends. A reservation is
+released when `DeployStatusPoller` sees the deploy confirmed **on the node**,
+while the executed side is served by the **indexer**, which ingests the block
+afterwards. There is no shared cursor between node status and indexer ingestion,
+so the client cannot detect or close that lag.
+
+For the width of that window the same transaction may therefore be:
+
+- in **neither** list — the reservation is already released, the indexed row has
+  not arrived yet;
+- in **both** lists — the indexer is ahead of the poller and the reservation is
+  still alive.
+
+`mergeHistoryPage` dedupes pending rows against the executed rows **of the same
+page** (a pending transaction id equals its deploy id), so a duplicate is
+invisible whenever both twins fall into one page. When they land on different
+pages the pending twin is not filtered out. Transient cross-page duplicates and
+the brief gap are accepted behaviour for now; the next reload after the indexer
+catches up settles the list.
+
+Deploys of arbitrary Rholang:
+
+```ts
+deploy(request: IDeployRequest, password?: string): Promise<IReservedOperationResult> // same session rules as transfer
+exploreDeploy(rholang: string): Promise<unknown>                 // read-only, no unlock/password
+watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle  // poll deploy status
+```
+
+`transfer` and `deploy` both go through the wallet's reservation adapter, so both
+lock funds (`phloLimit * phloPrice` for a deploy) and both return an
+`IReservedOperationResult` — the `deployId` plus a `subscribe` that attaches
+deploy-watch callbacks to that reservation. Both also run inside
+`ApiClientManager.runNetworkOperation`, which marks the network busy for the
+duration and reports it through `onNetworkBusyChanged`.
 
 Data export:
 
@@ -188,13 +254,23 @@ interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(
-        walletId: string,
-        reservations: ITransactionReservation[],
-    ): void;
+    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
+    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
     onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
 }
 ```
+
+`onReservationsChanged` carries every unlocked wallet's reservations at once
+(`TReservationsByWallet` — `Record<walletId, ITransactionReservation[]>`, current
+network only) and is wired by the `createReservationAdapter` fabric
+(`src/fabrics/client/reservationAdapter.ts`), which every `Client` path
+that builds an adapter (create, import, unlock) goes through: it forwards the
+`passwordProvider` needed for the data key and re-emits the reservations when one
+is added, confirmed, expired, or its watch fails. The `added` edge is what lets a
+history view reload as soon as a transfer or deploy reserves its funds, so
+`Client.transfer` and `Client.deploy` do not emit the event themselves.
+`Client` emits it directly only where no reservation changes hands: after
+`setNetwork` and `removeNetwork`.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -264,14 +340,15 @@ Signing / transfer:
 
 ```ts
 transfer(payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
+deploy(payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<string>
 ```
 
 Behavior notes:
 
 - `deriveAccount` is guarded by the `@OnlyHDWallet` decorator; calling it on a
   private-key wallet throws. It auto-computes the next free derivation index.
-- `transfer` is guarded by `@EnsureActiveAccountExist` and delegates to
-  `ApiServiceRegistry.transactions.transfer(...)`. `passwordProvider` is optional
+- `transfer` and `deploy` are guarded by `@EnsureActiveAccountExist` and delegate
+  to `ApiServiceRegistry.transactions`. `passwordProvider` is optional
   — when a session is active the signer uses the in-memory secret; otherwise the
   password is required or a `WalletLockedError` is thrown.
 
@@ -345,12 +422,17 @@ Associated types: `AssetId = string`, `Assets = Map<AssetId, Asset>`.
 Abstract signing boundary. Stores the `EncryptedData` secret and produces
 signatures without leaking key bytes to callers. Concrete implementations are
 `HDSigner` and `PrivateKeySigner`. It also owns the optional in-memory **signing
-session**.
+session** and the **data key** — the second encrypted secret, used for non-secret
+user data at rest (currently transaction reservations).
 
 ```ts
 abstract class Signer {
     getId(): string;
     getEncryptedSecret(): EncryptedData;
+    getEncryptedDataKey(): EncryptedData;
+
+    // data key
+    resolveDataKey(passwordProvider?: SecretsProvider): Promise<string>;
 
     // session
     isUnlocked(): boolean;
@@ -382,19 +464,34 @@ interface ISignerRecord {
     id: string;
     type: WalletTypes;
     encryptedData: EncryptedData;
+    encryptedDataKey: EncryptedData;
 }
 ```
 
 Session lifecycle:
 
-- `unlock` decrypts the secret once and stores it together with an `AutoTimer`.
-  The timer is started immediately and is **fixed-duration** — it is never
-  restarted on activity, so the session ends `autoLockMs` after unlock.
+- `unlock` decrypts the secret **and** the data key once and stores both together
+  with an `AutoTimer`. The timer is started immediately and is **fixed-duration**
+  — it is never restarted on activity, so the session ends `autoLockMs` after
+  unlock.
 - The protected `resolveSecret(signingContext)` returns the in-memory secret when
   a session is active; otherwise it decrypts using `signingContext.passwordProvider`,
   and throws `WalletLockedError` when no password is available (locked/expired).
 - `lock` clears the timer, zeroizes the private-key bytes when present, and drops
-  the session. It is idempotent.
+  the session (including the resolved data key). It is idempotent.
+
+Data key:
+
+- Generated by the signer fabric (`CryptoService.generateDataKeySecret`) at wallet
+  creation and stored as `encryptedDataKey`, encrypted with the wallet password —
+  so it is never derivable without the password.
+- `resolveDataKey` mirrors `resolveSecret`: an active session returns the key it
+  already holds, otherwise the optional `passwordProvider` decrypts it, and a
+  missing provider fails closed with `WalletLockedError`.
+- It never signs anything, which is the point of the separation: code that
+  persists user data (today only `ReservationAdapter`) gets a key it can encrypt
+  and decrypt with, while the signing secret stays behind the `Signer` boundary
+  and is never handed out.
 
 Both implementations derive the private key (HD derives at
 `signingContext.index` from the stored root path), sign with `@noble/secp256k1`,
@@ -430,6 +527,7 @@ an HTTP-style `status` instead of matching message strings.
 ```ts
 enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
+    NETWORK_BUSY = "NETWORK_BUSY",
 }
 
 class CustomError extends Error {
@@ -440,12 +538,23 @@ class CustomError extends Error {
 class WalletLockedError extends CustomError {
     // code WALLET_LOCKED, status 403
 }
+
+class NetworkBusyError extends CustomError {
+    // code NETWORK_BUSY, status 409
+    readonly networkId: NetworkId;
+}
 ```
 
 `WalletLockedError` is thrown by the signing path when there is no active session
 and no password was supplied — i.e. the session is locked or expired. Its `403`
 status lets a frontend treat it like an expired auth token and re-prompt for the
 password, distinct from a transport/server error.
+
+`NetworkBusyError` is thrown when a network is switched, updated, or removed
+while it still has an operation in flight; it carries the offending `networkId`,
+and its `409` status marks it as a conflict the caller can retry once the network
+goes idle. See
+[NetworkBusyRegistry](#networkbusyregistry-srcdomainsnetworkbusyregistryindexts).
 
 ---
 
@@ -548,6 +657,16 @@ interface INetworkUpdate {
     config?: Partial<INetworkConfig>;
 }
 
+interface INetworkContext {
+    networkId: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig;
+    clients: IApiClients;
+    api: NodeApiAdapter;
+}
+
+type TNetworkBusyListener = (networkId: NetworkId, isBusy: boolean) => void;
+
 const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[]; // allowlist used by URL validation
 ```
 
@@ -565,6 +684,14 @@ map, so adding a fourth endpoint without updating the allowlist fails to compile
 decides which HTTP contract and which Rholang terms are used, and a silent
 default would send legacy-shaped requests to a new node. See
 [NodeApiProfile](#nodeapiprofile-srcdomainsnodeapiprofileindexts).
+
+`INetworkContext` is a self-contained bundle of one network's identity, config,
+transport clients, and node API adapter, built by
+`ApiClientManager.createNetworkContext(networkId?)`. It exists so long-lived
+consumers — most notably the `DeployStatusPoller` behind a reservation — keep
+polling the network the operation started on even after the user switches the
+active network. `TNetworkBusyListener` is the callback shape reported through
+`Client.onNetworkBusyChanged`.
 
 ---
 
@@ -633,6 +760,11 @@ addNetwork(name: NetworkName, config: INetworkConfig): INetworkRecord
 updateNetwork(id: NetworkId, update: INetworkUpdate): void  // re-switches clients if it's the active network
 removeNetwork(id: NetworkId): void                          // falls back to the first network if the active one is removed
 
+// busy state & per-network context
+isNetworkBusy(networkId: NetworkId): boolean
+runNetworkOperation<TResult>(operation: () => Promise<TResult>, onBusyChanged?: TNetworkBusyListener): Promise<TResult>
+createNetworkContext(networkId?: NetworkId): INetworkContext // defaults to the active network
+
 isReady(): boolean
 close(): void
 ```
@@ -643,10 +775,43 @@ Accessors are guarded by `@EnsureApiClientManagerInitialized` /
 Persistence of custom networks is orchestrated by `NetworkManager`, not here —
 this manager only holds the live registry.
 
+`runNetworkOperation` wraps one network-bound operation: it marks the current
+network busy in the `NetworkBusyRegistry`, reports the change through the
+optional listener, runs the operation, and releases the mark in a `finally` — so
+a rejected operation never leaves the network stuck. `Client.transfer` and
+`Client.deploy` are the two callers, which is why both report busy transitions
+through `onNetworkBusyChanged`. While a network is busy, `switchNetwork`
+(`@EnsureCurrentNetworkNotBusy`), `updateNetwork` and `removeNetwork`
+(`@EnsureTargetNetworkNotBusy`) throw `NetworkBusyError` instead of rebuilding
+clients under an in-flight deploy.
+
+`createNetworkContext` returns an `INetworkContext` pinned to one network id, so
+a consumer holding it is unaffected by later network switches. Reservations use
+it to watch each deploy on the network it was submitted to.
+
 Services no longer reach for the per-client getters; they go through
 `NodeApiAdapter`, which reads `getClients()` on every access. The three single
 client getters remain part of the public surface but have no callers inside the
 SDK or the playground.
+
+---
+
+## NetworkBusyRegistry (`src/domains/NetworkBusyRegistry/index.ts`)
+
+Counts the operations in flight per network id. Owned by `ApiClientManager`.
+
+```ts
+acquire(networkId: NetworkId): void
+release(networkId: NetworkId): void
+isBusy(networkId: NetworkId): boolean
+clear(): void
+```
+
+A counter rather than a boolean, so parallel transfers on the same network do not
+release each other's mark; the entry is dropped once it reaches zero. Nothing
+outside `ApiClientManager` mutates it — callers reach the state through
+`Client.isNetworkBusy(networkId?)`, the `onNetworkBusyChanged` event, or the
+`NetworkBusyError` raised by the busy guards.
 
 ---
 
@@ -738,7 +903,7 @@ client.
 
 Subclasses are not re-exported from the barrel, following `Signer/HD` and
 `Signer/PK`; instances come from `createNodeApiAdapter`
-(`src/utils/fabrics/nodeApiAdapter.ts`), whose `switch` has no `default` clause so
+(`src/fabrics/nodeApiAdapter.ts`), whose `switch` has no `default` clause so
 a new profile fails to compile until it is handled.
 
 Adding a profile costs one entry in the enum, one descriptor, one `case`, and one
@@ -771,6 +936,25 @@ The cache is keyed by profile, not by network, because adapters carry no
 per-network state: two networks on the same profile share one instance, at most
 one instance exists per profile, and the cache survives an
 `ApiClientManager.close()` / re-`initialize()` cycle without going stale.
+
+---
+
+## ApiWorker (`src/domains/ApiWorker/index.ts`)
+
+Abstract base for anything that must stay bound to one network for its whole
+lifetime instead of following the active one.
+
+```ts
+constructor(networkContext: INetworkContext)
+
+getApi(): NodeApiAdapter
+getNetworkId(): NetworkId
+getNodeApiProfile(): NodeApiProfile
+```
+
+`DeployStatusPoller` is the current implementation: a reservation created on one
+network keeps polling that network's node after the user switches away, because
+its poller holds the `INetworkContext` it was built with.
 
 ---
 
@@ -883,39 +1067,79 @@ interface ITransactionReservation
 }
 ```
 
-`ITransactionReservationPrivateData` holds `timestamp`, `accountId`,
-`pendingAmount`, `deployId`, and `expirationTime`. Reservations are non-secret
-(they reference a public deploy id and an internal account id) and are stored
-**as plaintext** `privateData` — they are no longer encrypted at rest.
+`ITransactionReservationPrivateData` holds `accountId`, `pendingAmount`
+(atomic units — the balance-lock semantics), `expirationTime`, and the full
+pending `transaction` (`status: "pending"`, `detectedBy: "manual"`, `amount` and
+`gasCost` in display units so they match indexed rows). The whole payload is
+stored **encrypted at rest** with the signer's data key, so reading it requires
+an active session or an explicit password.
+
+Storage needs a serializable payload, so what is actually written is
+`ISerializedTransactionReservationPrivateData`, whose `transaction` is a
+`TSerializedTransaction` — `Transaction` with `timestamp` as an ISO string
+instead of a `Date`. `TransactionReservationFabric.toPrivateData` produces it and
+`fromStorage` parses the timestamp back into a `Date`, so the in-memory
+`Transaction` contract stays unchanged and no consumer ever meets a string
+`timestamp`.
 
 ---
 
 ## ReservationAdapter (`src/domains/ReservationAdapter/index.ts`)
 
-Bridges a wallet to the persistent (plaintext) reservation store and the
-in-memory `TransactionReservationsManager`. Reservations represent funds
-temporarily locked by a pending transfer, so the _available_ balance excludes
-them plus their gas fee. No password is needed to build the adapter — it only
-reads/writes non-secret reservation records; the password is only required by the
-signing path inside `transfer`.
+Bridges a wallet to the encrypted reservation store and the in-memory
+`TransactionReservationsManager`. Reservations represent funds temporarily locked
+by a pending transfer or deploy, so the _available_ balance excludes them, and
+they double as the only local source of pending transactions.
 
 ```ts
-ReservationAdapter.create(wallet, reservationsManagerOptions?): Promise<ReservationAdapter>
+ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
 
-getBalance(account: Account): Promise<IBalanceData> // total minus reserved (amount + GasFee.MAX per reservation)
+getBalance(account: Account): Promise<IBalanceData> // total minus the current network's reservations
 getReservations(): ITransactionReservation[]
+getPendingTransactions(accountId?: string): Transaction[]
+removeNetworkReservations(networkId: NetworkId): Promise<void>
 validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
-transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
+transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
+deploy(wallet: Wallet, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 dispose(): void
 ```
 
-`create` loads this wallet's reservations for the current network id, dropping
-expired ones. Reserved amounts are keyed by `accountId`. `transfer` validates the
-balance, performs the on-chain transfer (forwarding the optional `passwordProvider`
-to the signer), persists a plaintext reservation (expiring after
-`RESERVATION_EXPIRATION_TIME`), and tracks it until confirmation or expiry.
-Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
+`pendingAmount` already carries the whole locked cost — `amount + GasFee.MAX` for
+a transfer, `phloLimit * phloPrice` for a deploy — so the reserved balance is a
+plain sum with nothing added on top of it.
+
+Both reading and writing reservations need the signer's data key, resolved
+through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
+otherwise the optional `passwordProvider` does. `create` loads every stored
+reservation of this wallet regardless of network, deleting the expired ones and
+the ones pointing at a network the client no longer knows (a record that fails to
+decrypt rejects the whole `create` call) and rebuilding the rest through
+`TransactionReservationFabric.fromStorage`.
+Reserved amounts are keyed by `accountId` and network id. `transfer` and `deploy`
+validate the balance, perform the on-chain operation (forwarding the optional
+`passwordProvider` to the signer), build the reservation through
+`TransactionReservationFabric.createTransfer` or `createDeploy`, persist it
+encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and track it until
+confirmation or expiry. Both return an `IReservedOperationResult`: the `deployId`
+plus a `subscribe` that attaches deploy-watch callbacks to that reservation's
+poller. Only confirmation and expiry delete the stored record — a failed deploy
+watch leaves the reservation to its expiration timer, so memory and storage never
+disagree. Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
 (a `DisposableItemManager`).
+
+One adapter holds the reservations of every network at once, so the reads narrow
+to the current network id: `getReservations`, `getPendingTransactions`, and the
+reserved amount behind `getBalance`. `removeNetworkReservations` drops the
+reservations of a removed network from memory and storage in one pass.
+`Client.getTransactionsHistory` narrows once more through
+`TransactionsHistoryAggregator`, which drops pending rows belonging to another
+network before merging or paginating them.
+
+Reservation shaping (`ITransactionReservation` from a fresh transfer or from a
+storage record plus its decrypted private data, and back into the serialized
+private data written to storage) lives in `TransactionReservationFabric`
+(`src/fabrics/transactionReservation.ts`), so the adapter never assembles the
+record shape inline.
 
 ---
 
@@ -954,7 +1178,7 @@ createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): 
 `rho:rchain:deployerId`.
 
 `createDeployTermFactory(profile)`
-(`src/utils/fabrics/deployTermFactory.ts`) selects between the two sets. It
+(`src/fabrics/deployTermFactory.ts`) selects between the two sets. It
 returns module-level constant tables of function references, so there is nothing
 to allocate or cache, and its `switch` has no `default` clause for the same
 exhaustiveness reason as the adapter fabric. `AssetsService` and
@@ -1021,7 +1245,7 @@ Guarded by `@EnsureDatabaseInitialized` / `@EnsureTableExists` decorators.
 `node-persist`-backed `ITableService` singleton (`getInstance(storageDir?)`) for
 non-browser environments. Default directory `DEFAULT_NODE_STORAGE_DIR`.
 
-### storageFabric (`src/fabrics/Storage/index.ts`)
+### storageFabric (`src/fabrics/storage.ts`)
 
 Returns the right backend for the current environment.
 
@@ -1036,13 +1260,14 @@ Each repository is a singleton over a named table, with `initialize()` /
 `ensureInitialized()` and typed CRUD.
 
 - **SignersStorageRepository** (`SIGNERS` table) — persists `ISignerStorageRecord`
-  (`{ id, type, encryptedData, createdAt }`).
+  (`{ id, type, encryptedData, encryptedDataKey, createdAt }`).
 - **AccountsStorageRepository** (`ACCOUNTS` table) — persists
   `IAccountStorageRecord` (`{ id, signerId, name, index, createdAt }`).
 - **TransactionReservationsStorageRepository** (`TRANSACTION_RESERVATIONS` table) —
   persists `ITransactionReservationsStorageRecord`
-  (`{ id, networkId, signerId, privateData, createdAt }`), where `privateData` is
-  the plaintext `ITransactionReservationPrivateData`.
+  (`{ id, networkId, signerId, encryptedData, createdAt }`), where `encryptedData`
+  is the JSON of `ISerializedTransactionReservationPrivateData` encrypted with the
+  signer's data key.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
   runtime-registered custom networks survive a reload. `config` is a full

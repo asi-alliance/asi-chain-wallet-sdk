@@ -6,10 +6,13 @@ import Wallet from "@domains/Wallet";
 import StorageManager from "@services/StorageManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import {
+    ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
     TReservationsByWallet,
 } from "@domains/Transaction";
 import { INetworkRecord, NetworkId } from "@domains/Network";
+import SecretsProvider from "@domains/SecretsProvider";
+import CryptoService, { EncryptedData } from "@services/Crypto";
 import {
     CUSTOM_NETWORK_CONFIG,
     NETWORKS_CONFIG,
@@ -36,6 +39,11 @@ interface IRestoredWallet {
     reservationEvents: TReservationsByWallet[];
 }
 
+interface IStoredSigner {
+    signerId: string;
+    dataKeySecret: string;
+}
+
 const createClient = async (
     reservationEvents: TReservationsByWallet[],
 ): Promise<Client> => {
@@ -55,7 +63,7 @@ const createClient = async (
     });
 };
 
-const createStoredSigner = async (): Promise<string> => {
+const createStoredSigner = async (): Promise<IStoredSigner> => {
     const client: Client = await createClient([]);
 
     const wallet: Wallet = await client.createPrivateKeyWallet(
@@ -65,9 +73,13 @@ const createStoredSigner = async (): Promise<string> => {
 
     const signerId: string = wallet.getSigner().getId();
 
+    const dataKeySecret: string = await wallet
+        .getSigner()
+        .resolveDataKey(new SecretsProvider(() => ({ password: PASSWORD })));
+
     client.close();
 
-    return signerId;
+    return { signerId, dataKeySecret };
 };
 
 const createCustomNetwork = async (): Promise<NetworkId> => {
@@ -94,22 +106,36 @@ const reloadAndUnlock = async (signerId: string): Promise<IRestoredWallet> => {
 };
 
 const saveReservationRecord = async (
-    signerId: string,
+    { signerId, dataKeySecret }: IStoredSigner,
     networkId: NetworkId,
     id: string,
     expirationTime: number = Date.now() + 5 * 60 * 1000,
 ): Promise<void> => {
+    const privateData: ISerializedTransactionReservationPrivateData = {
+        accountId: "account-id",
+        pendingAmount: "1000",
+        expirationTime,
+        transaction: {
+            id,
+            timestamp: new Date().toISOString(),
+            type: "send",
+            status: "pending",
+            from: "sender-address",
+            networkId,
+        },
+    };
+
+    const encryptedData: EncryptedData =
+        await CryptoService.encryptWithPassword(
+            JSON.stringify(privateData),
+            dataKeySecret,
+        );
+
     await StorageManager.saveTransactionReservation({
         id,
         networkId,
         signerId,
-        privateData: {
-            timestamp: new Date(),
-            accountId: "account-id",
-            pendingAmount: "1000",
-            deployId: "",
-            expirationTime,
-        },
+        encryptedData,
     });
 };
 
@@ -134,15 +160,15 @@ test.afterEach(async () => {
 test("reservations of every network are restored and read per active network", async () => {
     console.log("\n=== RESERVATIONS ARE RESTORED FOR EVERY NETWORK ===");
 
-    const signerId: string = await createStoredSigner();
+    const signer: IStoredSigner = await createStoredSigner();
 
-    console.log("    Signer id:", signerId);
+    console.log("    Signer id:", signer.signerId);
 
-    await saveReservationRecord(signerId, SCALA_NETWORK, "scala-1");
-    await saveReservationRecord(signerId, RUST_NETWORK, "rust-1");
-    await saveReservationRecord(signerId, RUST_NETWORK, "rust-2");
+    await saveReservationRecord(signer, SCALA_NETWORK, "scala-1");
+    await saveReservationRecord(signer, RUST_NETWORK, "rust-1");
+    await saveReservationRecord(signer, RUST_NETWORK, "rust-2");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signerId);
+    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
 
     const onScala: ITransactionReservation[] =
         await restored.client.getReservations(restored.walletId);
@@ -160,7 +186,7 @@ test("reservations of every network are restored and read per active network", a
 
     assert.deepEqual(toIds(onRust), ["rust-1", "rust-2"]);
 
-    const stored: string[] = await readStoredIds(signerId);
+    const stored: string[] = await readStoredIds(signer.signerId);
 
     console.log("    Stored records kept:", stored);
 
@@ -172,12 +198,12 @@ test("reservations of every network are restored and read per active network", a
 test("switching a network emits the reservations of the new network", async () => {
     console.log("\n=== SWITCH EMITS RESERVATIONS ===");
 
-    const signerId: string = await createStoredSigner();
+    const signer: IStoredSigner = await createStoredSigner();
 
-    await saveReservationRecord(signerId, SCALA_NETWORK, "scala-1");
-    await saveReservationRecord(signerId, RUST_NETWORK, "rust-1");
+    await saveReservationRecord(signer, SCALA_NETWORK, "scala-1");
+    await saveReservationRecord(signer, RUST_NETWORK, "rust-1");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signerId);
+    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
 
     restored.reservationEvents.length = 0;
 
@@ -201,22 +227,25 @@ test("switching a network emits the reservations of the new network", async () =
 test("restore sweeps expired records and records of unknown networks", async () => {
     console.log("\n=== RESTORE SWEEPS STALE RECORDS ===");
 
-    const signerId: string = await createStoredSigner();
+    const signer: IStoredSigner = await createStoredSigner();
 
-    await saveReservationRecord(signerId, SCALA_NETWORK, "alive");
-    await saveReservationRecord(signerId, GHOST_NETWORK, "ghost");
+    await saveReservationRecord(signer, SCALA_NETWORK, "alive");
+    await saveReservationRecord(signer, GHOST_NETWORK, "ghost");
     await saveReservationRecord(
-        signerId,
+        signer,
         SCALA_NETWORK,
         "expired",
         Date.now() - 1000,
     );
 
-    console.log("    Stored before restore:", await readStoredIds(signerId));
+    console.log(
+        "    Stored before restore:",
+        await readStoredIds(signer.signerId),
+    );
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signerId);
+    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
 
-    const storedAfterRestore: string[] = await readStoredIds(signerId);
+    const storedAfterRestore: string[] = await readStoredIds(signer.signerId);
 
     console.log("    Stored after restore:", storedAfterRestore);
 
@@ -235,23 +264,29 @@ test("restore sweeps expired records and records of unknown networks", async () 
 test("removing a network clears its reservations", async () => {
     console.log("\n=== REMOVING A NETWORK CLEARS ITS RESERVATIONS ===");
 
-    const signerId: string = await createStoredSigner();
+    const signer: IStoredSigner = await createStoredSigner();
     const customNetworkId: NetworkId = await createCustomNetwork();
 
     console.log("    Custom network id:", customNetworkId);
 
-    await saveReservationRecord(signerId, SCALA_NETWORK, "scala-1");
-    await saveReservationRecord(signerId, customNetworkId, "custom-1");
+    await saveReservationRecord(signer, SCALA_NETWORK, "scala-1");
+    await saveReservationRecord(signer, customNetworkId, "custom-1");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signerId);
+    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
 
-    console.log("    Stored before removal:", await readStoredIds(signerId));
+    console.log(
+        "    Stored before removal:",
+        await readStoredIds(signer.signerId),
+    );
 
-    assert.deepEqual(await readStoredIds(signerId), ["custom-1", "scala-1"]);
+    assert.deepEqual(await readStoredIds(signer.signerId), [
+        "custom-1",
+        "scala-1",
+    ]);
 
     await restored.client.removeNetwork(customNetworkId);
 
-    const storedAfterRemoval: string[] = await readStoredIds(signerId);
+    const storedAfterRemoval: string[] = await readStoredIds(signer.signerId);
 
     console.log("    Stored after removal:", storedAfterRemoval);
 
@@ -272,9 +307,9 @@ test("removing a network clears its reservations", async () => {
 test("an idle network is never reported as busy", async () => {
     console.log("\n=== IDLE NETWORK IS NOT BUSY ===");
 
-    const signerId: string = await createStoredSigner();
+    const signer: IStoredSigner = await createStoredSigner();
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signerId);
+    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
 
     console.log("    Active network busy:", restored.client.isNetworkBusy());
     console.log(

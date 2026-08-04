@@ -13,13 +13,15 @@ Date: 2026-03-19
 
 1. Private keys and mnemonic phrases.
 2. Password-derived encryption material.
-3. Signed deploy payloads before submission.
-4. Wallet metadata and vault contents stored in browser storage.
+3. Per-signer data keys, which encrypt non-signing user data at rest
+   (transaction reservations) and are themselves stored password-encrypted.
+4. Signed deploy payloads before submission.
+5. Wallet metadata and vault contents stored in browser storage.
 
 ## 3. Trust Boundaries
 
 1. Browser runtime and JavaScript context (untrusted by default).
-2. Local storage boundary (`localStorage`).
+2. Local persistence boundary (`IndexedDB` in the browser, `node-persist` in Node).
 3. Node/indexer HTTP endpoints.
 4. Integrator application code using this SDK.
 
@@ -55,6 +57,9 @@ Current controls:
 4. Bounded in-memory signing sessions: the decrypted secret is held only for a
    fixed, configurable auto-lock window and is zeroized on lock/expiry; the
    signing path fails closed (`WalletLockedError`) when locked.
+5. Key separation for stored user data: transaction reservations are encrypted
+   with a per-signer data key rather than the signing secret, so persistence code
+   never touches key material that can sign.
 
 Planned/required controls:
 
