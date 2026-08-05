@@ -4,7 +4,8 @@ import "./style.css";
 import { useSdkContext } from "../../sdk-react-kit";
 
 const NetworkSelector = (): ReactElement => {
-    const { networkRecords, currentNetwork, setNetwork } = useSdkContext();
+    const { networkRecords, currentNetwork, setNetwork, isCurrentNetworkBusy } =
+        useSdkContext();
 
     const handleNetworkChange = (networkId: NetworkId) => {
         try {
@@ -25,10 +26,16 @@ const NetworkSelector = (): ReactElement => {
                     return (
                         <button
                             key={id}
-                            className={`network-btn ${isActive ? "active" : ""}`}
+                            className={`network-btn ${isActive ? "active" : ""} ${
+                                isCurrentNetworkBusy ? "disabled" : ""
+                            }`}
                             onClick={() => handleNetworkChange(id)}
-                            disabled={isActive}
-                            title={`Switch to ${name} network`}
+                            disabled={isActive || isCurrentNetworkBusy}
+                            title={
+                                isCurrentNetworkBusy
+                                    ? `${currentNetwork?.name} has an operation in progress`
+                                    : `Switch to ${name} network`
+                            }
                         >
                             {name}
                         </button>

@@ -43,6 +43,7 @@ const useSdk = () => {
         useState<INetworkRecord | null>(null);
     const [reservationsByWallet, setReservationsByWallet] =
         useState<TReservationsByWallet>({});
+    const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
 
     const clientRef = useRef<Client | null>(null);
 
@@ -87,6 +88,15 @@ const useSdk = () => {
                 reservationsByWallet: TReservationsByWallet,
             ) => {
                 setReservationsByWallet(reservationsByWallet);
+            },
+            onNetworkBusyChanged: (networkId: NetworkId, isBusy: boolean) => {
+                setBusyNetworkIds((currentIds: NetworkId[]) => {
+                    const restIds: NetworkId[] = currentIds.filter(
+                        (id: NetworkId) => id !== networkId,
+                    );
+
+                    return isBusy ? [...restIds, networkId] : restIds;
+                });
             },
         }),
         [refresh],
@@ -366,6 +376,14 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const isNetworkBusy = useCallback(
+        (networkId: NetworkId): boolean => busyNetworkIds.includes(networkId),
+        [busyNetworkIds],
+    );
+
+    const isCurrentNetworkBusy: boolean =
+        currentNetwork !== null && busyNetworkIds.includes(currentNetwork.id);
+
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
@@ -416,6 +434,8 @@ const useSdk = () => {
         getAvailableBalance,
         getReservations,
         hasNetworkReservations,
+        isNetworkBusy,
+        isCurrentNetworkBusy,
         clearPersistence,
         toDisplayAmount,
         toAtomicAmount,
