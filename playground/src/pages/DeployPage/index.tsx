@@ -7,6 +7,11 @@ import {
     Wallet,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "../../sdk-react-kit/hooks/useRelevantResultGuard";
 import useSecureAction from "@hooks/useSecureAction";
 import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
@@ -41,6 +46,9 @@ const DeployPage = (): ReactElement => {
         getAvailableBalance,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
+    const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
 
     const [code, setCode] = useState<string>(EXAMPLE_CONTRACT);
     const [phloLimit, setPhloLimit] = useState<string>(DEFAULT_PHLO_LIMIT);
@@ -136,10 +144,20 @@ const DeployPage = (): ReactElement => {
             return;
         }
 
+        const isBalanceRelevant: TIsResultRelevant = startRequest();
+
         const balance = await getAvailableBalance(
             selectedWalletId,
             selectedAccountId,
         );
+
+        if (!isBalanceRelevant()) {
+            setError("Deploy aborted: network changed");
+            setIsLoading(false);
+
+            return;
+        }
+
         const minGasCost =
             (Number(phloLimit) * DEFAULT_PHLO_PRICE) / 1000000000;
         if (balance <= 0 || balance < minGasCost) {
@@ -199,14 +217,24 @@ const DeployPage = (): ReactElement => {
             return;
         }
 
+        const isResultRelevant: TIsResultRelevant = startRequest();
+
         setIsLoading(true);
         resetOutput();
 
         try {
-            await exploreDeploy(code);
+            const exploreResult: unknown = await exploreDeploy(code);
 
-            setResult(await exploreDeploy(code));
+            if (!isResultRelevant()) {
+                return;
+            }
+
+            setResult(exploreResult);
         } catch (exploreError) {
+            if (!isResultRelevant()) {
+                return;
+            }
+
             setError((exploreError as Error)?.message ?? "Explore failed");
         } finally {
             setIsLoading(false);

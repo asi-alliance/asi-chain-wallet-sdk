@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { NetworkId } from "asi-wallet-sdk";
 import type { UseSdkValue } from "./useSdk";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "./useRelevantResultGuard";
 
 export interface WalletBalance {
     total: bigint | null;
@@ -25,6 +31,11 @@ export const useWalletBalance = (
     address: string,
     options?: ILoadingBalanceOptions,
 ): UseWalletBalanceValue => {
+    const { getBalance, getAvailableBalance, getReservations, currentNetwork } =
+        sdk;
+
+    const networkId: NetworkId | undefined = currentNetwork?.id;
+
     const [balance, setBalance] = useState<WalletBalance>({
         total: null,
         available: null,
@@ -32,16 +43,21 @@ export const useWalletBalance = (
     });
     const [isFetching, setIsFetching] = useState<boolean>(false);
 
+    const startRequest: TStartRequest = useRelevantResultGuard(networkId);
+
     const reload = useCallback(async (): Promise<void> => {
+        const isResultRelevant: TIsResultRelevant = startRequest();
+
         setIsFetching(true);
 
         try {
-            const total = await sdk.getBalance(address);
-            const available = await sdk.getAvailableBalance(
-                walletId,
-                accountId,
-            );
-            const reservations = await sdk.getReservations(walletId);
+            const total = await getBalance(address);
+            const available = await getAvailableBalance(walletId, accountId);
+            const reservations = await getReservations(walletId);
+
+            if (!isResultRelevant()) {
+                return;
+            }
 
             setBalance({
                 total,
@@ -53,17 +69,27 @@ export const useWalletBalance = (
         } finally {
             setIsFetching(false);
         }
-    }, [sdk, walletId, accountId, address]);
+    }, [
+        startRequest,
+        getBalance,
+        getAvailableBalance,
+        getReservations,
+        walletId,
+        accountId,
+        address,
+    ]);
 
     useEffect(() => {
         void reload();
-    }, [reload]);
+    }, [reload, networkId]);
 
     useEffect(() => {
-        setInterval(() => {
-            reload();
+        const intervalId = setInterval(() => {
+            void reload();
         }, options?.reloadIntervalMs ?? DEFAULT_RELOAD_INTERVAL_MS);
-    }, [reload]);
+
+        return () => clearInterval(intervalId);
+    }, [reload, options?.reloadIntervalMs]);
 
     return useMemo(
         () => ({ balance, isFetching, reload }),

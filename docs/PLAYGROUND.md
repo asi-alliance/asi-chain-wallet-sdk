@@ -87,9 +87,34 @@ useSdkContext(): SdkContextValue
 Loads total balance, available balance, and reservation count for one account.
 
 ```ts
-useWalletBalance(sdk: UseSdkValue, walletId, accountId, address): UseWalletBalanceValue
+useWalletBalance(sdk: UseSdkValue, walletId, accountId, address, options?): UseWalletBalanceValue
 // { balance: { total, available, reservationCount }, isFetching, reload }
+// options: { reloadIntervalMs?: number }, default 30000
 ```
+
+The hook reloads on mount, on every `reloadIntervalMs` tick, and whenever the
+current network changes. It reads the SDK through the stable `getBalance`,
+`getAvailableBalance`, and `getReservations` callbacks instead of the whole
+`sdk` object, so a re-render of `Application` no longer restarts the polling.
+
+### useRelevantResultGuard (`hooks/useRelevantResultGuard.ts`)
+
+The SDK keeps no balances or history of its own: every read returns whatever the
+network answered at the moment of the call, so deciding that an in-flight answer
+became irrelevant is the caller's job.
+
+```ts
+useRelevantResultGuard(networkId?: NetworkId): TStartRequest
+// TStartRequest      = () => TIsResultRelevant
+// TIsResultRelevant  = () => boolean
+```
+
+`startRequest()` is called before the request and returns a check that stays
+`true` only while this request is the latest one from the same component and the
+current network is still the one the request was issued on. Callers await the
+read, then skip the state update when the check returns `false`. Used by
+`useWalletBalance`, `TxHistoryPage`, and `DeployPage` so that a response of the
+previous network is never rendered as the new network's data.
 
 ### helpers.ts
 

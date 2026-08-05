@@ -15,6 +15,11 @@ import {
     Transaction,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "../../sdk-react-kit/hooks/useRelevantResultGuard";
 import NetworkSelector from "@components/NetworkSelector";
 import TxList from "./TxList";
 import SelectFilter, {
@@ -100,12 +105,18 @@ const TxHistoryPage = (): ReactElement => {
         [unlockedWallets, selectedAccountId],
     );
 
+    const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+
     const load = useCallback(async (): Promise<void> => {
         if (!client || !selectedWallet || !selectedAccount) {
             setTransactions(null);
 
             return;
         }
+
+        const isResultRelevant: TIsResultRelevant = startRequest();
 
         setIsLoading(true);
 
@@ -123,14 +134,30 @@ const TxHistoryPage = (): ReactElement => {
                     },
                 );
 
+            if (!isResultRelevant()) {
+                return;
+            }
+
             setTransactions(loadedTransactions);
         } catch (error) {
             console.error(error);
+
+            if (!isResultRelevant()) {
+                return;
+            }
+
             setTransactions(null);
         } finally {
             setIsLoading(false);
         }
-    }, [client, selectedWallet, selectedAccount, historyMode, page]);
+    }, [
+        client,
+        selectedWallet,
+        selectedAccount,
+        historyMode,
+        page,
+        startRequest,
+    ]);
 
     const walletReservations = selectedWallet
         ? reservationsByWallet[selectedWallet.getId()]
