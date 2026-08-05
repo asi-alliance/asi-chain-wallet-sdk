@@ -52,6 +52,11 @@ import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { WalletTypes } from "@domains/Signer";
 import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
+import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
+import ClientEventBus, {
+    ClientEvent,
+    TClientEventListenerErrorHandler,
+} from "@services/ClientEventBus";
 import TransactionsHistoryAggregator, {
     ITransactionsHistoryWindow,
 } from "@services/TransactionsHistoryAggregator";
@@ -121,6 +126,7 @@ export interface ICreateClientOptions {
     defaultNetwork?: NetworkName;
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
+    onListenerError?: TClientEventListenerErrorHandler;
     flags?: ICreateClientFlags;
     security?: ISessionPolicy;
 }
@@ -129,6 +135,7 @@ interface IClientOptions {
     walletsMap?: Map<string, Wallet>;
     reservationAdaptersMap?: Map<string, ReservationAdapter>;
     eventDispatcher?: IClientEventDispatcher;
+    onListenerError?: TClientEventListenerErrorHandler;
     flags?: ICreateClientFlags;
     security?: ISessionPolicy;
 }
@@ -136,7 +143,7 @@ interface IClientOptions {
 export default class Client {
     private readonly walletManager: WalletManager;
     private readonly reservationAdapterManager: ReservationAdapterManager;
-    private readonly eventDispatcher?: IClientEventDispatcher;
+    private readonly eventBus: ClientEventBus;
     private readonly flags?: ICreateClientFlags;
     private readonly autoLockMs: number;
     private readonly requirePassword: RequirePassword;
@@ -145,6 +152,7 @@ export default class Client {
         walletsMap,
         reservationAdaptersMap,
         eventDispatcher,
+        onListenerError,
         flags,
         security,
     }: IClientOptions) {
@@ -152,11 +160,15 @@ export default class Client {
         this.reservationAdapterManager = new ReservationAdapterManager(
             reservationAdaptersMap,
         );
-        this.eventDispatcher = eventDispatcher;
+        this.eventBus = new ClientEventBus(onListenerError);
         this.flags = flags;
         this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
         this.requirePassword =
             security?.requirePassword ?? RequirePassword.ONCE_PER_SESSION;
+
+        if (eventDispatcher) {
+            registerEventDispatcher(this.eventBus, eventDispatcher);
+        }
     }
 
     public static async create({
@@ -164,6 +176,7 @@ export default class Client {
         defaultNetwork,
         storageOptions,
         eventDispatcher,
+        onListenerError,
         flags,
         security,
     }: ICreateClientOptions): Promise<Client> {
@@ -176,7 +189,12 @@ export default class Client {
             await InsensitiveCacheStorageManager.init();
         }
 
-        return new Client({ eventDispatcher, flags, security });
+        return new Client({
+            eventDispatcher,
+            onListenerError,
+            flags,
+            security,
+        });
     }
 
     private shouldHoldSession(): boolean {
@@ -193,6 +211,10 @@ export default class Client {
         return this.walletManager;
     }
 
+    public getEventBus(): ClientEventBus {
+        return this.eventBus;
+    }
+
     @EnsureWithInsensitiveCacheStorage
     public getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> {
         return InsensitiveCacheStorageManager.getAll();
@@ -205,7 +227,7 @@ export default class Client {
 
         await StorageManager.clear();
 
-        await this.emitWalletsChanged();
+        this.emitWalletsChanged();
     }
 
     public close(): void {
@@ -215,6 +237,8 @@ export default class Client {
 
         StorageManager.close();
         ApiClientManager.getInstance().close();
+
+        this.eventBus.clear();
     }
 
     public generateMnemonic(
@@ -243,10 +267,10 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider,
-            eventDispatcher: this.eventDispatcher,
+            eventBus: this.eventBus,
         });
 
-        await this.emitWalletsChanged();
+        this.emitWalletsChanged();
 
         if (this.flags?.withInsensitiveCacheStorage) {
             InsensitiveCacheStorageManager.save(
@@ -277,10 +301,10 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider: secretProvider,
-            eventDispatcher: this.eventDispatcher,
+            eventBus: this.eventBus,
         });
 
-        await this.emitWalletsChanged();
+        this.emitWalletsChanged();
 
         if (this.flags?.withInsensitiveCacheStorage) {
             InsensitiveCacheStorageManager.save(
@@ -304,7 +328,7 @@ export default class Client {
             );
         }
 
-        await this.emitWalletsChanged();
+        this.emitWalletsChanged();
 
         return removedWallet;
     }
@@ -316,7 +340,7 @@ export default class Client {
         await wallet.unlock(passwordProvider, {
             autoLockMs: this.autoLockMs,
             onAutoLock: () =>
-                this.eventDispatcher?.onWalletLocked?.(wallet.getId()),
+                this.eventBus.emit(ClientEvent.WALLET_LOCKED, wallet.getId()),
         });
     }
 
@@ -365,7 +389,7 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider,
-            eventDispatcher: this.eventDispatcher,
+            eventBus: this.eventBus,
         });
 
         return wallet;
@@ -376,7 +400,7 @@ export default class Client {
 
         wallet.lock();
 
-        this.eventDispatcher?.onWalletLocked?.(walletId);
+        this.eventBus.emit(ClientEvent.WALLET_LOCKED, walletId);
     }
 
     public isWalletUnlocked(walletId: string): boolean {
@@ -491,7 +515,8 @@ export default class Client {
 
         apiClientManager.switchNetwork(networkId);
 
-        this.eventDispatcher?.onNetworkChanged?.(
+        this.eventBus.emit(
+            ClientEvent.NETWORK_CHANGED,
             apiClientManager.getCurrentNetwork(),
         );
 
@@ -771,7 +796,8 @@ export default class Client {
     }
 
     private emitReservationsChanged(): void {
-        this.eventDispatcher?.onReservationsChanged?.(
+        this.eventBus.emit(
+            ClientEvent.RESERVATIONS_CHANGED,
             this.reservationAdapterManager.getReservationsByWallet(),
         );
     }
@@ -780,28 +806,27 @@ export default class Client {
         networkId: NetworkId,
         isBusy: boolean,
     ): void {
-        this.eventDispatcher?.onNetworkBusyChanged?.(networkId, isBusy);
+        this.eventBus.emit(ClientEvent.NETWORK_BUSY_CHANGED, networkId, isBusy);
     }
 
     private emitAccountsChanged(walletId: string): void {
-        if (!this.eventDispatcher?.onAccountsChanged) {
-            return;
-        }
-
         const wallet: Wallet | null = this.walletManager.get(walletId);
 
         if (!wallet) {
             return;
         }
 
-        this.eventDispatcher.onAccountsChanged(walletId, wallet.getAccounts());
+        this.eventBus.emit(
+            ClientEvent.ACCOUNTS_CHANGED,
+            walletId,
+            wallet.getAccounts(),
+        );
     }
 
-    private async emitWalletsChanged(): Promise<void> {
-        if (!this.eventDispatcher?.onWalletsChanged) {
-            return;
-        }
-
-        this.eventDispatcher.onWalletsChanged(this.walletManager.getAll());
+    private emitWalletsChanged(): void {
+        this.eventBus.emit(
+            ClientEvent.WALLETS_CHANGED,
+            this.walletManager.getAll(),
+        );
     }
 }
