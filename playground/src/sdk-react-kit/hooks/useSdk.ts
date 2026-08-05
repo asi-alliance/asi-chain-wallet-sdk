@@ -360,6 +360,12 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const hasNetworkReservations = useCallback(
+        (networkId?: NetworkId): boolean =>
+            requireClient().hasNetworkReservations(networkId),
+        [requireClient],
+    );
+
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
@@ -409,6 +415,7 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getReservations,
+        hasNetworkReservations,
         clearPersistence,
         toDisplayAmount,
         toAtomicAmount,

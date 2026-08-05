@@ -2,7 +2,16 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { INetworkModalPayload } from "@components/NetworkModal";
-import { INetworkRecord, NetworkId } from "asi-wallet-sdk";
+import {
+    INetworkRecord,
+    NetworkId,
+    isNetworkConfigChanged,
+} from "asi-wallet-sdk";
+
+const RESERVATIONS_DROP_WARNING: string =
+    "This network has pending reservations and they lose their tracking: " +
+    "the locked amount returns to the available balance and the pending rows " +
+    "disappear from history until the indexer reports them as executed.";
 
 type CreateNetworksPageHandlersParams = {
     sdk: UseSdkValue;
@@ -23,6 +32,11 @@ export const createNetworksPageHandlers = ({
     withLoader,
 }: CreateNetworksPageHandlersParams): NetworksPageHandlers => {
     const closeModal = () => setModalState({ type: null });
+
+    const buildReservationsDropWarning = (network: INetworkRecord): string =>
+        sdk.hasNetworkReservations(network.id)
+            ? `\n\n${RESERVATIONS_DROP_WARNING}`
+            : "";
 
     return {
         addNetwork: () =>
@@ -61,6 +75,25 @@ export const createNetworksPageHandlers = ({
                     initialConfig: network.config,
                     onSubmit: (payload: INetworkModalPayload) =>
                         withLoader(async () => {
+                            const isEndpointsChanged: boolean =
+                                isNetworkConfigChanged(
+                                    network.config,
+                                    payload.config,
+                                );
+
+                            const dropWarning: string = isEndpointsChanged
+                                ? buildReservationsDropWarning(network)
+                                : "";
+
+                            if (
+                                dropWarning &&
+                                !window.confirm(
+                                    `Change endpoints of "${network.name}"?${dropWarning}`,
+                                )
+                            ) {
+                                return;
+                            }
+
                             try {
                                 await sdk.updateNetwork(network.id, {
                                     name: payload.name,
@@ -81,7 +114,13 @@ export const createNetworksPageHandlers = ({
 
         removeNetwork: (network: INetworkRecord) =>
             withLoader(async () => {
-                if (!window.confirm(`Remove network "${network.name}"?`)) return;
+                const isRemovalConfirmed: boolean = window.confirm(
+                    `Remove network "${network.name}"?${buildReservationsDropWarning(network)}`,
+                );
+
+                if (!isRemovalConfirmed) {
+                    return;
+                }
 
                 try {
                     await sdk.removeNetwork(network.id);

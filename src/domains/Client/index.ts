@@ -37,7 +37,11 @@ import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import ExportService from "@services/ExportService";
-import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
+import {
+    fromAtomicAmount,
+    isNetworkConfigChanged,
+    toAtomicAmount,
+} from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
@@ -728,8 +732,30 @@ export default class Client {
         return NetworkManager.addNetwork(name, config);
     }
 
-    public updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void> {
-        return NetworkManager.updateNetwork(id, update);
+    public hasNetworkReservations(networkId?: NetworkId): boolean {
+        return this.reservationAdapterManager.hasNetworkReservations(
+            networkId ?? ApiClientManager.getInstance().getCurrentNetworkId(),
+        );
+    }
+
+    public async updateNetwork(
+        id: NetworkId,
+        update: INetworkUpdate,
+    ): Promise<void> {
+        const isConfigChanged: boolean = isNetworkConfigChanged(
+            ApiClientManager.getInstance().getNetwork(id).config,
+            update.config,
+        );
+
+        await NetworkManager.updateNetwork(id, update);
+
+        if (!isConfigChanged) {
+            return;
+        }
+
+        await this.reservationAdapterManager.removeNetworkReservations(id);
+
+        this.emitReservationsChanged();
     }
 
     public async removeNetwork(id: NetworkId): Promise<void> {

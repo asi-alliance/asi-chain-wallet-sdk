@@ -34,6 +34,12 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         return reservationsByWallet;
     }
 
+    public hasNetworkReservations(networkId: NetworkId): boolean {
+        return this.getAll().some((reservationAdapter: ReservationAdapter) =>
+            reservationAdapter.hasNetworkReservations(networkId),
+        );
+    }
+
     public async removeNetworkReservations(
         networkId: NetworkId,
     ): Promise<void> {

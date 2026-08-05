@@ -161,6 +161,10 @@ export default class ReservationAdapter {
         );
     }
 
+    public hasNetworkReservations(networkId: NetworkId): boolean {
+        return this.reservationsManager.getByNetworkId(networkId).length > 0;
+    }
+
     public async removeNetworkReservations(
         networkId: NetworkId,
     ): Promise<void> {

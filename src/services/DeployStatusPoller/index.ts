@@ -57,6 +57,10 @@ export default class DeployStatusPoller extends ApiWorker {
         };
 
         const succeed = (result: IDeployConfirmedResult): void => {
+            if (finished) {
+                return;
+            }
+
             stop();
 
             callbacks.onConfirmed?.(result);
@@ -65,6 +69,10 @@ export default class DeployStatusPoller extends ApiWorker {
         };
 
         const fail = (error: Error): void => {
+            if (finished) {
+                return;
+            }
+
             stop();
 
             callbacks.onError?.(error);
@@ -82,6 +90,10 @@ export default class DeployStatusPoller extends ApiWorker {
             try {
                 const status: IDeployStatusResult =
                     await this.getApi().getDeployStatus(deployId);
+
+                if (finished) {
+                    return;
+                }
 
                 callbacks.onStatus?.(status, deployId);
 
