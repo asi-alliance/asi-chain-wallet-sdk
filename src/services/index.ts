@@ -24,6 +24,8 @@ export * from "./WalletManager";
 export { default as WalletManager } from "./WalletManager";
 export * from "./KeyDerivation";
 export { default as KeyDerivation } from "./KeyDerivation";
+export * from "./KeyFingerprint";
+export { default as KeyFingerprintService } from "./KeyFingerprint";
 export * from "./KeysManager";
 export { default as KeysManager } from "./KeysManager";
 export * from "./Mnemonic";

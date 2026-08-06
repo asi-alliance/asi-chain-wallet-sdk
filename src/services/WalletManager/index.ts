@@ -4,6 +4,12 @@ import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
+import { ISignerStorageRecord } from "@domains/SignersStorageRepository";
+import { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
+import {
+    DuplicateAccountError,
+    DuplicateWalletError,
+} from "@domains/CustomError";
 
 export interface IAccountMetadata {
     id: string;
@@ -200,7 +206,34 @@ export default class WalletManager extends ItemManager<Wallet> {
         return (await StorageManager.getSigners()).length;
     }
 
+    private async assertWalletIsNotDuplicate(wallet: Wallet): Promise<void> {
+        const existingSigner: ISignerStorageRecord | null =
+            await StorageManager.findSignerByFingerprint(
+                wallet.getSigner().getFingerprint(),
+            );
+
+        if (existingSigner) {
+            throw new DuplicateWalletError(existingSigner.id);
+        }
+
+        for (const account of wallet.getAccounts()) {
+            const existingAccount: IAccountStorageRecord | null =
+                await StorageManager.findAccountByFingerprint(
+                    account.getFingerprint(),
+                );
+
+            if (existingAccount) {
+                throw new DuplicateAccountError(
+                    existingAccount.signerId,
+                    existingAccount.id,
+                );
+            }
+        }
+    }
+
     private async persist(wallet: Wallet): Promise<void> {
+        await this.assertWalletIsNotDuplicate(wallet);
+
         await StorageManager.saveWallet({
             signerId: wallet.getSigner().getId(),
             wallet,

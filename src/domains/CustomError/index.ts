@@ -3,6 +3,8 @@ import { NetworkId } from "@domains/Network";
 export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
+    DUPLICATE_WALLET = "DUPLICATE_WALLET",
+    DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
 }
 
 export class CustomError extends Error {
@@ -23,6 +25,35 @@ export class WalletLockedError extends CustomError {
         message: string = "Wallet signing session is locked or expired, re-authentication is required",
     ) {
         super(CustomErrorCode.WALLET_LOCKED, message, 403);
+    }
+}
+
+export class DuplicateWalletError extends CustomError {
+    public readonly existingSignerId: string;
+
+    constructor(
+        existingSignerId: string,
+        message: string = `This secret is already imported as the wallet ${existingSignerId}`,
+    ) {
+        super(CustomErrorCode.DUPLICATE_WALLET, message, 409);
+
+        this.existingSignerId = existingSignerId;
+    }
+}
+
+export class DuplicateAccountError extends CustomError {
+    public readonly existingSignerId: string;
+    public readonly existingAccountId: string;
+
+    constructor(
+        existingSignerId: string,
+        existingAccountId: string,
+        message: string = `This key already belongs to the account ${existingAccountId} of the wallet ${existingSignerId}`,
+    ) {
+        super(CustomErrorCode.DUPLICATE_ACCOUNT, message, 409);
+
+        this.existingSignerId = existingSignerId;
+        this.existingAccountId = existingAccountId;
     }
 }
 

@@ -17,6 +17,7 @@ export interface ISignerOptions {
     id: string;
     encryptedSecret: EncryptedData;
     encryptedDataKey: EncryptedData;
+    fingerprint: string;
 }
 
 export type TPKSigningContext = {
@@ -53,22 +54,34 @@ export interface ISignerRecord {
     type: WalletTypes;
     encryptedData: EncryptedData;
     encryptedDataKey: EncryptedData;
+    fingerprint: string;
 }
 
 export default abstract class Signer {
     protected readonly id: string;
     protected encryptedSecret: EncryptedData;
     protected encryptedDataKey: EncryptedData;
+    private readonly fingerprint: string;
     private session: ISignerSession | null = null;
 
-    constructor({ id, encryptedSecret, encryptedDataKey }: ISignerOptions) {
+    constructor({
+        id,
+        encryptedSecret,
+        encryptedDataKey,
+        fingerprint,
+    }: ISignerOptions) {
         this.id = id;
         this.encryptedSecret = encryptedSecret;
         this.encryptedDataKey = encryptedDataKey;
+        this.fingerprint = fingerprint;
     }
 
     public getId(): string {
         return this.id;
+    }
+
+    public getFingerprint(): string {
+        return this.fingerprint;
     }
 
     public getEncryptedSecret(): EncryptedData {

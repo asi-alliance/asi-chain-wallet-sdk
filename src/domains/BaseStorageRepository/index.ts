@@ -79,6 +79,16 @@ export abstract class BaseStorageRepository<T extends ITableRecord> {
         return this.storageInterface.getAll(this.tableName) as Promise<T[]>;
     }
 
+    protected async getByFilter(
+        predicate: (record: T) => boolean,
+    ): Promise<T[]> {
+        await this.ensureInitialized();
+
+        const records: T[] = await this.getAllRecords();
+
+        return records.filter(predicate);
+    }
+
     protected async updateRecord(
         id: string,
         updates: Partial<T>,
