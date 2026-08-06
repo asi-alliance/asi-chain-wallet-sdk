@@ -23,6 +23,7 @@ import {
     TDeployDetails,
 } from "@services/TransactionService";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 
 type AddressBrand = { readonly __brand: unique symbol };
@@ -299,13 +300,15 @@ export default class Wallet {
         payload: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        return ApiServiceRegistry.getInstance().transactions.transfer({
-            walletType: this.type,
-            account: this.getActiveAccount()!,
-            signer: this.signer,
-            details: payload,
-            passwordProvider,
-        });
+        return ApiClientManager.getInstance().runNetworkOperation(() =>
+            ApiServiceRegistry.getInstance().transactions.transfer({
+                walletType: this.type,
+                account: this.getActiveAccount()!,
+                signer: this.signer,
+                details: payload,
+                passwordProvider,
+            }),
+        );
     }
 
     @EnsureActiveAccountExist
@@ -313,12 +316,14 @@ export default class Wallet {
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        return ApiServiceRegistry.getInstance().transactions.deploy({
-            walletType: this.type,
-            account: this.getActiveAccount()!,
-            signer: this.signer,
-            ...payload,
-            passwordProvider,
-        });
+        return ApiClientManager.getInstance().runNetworkOperation(() =>
+            ApiServiceRegistry.getInstance().transactions.deploy({
+                walletType: this.type,
+                account: this.getActiveAccount()!,
+                signer: this.signer,
+                ...payload,
+                passwordProvider,
+            }),
+        );
     }
 }
