@@ -2,6 +2,7 @@ import Account from "@domains/Account";
 import { INetworkRecord, NetworkId } from "@domains/Network";
 import { TReservationsByWallet } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
+import { runProtected } from "@utils/functions";
 
 export enum ClientEvent {
     WALLETS_CHANGED = "walletsChanged",
@@ -27,14 +28,14 @@ export type TClientEventName = keyof IClientEventMap;
 
 export type TClientEventListener<TName extends TClientEventName> = (
     ...payload: IClientEventMap[TName]
-) => void;
+) => void | Promise<void>;
 
 export type TUnsubscribe = () => void;
 
 export type TClientEventListenerErrorHandler = (
     name: TClientEventName,
     error: unknown,
-) => void;
+) => void | Promise<void>;
 
 export default class ClientEventBus {
     private readonly listeners: Map<TClientEventName, Set<unknown>> = new Map();
@@ -64,16 +65,27 @@ export default class ClientEventBus {
         this.listeners.get(name)?.delete(listener);
     }
 
+    private reportListenerError(name: TClientEventName, error: unknown): void {
+        runProtected(
+            () => this.onListenerError?.(name, error),
+            (handlerError: unknown) => {
+                console.error(
+                    `ClientEventBus: error handler failed for "${name}"`,
+                    handlerError,
+                );
+            },
+        );
+    }
+
     private notify<TName extends TClientEventName>(
         name: TName,
         listener: TClientEventListener<TName>,
         payload: IClientEventMap[TName],
     ): void {
-        try {
-            listener(...payload);
-        } catch (error: unknown) {
-            this.onListenerError?.(name, error);
-        }
+        runProtected(
+            () => listener(...payload),
+            (error: unknown) => this.reportListenerError(name, error),
+        );
     }
 
     public emit<TName extends TClientEventName>(

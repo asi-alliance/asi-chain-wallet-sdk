@@ -104,12 +104,20 @@ export interface ITransactionsHistoryOptions {
 const DEFAULT_HISTORY_SOURCES: THistorySource[] = ["pending", "executed"];
 
 export interface IClientEventDispatcher {
-    onWalletsChanged?(wallets: Wallet[]): void;
-    onAccountsChanged?(walletId: string, accounts: Account[]): void;
-    onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
-    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
-    onWalletLocked?(walletId: string): void;
+    onWalletsChanged?(wallets: Wallet[]): void | Promise<void>;
+    onAccountsChanged?(
+        walletId: string,
+        accounts: Account[],
+    ): void | Promise<void>;
+    onNetworkChanged?(network: INetworkRecord): void | Promise<void>;
+    onReservationsChanged?(
+        reservationsByWallet: TReservationsByWallet,
+    ): void | Promise<void>;
+    onNetworkBusyChanged?(
+        networkId: NetworkId,
+        isBusy: boolean,
+    ): void | Promise<void>;
+    onWalletLocked?(walletId: string): void | Promise<void>;
 }
 
 export interface ISessionPolicy {
