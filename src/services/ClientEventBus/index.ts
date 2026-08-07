@@ -37,12 +37,42 @@ export type TClientEventListenerErrorHandler = (
     error: unknown,
 ) => void | Promise<void>;
 
-export default class ClientEventBus {
+export interface IClientEventSource {
+    on<TName extends TClientEventName>(
+        name: TName,
+        listener: TClientEventListener<TName>,
+    ): TUnsubscribe;
+    off<TName extends TClientEventName>(
+        name: TName,
+        listener: TClientEventListener<TName>,
+    ): void;
+}
+
+export default class ClientEventBus implements IClientEventSource {
     private readonly listeners: Map<TClientEventName, Set<unknown>> = new Map();
     private readonly onListenerError?: TClientEventListenerErrorHandler;
+    private readonly source: IClientEventSource;
 
     constructor(onListenerError?: TClientEventListenerErrorHandler) {
         this.onListenerError = onListenerError;
+        this.source = this.createSource();
+    }
+
+    private createSource(): IClientEventSource {
+        return Object.freeze({
+            on: <TName extends TClientEventName>(
+                name: TName,
+                listener: TClientEventListener<TName>,
+            ): TUnsubscribe => this.on(name, listener),
+            off: <TName extends TClientEventName>(
+                name: TName,
+                listener: TClientEventListener<TName>,
+            ): void => this.off(name, listener),
+        });
+    }
+
+    public getSource(): IClientEventSource {
+        return this.source;
     }
 
     public on<TName extends TClientEventName>(

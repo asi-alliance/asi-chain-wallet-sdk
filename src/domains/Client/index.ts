@@ -55,6 +55,7 @@ import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
+    IClientEventSource,
     TClientEventListenerErrorHandler,
 } from "@services/ClientEventBus";
 import TransactionsHistoryAggregator, {
@@ -219,8 +220,8 @@ export default class Client {
         return this.walletManager;
     }
 
-    public getEventBus(): ClientEventBus {
-        return this.eventBus;
+    public getEventBus(): IClientEventSource {
+        return this.eventBus.getSource();
     }
 
     @EnsureWithInsensitiveCacheStorage

@@ -1,13 +1,14 @@
 import { IClientEventDispatcher } from "@domains/Client";
-import ClientEventBus, {
+import {
     ClientEvent,
+    IClientEventSource,
     TClientEventListener,
     TClientEventName,
     TUnsubscribe,
 } from "@services/ClientEventBus";
 
 export const registerEventDispatcher = (
-    eventBus: ClientEventBus,
+    eventBus: IClientEventSource,
     eventDispatcher: IClientEventDispatcher,
 ): TUnsubscribe => {
     const unsubscribes: TUnsubscribe[] = [];
