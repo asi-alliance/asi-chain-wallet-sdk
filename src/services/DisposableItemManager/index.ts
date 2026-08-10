@@ -19,6 +19,16 @@ export default class DisposableItemManager<
         return super.remove(id);
     }
 
+    public removeByFilter(filter: (item: T) => boolean): T[] {
+        const removedItems: T[] = super.removeByFilter(filter);
+
+        for (const item of removedItems) {
+            item.dispose();
+        }
+
+        return removedItems;
+    }
+
     public clear(): void {
         for (const item of this.getAll()) {
             item.dispose();

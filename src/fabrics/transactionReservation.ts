@@ -14,24 +14,45 @@ import {
     Transaction,
 } from "@domains/Transaction";
 
-export interface ICreateTransactionReservationPayload {
+interface IReservationPayload {
     deployId: string;
     networkId: NetworkId;
     account: Account;
+    pendingAmount: bigint;
+}
+
+export interface ICreateTransferReservationPayload extends IReservationPayload {
     details: {
         to: Address;
         amount: bigint;
     };
 }
 
+export interface ICreateDeployReservationPayload extends IReservationPayload {
+    term: string;
+}
+
 export default class TransactionReservationFabric {
-    public static create({
-        deployId,
-        networkId,
-        account,
-        details,
-    }: ICreateTransactionReservationPayload): ITransactionReservation {
-        const transaction: Transaction = {
+    private static build(
+        { networkId, account, pendingAmount }: IReservationPayload,
+        transaction: Transaction,
+    ): ITransactionReservation {
+        return {
+            id: generateRandomId(),
+            networkId,
+            accountId: account.getId(),
+            pendingAmount: pendingAmount.toString(),
+            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
+            transaction,
+        };
+    }
+
+    public static createTransfer(
+        payload: ICreateTransferReservationPayload,
+    ): ITransactionReservation {
+        const { deployId, networkId, account, details } = payload;
+
+        return TransactionReservationFabric.build(payload, {
             id: deployId,
             deployId,
             timestamp: new Date(),
@@ -46,16 +67,29 @@ export default class TransactionReservationFabric {
             gasCost: fromAtomicAmount(GasFee.MAX, NATIVE_TOKEN_DECIMALS_AMOUNT),
             networkId,
             detectedBy: "manual",
-        };
+        });
+    }
 
-        return {
-            id: generateRandomId(),
+    public static createDeploy(
+        payload: ICreateDeployReservationPayload,
+    ): ITransactionReservation {
+        const { deployId, networkId, account, pendingAmount, term } = payload;
+
+        return TransactionReservationFabric.build(payload, {
+            id: deployId,
+            deployId,
+            timestamp: new Date(),
+            type: "deploy",
+            status: "pending",
+            from: account.getAddress(),
+            contractCode: term,
+            gasCost: fromAtomicAmount(
+                pendingAmount,
+                NATIVE_TOKEN_DECIMALS_AMOUNT,
+            ),
             networkId,
-            accountId: account.getId(),
-            pendingAmount: details.amount.toString(),
-            expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-            transaction,
-        };
+            detectedBy: "manual",
+        });
     }
 
     public static toPrivateData({

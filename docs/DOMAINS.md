@@ -9,6 +9,24 @@ through the singletons `ApiClientManager` (transport) and `ApiServiceRegistry`
 is never exposed directly — it flows through `SecretsProvider` closures and the
 `Signer` boundary.
 
+Node access is layered, because two f1r3node implementations (legacy Scala, new
+Rust) expose different HTTP contracts:
+
+```
+ApiServiceRegistry → services
+        ↓
+NodeApiProvider → NodeApiAdapter (Scala | Rust)   per-profile request shaping
+        ↓
+ApiClientManager ── NetworkConfigProvider          client ownership + network registry
+        ↓
+ValidatorClient · ObserverClient · IndexerClient
+        ↓
+BaseHttpClient · BaseGraphQLClient
+```
+
+The active network's `nodeApiProfile` picks the adapter. Nothing above the adapter
+knows which node implementation it is talking to.
+
 Everything is re-exported from the package root (`@config`, `@domains`,
 `@services`, `@utils`).
 
@@ -104,12 +122,20 @@ setNetwork(networkId: NetworkId): void                     // switch active netw
 addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // custom network
 updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // custom only
 removeNetwork(id: NetworkId): Promise<void>                                    // custom only
+
+isNetworkBusy(networkId?: NetworkId): boolean              // defaults to the active network
 ```
 
 Built-in networks (those provided to `Client.create`) are marked
 `isDefault: true` and are immutable: `updateNetwork` / `removeNetwork` reject
 them. Custom networks are addressed by a generated `id` (not by `name`, which is
 editable data) and are persisted so they survive a reload.
+
+A network with an operation in flight cannot be switched, updated, or removed:
+`setNetwork`, `updateNetwork`, and `removeNetwork` throw `NetworkBusyError`
+(status `409`) until it goes idle. `isNetworkBusy` and the `onNetworkBusyChanged`
+event let a UI disable those controls instead of catching the error. Removing a
+network also drops that network's reservations from memory and storage.
 
 Balances, reservations & transfers:
 
@@ -118,7 +144,7 @@ getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
 getTransactionsHistory(walletId: string, accountId: string, options?: ITransactionsHistoryOptions): Promise<Transaction[]>
-transfer(request: ITransferRequest, password?: string): Promise<string> // returns deployId
+transfer(request: ITransferRequest, password?: string): Promise<IReservedOperationResult>
 ```
 
 `password` is optional: when a session is active it is omitted; when it is
@@ -175,13 +201,20 @@ pages the pending twin is not filtered out. Transient cross-page duplicates and
 the brief gap are accepted behaviour for now; the next reload after the indexer
 catches up settles the list.
 
-Raw deploys (arbitrary Rholang, no reservation adapter):
+Deploys of arbitrary Rholang:
 
 ```ts
-deploy(request: IDeployRequest, password?: string): Promise<string> // returns deployId; same session rules as transfer
-exploreDeploy(rholang: string): Promise<unknown>                    // read-only, no unlock/password
-watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle     // poll deploy status
+deploy(request: IDeployRequest, password?: string): Promise<IReservedOperationResult> // same session rules as transfer
+exploreDeploy(rholang: string): Promise<unknown>                 // read-only, no unlock/password
+watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle  // poll deploy status
 ```
+
+`transfer` and `deploy` both go through the wallet's reservation adapter, so both
+lock funds (`phloLimit * phloPrice` for a deploy) and both return an
+`IReservedOperationResult` — the `deployId` plus a `subscribe` that attaches
+deploy-watch callbacks to that reservation. Both also run inside
+`ApiClientManager.runNetworkOperation`, which marks the network busy for the
+duration and reports it through `onNetworkBusyChanged`.
 
 Data export:
 
@@ -221,22 +254,23 @@ interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(
-        walletId: string,
-        reservations: ITransactionReservation[],
-    ): void;
+    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
+    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
     onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
 }
 ```
 
-`onReservationsChanged` is wired by the `createReservationAdapter` fabric
+`onReservationsChanged` carries every unlocked wallet's reservations at once
+(`TReservationsByWallet` — `Record<walletId, ITransactionReservation[]>`, current
+network only) and is wired by the `createReservationAdapter` fabric
 (`src/fabrics/client/reservationAdapter.ts`), which every `Client` path
 that builds an adapter (create, import, unlock) goes through: it forwards the
-`passwordProvider` needed for the data key and re-emits the wallet's
-reservations when one is added, confirmed, expired, or its watch fails. The
-`added` edge is what lets a history view reload as soon as a transfer reserves
-its funds; `Client.transfer` also emits the event directly once the adapter
-returns.
+`passwordProvider` needed for the data key and re-emits the reservations when one
+is added, confirmed, expired, or its watch fails. The `added` edge is what lets a
+history view reload as soon as a transfer or deploy reserves its funds, so
+`Client.transfer` and `Client.deploy` do not emit the event themselves.
+`Client` emits it directly only where no reservation changes hands: after
+`setNetwork` and `removeNetwork`.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -306,14 +340,15 @@ Signing / transfer:
 
 ```ts
 transfer(payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
+deploy(payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<string>
 ```
 
 Behavior notes:
 
 - `deriveAccount` is guarded by the `@OnlyHDWallet` decorator; calling it on a
   private-key wallet throws. It auto-computes the next free derivation index.
-- `transfer` is guarded by `@EnsureActiveAccountExist` and delegates to
-  `ApiServiceRegistry.transactions.transfer(...)`. `passwordProvider` is optional
+- `transfer` and `deploy` are guarded by `@EnsureActiveAccountExist` and delegate
+  to `ApiServiceRegistry.transactions`. `passwordProvider` is optional
   — when a session is active the signer uses the in-memory secret; otherwise the
   password is required or a `WalletLockedError` is thrown.
 
@@ -492,6 +527,7 @@ an HTTP-style `status` instead of matching message strings.
 ```ts
 enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
+    NETWORK_BUSY = "NETWORK_BUSY",
 }
 
 class CustomError extends Error {
@@ -502,12 +538,23 @@ class CustomError extends Error {
 class WalletLockedError extends CustomError {
     // code WALLET_LOCKED, status 403
 }
+
+class NetworkBusyError extends CustomError {
+    // code NETWORK_BUSY, status 409
+    readonly networkId: NetworkId;
+}
 ```
 
 `WalletLockedError` is thrown by the signing path when there is no active session
 and no password was supplied — i.e. the session is locked or expired. Its `403`
 status lets a frontend treat it like an expired auth token and re-prompt for the
 password, distinct from a transport/server error.
+
+`NetworkBusyError` is thrown when a network is switched, updated, or removed
+while it still has an operation in flight; it carries the offending `networkId`,
+and its `409` status marks it as a conflict the caller can retry once the network
+goes idle. See
+[NetworkBusyRegistry](#networkbusyregistry-srcdomainsnetworkbusyregistryindexts).
 
 ---
 
@@ -580,10 +627,14 @@ key, the `name` is editable display data.
 type NetworkId = string;
 type NetworkName = string;
 
-interface INetworkConfig {
+interface INetworkEndpoints {
     ValidatorURL: string;
     ReadOnlyURL: string;
     IndexerURL: string;
+}
+
+interface INetworkConfig extends INetworkEndpoints {
+    nodeApiProfile: NodeApiProfile; // required: which node implementation this network runs
 }
 
 type TNetworksConfig = Record<NetworkName, INetworkConfig>; // built-in config keyed by name
@@ -595,15 +646,52 @@ interface INetworkRecord {
     isDefault: boolean; // true = built-in (immutable); false = custom (editable/removable)
 }
 
+interface IPersistedNetworkRecord {
+    id: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig; // storage rows carry no isDefault flag
+}
+
 interface INetworkUpdate {
     name?: NetworkName;
     config?: Partial<INetworkConfig>;
 }
+
+interface INetworkContext {
+    networkId: NetworkId;
+    name: NetworkName;
+    config: INetworkConfig;
+    clients: IApiClients;
+    api: NodeApiAdapter;
+}
+
+type TNetworkBusyListener = (networkId: NetworkId, isBusy: boolean) => void;
+
+const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[]; // allowlist used by URL validation
 ```
 
 Built-in networks come from the `TNetworksConfig` passed to `Client.create`
 (their `id` equals their `name`). Custom networks get a generated `id` and are
 persisted via `CustomNetworksStorageRepository`.
+
+`INetworkEndpoints` exists so URL validation iterates a type-derived allowlist
+(`NETWORK_URL_FIELDS`) instead of every config key — without it, adding the
+non-URL `nodeApiProfile` field would make validation reject it as an invalid URL.
+`NETWORK_URL_FIELDS` is derived from a `Record<keyof INetworkEndpoints, true>`
+map, so adding a fourth endpoint without updating the allowlist fails to compile.
+
+`nodeApiProfile` is required on every network, built-in and custom alike: it
+decides which HTTP contract and which Rholang terms are used, and a silent
+default would send legacy-shaped requests to a new node. See
+[NodeApiProfile](#nodeapiprofile-srcdomainsnodeapiprofileindexts).
+
+`INetworkContext` is a self-contained bundle of one network's identity, config,
+transport clients, and node API adapter, built by
+`ApiClientManager.createNetworkContext(networkId?)`. It exists so long-lived
+consumers — most notably the `DeployStatusPoller` behind a reservation — keep
+polling the network the operation started on even after the user switches the
+active network. `TNetworkBusyListener` is the callback shape reported through
+`Client.onNetworkBusyChanged`.
 
 ---
 
@@ -611,11 +699,11 @@ persisted via `CustomNetworksStorageRepository`.
 
 The in-memory network registry behind `ApiClientManager`. Holds every network as
 an `INetworkRecord` keyed by `id`, distinguishes built-in (`isDefault`) from
-custom entries, and validates endpoint URLs on write.
+custom entries, and validates endpoint URLs and the node API profile on write.
 
 ```ts
 initialize(config: TNetworksConfig): void          // seed built-ins (isDefault: true)
-restoreCustomNetworks(records: INetworkRecord[]): void // re-add persisted custom entries
+restoreCustomNetworks(records: IPersistedNetworkRecord[]): void // re-add persisted custom entries
 
 getAll(): INetworkRecord[]
 get(id: NetworkId): INetworkRecord                  // @EnsureNetworkExist
@@ -627,8 +715,20 @@ remove(id: NetworkId): INetworkRecord                          // @EnsureNetwork
 isReady(): boolean
 ```
 
-`add`/`update` validate URLs with `validateUrl` (must be non-empty http/https for
-custom networks; built-in seed config may contain empty placeholder URLs).
+`initialize`/`add` validate URLs with `validateUrl` over `NETWORK_URL_FIELDS`
+(must be non-empty http/https for custom networks; built-in seed config may
+contain empty placeholder URLs) and the profile with `validateNodeApiProfile`,
+throwing `Invalid nodeApiProfile: …` on an unknown value. `update` validates
+whatever fields it receives; an absent `nodeApiProfile` keeps the stored one, so
+a partial update never resets the profile.
+
+`restoreCustomNetworks` is the only lenient path, because storage rows are not
+typed by us: a record whose `nodeApiProfile` is unknown or missing is skipped
+with a `console.warn` rather than dropped into a default. Falling back to a
+default here would reintroduce the silent wrong-contract guess; throwing would
+brick `Client.create` over one stale row. URLs on this path are still trusted
+verbatim, exactly as before this profile work.
+
 `update`/`remove` are guarded by `@EnsureNetworkNotDefault`, so built-in networks
 cannot be modified or deleted.
 
@@ -643,7 +743,7 @@ network's URLs.
 
 ```ts
 ApiClientManager.getInstance(): ApiClientManager
-initialize(networksConfig: TNetworksConfig, customNetworks?: INetworkRecord[], networkName?: NetworkName): void
+initialize(networksConfig: TNetworksConfig, customNetworks?: IPersistedNetworkRecord[], networkName?: NetworkName): void
 switchNetwork(networkId: NetworkId): void
 getValidatorClient(): ValidatorClient
 getObserverClient(): ObserverClient
@@ -660,6 +760,11 @@ addNetwork(name: NetworkName, config: INetworkConfig): INetworkRecord
 updateNetwork(id: NetworkId, update: INetworkUpdate): void  // re-switches clients if it's the active network
 removeNetwork(id: NetworkId): void                          // falls back to the first network if the active one is removed
 
+// busy state & per-network context
+isNetworkBusy(networkId: NetworkId): boolean
+runNetworkOperation<TResult>(operation: () => Promise<TResult>, onBusyChanged?: TNetworkBusyListener): Promise<TResult>
+createNetworkContext(networkId?: NetworkId): INetworkContext // defaults to the active network
+
 isReady(): boolean
 close(): void
 ```
@@ -669,6 +774,187 @@ Accessors are guarded by `@EnsureApiClientManagerInitialized` /
 `initialize()`. `initialize` is idempotent (a second call is a no-op).
 Persistence of custom networks is orchestrated by `NetworkManager`, not here —
 this manager only holds the live registry.
+
+`runNetworkOperation` wraps one network-bound operation: it marks the current
+network busy in the `NetworkBusyRegistry`, reports the change through the
+optional listener, runs the operation, and releases the mark in a `finally` — so
+a rejected operation never leaves the network stuck. `Client.transfer` and
+`Client.deploy` are the two callers, which is why both report busy transitions
+through `onNetworkBusyChanged`. While a network is busy, `switchNetwork`
+(`@EnsureCurrentNetworkNotBusy`), `updateNetwork` and `removeNetwork`
+(`@EnsureTargetNetworkNotBusy`) throw `NetworkBusyError` instead of rebuilding
+clients under an in-flight deploy.
+
+`createNetworkContext` returns an `INetworkContext` pinned to one network id, so
+a consumer holding it is unaffected by later network switches. Reservations use
+it to watch each deploy on the network it was submitted to.
+
+Services no longer reach for the per-client getters; they go through
+`NodeApiAdapter`, which reads `getClients()` on every access. The three single
+client getters remain part of the public surface but have no callers inside the
+SDK or the playground.
+
+---
+
+## NetworkBusyRegistry (`src/domains/NetworkBusyRegistry/index.ts`)
+
+Counts the operations in flight per network id. Owned by `ApiClientManager`.
+
+```ts
+acquire(networkId: NetworkId): void
+release(networkId: NetworkId): void
+isBusy(networkId: NetworkId): boolean
+clear(): void
+```
+
+A counter rather than a boolean, so parallel transfers on the same network do not
+release each other's mark; the entry is dropped once it reaches zero. Nothing
+outside `ApiClientManager` mutates it — callers reach the state through
+`Client.isNetworkBusy(networkId?)`, the `onNetworkBusyChanged` event, or the
+`NetworkBusyError` raised by the busy guards.
+
+---
+
+## NodeApiProfile (`src/domains/NodeApiProfile/index.ts`)
+
+The discriminator that says which node implementation a network runs. Data only,
+no runtime dependencies, so `@domains/Network` can reference it without pulling
+in the adapter graph.
+
+```ts
+enum NodeApiProfile {
+    SCALA = "scala", // legacy f1r3node
+    RUST = "rust",   // new f1r3node
+}
+
+enum NodeApiProfileStability {
+    STABLE = "stable",
+    EXPERIMENTAL = "experimental",
+}
+
+const DEFAULT_NODE_API_PROFILE: NodeApiProfile;      // SCALA
+const NODE_API_PROFILES: NodeApiProfile[];
+
+interface INodeApiProfileDescriptor {
+    profile: NodeApiProfile;
+    label: string;
+    description: string;
+    stability: NodeApiProfileStability;
+}
+
+const NODE_API_PROFILE_DESCRIPTORS: Record<NodeApiProfile, INodeApiProfileDescriptor>;
+```
+
+The profile identifies the *implementation*, not its maturity: `STABLE` /
+`EXPERIMENTAL` in the profile name would go stale the day Rust ships and would
+leave no name for a third profile. Maturity is a descriptor attribute instead, and
+the playground reads its select label and badge from there.
+
+`DEFAULT_NODE_API_PROFILE` is a UI default only — nothing in the domain
+substitutes it. The playground uses it to preselect the profile in the add-network
+form. Validation lives in `validateNodeApiProfile` (`src/utils/validators`) with
+the narrowing guard `isNodeApiProfile` (`src/utils/guards`) on top of it.
+
+---
+
+## NodeApiAdapter (`src/domains/NodeApiAdapter/index.ts`, `NodeApiAdapter/Scala`, `NodeApiAdapter/Rust`)
+
+Per-profile request router. It sits **above** `ApiClientManager` and **below**
+`ApiServiceRegistry`: services call the adapter, the adapter picks the client, the
+endpoint, and the request body. The abstract base holds the Scala behavior as its
+default; a subclass overrides only what its node does differently.
+
+```ts
+abstract class NodeApiAdapter {
+    constructor(apiClientManager: ApiClientManager)
+
+    protected get clients(): IApiClients          // resolved on every access
+    abstract getProfile(): NodeApiProfile
+
+    submitDeploy(deploy: SignedResult): Promise<unknown>
+    exploreDeploy(term: string): Promise<unknown>
+    getDeploy(deployHash: string): Promise<unknown>
+    getBlock(blockHash: string): Promise<IBlockDto>
+    getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]>
+    getValidatorStatus(): Promise<unknown>
+    getTransactionHistory(address, publicKey, pagination?): Promise<TransactionHistoryQueryData>
+
+    // override points
+    protected getExploreDeployClient(): IExploratoryDeployClient // base: clients.validator
+    protected buildExploreDeployBody(term: string): unknown      // base: the raw term
+}
+```
+
+Every public member performs one request and returns the node's response
+untouched. Response interpretation stays in the services — `DeployService` reads
+`expr` and extracts the deploy id, `BlockService` reads `blockInfo` and picks the
+latest block, `AssetsService` parses `ExprInt` / `ExprString`.
+
+`protected get clients()` is the load-bearing detail: the adapter holds no client,
+no URL, and no network id, so `switchNetwork` cannot make it stale and it never
+needs invalidating.
+
+`ScalaNodeApiAdapter` is `getProfile()` and nothing else — the base *is* the Scala
+behavior. `RustNodeApiAdapter` overrides three members: the profile, the
+exploratory-deploy target (read-only observer instead of validator), and the body
+shape (`{ term }`, the node's `SimpleExploreDeployRequest`). `Content-Type:
+application/json` needs no override; `DEFAULT_AXIOS_CONFIG` applies it to every
+client.
+
+Subclasses are not re-exported from the barrel, following `Signer/HD` and
+`Signer/PK`; instances come from `createNodeApiAdapter`
+(`src/fabrics/nodeApiAdapter.ts`), whose `switch` has no `default` clause so
+a new profile fails to compile until it is handled.
+
+Adding a profile costs one entry in the enum, one descriptor, one `case`, and one
+subclass. Nothing in the service layer changes.
+
+---
+
+## NodeApiProvider (`src/domains/NodeApiProvider/index.ts`)
+
+Singleton that resolves the adapter for the active network and caches adapters by
+profile.
+
+```ts
+NodeApiProvider.getInstance(apiClientManager?: ApiClientManager): NodeApiProvider
+getApi(): NodeApiAdapter
+```
+
+`getApi()` reads `apiClientManager.getCurrentNetwork().config.nodeApiProfile` on
+every call, so services see the right adapter immediately after `switchNetwork`
+without anything being rebuilt. Services hold the provider and resolve per call
+through a private getter:
+
+```ts
+private get api(): NodeApiAdapter {
+    return this.nodeApiProvider.getApi();
+}
+```
+
+The cache is keyed by profile, not by network, because adapters carry no
+per-network state: two networks on the same profile share one instance, at most
+one instance exists per profile, and the cache survives an
+`ApiClientManager.close()` / re-`initialize()` cycle without going stale.
+
+---
+
+## ApiWorker (`src/domains/ApiWorker/index.ts`)
+
+Abstract base for anything that must stay bound to one network for its whole
+lifetime instead of following the active one.
+
+```ts
+constructor(networkContext: INetworkContext)
+
+getApi(): NodeApiAdapter
+getNetworkId(): NetworkId
+getNodeApiProfile(): NodeApiProfile
+```
+
+`DeployStatusPoller` is the current implementation: a reservation created on one
+network keeps polling that network's node after the user switches away, because
+its poller holds the `INetworkContext` it was built with.
 
 ---
 
@@ -689,6 +975,12 @@ assets: AssetsService
 transactions: TransactionService
 poller: DeployStatusPoller
 ```
+
+It resolves `NodeApiProvider.getInstance(apiClientManager)` once and hands that
+provider to every service that talks to a node. The registry is built one time
+per session, so it deliberately passes the *provider* rather than a resolved
+adapter — a resolved adapter would freeze the profile of whichever network was
+active at construction time and survive `switchNetwork` unchanged.
 
 ---
 
@@ -717,9 +1009,9 @@ query<T>(query: string, variables?: Record<string, unknown>): Promise<T>
 ### ValidatorClient (`src/domains/ValidatorClient/index.ts`)
 
 ```ts
-submitDeploy(deploy): Promise<any>          // POST /api/deploy
-submitExploratoryDeploy(rholangCode): Promise<any> // POST /api/explore-deploy
-getStatus(): Promise<any>                   // GET  /status
+submitDeploy(deploy): Promise<any>              // POST /api/deploy
+submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
+getStatus(): Promise<any>                       // GET  /status
 ```
 
 ### ObserverClient (`src/domains/ObserverClient/index.ts`)
@@ -728,9 +1020,14 @@ getStatus(): Promise<any>                   // GET  /status
 getDeploy(deployHash): Promise<any>         // GET /api/deploy/:hash
 getBlock(blockHash): Promise<IBlockDto>     // GET /api/block/:hash
 getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> // GET /api/blocks
+submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
 ```
 
 `IBlockDto = { blockInfo: string; blockNumber: number }`.
+
+Both `submitExploratoryDeploy` methods take an already-built request body. The
+clients do not know that one profile sends a raw term string and another sends
+`{ term }` — that decision belongs to `NodeApiAdapter`.
 
 ### IndexerClient (`src/domains/IndexerClient/index.ts`)
 
@@ -791,41 +1088,50 @@ instead of a `Date`. `TransactionReservationFabric.toPrivateData` produces it an
 
 Bridges a wallet to the encrypted reservation store and the in-memory
 `TransactionReservationsManager`. Reservations represent funds temporarily locked
-by a pending transfer, so the _available_ balance excludes them plus their gas
-fee, and they double as the only local source of pending transactions.
+by a pending transfer or deploy, so the _available_ balance excludes them, and
+they double as the only local source of pending transactions.
 
 ```ts
 ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
 
-getBalance(account: Account): Promise<IBalanceData> // total minus reserved (amount + GasFee.MAX per reservation)
+getBalance(account: Account): Promise<IBalanceData> // total minus the current network's reservations
 getReservations(): ITransactionReservation[]
 getPendingTransactions(accountId?: string): Transaction[]
+removeNetworkReservations(networkId: NetworkId): Promise<void>
 validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
-transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
+transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
+deploy(wallet: Wallet, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 dispose(): void
 ```
 
+`pendingAmount` already carries the whole locked cost — `amount + GasFee.MAX` for
+a transfer, `phloLimit * phloPrice` for a deploy — so the reserved balance is a
+plain sum with nothing added on top of it.
+
 Both reading and writing reservations need the signer's data key, resolved
 through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
-otherwise the optional `passwordProvider` does. `create` loads this wallet's
-reservations for the current network id, deleting the expired ones (a record that
-fails to decrypt rejects the whole `create` call) and rebuilding the rest
-through `TransactionReservationFabric.fromStorage`.
-Reserved amounts are keyed by `accountId`. `transfer` validates the balance,
-performs the on-chain transfer (forwarding the optional `passwordProvider` to the
-signer), builds the reservation through `TransactionReservationFabric.create`,
-persists it encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and tracks
-it until confirmation or expiry. Only those two outcomes delete the stored
-record — a failed deploy watch leaves the reservation to its expiration timer,
-so memory and storage never disagree. Implements `IDisposable`, so it is owned
-by `ReservationAdapterManager` (a `DisposableItemManager`).
+otherwise the optional `passwordProvider` does. `create` loads every stored
+reservation of this wallet regardless of network, deleting the expired ones and
+the ones pointing at a network the client no longer knows (a record that fails to
+decrypt rejects the whole `create` call) and rebuilding the rest through
+`TransactionReservationFabric.fromStorage`.
+Reserved amounts are keyed by `accountId` and network id. `transfer` and `deploy`
+validate the balance, perform the on-chain operation (forwarding the optional
+`passwordProvider` to the signer), build the reservation through
+`TransactionReservationFabric.createTransfer` or `createDeploy`, persist it
+encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and track it until
+confirmation or expiry. Both return an `IReservedOperationResult`: the `deployId`
+plus a `subscribe` that attaches deploy-watch callbacks to that reservation's
+poller. Only confirmation and expiry delete the stored record — a failed deploy
+watch leaves the reservation to its expiration timer, so memory and storage never
+disagree. Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
+(a `DisposableItemManager`).
 
-`create` reads only the current network's records, but `Client.setNetwork` does
-not rebuild the adapter, so a live adapter can accumulate reservations from
-several networks within one session. Nothing inside the adapter filters by
-network id: `getReservations`, `getPendingTransactions`, and the reserved amount
-behind `getBalance` all cover everything it holds. Only
-`Client.getTransactionsHistory` narrows to the current network, through
+One adapter holds the reservations of every network at once, so the reads narrow
+to the current network id: `getReservations`, `getPendingTransactions`, and the
+reserved amount behind `getBalance`. `removeNetworkReservations` drops the
+reservations of a removed network from memory and storage in one pass.
+`Client.getTransactionsHistory` narrows once more through
 `TransactionsHistoryAggregator`, which drops pending rows belonging to another
 network before merging or paginating them.
 
@@ -852,17 +1158,45 @@ interface DeployData {
 }
 ```
 
-Factory helpers (`Deploy/factory/index.ts`):
+Factory helpers (`Deploy/factory/index.ts`) — the Scala-profile terms, plus the
+shared escaper and the contract both profiles implement:
 
 ```ts
+interface IDeployTermFactory {
+    createCheckBalanceDeploy(address: Address): string;
+    createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): string;
+}
+
 escapeRholangString(value: string): string
 createCheckBalanceDeploy(address: Address): string
 createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): string // throws if amount <= 0
 ```
 
-`Deploy/factory/dev.ts` provides `createDevCheckBalanceDeploy` and
-`createDevTransferDeploy`, which target the `rho:vault:system` registry instead
-of `rho:rchain:asiVault` for dev networks.
+`Deploy/factory/rust.ts` provides `createRustCheckBalanceDeploy` and
+`createRustTransferDeploy`, which address the `rho:vault:system` registry and
+`rho:system:deployerId` instead of `rho:rchain:asiVault` and
+`rho:rchain:deployerId`.
+
+`createDeployTermFactory(profile)`
+(`src/fabrics/deployTermFactory.ts`) selects between the two sets. It
+returns module-level constant tables of function references, so there is nothing
+to allocate or cache, and its `switch` has no `default` clause for the same
+exhaustiveness reason as the adapter fabric. `AssetsService` and
+`TransactionService` resolve it per call through `getApi().getProfile()`:
+
+```ts
+private get terms(): IDeployTermFactory {
+    return createDeployTermFactory(this.nodeApiProvider.getApi().getProfile());
+}
+```
+
+Note that the terms are keyed off `nodeApiProfile` today, but they are really a
+property of the chain, not of the node binary: they encode which vault contract is
+deployed in the registry. The two axes happen to coincide right now. If an
+ASI-vault chain ever runs on a Rust node, change what feeds
+`createDeployTermFactory` (a dedicated config field, say) — the transport adapters
+stay untouched. That separation is why term selection lives here and not on
+`NodeApiAdapter`.
 
 ---
 
@@ -936,7 +1270,9 @@ Each repository is a singleton over a named table, with `initialize()` /
   signer's data key.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
-  runtime-registered custom networks survive a reload.
+  runtime-registered custom networks survive a reload. `config` is a full
+  `INetworkConfig`, `nodeApiProfile` included; rows written before that field
+  existed are skipped with a warning on restore (no schema migration).
 - **InsensitiveCacheStorageRepository** (`INSENSITIVE_CACHE` table) — persists
   `IInsensitiveCacheRecord` (`{ id, address }`) for the optional address cache.
 

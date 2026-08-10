@@ -18,6 +18,15 @@
 	font-weight: 600;
 }
 
+.networks-page__notice {
+	margin: 0;
+	padding: 8px 12px;
+	border-radius: 6px;
+	background: #fff4e5;
+	color: #a35a00;
+	font-size: 0.85rem;
+}
+
 .networks-page__list {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -100,6 +109,11 @@
 .network-card__badge--active {
 	background: #e5f7ec;
 	color: #1a7f4b;
+}
+
+.network-card__badge--busy {
+	background: #fff4e5;
+	color: #a35a00;
 }
 
 .network-card__config {

@@ -1,4 +1,5 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -188,3 +189,17 @@ export const buildUrl = (
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
 }
+
+export const isNetworkConfigChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean => {
+    if (!update) {
+        return false;
+    }
+
+    return NETWORK_CONFIG_FIELDS.some(
+        (field: keyof INetworkConfig) =>
+            update[field] !== undefined && update[field] !== current[field],
+    );
+};

@@ -8,8 +8,12 @@ import {
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
+import {
+    INetworkRecord,
+    IPersistedNetworkRecord,
+    NetworkId,
+} from "@domains/Network";
 import { EncryptedData } from "@services/Crypto";
-import { INetworkRecord, NetworkId } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
@@ -282,14 +286,13 @@ class StorageManager {
 
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
-        networkId: NetworkId,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
         const records =
             await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
 
         return records.filter(
             (record: ITransactionReservationsStorageRecord) =>
-                record.signerId === signerId && record.networkId === networkId,
+                record.signerId === signerId,
         );
     };
 
@@ -319,7 +322,9 @@ class StorageManager {
         );
     };
 
-    public static getCustomNetworks = async (): Promise<INetworkRecord[]> => {
+    public static getCustomNetworks = async (): Promise<
+        IPersistedNetworkRecord[]
+    > => {
         const records: ICustomNetworkStorageRecord[] =
             await CustomNetworksStorageRepository.getInstance().getAllCustomNetworks();
 
@@ -327,7 +332,6 @@ class StorageManager {
             id: record.id,
             name: record.name,
             config: record.config,
-            isDefault: false,
         }));
     };
 

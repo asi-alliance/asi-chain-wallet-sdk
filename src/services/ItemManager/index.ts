@@ -25,6 +25,25 @@ export default class ItemManager<T> {
         return this.items.get(id) ?? null;
     }
 
+    public removeByFilter(filter: (item: T) => boolean): T[] {
+        const removedItems: T[] = [];
+
+        for (const [id, item] of this.items) {
+            if (!filter(item)) {
+                continue;
+            }
+
+            this.items.delete(id);
+            removedItems.push(item);
+        }
+
+        return removedItems;
+    }
+
+    public getByFilter(filter: (item: T) => boolean): T[] {
+        return this.getAll().filter(filter);
+    }
+
     public hasByFilter(filter: (item: T) => boolean): boolean {
         return Array.from(this.items.values()).some(filter);
     }

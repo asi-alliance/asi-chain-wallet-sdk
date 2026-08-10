@@ -1,8 +1,10 @@
 import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
-import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import ApiClientManager from "@domains/ApiClientManager";
+import { NetworkId } from "@domains/Network";
+import { IDeployStatusResult } from "@domains/Deploy";
 import { ITransactionReservation } from "@domains/Transaction";
-import {
+import DeployStatusPoller, {
     IDeployConfirmedResult,
     IDeployWatchCallbacks,
     IDeployWatchHandle,
@@ -22,6 +24,8 @@ export default class TransactionReservationsManager implements IDisposable {
     private readonly reservations: Map<string, ITransactionReservation> =
         new Map();
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
+    private readonly subscribers: Map<string, Set<IDeployWatchCallbacks>> =
+        new Map();
     private readonly expirationTimers: Map<
         string,
         ReturnType<typeof setTimeout>
@@ -66,6 +70,21 @@ export default class TransactionReservationsManager implements IDisposable {
         this.onAdded?.(reservation);
     }
 
+    public subscribe(
+        reservationId: string,
+        callbacks: IDeployWatchCallbacks,
+    ): () => void {
+        const reservationSubscribers: Set<IDeployWatchCallbacks> =
+            this.subscribers.get(reservationId) ?? new Set();
+
+        reservationSubscribers.add(callbacks);
+        this.subscribers.set(reservationId, reservationSubscribers);
+
+        return () => {
+            reservationSubscribers.delete(callbacks);
+        };
+    }
+
     public remove(id: string): boolean {
         this.stopWatch(id);
         this.clearExpiration(id);
@@ -81,8 +100,18 @@ export default class TransactionReservationsManager implements IDisposable {
         return Array.from(this.reservations.values());
     }
 
-    public getByAccountId(accountId: string): ITransactionReservation[] {
+    public getByNetworkId(networkId: NetworkId): ITransactionReservation[] {
         return this.getAll().filter(
+            (reservation: ITransactionReservation) =>
+                reservation.networkId === networkId,
+        );
+    }
+
+    public getByAccountId(
+        accountId: string,
+        networkId: NetworkId,
+    ): ITransactionReservation[] {
+        return this.getByNetworkId(networkId).filter(
             (reservation: ITransactionReservation) =>
                 reservation.accountId === accountId,
         );
@@ -97,6 +126,7 @@ export default class TransactionReservationsManager implements IDisposable {
             this.clearExpiration(id);
         }
 
+        this.subscribers.clear();
         this.reservations.clear();
     }
 
@@ -113,26 +143,49 @@ export default class TransactionReservationsManager implements IDisposable {
             return;
         }
 
-        const handle: IDeployWatchHandle =
-            ApiServiceRegistry.getInstance().poller.watch(
-                deployId,
-                {
-                    ...this.watchCallbacks,
-                    onConfirmed: (result: IDeployConfirmedResult) => {
-                        this.watchCallbacks?.onConfirmed?.(result);
+        const poller: DeployStatusPoller = new DeployStatusPoller(
+            ApiClientManager.getInstance().createNetworkContext(
+                reservation.networkId,
+            ),
+        );
 
-                        this.handleConfirmed(reservation);
-                    },
-                    onError: (error: Error) => {
-                        this.watchCallbacks?.onError?.(error);
+        const handle: IDeployWatchHandle = poller.watch(
+            deployId,
+            {
+                onStatus: (status: IDeployStatusResult, deployId: string) =>
+                    this.notify(reservation.id, (callbacks) =>
+                        callbacks.onStatus?.(status, deployId),
+                    ),
+                onConfirmed: (result: IDeployConfirmedResult) => {
+                    this.notify(reservation.id, (callbacks) =>
+                        callbacks.onConfirmed?.(result),
+                    );
 
-                        this.handleFailed(reservation, error);
-                    },
+                    this.handleConfirmed(reservation);
                 },
-                this.watchOptions,
-            );
+                onError: (error: Error) => {
+                    this.notify(reservation.id, (callbacks) =>
+                        callbacks.onError?.(error),
+                    );
+
+                    this.handleFailed(reservation, error);
+                },
+            },
+            this.watchOptions,
+        );
 
         this.watchers.set(reservation.id, handle);
+    }
+
+    private notify(
+        reservationId: string,
+        invoke: (callbacks: IDeployWatchCallbacks) => void,
+    ): void {
+        if (this.watchCallbacks) {
+            invoke(this.watchCallbacks);
+        }
+
+        this.subscribers.get(reservationId)?.forEach(invoke);
     }
 
     private scheduleExpiration(reservation: ITransactionReservation): void {
@@ -155,6 +208,7 @@ export default class TransactionReservationsManager implements IDisposable {
     private stopWatch(id: string): void {
         this.watchers.get(id)?.cancel();
         this.watchers.delete(id);
+        this.subscribers.delete(id);
     }
 
     private clearExpiration(id: string): void {

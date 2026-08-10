@@ -1,4 +1,5 @@
 import type { Address } from "@domains/Wallet";
+import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
@@ -163,3 +164,20 @@ export const validateUrl = (
 };
 
 export const isValidUrl = (url: string): boolean => validateUrl(url).isValid;
+
+export const validateNodeApiProfile = (
+    profile: unknown,
+): { isValid: boolean; error?: string } => {
+    if (profile === undefined || profile === null) {
+        return { isValid: false, error: "Node API profile is required" };
+    }
+
+    if (!NODE_API_PROFILES.includes(profile as NodeApiProfile)) {
+        return {
+            isValid: false,
+            error: `Node API profile must be one of: ${NODE_API_PROFILES.join(", ")}`,
+        };
+    }
+
+    return { isValid: true };
+};

@@ -44,7 +44,7 @@ Data export:
 - `HEX_BYTE_PADDING: number` — hex padding width for buffer conversion (64).
 - `POWER_BASE: number` — base for power calculations (10).
 - `ASI_BASE_UNIT: bigint` — atomic multiplier `BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS)`.
-- `FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
+- `SCALA_FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
 - `INVALID_BLOCK_NUMBER: number` — sentinel for a failed block-number read (-1).
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
 
@@ -116,7 +116,7 @@ normalizeAddress(address: string | undefined): string     // trim + lowercase
 
 ## Validators (`src/utils/validators/index.ts`)
 
-Account-name and address validation.
+Account-name, address, URL, and node-profile validation.
 
 ```ts
 validateAccountName(name: string, maxLength?: number): { isValid: boolean; error?: string }
@@ -124,10 +124,13 @@ validateAddress(address: string): AddressValidationResult
 isAddress(address: string): address is Address // type-guard over validateAddress
 validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
 isValidUrl(url: string): boolean                               // boolean shorthand
+validateNodeApiProfile(profile: unknown): { isValid: boolean; error?: string } // membership in NodeApiProfile
 ```
 
 `validateUrl` powers custom-network endpoint validation in
-`NetworkConfigProvider`.
+`NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
+field on the same write paths and is the source of truth behind the
+`isNodeApiProfile` guard.
 
 `validateAccountName` (default `maxLength` 30) rejects empty names, over-length
 names, and forbidden characters `<>:"/\|?*`.
@@ -148,12 +151,18 @@ names, and forbidden characters `<>:"/\|?*`.
 
 ## Guards (`src/utils/guards/index.ts`)
 
-Type guards for wallet/secret discriminated unions.
+Type guards for wallet/secret discriminated unions and the node API profile.
 
 ```ts
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
+isNodeApiProfile(value: unknown): value is NodeApiProfile // delegates to validateNodeApiProfile
 ```
+
+`isNodeApiProfile` narrows untyped values at the storage boundary
+(`restoreCustomNetworks`), mirroring how `isValidUrl` sits on top of
+`validateUrl`. `src/utils/index.ts` does not re-export `./guards`, so these stay
+internal to the SDK.
 
 ---
 
@@ -164,29 +173,41 @@ Stage-3 method decorators used across storage, wallets, and the API layer.
 Storage guards (on `ITableService` methods):
 
 ```ts
-EnsureDatabaseInitialized   // awaits this.init() first
-EnsureTableExists           // first arg must be an existing table name
-SkipIfDatabaseNotInitialized
-SkipIfTableExists
+EnsureDatabaseInitialized; // awaits this.init() first
+EnsureTableExists; // first arg must be an existing table name
+SkipIfDatabaseNotInitialized;
+SkipIfTableExists;
 ```
 
 Wallet / client / API guards:
 
 ```ts
-OnlyHDWallet                       // throws on non-HD wallets
-EnsureActiveAccountExist           // throws when the wallet has no active account
-EnsureApiClientManagerInitialized  // throws before ApiClientManager.initialize()
-EnsureApiClientManagerConfigured   // throws when the network config isn't ready
-EnsureWithInsensitiveCacheStorage  // throws when the cache-storage flag is off
+OnlyHDWallet; // throws on non-HD wallets
+EnsureActiveAccountExist; // throws when the wallet has no active account
+EnsureApiClientManagerInitialized; // throws before ApiClientManager.initialize()
+EnsureApiClientManagerConfigured; // throws when the network config isn't ready
+EnsureWithInsensitiveCacheStorage; // throws when the cache-storage flag is off
 ```
 
 Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 
 ```ts
-EnsureNetworkConfigProviderReady   // throws before the registry is initialized
-EnsureNetworkExist                 // throws when the network id is unknown
-EnsureNetworkNotDefault            // throws when mutating/removing a built-in network
+EnsureNetworkConfigProviderReady; // throws before the registry is initialized
+EnsureNetworkExist; // throws when the network id is unknown
+EnsureNetworkNotDefault; // throws when mutating/removing a built-in network
 ```
+
+Network-busy guards (`src/utils/decorators/apiClientManager`):
+
+```ts
+EnsureCurrentNetworkNotBusy; // throws NetworkBusyError when the active network has work in flight
+EnsureTargetNetworkNotBusy; // same check against the network id in the first argument
+```
+
+Both read `ApiClientManager`'s `NetworkBusyRegistry` and protect
+`switchNetwork` / `updateNetwork` / `removeNetwork`.
+`EnsureCurrentNetworkNotBusy` passes through untouched while the manager is not
+ready yet, because there is no active network to protect at that point.
 
 ---
 
@@ -227,6 +248,29 @@ data such as transaction reservations; it is resolved through
 `Signer.resolveDataKey(passwordProvider?)` — an active session already holds it,
 otherwise the password decrypts it.
 
+### Node API adapter fabric (`src/fabrics/nodeApiAdapter.ts`)
+
+Builds the `NodeApiAdapter` subclass for a profile — see the adapter section of
+`DOMAINS.md`.
+
+```ts
+createNodeApiAdapter(profile: NodeApiProfile, apiClientManager: ApiClientManager): NodeApiAdapter
+```
+
+### Deploy term fabric (`src/fabrics/deployTermFactory.ts`)
+
+Selects the Rholang term set for a profile: the `Deploy/factory/index.ts` terms for
+`SCALA`, the `Deploy/factory/rust.ts` terms for `RUST`.
+
+```ts
+createDeployTermFactory(profile: NodeApiProfile): IDeployTermFactory
+```
+
+Both fabrics `switch` over `NodeApiProfile` with no `default` clause, so adding a
+profile without handling it fails to compile. Unlike the adapter fabric, this one
+returns module-level constant tables of function references — there is nothing to
+construct or cache.
+
 ### Storage fabric (`src/fabrics/storage.ts`)
 
 Selects `BrowserStorage` or `NodeStorage` for the current environment — see the
@@ -243,8 +287,12 @@ never assembles the record inline. It also owns both directions of the storage
 serialization boundary.
 
 ```ts
-TransactionReservationFabric.create(
-    payload: ICreateTransactionReservationPayload, // { deployId, networkId, account, details }
+TransactionReservationFabric.createTransfer(
+    payload: ICreateTransferReservationPayload, // { deployId, networkId, account, pendingAmount, details }
+): ITransactionReservation
+
+TransactionReservationFabric.createDeploy(
+    payload: ICreateDeployReservationPayload, // { deployId, networkId, account, pendingAmount, term }
 ): ITransactionReservation
 
 TransactionReservationFabric.toPrivateData(
@@ -281,5 +329,7 @@ createReservationAdapter(
 Creates the wallet's `ReservationAdapter` through `ReservationAdapterManager`,
 forwarding the `passwordProvider` that resolves the signer data key, and
 subscribes `onAdded` / `onConfirmed` / `onExpired` / `onFailed` so each of them
-re-emits `IClientEventDispatcher.onReservationsChanged` with the adapter's current
-reservations. `Client` goes through it on wallet create, import, and unlock.
+re-emits `IClientEventDispatcher.onReservationsChanged` with every unlocked
+wallet's current reservations, read back through
+`ReservationAdapterManager.getReservationsByWallet`. `Client` goes through it on
+wallet create, import, and unlock.

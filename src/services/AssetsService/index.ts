@@ -1,7 +1,9 @@
 import Asset from "@domains/Asset";
-import { createCheckBalanceDeploy } from "@domains/Deploy/factory";
+import { IDeployTermFactory } from "@domains/Deploy/factory";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { Address } from "@domains/Wallet";
 import { validateAddress } from "@utils/index";
+import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import DeployService from "@services/DeployService";
 
 export interface IBalanceData {
@@ -11,9 +13,20 @@ export interface IBalanceData {
 
 export default class AssetsService {
     private readonly deployService: DeployService;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(deployService: DeployService) {
+    constructor(
+        deployService: DeployService,
+        nodeApiProvider?: NodeApiProvider,
+    ) {
         this.deployService = deployService;
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
+    }
+
+    private get terms(): IDeployTermFactory {
+        return createDeployTermFactory(
+            this.nodeApiProvider.getApi().getProfile(),
+        );
     }
 
     public async getBalance(
@@ -28,7 +41,7 @@ export default class AssetsService {
             );
         }
 
-        const checkBalanceDeploy = createCheckBalanceDeploy(address);
+        const checkBalanceDeploy = this.terms.createCheckBalanceDeploy(address);
 
         try {
             const expr =

@@ -1,7 +1,5 @@
-import DeployService, {
-    DeployStatus,
-    IDeployStatusResult,
-} from "@services/DeployService";
+import ApiWorker from "@domains/ApiWorker";
+import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -27,13 +25,7 @@ export interface IDeployWatchHandle {
 const DEFAULT_INTERVAL_IN_MILLISECOND: number = 5000;
 const DEFAULT_TIMEOUT_IN_MILLISECONDS: number = 180000;
 
-export default class DeployStatusPoller {
-    private readonly deployService: DeployService;
-
-    constructor(deployService: DeployService) {
-        this.deployService = deployService;
-    }
-
+export default class DeployStatusPoller extends ApiWorker {
     public watch(
         deployId: string,
         callbacks: IDeployWatchCallbacks = {},
@@ -65,6 +57,10 @@ export default class DeployStatusPoller {
         };
 
         const succeed = (result: IDeployConfirmedResult): void => {
+            if (finished) {
+                return;
+            }
+
             stop();
 
             callbacks.onConfirmed?.(result);
@@ -73,6 +69,10 @@ export default class DeployStatusPoller {
         };
 
         const fail = (error: Error): void => {
+            if (finished) {
+                return;
+            }
+
             stop();
 
             callbacks.onError?.(error);
@@ -89,7 +89,11 @@ export default class DeployStatusPoller {
 
             try {
                 const status: IDeployStatusResult =
-                    await this.deployService.getDeployStatus(deployId);
+                    await this.getApi().getDeployStatus(deployId);
+
+                if (finished) {
+                    return;
+                }
 
                 callbacks.onStatus?.(status, deployId);
 

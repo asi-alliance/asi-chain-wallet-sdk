@@ -1,5 +1,14 @@
 import { Address } from "@domains/Wallet";
 
+export interface IDeployTermFactory {
+    createCheckBalanceDeploy(address: Address): string;
+    createTransferDeploy(
+        fromAddress: Address,
+        toAddress: Address,
+        amount: bigint,
+    ): string;
+}
+
 export const escapeRholangString = (value: string): string => {
     return value
         .replace(/\\/g, "\\\\")

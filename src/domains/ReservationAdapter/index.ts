@@ -12,12 +12,18 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { GasFee } from "@config/index";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
+import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
-import { ITransferDetails } from "@services/TransactionService";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
+
+export interface IReservedOperationResult {
+    deployId: string;
+    subscribe: (callbacks: IDeployWatchCallbacks) => () => void;
+}
 
 export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
@@ -73,8 +79,9 @@ export default class ReservationAdapter {
         passwordProvider?: SecretsProvider,
         reservationsManagerOptions?: ITransactionReservationsManagerOptions,
     ): Promise<ReservationAdapter> {
-        const networkId: NetworkId =
-            ApiClientManager.getInstance().getCurrentNetworkId();
+        const knownNetworkIds: Set<NetworkId> = new Set(
+            ApiClientManager.getInstance().getNetworkIds(),
+        );
         const signerId: string = wallet.getSigner().getId();
 
         const dataKeySecret: string = await wallet
@@ -82,10 +89,7 @@ export default class ReservationAdapter {
             .resolveDataKey(passwordProvider);
 
         const records: ITransactionReservationsStorageRecord[] =
-            await StorageManager.getTransactionReservationsBySignerId(
-                signerId,
-                networkId,
-            );
+            await StorageManager.getTransactionReservationsBySignerId(signerId);
 
         const reservations: ITransactionReservation[] = [];
 
@@ -93,7 +97,10 @@ export default class ReservationAdapter {
             const privateData: ISerializedTransactionReservationPrivateData =
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
-            if (privateData.expirationTime <= Date.now()) {
+            if (
+                privateData.expirationTime <= Date.now() ||
+                !knownNetworkIds.has(record.networkId)
+            ) {
                 await StorageManager.deleteTransactionReservation(record.id);
 
                 continue;
@@ -107,25 +114,27 @@ export default class ReservationAdapter {
         return new ReservationAdapter(reservations, reservationsManagerOptions);
     }
 
-    private getReservedAmount(accountId: string): bigint {
+    private getReservedAmount(accountId: string, networkId: NetworkId): bigint {
         const reservations: ITransactionReservation[] =
-            this.reservationsManager.getByAccountId(accountId);
+            this.reservationsManager.getByAccountId(accountId, networkId);
 
-        const totalAmount: bigint = reservations.reduce(
+        return reservations.reduce(
             (sum: bigint, reservation: ITransactionReservation) =>
                 sum + BigInt(reservation.pendingAmount),
             0n,
         );
-
-        const totalFee: bigint = BigInt(reservations.length) * GasFee.MAX;
-
-        return totalAmount + totalFee;
     }
 
     public async getBalance(account: Account): Promise<IBalanceData> {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
         const balance: IBalanceData = await account.getBalance();
 
-        const reserved: bigint = this.getReservedAmount(account.getId());
+        const reserved: bigint = this.getReservedAmount(
+            account.getId(),
+            networkId,
+        );
 
         return {
             ...balance,
@@ -134,16 +143,42 @@ export default class ReservationAdapter {
     }
 
     public getReservations(): ITransactionReservation[] {
-        return this.reservationsManager.getAll();
+        return this.reservationsManager.getByNetworkId(
+            ApiClientManager.getInstance().getCurrentNetworkId(),
+        );
     }
 
     public getPendingTransactions(accountId?: string): Transaction[] {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
         const reservations: ITransactionReservation[] = accountId
-            ? this.reservationsManager.getByAccountId(accountId)
-            : this.reservationsManager.getAll();
+            ? this.reservationsManager.getByAccountId(accountId, networkId)
+            : this.reservationsManager.getByNetworkId(networkId);
 
         return reservations.map(
             (reservation: ITransactionReservation) => reservation.transaction,
+        );
+    }
+
+    public hasNetworkReservations(networkId: NetworkId): boolean {
+        return this.reservationsManager.getByNetworkId(networkId).length > 0;
+    }
+
+    public async removeNetworkReservations(
+        networkId: NetworkId,
+    ): Promise<void> {
+        const reservations: ITransactionReservation[] =
+            this.reservationsManager.getByNetworkId(networkId);
+
+        reservations.forEach((reservation: ITransactionReservation) =>
+            this.reservationsManager.remove(reservation.id),
+        );
+
+        await StorageManager.deleteMultipleTransactionReservations(
+            reservations.map(
+                (reservation: ITransactionReservation) => reservation.id,
+            ),
         );
     }
 
@@ -177,12 +212,32 @@ export default class ReservationAdapter {
         });
     }
 
+    private async reserve(
+        wallet: Wallet,
+        deployId: string,
+        reservation: ITransactionReservation,
+        passwordProvider?: SecretsProvider,
+    ): Promise<IReservedOperationResult> {
+        await this.persistReservation(reservation, wallet, passwordProvider);
+
+        this.reservationsManager.add(reservation);
+
+        return {
+            deployId,
+            subscribe: (callbacks: IDeployWatchCallbacks) =>
+                this.reservationsManager.subscribe(reservation.id, callbacks),
+        };
+    }
+
     public async validateSufficientBalance(
         account: Account,
         amount: bigint,
     ): Promise<boolean> {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
         const totalReservedAmount: bigint =
-            this.getReservedAmount(account.getId()) + amount;
+            this.getReservedAmount(account.getId(), networkId) + amount;
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
         return remoteBalance - totalReservedAmount > 0n;
@@ -192,11 +247,15 @@ export default class ReservationAdapter {
         wallet: Wallet,
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
-    ): Promise<string> {
+    ): Promise<IReservedOperationResult> {
         const account: Account = wallet.getActiveAccount()!;
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
+        const pendingAmount: bigint = details.amount + GasFee.MAX;
 
         const isSufficientBalance: boolean =
-            await this.validateSufficientBalance(account, details.amount);
+            await this.validateSufficientBalance(account, pendingAmount);
 
         if (!isSufficientBalance) {
             throw new Error(
@@ -209,21 +268,49 @@ export default class ReservationAdapter {
             passwordProvider,
         );
 
-        const networkId: NetworkId =
-            ApiClientManager.getInstance().getCurrentNetworkId();
-
         const reservation: ITransactionReservation =
-            TransactionReservationFabric.create({
+            TransactionReservationFabric.createTransfer({
                 deployId,
                 networkId,
                 account,
+                pendingAmount,
                 details,
             });
 
-        await this.persistReservation(reservation, wallet, passwordProvider);
+        return this.reserve(wallet, deployId, reservation, passwordProvider);
+    }
 
-        this.reservationsManager.add(reservation);
+    public async deploy(
+        wallet: Wallet,
+        details: TDeployDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<IReservedOperationResult> {
+        const account: Account = wallet.getActiveAccount()!;
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
 
-        return deployId;
+        const pendingAmount: bigint =
+            BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
+            BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+
+        const isSufficientBalance: boolean =
+            await this.validateSufficientBalance(account, pendingAmount);
+
+        if (!isSufficientBalance) {
+            throw new Error("ReservationAdapter.deploy: Insufficient balance");
+        }
+
+        const deployId: string = await wallet.deploy(details, passwordProvider);
+
+        const reservation: ITransactionReservation =
+            TransactionReservationFabric.createDeploy({
+                deployId,
+                networkId,
+                account,
+                pendingAmount,
+                term: details.term,
+            });
+
+        return this.reserve(wallet, deployId, reservation, passwordProvider);
     }
 }

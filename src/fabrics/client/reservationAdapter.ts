@@ -18,16 +18,8 @@ export const createReservationAdapter = async ({
     eventDispatcher,
 }: IAddReservationAdapterToManagerOptions): Promise<ReservationAdapter> => {
     const emitReservationsChanged = (): void => {
-        const reservationAdapter: ReservationAdapter | null =
-            reservationAdapterManager.get(wallet.getId());
-
-        if (!reservationAdapter) {
-            return;
-        }
-
         eventDispatcher?.onReservationsChanged?.(
-            wallet.getId(),
-            reservationAdapter.getReservations(),
+            reservationAdapterManager.getReservationsByWallet(),
         );
     };
 

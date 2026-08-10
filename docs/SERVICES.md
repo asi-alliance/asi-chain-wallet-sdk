@@ -43,7 +43,9 @@ clear(): void
 removal, and clear.
 
 ```ts
-interface IDisposable { dispose(): void }
+interface IDisposable {
+    dispose(): void;
+}
 ```
 
 ### WalletManager (`src/services/WalletManager/index.ts`)
@@ -90,30 +92,43 @@ getAccount(id: string): Account | null
 
 ```ts
 create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
+getReservationsByWallet(): TReservationsByWallet
+removeNetworkReservations(networkId: NetworkId): Promise<void>
 ```
 
 Reservations are encrypted with the signer's data key, so building the adapter
 needs an active session or the optional `passwordProvider` — `Client` forwards
 the provider it already has when creating, importing, or unlocking a wallet.
+`getReservationsByWallet` is the payload of `onReservationsChanged`;
+`removeNetworkReservations` fans a removed network out to every adapter.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
-In-memory tracker for active reservations. Each reservation is watched by the
-`DeployStatusPoller` and also gets an expiration timer; confirmation or expiry
-removes it and fires the matching callback. A poller failure (error or watch
-timeout) only stops the watcher and fires `onFailed` — the reservation and its
-expiration timer stay, so the deploy status being unknown keeps the funds locked
-until the reservation genuinely expires. Implements `IDisposable`.
+In-memory tracker for active reservations. Each reservation is watched by a
+`DeployStatusPoller` bound to that reservation's own network (through
+`ApiClientManager.createNetworkContext`) and also gets an expiration timer;
+confirmation or expiry removes it and fires the matching callback. A poller
+failure (error or watch timeout) only stops the watcher and fires `onFailed` —
+the reservation and its expiration timer stay, so the deploy status being unknown
+keeps the funds locked until the reservation genuinely expires. Implements
+`IDisposable`.
 
 ```ts
 new TransactionReservationsManager(reservations, options?: ITransactionReservationsManagerOptions)
 add(reservation): void
+subscribe(reservationId: string, callbacks: IDeployWatchCallbacks): () => void
 remove(id: string): boolean
 get(id: string): ITransactionReservation | null
 getAll(): ITransactionReservation[]
-getByAccountId(accountId: string): ITransactionReservation[]
+getByNetworkId(networkId: NetworkId): ITransactionReservation[]
+getByAccountId(accountId: string, networkId: NetworkId): ITransactionReservation[]
 dispose(): void
 ```
+
+One manager holds the reservations of every network, so reads are keyed by
+network id. `subscribe` attaches per-reservation deploy-watch callbacks on top of
+the shared `watchCallbacks` and returns its own unsubscribe; it is what
+`ReservationAdapter` hands back inside `IReservedOperationResult`.
 
 ```ts
 interface ITransactionReservationsManagerOptions {
@@ -252,7 +267,7 @@ getTransactionReservationsBySignerId(signerId, networkId) /
 updateTransactionReservation / deleteTransactionReservation / deleteMultipleTransactionReservations
 
 // custom networks
-getCustomNetworks(): Promise<INetworkRecord[]>
+getCustomNetworks(): Promise<IPersistedNetworkRecord[]> // no isDefault: restore assigns it
 saveCustomNetwork(network: INetworkRecord): Promise<void>
 updateCustomNetwork(network: INetworkRecord): Promise<void>
 deleteCustomNetwork(id: NetworkId): Promise<void>
@@ -279,6 +294,9 @@ removeNetwork(id: NetworkId): Promise<void>                                    /
 Built-in networks are never persisted or mutated here; only custom networks flow
 through storage. Validation and the built-in-immutability guard live in
 `NetworkConfigProvider` (see `DOMAINS.md`).
+
+Because `addNetwork`/`updateNetwork` persist the record the provider returns, a
+stored config always carries a validated `nodeApiProfile`.
 
 ### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
 
@@ -334,20 +352,52 @@ and `Client.getExportedTransactionsData` are the high-level entry points.
 
 Instantiated once by `ApiServiceRegistry` over an `ApiClientManager`.
 
+None of them touch a transport client directly. Every node call goes through
+`NodeApiAdapter`, resolved per call from the injected `NodeApiProvider`:
+
+```ts
+new DeployService(nodeApiProvider?: NodeApiProvider)
+new BlockService(nodeApiProvider?: NodeApiProvider)
+new AccountDataService(nodeApiProvider?: NodeApiProvider, apiClientManager?: ApiClientManager)
+new AssetsService(deployService: DeployService, nodeApiProvider?: NodeApiProvider)
+new TransactionService(deployService: DeployService, blockService: BlockService, nodeApiProvider?: NodeApiProvider)
+```
+
+Each declares a private getter so call sites read as ordinary API calls while
+resolution stays per call — a stored adapter would freeze the profile of whichever
+network was active when the registry was built:
+
+```ts
+private get api(): NodeApiAdapter {
+    return this.nodeApiProvider.getApi();
+}
+```
+
+`AccountDataService` also keeps an `ApiClientManager` because it needs
+`getCurrentNetworkId()` for history mapping. `AssetsService` and
+`TransactionService` use the provider only to pick Rholang terms by profile, via a
+`private get terms()`. The division of labour: the adapter shapes and sends the
+request, the service owns response interpretation and its own fallbacks.
+
 ### DeployService (`src/services/DeployService/index.ts`)
 
-Submits deploys and reads deploy status through the validator/observer clients.
+Submits deploys and reads deploy status through the node API adapter.
 
 ```ts
 submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
 exploreDeployData(rholangCode: string): Promise<any>                  // returns result.expr
 getDeploy(deployHash: string): Promise<any>
-isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= FAULT_TOLERANCE_THRESHOLD
+isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= SCALA_FAULT_TOLERANCE_THRESHOLD
 getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
 ```
 
 ```ts
-enum DeployStatus { DEPLOYING, INCLUDED_IN_BLOCK, FINALIZED, CHECK_ERROR }
+enum DeployStatus {
+    DEPLOYING,
+    INCLUDED_IN_BLOCK,
+    FINALIZED,
+    CHECK_ERROR,
+}
 type IDeployStatusResult =
     | { status: DEPLOYING | INCLUDED_IN_BLOCK | FINALIZED }
     | { status: CHECK_ERROR; errorMessage: string };
@@ -380,7 +430,11 @@ getBalance(address: Address, asset: Asset): Promise<IBalanceData> // { amount: b
 ```
 
 Validates the address first (throws on invalid); any exploration/parse failure
-resolves to `{ amount: 0n, asset }`.
+resolves to `{ amount: 0n, asset }`. The balance term comes from
+`this.terms.createCheckBalanceDeploy(address)`, so the vault contract it addresses
+follows the active network's profile. Note that the catch-all fallback means a
+transport failure is reported as a zero balance, not as an error — callers cannot
+distinguish "no funds" from "node unreachable" here.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
@@ -390,6 +444,10 @@ Builds, signs and submits deploys end to end.
 transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
 deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
 ```
+
+`transfer` builds its term with `this.terms.createTransferDeploy(...)`, so the
+vault contract follows the active network's profile. `deploy` takes the term from
+the caller and does not touch the term factory.
 
 ```ts
 interface ITransferDetails {
@@ -428,9 +486,13 @@ interface IDeployPayload {
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 
-Polls a deploy until finalized or timed out.
+Polls a deploy until finalized or timed out. Extends `ApiWorker`, so it is
+constructed with the `INetworkContext` of the network the deploy was submitted
+to and keeps polling that network even after the active one changes.
 
 ```ts
+new DeployStatusPoller(networkContext: INetworkContext)
+
 watch(deployId, callbacks?: IDeployWatchCallbacks, options?: IDeployWatchOptions): IDeployWatchHandle
 waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult>
 ```
@@ -573,6 +635,14 @@ SignerService.deployDataProtobufSerialize(deployData: DeployData): Uint8Array
 Also exports the signing result contracts:
 
 ```ts
-interface SigningRequest { wallet: Wallet; data: any }
-interface SignedResult { data: any; deployer: string; signature: string; sigAlgorithm: string }
+interface SigningRequest {
+    wallet: Wallet;
+    data: any;
+}
+interface SignedResult {
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
 ```

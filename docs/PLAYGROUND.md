@@ -55,10 +55,13 @@ Returned value (`UseSdkValue`):
 - Transfers & balances: `transfer(request, password?)` (password omitted while a
   session is active), `getBalance(address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
-- Raw deploys: `deploy(request, password?)` (arbitrary Rholang term via
+- Deploys: `deploy(request, password?)` (arbitrary Rholang term via
   `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
   rules as `transfer`), `exploreDeploy(rholang)` (read-only, no unlock/password),
   `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
+  `transfer` and `deploy` both resolve to an `IReservedOperationResult`
+  (`{ deployId, subscribe }`), so the caller follows the deploy through
+  `subscribe` instead of a separate watch handle.
 - Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
   keyfile JSON (downloaded from `AccountCard`).
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
@@ -84,9 +87,34 @@ useSdkContext(): SdkContextValue
 Loads total balance, available balance, and reservation count for one account.
 
 ```ts
-useWalletBalance(sdk: UseSdkValue, walletId, accountId, address): UseWalletBalanceValue
+useWalletBalance(sdk: UseSdkValue, walletId, accountId, address, options?): UseWalletBalanceValue
 // { balance: { total, available, reservationCount }, isFetching, reload }
+// options: { reloadIntervalMs?: number }, default 30000
 ```
+
+The hook reloads on mount, on every `reloadIntervalMs` tick, and whenever the
+current network changes. It reads the SDK through the stable `getBalance`,
+`getAvailableBalance`, and `getReservations` callbacks instead of the whole
+`sdk` object, so a re-render of `Application` no longer restarts the polling.
+
+### useRelevantResultGuard (`hooks/useRelevantResultGuard.ts`)
+
+The SDK keeps no balances or history of its own: every read returns whatever the
+network answered at the moment of the call, so deciding that an in-flight answer
+became irrelevant is the caller's job.
+
+```ts
+useRelevantResultGuard(networkId?: NetworkId): TStartRequest
+// TStartRequest      = () => TIsResultRelevant
+// TIsResultRelevant  = () => boolean
+```
+
+`startRequest()` is called before the request and returns a check that stays
+`true` only while this request is the latest one from the same component and the
+current network is still the one the request was issued on. Callers await the
+read, then skip the state update when the check returns `false`. Used by
+`useWalletBalance`, `TxHistoryPage`, and `DeployPage` so that a response of the
+previous network is never rendered as the new network's data.
 
 ### helpers.ts
 
@@ -101,6 +129,23 @@ Calls `Client.create({ networksConfig: NETWORKS_CONFIG, defaultNetwork, eventDis
 Builds `NETWORKS_CONFIG: TNetworksConfig` from `import.meta.env` (`DevNet`, `Dev`,
 plus empty `MainNet`/`TestNet` placeholders) and exposes `DEFAULT_NETWORK`
 (default `"DevNet"`).
+
+`nodeApiProfile` is read from env per network rather than hardcoded, the same way
+`DEFAULT_NETWORK` already was:
+
+```ts
+nodeApiProfile: env.VITE_DEVNET_NODE_API_PROFILE as NodeApiProfile,
+```
+
+Env keys: `VITE_DEVNET_NODE_API_PROFILE=scala`, `VITE_DEV_NODE_API_PROFILE=rust`,
+`VITE_MAINNET_NODE_API_PROFILE`, `VITE_TESTNET_NODE_API_PROFILE`. New keys must
+also be declared in `playground/src/vite-env.d.ts`. There is no fallback on
+purpose — a missing key makes `Client.create` throw
+`Invalid nodeApiProfile: Node API profile is required` at startup instead of
+quietly assuming a profile.
+
+`DevNet` runs the legacy Scala node, `Dev` the new Rust node. `AlexanderNet` exists
+only in the repository-root `.env` (`VITE_NETWORKS`) so far, not in the playground.
 
 ### formatters (`formatters/index.ts`)
 
@@ -180,8 +225,9 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
 
 Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
 as cards showing the network name, a `default`/`custom` badge, an `active` badge
-when the card id equals `sdk.currentNetwork?.id`, and the Validator/Read-only/
-Indexer URLs. Actions per card: **Switch** (disabled for the active network), and
+when the card id equals `sdk.currentNetwork?.id`, the Validator/Read-only/Indexer
+URLs, and a **Node API** row with the raw `config.nodeApiProfile` value (`scala` /
+`rust`). Actions per card: **Switch** (disabled for the active network), and
 — only for `custom` (`!isDefault`) networks — **Edit** and **Remove**. A header
 **Add network** button opens the create form. Everything is keyed by the stable
 `network.id`; the editable `name` is just data. Default networks cannot be edited
@@ -201,8 +247,9 @@ account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
 example contract), and set a phlo limit. **Deploy** runs
 `sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
 `useSecureAction` (a confirm when the wallet session is active, otherwise a
-`PasswordModal`), then tracks status with `sdk.watchDeploy(deployId, ...)` (the
-watch handle is cancelled on unmount and before each new run). **Explore** calls
+`PasswordModal`), then tracks status through the returned
+`IReservedOperationResult`: `reserved.subscribe({ onStatus, onConfirmed, onError })`
+(the unsubscribe is called on unmount and before each new run). **Explore** calls
 `sdk.exploreDeploy(code)` and needs no unlock/password. Errors and the
 explore/deploy result are shown inline.
 
@@ -237,11 +284,18 @@ disabled.
 
 ### NetworkModal (`components/NetworkModal/index.tsx`)
 
-Add or edit a network. Collects `name` (editable in both modes) and the Validator/
-Read-only/Indexer URLs. Only `name` is required locally; empty URLs are allowed
-(matching the placeholder default networks). On submit it emits an
-`INetworkModalPayload`; the page maps that to `addNetwork(name, config)` or
-`updateNetwork(id, { name, config })`.
+Add or edit a network. Collects `name` (editable in both modes), the node API
+profile, and the Validator/Read-only/Indexer URLs. Only `name` is required
+locally; empty URLs are allowed (matching the placeholder default networks). On
+submit it emits an `INetworkModalPayload`; the page maps that to
+`addNetwork(name, config)` or `updateNetwork(id, { name, config })`.
+
+The profile is a `<select>` populated from `NODE_API_PROFILE_DESCRIPTORS`, with
+options labelled `"<label> (<stability>)"` — e.g. `Rust node (experimental)`. It
+defaults to `initialConfig?.nodeApiProfile ?? DEFAULT_NODE_API_PROFILE`, so
+editing preselects the network's current profile and adding preselects `scala`.
+This is the one place a default profile is applied, and it belongs here: the UI
+offers a starting value, the SDK never guesses one.
 
 ```ts
 interface INetworkModalPayload { name: NetworkName; config: INetworkConfig }

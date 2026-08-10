@@ -1,6 +1,8 @@
 import Bip44Path from "@domains/Bip44Path";
 import { IHDSecret, IPrivateKeyCredentials } from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
+import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { validateNodeApiProfile } from "@utils/validators";
 
 export const isCustomCreateHDWalletOptions = (
     options: TCreateHDPathWalletOptions,
@@ -12,4 +14,8 @@ export const isPrivateKeySecretData = (
     secretData: IPrivateKeyCredentials | IHDSecret,
 ): secretData is IPrivateKeyCredentials => {
     return "privateKey" in secretData;
+};
+
+export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
+    return validateNodeApiProfile(value).isValid;
 };

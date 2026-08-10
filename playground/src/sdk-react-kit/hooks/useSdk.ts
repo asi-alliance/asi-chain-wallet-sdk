@@ -10,12 +10,14 @@ import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
+    IReservedOperationResult,
     ITransactionReservation,
     ITransferRequest,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
     NetworkName,
+    TReservationsByWallet,
     Wallet,
 } from "asi-wallet-sdk";
 import { init } from "../helpers";
@@ -39,9 +41,9 @@ const useSdk = () => {
     const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
     const [currentNetwork, setCurrentNetwork] =
         useState<INetworkRecord | null>(null);
-    const [reservationsByWallet, setReservationsByWallet] = useState<
-        Record<string, ITransactionReservation[]>
-    >({});
+    const [reservationsByWallet, setReservationsByWallet] =
+        useState<TReservationsByWallet>({});
+    const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
 
     const clientRef = useRef<Client | null>(null);
 
@@ -83,13 +85,18 @@ const useSdk = () => {
                 setCurrentNetwork(network);
             },
             onReservationsChanged: (
-                walletId: string,
-                reservations: ITransactionReservation[],
+                reservationsByWallet: TReservationsByWallet,
             ) => {
-                setReservationsByWallet((previous) => ({
-                    ...previous,
-                    [walletId]: reservations,
-                }));
+                setReservationsByWallet(reservationsByWallet);
+            },
+            onNetworkBusyChanged: (networkId: NetworkId, isBusy: boolean) => {
+                setBusyNetworkIds((currentIds: NetworkId[]) => {
+                    const restIds: NetworkId[] = currentIds.filter(
+                        (id: NetworkId) => id !== networkId,
+                    );
+
+                    return isBusy ? [...restIds, networkId] : restIds;
+                });
             },
         }),
         [refresh],
@@ -300,13 +307,19 @@ const useSdk = () => {
     );
 
     const transfer = useCallback(
-        (request: ITransferRequest, password?: string): Promise<string> =>
+        (
+            request: ITransferRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
             requireClient().transfer(request, password),
         [requireClient],
     );
 
     const deploy = useCallback(
-        (request: IDeployRequest, password?: string): Promise<string> =>
+        (
+            request: IDeployRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
             requireClient().deploy(request, password),
         [requireClient],
     );
@@ -357,6 +370,20 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const hasNetworkReservations = useCallback(
+        (networkId?: NetworkId): boolean =>
+            requireClient().hasNetworkReservations(networkId),
+        [requireClient],
+    );
+
+    const isNetworkBusy = useCallback(
+        (networkId: NetworkId): boolean => busyNetworkIds.includes(networkId),
+        [busyNetworkIds],
+    );
+
+    const isCurrentNetworkBusy: boolean =
+        currentNetwork !== null && busyNetworkIds.includes(currentNetwork.id);
+
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
@@ -406,6 +433,9 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getReservations,
+        hasNetworkReservations,
+        isNetworkBusy,
+        isCurrentNetworkBusy,
         clearPersistence,
         toDisplayAmount,
         toAtomicAmount,

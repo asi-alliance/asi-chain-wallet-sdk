@@ -31,10 +31,19 @@ const NetworksPage = (): ReactElement => {
                 </button>
             </div>
 
+            {sdk.isCurrentNetworkBusy && (
+                <p className="networks-page__notice">
+                    {sdk.currentNetwork?.name} has an operation in progress:
+                    switching, editing and removing are blocked until it
+                    finishes.
+                </p>
+            )}
+
             <div className="networks-page__list">
                 {sdk.networkRecords.map((network) => {
                     const { id, name, config, isDefault } = network;
                     const isActive = id === sdk.currentNetwork?.id;
+                    const isBusy = sdk.isNetworkBusy(id);
 
                     return (
                         <div
@@ -61,6 +70,11 @@ const NetworksPage = (): ReactElement => {
                                         active
                                     </span>
                                 )}
+                                {isBusy && (
+                                    <span className="network-card__badge network-card__badge--busy">
+                                        busy
+                                    </span>
+                                )}
                             </div>
 
                             <dl className="network-card__config">
@@ -76,6 +90,10 @@ const NetworksPage = (): ReactElement => {
                                     <dt>Indexer</dt>
                                     <dd>{config.IndexerURL || "—"}</dd>
                                 </div>
+                                <div className="network-card__config-row">
+                                    <dt>Node API</dt>
+                                    <dd>{config.nodeApiProfile}</dd>
+                                </div>
                             </dl>
 
                             <div className="network-card__actions">
@@ -83,7 +101,9 @@ const NetworksPage = (): ReactElement => {
                                     className="networks-page__action"
                                     type="button"
                                     onClick={() => handlers.switchNetwork(id)}
-                                    disabled={isActive}
+                                    disabled={
+                                        isActive || sdk.isCurrentNetworkBusy
+                                    }
                                 >
                                     Switch
                                 </button>
@@ -95,6 +115,7 @@ const NetworksPage = (): ReactElement => {
                                             onClick={() =>
                                                 handlers.editNetwork(network)
                                             }
+                                            disabled={isBusy}
                                         >
                                             Edit
                                         </button>
@@ -104,6 +125,7 @@ const NetworksPage = (): ReactElement => {
                                             onClick={() =>
                                                 handlers.removeNetwork(network)
                                             }
+                                            disabled={isBusy}
                                         >
                                             Remove
                                         </button>

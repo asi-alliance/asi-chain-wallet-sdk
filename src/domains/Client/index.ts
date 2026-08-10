@@ -25,13 +25,23 @@ import {
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
-import ReservationAdapter from "@domains/ReservationAdapter";
-import { ITransactionReservation, Transaction } from "@domains/Transaction";
+import ReservationAdapter, {
+    IReservedOperationResult,
+} from "@domains/ReservationAdapter";
+import {
+    ITransactionReservation,
+    TReservationsByWallet,
+    Transaction,
+} from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import ExportService from "@services/ExportService";
-import { fromAtomicAmount, toAtomicAmount } from "@utils/index";
+import {
+    fromAtomicAmount,
+    isNetworkConfigChanged,
+    toAtomicAmount,
+} from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
@@ -92,10 +102,8 @@ export interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void;
     onAccountsChanged?(walletId: string, accounts: Account[]): void;
     onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(
-        walletId: string,
-        reservations: ITransactionReservation[],
-    ): void;
+    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
+    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
     onWalletLocked?(walletId: string): void;
 }
 
@@ -486,6 +494,8 @@ export default class Client {
         this.eventDispatcher?.onNetworkChanged?.(
             apiClientManager.getCurrentNetwork(),
         );
+
+        this.emitReservationsChanged();
     }
 
     public async getBalance(address: Address): Promise<bigint> {
@@ -586,70 +596,68 @@ export default class Client {
         );
     }
 
-    public async transfer(
+    public transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
-    ): Promise<string> {
-        const wallet: Wallet = this.getUnlockedWallet(walletId);
+    ): Promise<IReservedOperationResult> {
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getUnlockedWallet(walletId);
 
-        wallet.setActiveAccount(accountId);
+            wallet.setActiveAccount(accountId);
 
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
 
-        await this.ensureSession(wallet, passwordProvider);
+            await this.ensureSession(wallet, passwordProvider);
 
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(walletId);
 
-        if (!reservationAdapter) {
-            throw new Error("Client.transfer: Not found reservation adapter");
-        }
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.transfer: Not found reservation adapter",
+                );
+            }
 
-        const deployId: string = await reservationAdapter.transfer(
-            wallet,
-            { to, amount, asset: DEFAULT_ASSET },
-            passwordProvider,
-        );
-
-        this.eventDispatcher?.onReservationsChanged?.(
-            walletId,
-            reservationAdapter.getReservations(),
-        );
-
-        return deployId;
+            return reservationAdapter.transfer(
+                wallet,
+                { to, amount, asset: DEFAULT_ASSET },
+                passwordProvider,
+            );
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
-    public async deploy(
+    public deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
-    ): Promise<string> {
-        const wallet: Wallet = this.getUnlockedWallet(walletId);
+    ): Promise<IReservedOperationResult> {
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getUnlockedWallet(walletId);
 
-        wallet.setActiveAccount(accountId);
+            wallet.setActiveAccount(accountId);
 
-        const account: Account = this.getAccount(wallet, accountId);
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
 
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
+            await this.ensureSession(wallet, passwordProvider);
 
-        await this.ensureSession(wallet, passwordProvider);
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(walletId);
 
-        const deployId: string =
-            await ApiServiceRegistry.getInstance().transactions.deploy({
-                walletType: wallet.getType(),
-                account,
-                signer: wallet.getSigner(),
-                term,
-                phloLimit,
+            if (!reservationAdapter) {
+                throw new Error("Client.deploy: Not found reservation adapter");
+            }
+
+            return reservationAdapter.deploy(
+                wallet,
+                { term, phloLimit },
                 passwordProvider,
-            });
-
-        return deployId;
+            );
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
     public exploreDeploy(rholang: string): Promise<unknown> {
@@ -708,6 +716,15 @@ export default class Client {
         return ApiClientManager.getInstance().getNetwork(id);
     }
 
+    public isNetworkBusy(networkId?: NetworkId): boolean {
+        const apiClientManager: ApiClientManager =
+            ApiClientManager.getInstance();
+
+        return apiClientManager.isNetworkBusy(
+            networkId ?? apiClientManager.getCurrentNetworkId(),
+        );
+    }
+
     public addNetwork(
         name: NetworkName,
         config: INetworkConfig,
@@ -715,16 +732,55 @@ export default class Client {
         return NetworkManager.addNetwork(name, config);
     }
 
-    public updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void> {
-        return NetworkManager.updateNetwork(id, update);
+    public hasNetworkReservations(networkId?: NetworkId): boolean {
+        return this.reservationAdapterManager.hasNetworkReservations(
+            networkId ?? ApiClientManager.getInstance().getCurrentNetworkId(),
+        );
     }
 
-    public removeNetwork(id: NetworkId): Promise<void> {
-        return NetworkManager.removeNetwork(id);
+    public async updateNetwork(
+        id: NetworkId,
+        update: INetworkUpdate,
+    ): Promise<void> {
+        const isConfigChanged: boolean = isNetworkConfigChanged(
+            ApiClientManager.getInstance().getNetwork(id).config,
+            update.config,
+        );
+
+        await NetworkManager.updateNetwork(id, update);
+
+        if (!isConfigChanged) {
+            return;
+        }
+
+        await this.reservationAdapterManager.removeNetworkReservations(id);
+
+        this.emitReservationsChanged();
+    }
+
+    public async removeNetwork(id: NetworkId): Promise<void> {
+        await NetworkManager.removeNetwork(id);
+
+        await this.reservationAdapterManager.removeNetworkReservations(id);
+
+        this.emitReservationsChanged();
     }
 
     private createPasswordProvider(password: string): SecretsProvider {
         return new SecretsProvider(() => ({ password }));
+    }
+
+    private emitReservationsChanged(): void {
+        this.eventDispatcher?.onReservationsChanged?.(
+            this.reservationAdapterManager.getReservationsByWallet(),
+        );
+    }
+
+    private emitNetworkBusyChanged(
+        networkId: NetworkId,
+        isBusy: boolean,
+    ): void {
+        this.eventDispatcher?.onNetworkBusyChanged?.(networkId, isBusy);
     }
 
     private emitAccountsChanged(walletId: string): void {

@@ -5,9 +5,12 @@ import DeployService from "@services/DeployService";
 import DeployStatusPoller from "@services/DeployStatusPoller";
 import TransactionService from "@services/TransactionService";
 import ApiClientManager from "@domains/ApiClientManager";
+import NodeApiProvider from "@domains/NodeApiProvider";
 
 export default class ApiServiceRegistry {
     private static instance: ApiServiceRegistry;
+
+    private readonly apiClientManager: ApiClientManager;
 
     //CORE SERVICES
     public readonly deploy: DeployService;
@@ -17,16 +20,33 @@ export default class ApiServiceRegistry {
     //COMPOSITE SERVICES
     public readonly assets: AssetsService;
     public readonly transactions: TransactionService;
-    public readonly poller: DeployStatusPoller;
+
+    //API WORKERS
+    public get poller(): DeployStatusPoller {
+        return new DeployStatusPoller(
+            this.apiClientManager.createNetworkContext(),
+        );
+    }
 
     private constructor(apiClientManager: ApiClientManager) {
-        this.deploy = new DeployService(apiClientManager);
-        this.blocks = new BlockService(apiClientManager);
-        this.accountData = new AccountDataService(apiClientManager);
+        const nodeApiProvider: NodeApiProvider =
+            NodeApiProvider.getInstance(apiClientManager);
 
-        this.assets = new AssetsService(this.deploy);
-        this.transactions = new TransactionService(this.deploy, this.blocks);
-        this.poller = new DeployStatusPoller(this.deploy);
+        this.apiClientManager = apiClientManager;
+
+        this.deploy = new DeployService(nodeApiProvider);
+        this.blocks = new BlockService(nodeApiProvider);
+        this.accountData = new AccountDataService(
+            nodeApiProvider,
+            apiClientManager,
+        );
+
+        this.assets = new AssetsService(this.deploy, nodeApiProvider);
+        this.transactions = new TransactionService(
+            this.deploy,
+            this.blocks,
+            nodeApiProvider,
+        );
     }
 
     public static getInstance(

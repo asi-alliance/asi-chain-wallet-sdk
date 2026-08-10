@@ -3,10 +3,15 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_PRICE,
-    IDeployWatchHandle,
+    IReservedOperationResult,
     Wallet,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "../../sdk-react-kit/hooks/useRelevantResultGuard";
 import useSecureAction from "@hooks/useSecureAction";
 import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
@@ -38,10 +43,12 @@ const DeployPage = (): ReactElement => {
         currentNetwork,
         deploy,
         exploreDeploy,
-        watchDeploy,
         getAvailableBalance,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
+    const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
 
     const [code, setCode] = useState<string>(EXAMPLE_CONTRACT);
     const [phloLimit, setPhloLimit] = useState<string>(DEFAULT_PHLO_LIMIT);
@@ -52,11 +59,11 @@ const DeployPage = (): ReactElement => {
     const [deployId, setDeployId] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
 
-    const watchHandleRef = useRef<IDeployWatchHandle | null>(null);
+    const unsubscribeRef = useRef<(() => void) | null>(null);
 
     useEffect(
         () => () => {
-            watchHandleRef.current?.cancel();
+            unsubscribeRef.current?.();
         },
         [],
     );
@@ -111,8 +118,8 @@ const DeployPage = (): ReactElement => {
         setResult(null);
         setDeployId(null);
         setStatus(null);
-        watchHandleRef.current?.cancel();
-        watchHandleRef.current = null;
+        unsubscribeRef.current?.();
+        unsubscribeRef.current = null;
     };
 
     const runDeploy = async (): Promise<void> => {
@@ -137,10 +144,20 @@ const DeployPage = (): ReactElement => {
             return;
         }
 
+        const isBalanceRelevant: TIsResultRelevant = startRequest();
+
         const balance = await getAvailableBalance(
             selectedWalletId,
             selectedAccountId,
         );
+
+        if (!isBalanceRelevant()) {
+            setError("Deploy aborted: network changed");
+            setIsLoading(false);
+
+            return;
+        }
+
         const minGasCost =
             (Number(phloLimit) * DEFAULT_PHLO_PRICE) / 1000000000;
         if (balance <= 0 || balance < minGasCost) {
@@ -151,8 +168,8 @@ const DeployPage = (): ReactElement => {
         }
 
         try {
-            const submittedDeployId: string | undefined = await runSecureAction(
-                {
+            const reserved: IReservedOperationResult | undefined =
+                await runSecureAction({
                     walletId: selectedEntry.walletId,
                     passwordTitle: "Enter wallet password to deploy",
                     confirmMessage: `Deploy this contract from ${selectedEntry.account.getName()}?`,
@@ -166,17 +183,16 @@ const DeployPage = (): ReactElement => {
                             },
                             password,
                         ),
-                },
-            );
+                });
 
-            if (!submittedDeployId) {
+            if (!reserved) {
                 return;
             }
 
-            setDeployId(submittedDeployId);
+            setDeployId(reserved.deployId);
             setStatus("Submitted");
 
-            watchHandleRef.current = watchDeploy(submittedDeployId, {
+            unsubscribeRef.current = reserved.subscribe({
                 onStatus: (deployStatus) => setStatus(deployStatus.status),
                 onConfirmed: () => setStatus("Finalized"),
                 onError: (watchError) => setError(watchError.message),
@@ -201,14 +217,24 @@ const DeployPage = (): ReactElement => {
             return;
         }
 
+        const isResultRelevant: TIsResultRelevant = startRequest();
+
         setIsLoading(true);
         resetOutput();
 
         try {
-            await exploreDeploy(code);
+            const exploreResult: unknown = await exploreDeploy(code);
 
-            setResult(await exploreDeploy(code));
+            if (!isResultRelevant()) {
+                return;
+            }
+
+            setResult(exploreResult);
         } catch (exploreError) {
+            if (!isResultRelevant()) {
+                return;
+            }
+
             setError((exploreError as Error)?.message ?? "Explore failed");
         } finally {
             setIsLoading(false);
