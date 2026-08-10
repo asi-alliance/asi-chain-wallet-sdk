@@ -44,7 +44,7 @@ Data export:
 - `HEX_BYTE_PADDING: number` — hex padding width for buffer conversion (64).
 - `POWER_BASE: number` — base for power calculations (10).
 - `ASI_BASE_UNIT: bigint` — atomic multiplier `BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS)`.
-- `FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
+- `SCALA_FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
 - `INVALID_BLOCK_NUMBER: number` — sentinel for a failed block-number read (-1).
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
 
@@ -173,35 +173,35 @@ Stage-3 method decorators used across storage, wallets, and the API layer.
 Storage guards (on `ITableService` methods):
 
 ```ts
-EnsureDatabaseInitialized   // awaits this.init() first
-EnsureTableExists           // first arg must be an existing table name
-SkipIfDatabaseNotInitialized
-SkipIfTableExists
+EnsureDatabaseInitialized; // awaits this.init() first
+EnsureTableExists; // first arg must be an existing table name
+SkipIfDatabaseNotInitialized;
+SkipIfTableExists;
 ```
 
 Wallet / client / API guards:
 
 ```ts
-OnlyHDWallet                       // throws on non-HD wallets
-EnsureActiveAccountExist           // throws when the wallet has no active account
-EnsureApiClientManagerInitialized  // throws before ApiClientManager.initialize()
-EnsureApiClientManagerConfigured   // throws when the network config isn't ready
-EnsureWithInsensitiveCacheStorage  // throws when the cache-storage flag is off
+OnlyHDWallet; // throws on non-HD wallets
+EnsureActiveAccountExist; // throws when the wallet has no active account
+EnsureApiClientManagerInitialized; // throws before ApiClientManager.initialize()
+EnsureApiClientManagerConfigured; // throws when the network config isn't ready
+EnsureWithInsensitiveCacheStorage; // throws when the cache-storage flag is off
 ```
 
 Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 
 ```ts
-EnsureNetworkConfigProviderReady   // throws before the registry is initialized
-EnsureNetworkExist                 // throws when the network id is unknown
-EnsureNetworkNotDefault            // throws when mutating/removing a built-in network
+EnsureNetworkConfigProviderReady; // throws before the registry is initialized
+EnsureNetworkExist; // throws when the network id is unknown
+EnsureNetworkNotDefault; // throws when mutating/removing a built-in network
 ```
 
 Network-busy guards (`src/utils/decorators/apiClientManager`):
 
 ```ts
-EnsureCurrentNetworkNotBusy        // throws NetworkBusyError when the active network has work in flight
-EnsureTargetNetworkNotBusy         // same check against the network id in the first argument
+EnsureCurrentNetworkNotBusy; // throws NetworkBusyError when the active network has work in flight
+EnsureTargetNetworkNotBusy; // same check against the network id in the first argument
 ```
 
 Both read `ApiClientManager`'s `NetworkBusyRegistry` and protect

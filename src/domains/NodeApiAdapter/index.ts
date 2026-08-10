@@ -5,7 +5,7 @@ import {
     IDeployInfo,
     IDeployStatusResult,
 } from "@domains/Deploy";
-import { FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
+import { SCALA_FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -47,7 +47,7 @@ export default abstract class NodeApiAdapter {
     }
 
     public isDeployFinalized(deploy: IDeployInfo): boolean {
-        return (deploy.faultTolerance ?? 0) >= FAULT_TOLERANCE_THRESHOLD;
+        return (deploy.faultTolerance ?? 0) >= SCALA_FAULT_TOLERANCE_THRESHOLD;
     }
 
     public async getDeployStatus(
