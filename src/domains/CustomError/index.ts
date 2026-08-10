@@ -5,6 +5,12 @@ export enum CustomErrorCode {
     NETWORK_BUSY = "NETWORK_BUSY",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
+    WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+}
+
+export enum WalletAction {
+    UNLOCK = "UNLOCK",
+    DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
 }
 
 export class CustomError extends Error {
@@ -54,6 +60,22 @@ export class DuplicateAccountError extends CustomError {
 
         this.existingSignerId = existingSignerId;
         this.existingAccountId = existingAccountId;
+    }
+}
+
+export class WalletActionInProgressError extends CustomError {
+    public readonly action: WalletAction;
+    public readonly signerId: string;
+
+    constructor(
+        action: WalletAction,
+        signerId: string,
+        message: string = `Wallet ${signerId} already has the ${action} action in progress`,
+    ) {
+        super(CustomErrorCode.WALLET_ACTION_IN_PROGRESS, message, 409);
+
+        this.action = action;
+        this.signerId = signerId;
     }
 }
 

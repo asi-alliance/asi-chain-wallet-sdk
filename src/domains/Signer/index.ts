@@ -8,6 +8,8 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import { WalletLockedError } from "@domains/CustomError";
 import AutoTimer from "@domains/AutoTimer";
 
+export const SIGNER_KEY_PREFIX: string = "SIGNER";
+
 export enum WalletTypes {
     PRIVATE_KEY = "private-key",
     HD = "hd",
