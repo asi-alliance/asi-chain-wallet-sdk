@@ -72,7 +72,7 @@ test("adapter fabric builds the adapter of the requested profile", () => {
     assert.equal(rustAdapter.getProfile(), NodeApiProfile.RUST);
 });
 
-test("scala profile sends exploratory deploy to the validator as a raw term", async () => {
+test("scala profile sends exploratory deploy to the observer as a raw term", async () => {
     console.log("\n=== SCALA EXPLORATORY DEPLOY SHAPE ===");
 
     const calls: IExploreCall[] = [];

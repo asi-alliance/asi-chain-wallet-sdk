@@ -43,7 +43,9 @@ clear(): void
 removal, and clear.
 
 ```ts
-interface IDisposable { dispose(): void }
+interface IDisposable {
+    dispose(): void;
+}
 ```
 
 ### WalletManager (`src/services/WalletManager/index.ts`)
@@ -385,12 +387,17 @@ Submits deploys and reads deploy status through the node API adapter.
 submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
 exploreDeployData(rholangCode: string): Promise<any>                  // returns result.expr
 getDeploy(deployHash: string): Promise<any>
-isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= FAULT_TOLERANCE_THRESHOLD
+isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= SCALA_FAULT_TOLERANCE_THRESHOLD
 getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
 ```
 
 ```ts
-enum DeployStatus { DEPLOYING, INCLUDED_IN_BLOCK, FINALIZED, CHECK_ERROR }
+enum DeployStatus {
+    DEPLOYING,
+    INCLUDED_IN_BLOCK,
+    FINALIZED,
+    CHECK_ERROR,
+}
 type IDeployStatusResult =
     | { status: DEPLOYING | INCLUDED_IN_BLOCK | FINALIZED }
     | { status: CHECK_ERROR; errorMessage: string };
@@ -628,6 +635,14 @@ SignerService.deployDataProtobufSerialize(deployData: DeployData): Uint8Array
 Also exports the signing result contracts:
 
 ```ts
-interface SigningRequest { wallet: Wallet; data: any }
-interface SignedResult { data: any; deployer: string; signature: string; sigAlgorithm: string }
+interface SigningRequest {
+    wallet: Wallet;
+    data: any;
+}
+interface SignedResult {
+    data: any;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
 ```

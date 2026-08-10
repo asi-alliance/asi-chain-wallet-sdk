@@ -156,9 +156,10 @@ export default class ApiClientManager {
         const networkId: NetworkId = this.getCurrentNetworkId();
 
         this.networkBusyRegistry.acquire(networkId);
-        onBusyChanged?.(networkId, true);
 
         try {
+            onBusyChanged?.(networkId, true);
+
             return await operation();
         } finally {
             this.networkBusyRegistry.release(networkId);

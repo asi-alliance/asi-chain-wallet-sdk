@@ -27,15 +27,13 @@ export const NODE_API_PROFILE_DESCRIPTORS: Record<
     [NodeApiProfile.SCALA]: {
         profile: NodeApiProfile.SCALA,
         label: "Scala node",
-        description:
-            "Legacy f1r3node implementation. Exploratory deploys are sent to the validator as a raw term.",
+        description: "Legacy f1r3node implementation.",
         stability: NodeApiProfileStability.STABLE,
     },
     [NodeApiProfile.RUST]: {
         profile: NodeApiProfile.RUST,
         label: "Rust node",
-        description:
-            "New f1r3node implementation. Exploratory deploys are sent to the read-only observer as a JSON term and are retried while the observer is busy.",
+        description: "New f1r3node implementation.",
         stability: NodeApiProfileStability.EXPERIMENTAL,
     },
 };
