@@ -100,7 +100,7 @@ const reloadAndUnlock = async (signerId: string): Promise<IRestoredWallet> => {
 
     const client: Client = await createClient(reservationEvents);
 
-    const wallet: Wallet = await client.unlockWallet(signerId, PASSWORD);
+    const wallet: Wallet = await client.openWallet(signerId, PASSWORD);
 
     return { client, walletId: wallet.getId(), reservationEvents };
 };

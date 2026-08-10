@@ -97,6 +97,8 @@ export default abstract class Signer {
             passwordProvider.getSecret().password,
         );
 
+        this.lock();
+
         const onAutoLock: (() => void) | undefined = options?.onAutoLock;
 
         const timer: AutoTimer = new AutoTimer({
