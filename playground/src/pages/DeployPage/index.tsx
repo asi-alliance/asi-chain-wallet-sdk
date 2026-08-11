@@ -146,10 +146,22 @@ const DeployPage = (): ReactElement => {
 
         const isBalanceRelevant: TIsResultRelevant = startRequest();
 
-        const balance = await getAvailableBalance(
-            selectedWalletId,
-            selectedAccountId,
-        );
+        let balance: bigint;
+
+        try {
+            balance = await getAvailableBalance(
+                selectedWalletId,
+                selectedAccountId,
+            );
+        } catch (balanceError) {
+            setError(
+                (balanceError as Error)?.message ??
+                    "Deploy aborted: balance is unavailable",
+            );
+            setIsLoading(false);
+
+            return;
+        }
 
         if (!isBalanceRelevant()) {
             setError("Deploy aborted: network changed");
