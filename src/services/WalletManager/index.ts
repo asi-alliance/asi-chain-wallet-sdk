@@ -38,7 +38,7 @@ export interface IDerivedAccount {
 }
 
 export default class WalletManager extends ItemManager<Wallet> {
-    private readonly operationsGuard: ConcurrentOperationGuardService =
+    private static readonly operationsGuard: ConcurrentOperationGuardService =
         new ConcurrentOperationGuardService();
 
     public async createHD(
@@ -77,7 +77,7 @@ export default class WalletManager extends ItemManager<Wallet> {
         signerId: string,
         passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
-        return this.operationsGuard.run(
+        return WalletManager.operationsGuard.run(
             [`${WalletAction.UNLOCK}:${signerId}`],
             signerId,
             () => new WalletActionInProgressError(WalletAction.UNLOCK, signerId),
@@ -123,7 +123,7 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         const signerId: string = wallet.getSigner().getId();
 
-        return this.operationsGuard.run(
+        return WalletManager.operationsGuard.run(
             [`${WalletAction.DERIVE_ACCOUNT}:${signerId}`],
             signerId,
             () =>
@@ -276,7 +276,7 @@ export default class WalletManager extends ItemManager<Wallet> {
     private async persist(wallet: Wallet): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
-        return this.operationsGuard.run(
+        return WalletManager.operationsGuard.run(
             this.getFingerprintKeys(wallet),
             signerId,
             (conflictSignerId: string) =>
