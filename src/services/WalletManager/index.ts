@@ -1,18 +1,17 @@
 import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
-import Wallet, { ACCOUNT_KEY_PREFIX } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
-import { SIGNER_KEY_PREFIX, WalletTypes } from "@domains/Signer";
+import { WalletTypes } from "@domains/Signer";
 import { ISignerStorageRecord } from "@domains/SignersStorageRepository";
 import { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
 import {
     DuplicateAccountError,
     DuplicateWalletError,
     WalletAction,
-    WalletActionInProgressError,
 } from "@domains/CustomError";
-import ConcurrentOperationGuardService from "@services/ConcurrentOperationGuard";
+import WalletOperationGuardService from "@services/WalletOperationGuard";
 
 export interface IAccountMetadata {
     id: string;
@@ -38,8 +37,8 @@ export interface IDerivedAccount {
 }
 
 export default class WalletManager extends ItemManager<Wallet> {
-    private static readonly operationsGuard: ConcurrentOperationGuardService =
-        new ConcurrentOperationGuardService();
+    private static readonly operationsGuard: WalletOperationGuardService =
+        new WalletOperationGuardService();
 
     public async createHD(
         { mnemonic, accountName, index }: ICreateHDWalletParams,
@@ -77,10 +76,9 @@ export default class WalletManager extends ItemManager<Wallet> {
         signerId: string,
         passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
-        return WalletManager.operationsGuard.run(
-            [`${WalletAction.UNLOCK}:${signerId}`],
+        return WalletManager.operationsGuard.runWalletAction(
+            WalletAction.UNLOCK,
             signerId,
-            () => new WalletActionInProgressError(WalletAction.UNLOCK, signerId),
             async () => {
                 const wallet: Wallet = await StorageManager.getWallet({
                     signerId,
@@ -123,14 +121,9 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         const signerId: string = wallet.getSigner().getId();
 
-        return WalletManager.operationsGuard.run(
-            [`${WalletAction.DERIVE_ACCOUNT}:${signerId}`],
+        return WalletManager.operationsGuard.runWalletAction(
+            WalletAction.DERIVE_ACCOUNT,
             signerId,
-            () =>
-                new WalletActionInProgressError(
-                    WalletAction.DERIVE_ACCOUNT,
-                    signerId,
-                ),
             async () => {
                 const { account, accountId } = await wallet.deriveAccount(
                     { name: accountName },
@@ -259,28 +252,11 @@ export default class WalletManager extends ItemManager<Wallet> {
         }
     }
 
-    private getFingerprintKeys(wallet: Wallet): string[] {
-        const accountKeys: string[] = wallet
-            .getAccounts()
-            .map(
-                (account: Account) =>
-                    `${ACCOUNT_KEY_PREFIX}:${account.getFingerprint()}`,
-            );
-
-        return [
-            `${SIGNER_KEY_PREFIX}:${wallet.getSigner().getFingerprint()}`,
-            ...accountKeys,
-        ];
-    }
-
     private async persist(wallet: Wallet): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
-        return WalletManager.operationsGuard.run(
-            this.getFingerprintKeys(wallet),
-            signerId,
-            (conflictSignerId: string) =>
-                new DuplicateWalletError(conflictSignerId),
+        return WalletManager.operationsGuard.runWalletCreation(
+            wallet,
             async () => {
                 await this.assertWalletIsNotDuplicate(wallet);
 

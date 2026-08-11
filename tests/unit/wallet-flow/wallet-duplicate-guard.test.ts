@@ -152,10 +152,7 @@ test("concurrent HD creation and import of its derived key keep a single wallet"
 
     assert.equal(fulfilled.length, 1);
     assert.equal(errors.length, 1);
-    assert.ok(
-        errors[0] instanceof DuplicateWalletError ||
-            errors[0] instanceof DuplicateAccountError,
-    );
+    assert.ok(errors[0] instanceof DuplicateAccountError);
     assert.equal(accounts.length, 1);
 });
 

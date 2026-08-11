@@ -1,12 +1,16 @@
 import ItemManager from "@services/ItemManager";
 
-export default class ConcurrentOperationGuardService extends ItemManager<string> {
-    private findConflictOwnerId(keys: string[]): string | null {
-        for (const key of keys) {
-            const ownerId: string | null = this.get(key);
+export default class ConcurrentOperationGuardService<
+    TOwner = string,
+> extends ItemManager<TOwner> {
+    private findConflictOwner(
+        reservations: Map<string, TOwner>,
+    ): TOwner | null {
+        for (const key of reservations.keys()) {
+            const owner: TOwner | null = this.get(key);
 
-            if (ownerId) {
-                return ownerId;
+            if (owner !== null) {
+                return owner;
             }
         }
 
@@ -14,25 +18,25 @@ export default class ConcurrentOperationGuardService extends ItemManager<string>
     }
 
     public async run<T>(
-        keys: string[],
-        ownerId: string,
-        createConflictError: (conflictOwnerId: string) => Error,
+        reservations: Map<string, TOwner>,
+        createConflictError: (conflictOwner: TOwner) => Error,
         operation: () => Promise<T>,
     ): Promise<T> {
-        const conflictOwnerId: string | null = this.findConflictOwnerId(keys);
+        const conflictOwner: TOwner | null =
+            this.findConflictOwner(reservations);
 
-        if (conflictOwnerId) {
-            throw createConflictError(conflictOwnerId);
+        if (conflictOwner !== null) {
+            throw createConflictError(conflictOwner);
         }
 
-        for (const key of keys) {
-            this.add(key, ownerId);
+        for (const [key, owner] of reservations) {
+            this.add(key, owner);
         }
 
         try {
             return await operation();
         } finally {
-            for (const key of keys) {
+            for (const key of reservations.keys()) {
                 this.remove(key);
             }
         }
