@@ -8,7 +8,7 @@ import {
 import { SCALA_FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
-import type { Pagination } from "@services/GraphqlParser/queryOptions";
+import type { ITransactionsHistoryQuery } from "@domains/Transaction";
 import type { SignedResult } from "@services/Signer";
 
 export interface IExploratoryDeployClient {
@@ -90,13 +90,11 @@ export default abstract class NodeApiAdapter {
 
     public getTransactionHistory(
         address: string,
-        publicKey: string,
-        pagination: Pagination = {},
+        historyQuery: ITransactionsHistoryQuery = {},
     ): Promise<TransactionHistoryQueryData> {
         return this.clients.indexer.getTransactionHistory(
             address,
-            publicKey,
-            pagination,
+            historyQuery,
         );
     }
 }

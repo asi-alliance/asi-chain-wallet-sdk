@@ -85,7 +85,7 @@ const readPage = (
         TransactionsHistoryAggregator.createHistoryWindow(
             pendingTransactions,
             NETWORK_ID,
-            pagination,
+            { pagination },
         );
 
     return TransactionsHistoryAggregator.mergeHistoryPage(
@@ -162,8 +162,7 @@ const INTERLEAVED_EXPECTED_IDS: string[] = [
 test("indexer window is requested untouched when there are no pending rows", () => {
     const historyWindow: ITransactionsHistoryWindow =
         TransactionsHistoryAggregator.createHistoryWindow([], NETWORK_ID, {
-            offset: 2,
-            limit: 3,
+            pagination: { offset: 2, limit: 3 },
         });
 
     assert.deepEqual(historyWindow.executedPagination, {
@@ -182,7 +181,7 @@ test("indexer window is widened by the pending count and floored at zero", () =>
         TransactionsHistoryAggregator.createHistoryWindow(
             INTERLEAVED_PENDING,
             NETWORK_ID,
-            { offset: 1, limit: 4 },
+            { pagination: { offset: 1, limit: 4 } },
         );
 
     assert.deepEqual(nearHead.executedPagination, { offset: 0, limit: 7 });
@@ -191,7 +190,7 @@ test("indexer window is widened by the pending count and floored at zero", () =>
         TransactionsHistoryAggregator.createHistoryWindow(
             INTERLEAVED_PENDING,
             NETWORK_ID,
-            { offset: 6, limit: 4 },
+            { pagination: { offset: 6, limit: 4 } },
         );
 
     assert.deepEqual(deepPage.executedPagination, { offset: 3, limit: 7 });
@@ -477,31 +476,31 @@ test("the pending-only source applies pagination to the pending rows directly", 
 
     assert.deepEqual(
         toIds(
-            TransactionsHistoryAggregator.paginatePendingTransactions(
+            TransactionsHistoryAggregator.createPendingHistoryPage(
                 local,
                 NETWORK_ID,
-            ),
+            ).items,
         ),
         ["p1", "p2", "p3"],
     );
 
     assert.deepEqual(
         toIds(
-            TransactionsHistoryAggregator.paginatePendingTransactions(
+            TransactionsHistoryAggregator.createPendingHistoryPage(
                 local,
                 NETWORK_ID,
-                { offset: 1, limit: 1 },
-            ),
+                { pagination: { offset: 1, limit: 1 } },
+            ).items,
         ),
         ["p2"],
     );
 
     assert.deepEqual(
-        TransactionsHistoryAggregator.paginatePendingTransactions(
+        TransactionsHistoryAggregator.createPendingHistoryPage(
             local,
             NETWORK_ID,
-            { offset: 3, limit: 2 },
-        ),
+            { pagination: { offset: 3, limit: 2 } },
+        ).items,
         [],
     );
 });
@@ -514,11 +513,11 @@ test("the pending-only source drops rows from another network", () => {
 
     assert.deepEqual(
         toIds(
-            TransactionsHistoryAggregator.paginatePendingTransactions(
+            TransactionsHistoryAggregator.createPendingHistoryPage(
                 local,
                 NETWORK_ID,
-                { offset: 0, limit: 5 },
-            ),
+                { pagination: { offset: 0, limit: 5 } },
+            ).items,
         ),
         ["local"],
     );

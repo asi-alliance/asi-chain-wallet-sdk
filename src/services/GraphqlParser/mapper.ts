@@ -3,109 +3,69 @@
  */
 
 import { NetworkId } from "@domains/Network";
-import { RawDeployment, RawTransfer } from ".";
-import { Transaction } from "@domains/Transaction";
+import { RawTransaction } from ".";
+import {
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+} from "@domains/Transaction";
 import { normalizeAddress } from "@utils/functions";
 
-type RawTransferMappingContext = {
+type RawTransactionMappingContext = {
     accountAddress: string;
     networkId: NetworkId;
 };
 
-type RawDeploymentMappingContext = {
-    networkId: NetworkId;
-};
-
-export function mapRawTransferToTransaction(
-    transfer: RawTransfer,
-    context: RawTransferMappingContext,
-): Transaction | undefined {
-    const from = transfer.from_address?.trim();
-    const to = transfer.to_address?.trim();
-
-    if (!transfer.deploy_id || !from || !to) {
-        return undefined;
-    }
+export function mapRawTransactionToTransaction(
+    transaction: RawTransaction,
+    context: RawTransactionMappingContext,
+): Transaction {
+    const from: string = (
+        transaction.from_address ?? transaction.deployer_address
+    ).trim();
 
     return {
-        id: transfer.deploy_id,
-        timestamp: toDate(transfer.timestamp),
-        type: getTransferType(from, to, context.accountAddress),
+        id: transaction.deploy_id,
+        timestamp: toDate(transaction.timestamp),
+        type: getTransactionType(transaction, from, context.accountAddress),
         from,
-        to,
-        amount: toOptionalString(transfer.amount_asi),
-        deployId: transfer.deploy_id,
-        blockHash: transfer.block_hash,
-        status: "completed",
+        to: transaction.to_address?.trim(),
+        amount: toOptionalString(transaction.amount_asi),
+        deployId: transaction.deploy_id,
+        blockHash: transaction.block_hash,
+        status: toTransactionStatus(transaction),
         networkId: context.networkId,
         detectedBy: "auto",
     };
 }
 
-export function mapRawDeploymentToTransaction(
-    deployment: RawDeployment,
-    context: RawDeploymentMappingContext,
-): Transaction | undefined {
-    const from = deployment.deployer?.trim();
-
-    if (!deployment.deploy_id || !from) {
-        return undefined;
-    }
-
-    return {
-        id: deployment.deploy_id,
-        timestamp: toDate(deployment.timestamp),
-        type: "deploy",
-        from,
-        deployId: deployment.deploy_id,
-        blockHash: deployment.block?.block_hash,
-        status: "completed",
-        networkId: context.networkId,
-        detectedBy: "auto",
-    };
-}
-
-function getTransferType(
+function getTransactionType(
+    transaction: RawTransaction,
     from: string,
-    to: string,
     accountAddress: string,
-): "send" | "receive" {
-    const normalizedAccountAddress = normalizeAddress(accountAddress);
+): TransactionType {
+    if (transaction.type === "not_transfer") {
+        return "deploy";
+    }
 
-    return normalizeAddress(from) === normalizedAccountAddress
+    return normalizeAddress(from) === normalizeAddress(accountAddress)
         ? "send"
         : "receive";
 }
 
-function toOptionalString(
-    value: number | string | undefined,
-): string | undefined {
-    return value === undefined ? undefined : String(value);
+function toTransactionStatus(transaction: RawTransaction): TransactionStatus {
+    return transaction.status === "failed" ? "failed" : "completed";
 }
 
-function toDate(value: number | string | undefined): Date {
-    if (value === undefined || value === "") {
-        return new Date(0);
-    }
-
-    if (typeof value === "number") {
-        return toDateFromNumericTimestamp(value);
-    }
-
-    const timestamp = value.trim();
-    if (/^\d+$/.test(timestamp)) {
-        return toDateFromNumericTimestamp(Number(timestamp));
-    }
-
-    const parsedTimestamp = Date.parse(timestamp);
-    return Number.isFinite(parsedTimestamp)
-        ? new Date(parsedTimestamp)
-        : new Date(0);
+function toOptionalString(value: number | string | null): string | undefined {
+    return value === null ? undefined : String(value);
 }
 
-function toDateFromNumericTimestamp(timestamp: number): Date {
-    const milliseconds =
-        timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+function toDate(timestamp: number | string): Date {
+    const epochTimestamp: number = Number(timestamp);
+
+    const milliseconds: number =
+        epochTimestamp < 10_000_000_000 ? epochTimestamp * 1000 : epochTimestamp;
 
     return new Date(milliseconds);
 }

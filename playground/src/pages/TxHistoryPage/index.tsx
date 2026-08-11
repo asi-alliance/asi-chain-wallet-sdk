@@ -11,8 +11,12 @@ import {
     Account,
     ExportFormat,
     ExportService,
+    ITransactionsHistoryFilters,
+    ITransactionsHistoryPage,
     THistorySource,
     Transaction,
+    TransactionType,
+    TTransactionStatusFilter,
 } from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
 import {
@@ -32,18 +36,68 @@ const PAGE_SIZE: number = 10;
 
 const PAGE_QUERY_PARAM: string = "page";
 
-type HistoryMode = "all" | "pending" | "executed";
+type TypeFilter = TransactionType | "all";
+type StatusFilter = TTransactionStatusFilter | "pending" | "all";
+type PeriodFilter = "day" | "week" | "month" | "all";
 
-const MODE_OPTIONS: SelectFilterOption[] = [
-    { label: "All", value: "all" },
-    { label: "Pending only", value: "pending" },
-    { label: "Executed only", value: "executed" },
+const TYPE_OPTIONS: SelectFilterOption[] = [
+    { label: "All types", value: "all" },
+    { label: "Send", value: "send" },
+    { label: "Receive", value: "receive" },
+    { label: "Deploy", value: "deploy" },
 ];
 
-const MODE_SOURCES: Record<HistoryMode, THistorySource[] | undefined> = {
+const STATUS_OPTIONS: SelectFilterOption[] = [
+    { label: "All statuses", value: "all" },
+    { label: "Pending", value: "pending" },
+    { label: "Confirmed", value: "completed" },
+    { label: "Failed", value: "failed" },
+];
+
+const STATUS_SOURCES: Record<StatusFilter, THistorySource[] | undefined> = {
     all: undefined,
     pending: ["pending"],
-    executed: ["executed"],
+    completed: ["executed"],
+    failed: ["executed"],
+};
+
+const PERIOD_OPTIONS: SelectFilterOption[] = [
+    { label: "All time", value: "all" },
+    { label: "1 day", value: "day" },
+    { label: "1 week", value: "week" },
+    { label: "1 month", value: "month" },
+];
+
+const DAY_MS: number = 24 * 60 * 60 * 1000;
+
+const PERIOD_DURATIONS: Record<Exclude<PeriodFilter, "all">, number> = {
+    day: DAY_MS,
+    week: 7 * DAY_MS,
+    month: 30 * DAY_MS,
+};
+
+const buildFilters = (
+    type: TypeFilter,
+    status: StatusFilter,
+    period: PeriodFilter,
+): ITransactionsHistoryFilters => {
+    const filters: ITransactionsHistoryFilters = {};
+
+    if (type !== "all") {
+        filters.type = type;
+    }
+
+    if (status !== "all" && status !== "pending") {
+        filters.status = status;
+    }
+
+    if (period !== "all") {
+        filters.period = {
+            from: new Date(Date.now() - PERIOD_DURATIONS[period]),
+        };
+    }
+
+    return filters;
 };
 
 const FORMAT_OPTIONS: SelectFilterOption[] = [
@@ -63,13 +117,16 @@ const TxHistoryPage = (): ReactElement => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
-    const [historyMode, setHistoryMode] = useState<HistoryMode>("all");
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
     const [exportFormat, setExportFormat] = useState<ExportFormat>(
         ExportFormat.JSON,
     );
     const [transactions, setTransactions] = useState<Transaction[] | null>(
         null,
     );
+    const [totalTransactions, setTotalTransactions] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
     const page = Math.max(1, Number(searchParams.get(PAGE_QUERY_PARAM)) || 1);
@@ -121,16 +178,21 @@ const TxHistoryPage = (): ReactElement => {
         setIsLoading(true);
 
         try {
-            const loadedTransactions: Transaction[] =
+            const loadedPage: ITransactionsHistoryPage =
                 await client.getTransactionsHistory(
                     selectedWallet.getId(),
                     selectedAccount.getId(),
                     {
-                        sources: MODE_SOURCES[historyMode],
+                        sources: STATUS_SOURCES[statusFilter],
                         pagination: {
                             offset: (page - 1) * PAGE_SIZE,
                             limit: PAGE_SIZE,
                         },
+                        filters: buildFilters(
+                            typeFilter,
+                            statusFilter,
+                            periodFilter,
+                        ),
                     },
                 );
 
@@ -138,7 +200,8 @@ const TxHistoryPage = (): ReactElement => {
                 return;
             }
 
-            setTransactions(loadedTransactions);
+            setTransactions(loadedPage.items);
+            setTotalTransactions(loadedPage.total);
         } catch (error) {
             console.error(error);
 
@@ -147,6 +210,7 @@ const TxHistoryPage = (): ReactElement => {
             }
 
             setTransactions(null);
+            setTotalTransactions(0);
         } finally {
             setIsLoading(false);
         }
@@ -154,7 +218,9 @@ const TxHistoryPage = (): ReactElement => {
         client,
         selectedWallet,
         selectedAccount,
-        historyMode,
+        typeFilter,
+        statusFilter,
+        periodFilter,
         page,
         startRequest,
     ]);
@@ -188,14 +254,24 @@ const TxHistoryPage = (): ReactElement => {
         resetToFirstPage();
     };
 
-    const handleModeChange = (value: string): void => {
-        setHistoryMode(value as HistoryMode);
+    const handleTypeChange = (value: string): void => {
+        setTypeFilter(value as TypeFilter);
         resetToFirstPage();
     };
 
-    const hasNextPage = transactions?.length === PAGE_SIZE;
+    const handleStatusChange = (value: string): void => {
+        setStatusFilter(value as StatusFilter);
+        resetToFirstPage();
+    };
 
-    const showPagination = Boolean(transactions) && (page > 1 || hasNextPage);
+    const handlePeriodChange = (value: string): void => {
+        setPeriodFilter(value as PeriodFilter);
+        resetToFirstPage();
+    };
+
+    const totalPages = Math.ceil(totalTransactions / PAGE_SIZE);
+
+    const showPagination = Boolean(transactions) && totalPages > 1;
 
     const canExport = Boolean(
         selectedAccount && transactions && transactions.length,
@@ -250,11 +326,29 @@ const TxHistoryPage = (): ReactElement => {
                         </div>
                         <div className="tx-history-page__field">
                             <SelectFilter
-                                id="tx-mode"
-                                label="Show:"
-                                value={historyMode}
-                                options={MODE_OPTIONS}
-                                onChange={handleModeChange}
+                                id="tx-type"
+                                label="Type:"
+                                value={typeFilter}
+                                options={TYPE_OPTIONS}
+                                onChange={handleTypeChange}
+                            />
+                        </div>
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-status"
+                                label="Status:"
+                                value={statusFilter}
+                                options={STATUS_OPTIONS}
+                                onChange={handleStatusChange}
+                            />
+                        </div>
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-period"
+                                label="Period:"
+                                value={periodFilter}
+                                options={PERIOD_OPTIONS}
+                                onChange={handlePeriodChange}
                             />
                         </div>
                         <div className="tx-history-page__field">
@@ -300,7 +394,7 @@ const TxHistoryPage = (): ReactElement => {
                 {showPagination && (
                     <Pagination
                         page={page}
-                        hasNextPage={hasNextPage}
+                        totalPages={totalPages}
                         onChange={goToPage}
                     />
                 )}

@@ -14,3 +14,6 @@ export type QueryOptions = Partial<{
     pagination: Pagination;
     order: Order;
 }>;
+
+export const DEFAULT_HISTORY_LIMIT: number = 100;
+export const DEFAULT_HISTORY_ORDER: Order = "desc";

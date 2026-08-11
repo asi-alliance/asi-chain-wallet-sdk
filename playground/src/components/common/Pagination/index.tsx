@@ -5,23 +5,27 @@ const VISIBLE_PAGES: number = 5;
 
 interface PaginationProps {
     page: number;
-    hasNextPage: boolean;
+    totalPages: number;
     onChange: (page: number) => void;
 }
 
-const buildPageNumbers = (page: number, hasNextPage: boolean): number[] => {
-    const lastKnownPage = hasNextPage ? page + 1 : page;
-    const firstPage = Math.max(1, lastKnownPage - VISIBLE_PAGES + 1);
+const buildPageNumbers = (page: number, totalPages: number): number[] => {
+    const visiblePages = Math.min(VISIBLE_PAGES, totalPages);
+
+    const firstPage = Math.min(
+        Math.max(1, page - Math.floor(visiblePages / 2)),
+        totalPages - visiblePages + 1,
+    );
 
     return Array.from(
-        { length: lastKnownPage - firstPage + 1 },
+        { length: visiblePages },
         (_, index) => firstPage + index,
     );
 };
 
 const Pagination = ({
     page,
-    hasNextPage,
+    totalPages,
     onChange,
 }: PaginationProps): ReactElement => {
     return (
@@ -36,7 +40,7 @@ const Pagination = ({
                 ‹
             </button>
 
-            {buildPageNumbers(page, hasNextPage).map((pageNumber) => (
+            {buildPageNumbers(page, totalPages).map((pageNumber) => (
                 <button
                     key={pageNumber}
                     type="button"
@@ -54,7 +58,7 @@ const Pagination = ({
                 type="button"
                 className="pagination__arrow"
                 onClick={() => onChange(page + 1)}
-                disabled={!hasNextPage}
+                disabled={page >= totalPages}
                 aria-label="Next page"
             >
                 ›

@@ -1,87 +1,127 @@
 import { NetworkId } from "@domains/Network";
-import { Pagination } from "./queryOptions";
-import { Transaction } from "@domains/Transaction";
 import {
-    mapRawDeploymentToTransaction,
-    mapRawTransferToTransaction,
-} from "./mapper";
+    DEFAULT_HISTORY_LIMIT,
+    DEFAULT_HISTORY_ORDER,
+    Order,
+} from "./queryOptions";
+import {
+    ITransactionsHistoryFilters,
+    ITransactionsHistoryPage,
+    ITransactionsHistoryQuery,
+    TransactionType,
+    TTransactionStatusFilter,
+} from "@domains/Transaction";
+import { mapRawTransactionToTransaction } from "./mapper";
 
 interface GraphqlEnvelope<TData> {
     data?: TData;
     errors?: unknown[];
 }
 
+export type RawTransactionType = "transfer" | "not_transfer";
+
+export type RawTransactionStatus = "success" | "failed";
+
+export interface RawTransaction {
+    deploy_id: string;
+    block_hash: string;
+    block_number: number | string;
+    timestamp: number | string;
+    type: RawTransactionType;
+    deployer_address: string;
+    from_address: string | null;
+    to_address: string | null;
+    from_public_key: string | null;
+    amount_asi: number | string | null;
+    status: RawTransactionStatus | null;
+}
+
 export interface TransactionHistoryQueryData {
-    transfers?: RawTransfer[];
-    deployments?: RawDeployment[];
-}
-
-export interface RawTransfer {
-    deploy_id: string;
-    block_number?: number | string;
-    block_hash?: string;
-    from_address?: string;
-    to_address?: string;
-    amount_asi?: number | string;
-    timestamp?: number | string;
-    from_public_key?: string;
-    network_name?: string;
-}
-
-export interface RawDeployment {
-    deploy_id: string;
-    block_number?: number | string;
-    deployer?: string;
-    timestamp?: number | string;
-    block?: {
-        block_hash?: string;
+    transaction_history_view: RawTransaction[];
+    transaction_history_view_aggregate: {
+        aggregate: { count: number } | null;
     };
 }
 
-const TRANSACTION_HISTORY_QUERY = `
-query GetTransactionHistory(
-  $address: String!
-  $publicKey: String!
-  $offset: Int!
-  $limit: Int
-) {
-  transfers(
-    where: {
+export interface ITransactionHistoryRequest {
+    query: string;
+    variables: Record<string, number | string>;
+}
+
+const TIMESTAMP_SCALAR: string = "bigint";
+
+const RAW_TRANSACTION_TYPES: Record<TransactionType, RawTransactionType> = {
+    send: "transfer",
+    receive: "transfer",
+    deploy: "not_transfer",
+};
+
+const RAW_TRANSACTION_STATUSES: Record<
+    TTransactionStatusFilter,
+    RawTransactionStatus
+> = {
+    completed: "success",
+    failed: "failed",
+};
+
+const ACCOUNT_CONDITIONS: Record<TransactionType, string> = {
+    send: "{ from_address: { _eq: $address } }",
+    receive: "{ to_address: { _eq: $address } }",
+    deploy: "{ deployer_address: { _eq: $address } }",
+};
+
+const STATUS_CONDITIONS: Record<TTransactionStatusFilter, string> = {
+    completed:
+        "{ _or: [{ status: { _eq: $status } } { status: { _is_null: true } }] }",
+    failed: "{ status: { _eq: $status } }",
+};
+
+const ANY_ACCOUNT_ROLE_CONDITION: string = `{
       _or: [
+        { deployer_address: { _eq: $address } }
         { from_address: { _eq: $address } }
         { to_address: { _eq: $address } }
       ]
-    }
-    order_by: { block_number: desc }
-    offset: $offset
-    limit: $limit
-  ) {
+    }`;
+
+const TRANSACTION_HISTORY_FIELDS: string = `
     deploy_id
+    block_hash
     block_number
+    timestamp
+    type
+    deployer_address
     from_address
     to_address
-    amount_asi
-    timestamp
     from_public_key
+    amount_asi
+    status`;
+
+const buildTransactionHistoryQuery = (
+    declarations: string[],
+    conditions: string[],
+    order: Order,
+): string => {
+    const where: string = `where: { _and: [${conditions.join(" ")}] }`;
+
+    return `
+query GetTransactionHistory(${declarations.join(", ")}) {
+  transaction_history_view(
+    ${where}
+    order_by: { timestamp: ${order} }
+    limit: $limit
+    offset: $offset
+  ) {${TRANSACTION_HISTORY_FIELDS}
   }
 
-  deployments(
-    where: { deployer: { _eq: $publicKey } }
-    order_by: { block_number: desc }
-    offset: $offset
-    limit: $limit
-  ) {
-    deploy_id
-    block_number
-    deployer
-    timestamp
-
-    block {
-      block_hash
+  transaction_history_view_aggregate(${where}) {
+    aggregate {
+      count
     }
   }
 }
 `;
+};
 
 /**
  * Access to indexer GraphQL API.
@@ -91,92 +131,95 @@ export class GraphqlParser {
         return typeof value === "object" && value !== null;
     }
 
-    public static isDefined<T>(value: T | undefined): value is T {
-        return value !== undefined;
-    }
-
     public static createTransactionHistoryRequest(
         address: string,
-        publicKey: string,
-        pagination: Pagination = {},
-    ): {
-        query: string;
-        variables: Record<string, number | string | undefined>;
-    } {
-        const variables: Record<string, number | string | undefined> = {
+        query: ITransactionsHistoryQuery = {},
+    ): ITransactionHistoryRequest {
+        const {
+            pagination = {},
+            order = DEFAULT_HISTORY_ORDER,
+            filters = {},
+        }: ITransactionsHistoryQuery = query;
+
+        const { type, status, period }: ITransactionsHistoryFilters = filters;
+
+        const variables: Record<string, number | string> = {
             address: address.trim(),
-            publicKey,
+            limit: pagination.limit ?? DEFAULT_HISTORY_LIMIT,
             offset: pagination.offset ?? 0,
         };
 
-        if (pagination.limit !== undefined) {
-            variables.limit = pagination.limit;
+        const declarations: string[] = [
+            "$address: String!",
+            "$limit: Int!",
+            "$offset: Int!",
+        ];
+
+        const conditions: string[] = [
+            type ? ACCOUNT_CONDITIONS[type] : ANY_ACCOUNT_ROLE_CONDITION,
+        ];
+
+        if (type) {
+            declarations.push("$type: String!");
+            conditions.push("{ type: { _eq: $type } }");
+
+            variables.type = RAW_TRANSACTION_TYPES[type];
+        }
+
+        if (status) {
+            declarations.push("$status: String!");
+            conditions.push(STATUS_CONDITIONS[status]);
+
+            variables.status = RAW_TRANSACTION_STATUSES[status];
+        }
+
+        if (period?.from) {
+            declarations.push(`$fromTimestamp: ${TIMESTAMP_SCALAR}!`);
+            conditions.push("{ timestamp: { _gte: $fromTimestamp } }");
+
+            variables.fromTimestamp = period.from.getTime();
+        }
+
+        if (period?.to) {
+            declarations.push(`$toTimestamp: ${TIMESTAMP_SCALAR}!`);
+            conditions.push("{ timestamp: { _lte: $toTimestamp } }");
+
+            variables.toTimestamp = period.to.getTime();
         }
 
         return {
-            query: TRANSACTION_HISTORY_QUERY,
+            query: buildTransactionHistoryQuery(
+                declarations,
+                conditions,
+                order,
+            ),
             variables,
         };
     }
 
     public static mapTransactionHistory(
-        data: TransactionHistoryQueryData | undefined,
+        data: TransactionHistoryQueryData,
         address: string,
         networkId: NetworkId,
-    ): Transaction[] {
-        if (!data) {
-            return [];
-        }
-
-        const transactionsById: Map<string, Transaction> = new Map();
-
-        (data.transfers ?? [])
-            .map((transfer: RawTransfer) =>
-                mapRawTransferToTransaction(transfer, {
-                    accountAddress: address,
-                    networkId,
-                }),
-            )
-            .filter(this.isDefined)
-            .forEach((transaction: Transaction) => {
-                transactionsById.set(transaction.id, transaction);
-            });
-
-        (data.deployments ?? [])
-            .map((deployment: RawDeployment) =>
-                mapRawDeploymentToTransaction(deployment, { networkId }),
-            )
-            .filter(this.isDefined)
-            .forEach((deployment: Transaction) => {
-                const existing: Transaction | undefined = transactionsById.get(
-                    deployment.id,
-                );
-
-                if (!existing) {
-                    transactionsById.set(deployment.id, deployment);
-
-                    return;
-                }
-
-                if (!existing.blockHash && deployment.blockHash) {
-                    transactionsById.set(deployment.id, {
-                        ...existing,
-                        blockHash: deployment.blockHash,
-                    });
-                }
-            });
-
-        return Array.from(transactionsById.values()).sort(
-            (first: Transaction, second: Transaction) =>
-                second.timestamp.getTime() - first.timestamp.getTime(),
-        );
+    ): ITransactionsHistoryPage {
+        return {
+            items: data.transaction_history_view.map(
+                (transaction: RawTransaction) =>
+                    mapRawTransactionToTransaction(transaction, {
+                        accountAddress: address,
+                        networkId,
+                    }),
+            ),
+            total:
+                data.transaction_history_view_aggregate.aggregate?.count ?? 0,
+        };
     }
 
     public static unwrapGraphqlEnvelope<TData>(
         response: unknown,
     ): GraphqlEnvelope<TData> {
         if (this.isRecord(response)) {
-            if ("transfers" in response) {
+            if ("transaction_history_view" in response) {
                 return { data: response as TData };
             }
 

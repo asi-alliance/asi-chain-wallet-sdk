@@ -1,10 +1,17 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { GraphqlParser } from "@services/GraphqlParser";
-import { Transaction } from "@domains/Transaction";
+import {
+    ITransactionsHistoryPage,
+    ITransactionsHistoryQuery,
+} from "@domains/Transaction";
 import { NetworkId } from "@domains/Network";
+
+const createEmptyHistoryPage = (): ITransactionsHistoryPage => ({
+    items: [],
+    total: 0,
+});
 
 export default class AccountDataService {
     private readonly nodeApiProvider: NodeApiProvider;
@@ -26,18 +33,16 @@ export default class AccountDataService {
 
     public async getTransactionHistory(
         address: string,
-        publicKey: string,
-        pagination: Pagination = {},
+        historyQuery: ITransactionsHistoryQuery = {},
         networkId?: NetworkId,
-    ): Promise<Transaction[]> {
+    ): Promise<ITransactionsHistoryPage> {
         try {
             const currentNetworkId: NetworkId =
                 networkId ?? this.apiClientManager.getCurrentNetworkId();
 
             const response = await this.api.getTransactionHistory(
                 address,
-                publicKey,
-                pagination,
+                historyQuery,
             );
 
             return GraphqlParser.mapTransactionHistory(
@@ -51,12 +56,12 @@ export default class AccountDataService {
                     "[GraphQL] Network error while loading transaction history. Returning an empty history.",
                 );
 
-                return [];
+                return createEmptyHistoryPage();
             }
 
             console.error("AccountDataService.getTransactionHistory:", error);
 
-            return [];
+            return createEmptyHistoryPage();
         }
     }
 }

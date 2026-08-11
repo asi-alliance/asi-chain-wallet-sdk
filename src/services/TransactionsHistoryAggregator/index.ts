@@ -1,61 +1,124 @@
-import { Transaction } from "@domains/Transaction";
+import {
+    ITransactionsHistoryFilters,
+    ITransactionsHistoryPage,
+    ITransactionsHistoryQuery,
+    Transaction,
+} from "@domains/Transaction";
 import { NetworkId } from "@domains/Network";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
-import CollectionQueryService from "@services/CollectionQuery";
+import {
+    DEFAULT_HISTORY_ORDER,
+    Order,
+    Pagination,
+} from "@services/GraphqlParser/queryOptions";
+import CollectionQueryService, {
+    TCollectionComparator,
+} from "@services/CollectionQuery";
 
 export interface ITransactionsHistoryWindow {
     pendingTransactions: Transaction[];
     executedPagination: Pagination;
     pageOffset: number;
     pageLimit?: number;
+    order: Order;
 }
 
 const getTransactionTimestamp = (transaction: Transaction): Date =>
     transaction.timestamp;
 
-const compareByTimestampDesc = (
-    first: Transaction,
-    second: Transaction,
-): number => second.timestamp.getTime() - first.timestamp.getTime();
+const createTimestampComparator =
+    (order: Order): TCollectionComparator<Transaction> =>
+    (first: Transaction, second: Transaction) =>
+        order === "asc"
+            ? first.timestamp.getTime() - second.timestamp.getTime()
+            : second.timestamp.getTime() - first.timestamp.getTime();
 
 const getExecutedOffset = (pageOffset: number, pendingCount: number): number =>
     Math.max(0, pageOffset - pendingCount);
 
+
+const matchesPendingHistoryFilters = (
+    transaction: Transaction,
+    { type, period }: ITransactionsHistoryFilters,
+): boolean => {
+    if (type && transaction.type !== type) {
+        return false;
+    }
+
+    if (period?.from && transaction.timestamp < period.from) {
+        return false;
+    }
+
+    if (period?.to && transaction.timestamp > period.to) {
+        return false;
+    }
+
+    return true;
+};
+
 const selectNetworkPending = (
     pending: Transaction[],
     networkId: NetworkId,
+    { order = DEFAULT_HISTORY_ORDER, filters = {} }: ITransactionsHistoryQuery,
 ): Transaction[] =>
     CollectionQueryService.sortByDate(
         pending.filter(
-            (transaction: Transaction) => transaction.networkId === networkId,
+            (transaction: Transaction) =>
+                transaction.networkId === networkId &&
+                matchesPendingHistoryFilters(transaction, filters),
         ),
         getTransactionTimestamp,
+        order,
     );
 
+const selectUnindexedPending = (
+    pendingTransactions: Transaction[],
+    executed: Transaction[],
+): Transaction[] => {
+    const executedIds: Set<string> = new Set(
+        executed.map((transaction: Transaction) => transaction.id),
+    );
+
+    return pendingTransactions.filter(
+        (transaction: Transaction) => !executedIds.has(transaction.id),
+    );
+};
+
 export default class TransactionsHistoryAggregator {
-    public static paginatePendingTransactions(
+    public static createPendingHistoryPage(
         pending: Transaction[],
         networkId: NetworkId,
-        pagination?: Pagination,
-    ): Transaction[] {
-        return CollectionQueryService.slice(
-            selectNetworkPending(pending, networkId),
-            pagination,
+        historyQuery: ITransactionsHistoryQuery = {},
+    ): ITransactionsHistoryPage {
+        const pendingTransactions: Transaction[] = selectNetworkPending(
+            pending,
+            networkId,
+            historyQuery,
         );
+
+        return {
+            items: CollectionQueryService.slice(
+                pendingTransactions,
+                historyQuery.pagination,
+            ),
+            total: pendingTransactions.length,
+        };
     }
 
     public static createHistoryWindow(
         pending: Transaction[],
         networkId: NetworkId,
-        pagination?: Pagination,
+        historyQuery: ITransactionsHistoryQuery = {},
     ): ITransactionsHistoryWindow {
         const pendingTransactions: Transaction[] = selectNetworkPending(
             pending,
             networkId,
+            historyQuery,
         );
 
-        const pageOffset: number = pagination?.offset ?? 0;
-        const pageLimit: number | undefined = pagination?.limit;
+        const { pagination = {}, order = DEFAULT_HISTORY_ORDER } = historyQuery;
+
+        const pageOffset: number = pagination.offset ?? 0;
+        const pageLimit: number | undefined = pagination.limit;
 
         const executedPagination: Pagination = {
             offset: getExecutedOffset(pageOffset, pendingTransactions.length),
@@ -70,21 +133,33 @@ export default class TransactionsHistoryAggregator {
             executedPagination,
             pageOffset,
             pageLimit,
+            order,
         };
+    }
+
+    public static countUnindexedPending(
+        historyWindow: ITransactionsHistoryWindow,
+        executed: Transaction[],
+    ): number {
+        return selectUnindexedPending(
+            historyWindow.pendingTransactions,
+            executed,
+        ).length;
     }
 
     public static mergeHistoryPage(
         historyWindow: ITransactionsHistoryWindow,
         executed: Transaction[],
     ): Transaction[] {
-        const { pendingTransactions, pageOffset, pageLimit } = historyWindow;
+        const { pendingTransactions, pageOffset, pageLimit, order } =
+            historyWindow;
 
-        const executedIds: Set<string> = new Set(
-            executed.map((transaction: Transaction) => transaction.id),
-        );
+        const compareByTimestamp: TCollectionComparator<Transaction> =
+            createTimestampComparator(order);
 
-        const pending: Transaction[] = pendingTransactions.filter(
-            (transaction: Transaction) => !executedIds.has(transaction.id),
+        const pending: Transaction[] = selectUnindexedPending(
+            pendingTransactions,
+            executed,
         );
 
         const executedOffset: number = getExecutedOffset(
@@ -97,7 +172,7 @@ export default class TransactionsHistoryAggregator {
                 CollectionQueryService.mergeSorted(
                     executed,
                     pending,
-                    compareByTimestampDesc,
+                    compareByTimestamp,
                 ),
                 { offset: pageOffset, limit: pageLimit },
             );
@@ -107,18 +182,16 @@ export default class TransactionsHistoryAggregator {
             return [];
         }
 
-        const windowStartTime: number = executed[0].timestamp.getTime();
-
         const aheadCount: number = pending.filter(
             (transaction: Transaction) =>
-                transaction.timestamp.getTime() > windowStartTime,
+                compareByTimestamp(transaction, executed[0]) < 0,
         ).length;
 
         return CollectionQueryService.slice(
             CollectionQueryService.mergeSorted(
                 executed,
                 pending.slice(aheadCount),
-                compareByTimestampDesc,
+                compareByTimestamp,
             ),
             {
                 offset: pageOffset - executedOffset - aheadCount,

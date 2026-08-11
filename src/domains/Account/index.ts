@@ -1,4 +1,3 @@
-import { encodeBase16 } from "./../../utils/codec/index";
 import Asset, { Assets, DEFAULT_ASSET } from "@domains/Asset";
 import SecretsProvider, {
     IHDSecret,
@@ -9,9 +8,11 @@ import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { isPrivateKeySecretData } from "@utils/guards";
 import KeyDerivationService from "@services/KeyDerivation";
 import type { Address } from "@domains/Wallet";
-import { Transaction } from "@domains/Transaction";
+import {
+    ITransactionsHistoryPage,
+    ITransactionsHistoryQuery,
+} from "@domains/Transaction";
 import { NetworkId } from "@domains/Network";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { generateRandomId } from "@utils/index";
 import KeysManager from "@services/KeysManager";
 
@@ -181,12 +182,11 @@ class Account {
 
     public async getTransactionsHistory(
         networkId?: NetworkId,
-        pagination?: Pagination,
-    ): Promise<Transaction[]> {
+        historyQuery?: ITransactionsHistoryQuery,
+    ): Promise<ITransactionsHistoryPage> {
         return ApiServiceRegistry.getInstance().accountData.getTransactionHistory(
             this.address,
-            encodeBase16(this.publicKey),
-            pagination,
+            historyQuery,
             networkId,
         );
     }

@@ -30,6 +30,8 @@ import ReservationAdapter, {
 } from "@domains/ReservationAdapter";
 import {
     ITransactionReservation,
+    ITransactionsHistoryPage,
+    ITransactionsHistoryQuery,
     TReservationsByWallet,
     Transaction,
 } from "@domains/Transaction";
@@ -42,7 +44,6 @@ import {
     isNetworkConfigChanged,
     toAtomicAmount,
 } from "@utils/index";
-import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
 import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
@@ -91,9 +92,8 @@ export interface IDeployRequest {
 
 export type THistorySource = "pending" | "executed";
 
-export interface ITransactionsHistoryOptions {
+export interface ITransactionsHistoryOptions extends ITransactionsHistoryQuery {
     sources?: THistorySource[];
-    pagination?: Pagination;
 }
 
 const DEFAULT_HISTORY_SOURCES: THistorySource[] = ["pending", "executed"];
@@ -462,16 +462,20 @@ export default class Client {
         accountId: string,
         format: ExportFormat = ExportFormat.JSON,
         networkId?: string,
+        historyQuery?: ITransactionsHistoryQuery,
     ): Promise<string> {
         const currentAccount: Account = this.walletManager.getAccount(
             walletId,
             accountId,
         );
 
-        const transactions: Transaction[] =
-            await currentAccount.getTransactionsHistory(networkId);
+        const { items }: ITransactionsHistoryPage =
+            await currentAccount.getTransactionsHistory(
+                networkId,
+                historyQuery,
+            );
 
-        return ExportService.exportTransactions(transactions, format);
+        return ExportService.exportTransactions(items, format);
     }
 
     public setActiveAccount(walletId: string, accountId: string): void {
@@ -548,11 +552,14 @@ export default class Client {
         walletId: string,
         accountId: string,
         options?: ITransactionsHistoryOptions,
-    ): Promise<Transaction[]> {
+    ): Promise<ITransactionsHistoryPage> {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
         const account: Account = this.getAccount(wallet, accountId);
 
-        const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
+        const {
+            sources = DEFAULT_HISTORY_SOURCES,
+            ...historyQuery
+        }: ITransactionsHistoryOptions = options ?? {};
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
@@ -566,34 +573,38 @@ export default class Client {
             ApiClientManager.getInstance().getCurrentNetworkId();
 
         if (!sources.includes("executed")) {
-            return TransactionsHistoryAggregator.paginatePendingTransactions(
+            return TransactionsHistoryAggregator.createPendingHistoryPage(
                 pendingTransactions,
                 networkId,
-                pagination,
+                historyQuery,
             );
-        }
-
-        if (!pendingTransactions.length) {
-            return account.getTransactionsHistory(undefined, pagination);
         }
 
         const historyWindow: ITransactionsHistoryWindow =
             TransactionsHistoryAggregator.createHistoryWindow(
                 pendingTransactions,
                 networkId,
-                pagination,
+                historyQuery,
             );
 
-        const executedTransactions: Transaction[] =
-            await account.getTransactionsHistory(
-                undefined,
-                historyWindow.executedPagination,
-            );
+        const executedPage: ITransactionsHistoryPage =
+            await account.getTransactionsHistory(undefined, {
+                ...historyQuery,
+                pagination: historyWindow.executedPagination,
+            });
 
-        return TransactionsHistoryAggregator.mergeHistoryPage(
-            historyWindow,
-            executedTransactions,
-        );
+        return {
+            items: TransactionsHistoryAggregator.mergeHistoryPage(
+                historyWindow,
+                executedPage.items,
+            ),
+            total:
+                executedPage.total +
+                TransactionsHistoryAggregator.countUnindexedPending(
+                    historyWindow,
+                    executedPage.items,
+                ),
+        };
     }
 
     public transfer(
