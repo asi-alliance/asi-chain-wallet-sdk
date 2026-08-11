@@ -23,3 +23,7 @@ export interface ITableService<T extends ITableRecord> {
     init(): Promise<any>;
     isInitialized(): boolean;
 }
+
+export interface ISchemeVersionRecord {
+    schemaVersion: number;
+}

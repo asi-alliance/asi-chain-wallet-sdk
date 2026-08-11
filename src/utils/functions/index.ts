@@ -1,5 +1,7 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { ITableRecord } from "@domains/TableService";
+import { BASELINE_STORAGE_VERSION } from "@config/index";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -203,3 +205,8 @@ export const isNetworkConfigChanged = (
             update[field] !== undefined && update[field] !== current[field],
     );
 };
+
+export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({
+    ...record,
+    schemaVersion: record.schemaVersion ?? BASELINE_STORAGE_VERSION,
+});

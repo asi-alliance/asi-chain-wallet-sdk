@@ -3,6 +3,7 @@ import { NetworkId } from "@domains/Network";
 export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
+    STORAGE_VERSION_DOWNGRADE = "STORAGE_VERSION_DOWNGRADE",
 }
 
 export class CustomError extends Error {
@@ -36,5 +37,21 @@ export class NetworkBusyError extends CustomError {
         super(CustomErrorCode.NETWORK_BUSY, message, 409);
 
         this.networkId = networkId;
+    }
+}
+
+export class StorageVersionDowngradeError extends CustomError {
+    public readonly storedVersion: number;
+    public readonly supportedVersion: number;
+
+    constructor(
+        storedVersion: number,
+        supportedVersion: number,
+        message: string = `Persisted storage uses schema version ${storedVersion}, while this SDK build supports version ${supportedVersion}. Storage was left untouched, update the SDK to read this data`,
+    ) {
+        super(CustomErrorCode.STORAGE_VERSION_DOWNGRADE, message, 409);
+
+        this.storedVersion = storedVersion;
+        this.supportedVersion = supportedVersion;
     }
 }

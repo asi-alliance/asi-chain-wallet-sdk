@@ -3,11 +3,18 @@ import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
 import Account, { IAccountRecord } from "@domains/Account";
 import { ISignerStorageRecord } from "@domains/SignersStorageRepository/index";
-import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import {
+    SIGNERS_DATA_KEY,
+    SignersStorageRepository,
+} from "@domains/SignersStorageRepository";
+import {
+    ACCOUNTS_DATA_KEY,
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
+import { StorageMetadataStorageRepository } from "@domains/StorageMetadataStorageRepository";
+import { INSENSITIVE_CACHE_TABLE_KEY } from "@domains/InsensitiveCacheStorageRepository";
+import StorageMigrationRunner from "@services/StorageMigrationRunner";
 import {
     INetworkRecord,
     IPersistedNetworkRecord,
@@ -15,14 +22,24 @@ import {
 } from "@domains/Network";
 import { EncryptedData } from "@services/Crypto";
 import {
+    TRANSACTION_RESERVATIONS_DATA_KEY,
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
 } from "@domains/TransactionReservationsStorageRepository";
 import {
+    CUSTOM_NETWORKS_DATA_KEY,
     CustomNetworksStorageRepository,
     ICustomNetworkStorageRecord,
 } from "@domains/CustomNetworksStorageRepository";
 import { IStorageFabricOptions } from "@fabrics/storage";
+
+const MIGRATABLE_TABLES: string[] = [
+    SIGNERS_DATA_KEY,
+    ACCOUNTS_DATA_KEY,
+    TRANSACTION_RESERVATIONS_DATA_KEY,
+    CUSTOM_NETWORKS_DATA_KEY,
+    INSENSITIVE_CACHE_TABLE_KEY,
+];
 
 export interface ISaveSignerToStorageOptions {
     id: string;
@@ -59,6 +76,16 @@ export interface ISaveTransactionReservationsOptions {
 }
 
 class StorageManager {
+    private static runMigrations = async (): Promise<void> => {
+        const runner: StorageMigrationRunner = new StorageMigrationRunner({
+            storage: SignersStorageRepository.getInstance().getRawDB(),
+            metadataRepository: StorageMetadataStorageRepository.getInstance(),
+            tables: MIGRATABLE_TABLES,
+        });
+
+        await runner.run();
+    };
+
     public static init = async (
         options?: IStorageFabricOptions,
     ): Promise<void> => {
@@ -68,6 +95,11 @@ class StorageManager {
             options,
         ).initialize();
         await CustomNetworksStorageRepository.getInstance(options).initialize();
+        await StorageMetadataStorageRepository.getInstance(
+            options,
+        ).initialize();
+
+        await StorageManager.runMigrations();
     };
 
     public static saveSigner = async ({
@@ -378,6 +410,7 @@ class StorageManager {
         AccountsStorageRepository.getInstance().close();
         TransactionReservationsStorageRepository.getInstance().close();
         CustomNetworksStorageRepository.getInstance().close();
+        StorageMetadataStorageRepository.getInstance().close();
     };
 }
 
