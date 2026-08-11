@@ -1,4 +1,5 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+import { isPromiseLike } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 
 export const genRandomHex = (size: number) =>
@@ -189,6 +190,21 @@ export const buildUrl = (
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
 }
+
+export const runProtected = (
+    run: () => void | Promise<void>,
+    onFailure: (error: unknown) => void,
+): void => {
+    try {
+        const result: unknown = run();
+
+        if (isPromiseLike(result)) {
+            Promise.resolve(result).catch(onFailure);
+        }
+    } catch (error: unknown) {
+        onFailure(error);
+    }
+};
 
 export const isNetworkConfigChanged = (
     current: INetworkConfig,
