@@ -43,6 +43,7 @@ const createSignerRecord = (wallet: Wallet): ISignerRecord => ({
     type: wallet.getType(),
     encryptedData: wallet.getSigner().getEncryptedSecret(),
     encryptedDataKey: wallet.getSigner().getEncryptedDataKey(),
+    fingerprint: wallet.getSigner().getFingerprint(),
 });
 
 const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>

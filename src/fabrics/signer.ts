@@ -1,5 +1,6 @@
 import HDSigner from "@domains/Signer/HD";
 import CryptoService from "@services/Crypto";
+import KeyFingerprintService from "@services/KeyFingerprint";
 import PrivateKeySigner from "@domains/Signer/PK";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
@@ -37,6 +38,9 @@ export const createSigner = async (
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
+                fingerprint: KeyFingerprintService.fromPrivateKey(
+                    secret.privateKey,
+                ),
             });
 
         case WalletTypes.HD: {
@@ -44,6 +48,9 @@ export const createSigner = async (
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
+                fingerprint: await KeyFingerprintService.fromMnemonic(
+                    secret.seed,
+                ),
             });
         }
     }
@@ -54,6 +61,7 @@ export const restoreSigner = ({
     type,
     encryptedData,
     encryptedDataKey,
+    fingerprint,
 }: ISignerRecord): Signer => {
     switch (type) {
         case WalletTypes.PRIVATE_KEY:
@@ -61,6 +69,7 @@ export const restoreSigner = ({
                 id,
                 encryptedSecret: encryptedData,
                 encryptedDataKey,
+                fingerprint,
             });
 
         case WalletTypes.HD:
@@ -68,6 +77,7 @@ export const restoreSigner = ({
                 id,
                 encryptedSecret: encryptedData,
                 encryptedDataKey,
+                fingerprint,
             });
     }
 };

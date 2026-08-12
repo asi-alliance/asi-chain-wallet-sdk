@@ -9,6 +9,7 @@ import { useSearchParams } from "react-router-dom";
 import "./styles.css";
 import {
     Account,
+    ClientEvent,
     ExportFormat,
     ExportService,
     THistorySource,
@@ -159,13 +160,21 @@ const TxHistoryPage = (): ReactElement => {
         startRequest,
     ]);
 
-    const walletReservations = selectedWallet
-        ? reservationsByWallet[selectedWallet.getId()]
-        : undefined;
-
     useEffect(() => {
         void load();
-    }, [load, currentNetwork, walletReservations]);
+    }, [load, currentNetwork]);
+
+    useEffect(() => {
+        if (!client || !selectedWallet) {
+            return;
+        }
+
+        return client
+            .getEventBus()
+            .on(ClientEvent.RESERVATIONS_CHANGED, () => {
+                void load();
+            });
+    }, [client, selectedWallet, load]);
 
     const goToPage = (nextPage: number): void => {
         const params = new URLSearchParams(searchParams);
