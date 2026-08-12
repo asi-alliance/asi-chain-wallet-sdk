@@ -259,6 +259,7 @@ export default class Client extends ClosableDomain {
         await InsensitiveCacheStorageManager.clear();
 
         this.emitWalletsChanged();
+        this.emitReservationsChanged();
     }
 
     protected async onClose(): Promise<void> {
