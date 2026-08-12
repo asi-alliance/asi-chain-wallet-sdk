@@ -22,6 +22,8 @@ export { default as Bip44Path } from "./Bip44Path";
 export * from "./BrowserStorage";
 export { default as BrowserStorage } from "./BrowserStorage";
 export * from "./Client";
+export * from "./ClosableDomain";
+export { default as ClosableDomain } from "./ClosableDomain";
 export * from "./CustomError";
 export { default as Client } from "./Client";
 export * from "./Deploy";

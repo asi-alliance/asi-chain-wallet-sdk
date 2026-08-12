@@ -25,6 +25,7 @@ import {
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
+import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter, {
     IReservedOperationResult,
@@ -49,7 +50,10 @@ import ReservationAdapterManager from "@services/ReservationAdapterManager";
 import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
 import InsensitiveCacheStorageSerializer from "@services/InsensitiveCacheStorageSerializer";
 import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageRepository";
-import { EnsureWithInsensitiveCacheStorage } from "@utils/decorators";
+import {
+    EnsureActive,
+    EnsureWithInsensitiveCacheStorage,
+} from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
@@ -141,7 +145,7 @@ interface IClientOptions {
     security?: ISessionPolicy;
 }
 
-export default class Client {
+export default class Client extends ClosableDomain {
     private readonly walletManager: WalletManager;
     private readonly reservationAdapterManager: ReservationAdapterManager;
     private readonly eventBus: ClientEventBus;
@@ -158,6 +162,8 @@ export default class Client {
         flags,
         security,
     }: IClientOptions) {
+        super();
+
         this.walletManager = new WalletManager(walletsMap);
         this.reservationAdapterManager = new ReservationAdapterManager(
             reservationAdaptersMap,
@@ -228,11 +234,13 @@ export default class Client {
         return this.eventBus.getSource();
     }
 
+    @EnsureActive
     @EnsureWithInsensitiveCacheStorage
     public getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> {
         return InsensitiveCacheStorageManager.getAll();
     }
 
+    @EnsureActive
     public closeAllWallets(): void {
         this.resetRuntimeState();
 
@@ -240,6 +248,7 @@ export default class Client {
         this.emitReservationsChanged();
     }
 
+    @EnsureActive
     public async clearPersistence(): Promise<void> {
         this.resetRuntimeState();
 
@@ -248,7 +257,7 @@ export default class Client {
         this.emitWalletsChanged();
     }
 
-    public close(): void {
+    protected onClose(): void {
         this.resetRuntimeState();
 
         StorageManager.close();
@@ -267,6 +276,7 @@ export default class Client {
         return KeysManager.generateKeyPair().privateKey;
     }
 
+    @EnsureActive
     public async createHDWallet(
         { mnemonic, accountName, index }: ICreateHDWalletPayload,
         password: string,
@@ -314,6 +324,7 @@ export default class Client {
         return wallet;
     }
 
+    @EnsureActive
     public async createPrivateKeyWallet(
         { privateKey, accountName }: ICreatePrivateKeyWalletPayload,
         password: string,
@@ -355,6 +366,7 @@ export default class Client {
         return wallet;
     }
 
+    @EnsureActive
     public async removeWallet(walletId: string): Promise<Wallet> {
         const removedWallet: Wallet = await this.walletManager.delete(walletId);
         removedWallet.lock();
@@ -411,6 +423,7 @@ export default class Client {
         await this.holdSession(wallet, passwordProvider);
     }
 
+    @EnsureActive
     public async openWallet(
         signerId: string,
         password: string,
@@ -453,6 +466,7 @@ export default class Client {
         return wallet;
     }
 
+    @EnsureActive
     public closeWallet(walletId: string): void {
         const wallet: Wallet = this.getOpenWallet(walletId);
 
@@ -469,6 +483,7 @@ export default class Client {
         return this.walletManager.has(walletId);
     }
 
+    @EnsureActive
     public async unlockWallet(
         walletId: string,
         password: string,
@@ -484,6 +499,7 @@ export default class Client {
         await this.holdSession(wallet, this.createPasswordProvider(password));
     }
 
+    @EnsureActive
     public lockWallet(walletId: string): void {
         const wallet: Wallet = this.getOpenWallet(walletId);
 
@@ -496,6 +512,7 @@ export default class Client {
         return this.walletManager.get(walletId)?.isUnlocked() ?? false;
     }
 
+    @EnsureActive
     public async deriveAccount(
         walletId: string,
         accountName: string,
@@ -524,6 +541,7 @@ export default class Client {
         return createdAccountData;
     }
 
+    @EnsureActive
     public async removeAccount(
         walletId: string,
         accountId: string,
@@ -542,6 +560,7 @@ export default class Client {
         return removedAccount;
     }
 
+    @EnsureActive
     public async renameAccount(
         walletId: string,
         accountId: string,
@@ -570,6 +589,7 @@ export default class Client {
         });
     }
 
+    @EnsureActive
     public async getExportedTransactionsData(
         walletId: string,
         accountId: string,
@@ -587,6 +607,7 @@ export default class Client {
         return ExportService.exportTransactions(transactions, format);
     }
 
+    @EnsureActive
     public setActiveAccount(walletId: string, accountId: string): void {
         this.walletManager.setActiveAccount(walletId, accountId);
     }
@@ -599,6 +620,7 @@ export default class Client {
         return ApiClientManager.getInstance().getCurrentNetwork();
     }
 
+    @EnsureActive
     public setNetwork(networkId: NetworkId): void {
         const apiClientManager = ApiClientManager.getInstance();
 
@@ -612,6 +634,7 @@ export default class Client {
         this.emitReservationsChanged();
     }
 
+    @EnsureActive
     public async getBalance(address: Address): Promise<bigint> {
         const balance =
             await ApiServiceRegistry.getInstance().assets.getBalance(
@@ -622,6 +645,7 @@ export default class Client {
         return balance.amount;
     }
 
+    @EnsureActive
     public async getAvailableBalance(
         walletId: string,
         accountId: string,
@@ -643,6 +667,7 @@ export default class Client {
         return balance.amount;
     }
 
+    @EnsureActive
     public async getReservations(
         walletId: string,
     ): Promise<ITransactionReservation[]> {
@@ -658,6 +683,7 @@ export default class Client {
         return reservationAdapter.getReservations();
     }
 
+    @EnsureActive
     public async getTransactionsHistory(
         walletId: string,
         accountId: string,
@@ -710,6 +736,7 @@ export default class Client {
         );
     }
 
+    @EnsureActive
     public transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
@@ -743,6 +770,7 @@ export default class Client {
         }, this.emitNetworkBusyChanged.bind(this));
     }
 
+    @EnsureActive
     public deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
@@ -774,12 +802,14 @@ export default class Client {
         }, this.emitNetworkBusyChanged.bind(this));
     }
 
+    @EnsureActive
     public exploreDeploy(rholang: string): Promise<unknown> {
         return ApiServiceRegistry.getInstance().deploy.exploreDeployData(
             rholang,
         );
     }
 
+    @EnsureActive
     public watchDeploy(
         deployId: string,
         callbacks?: IDeployWatchCallbacks,
@@ -839,6 +869,7 @@ export default class Client {
         );
     }
 
+    @EnsureActive
     public addNetwork(
         name: NetworkName,
         config: INetworkConfig,
@@ -852,6 +883,7 @@ export default class Client {
         );
     }
 
+    @EnsureActive
     public async updateNetwork(
         id: NetworkId,
         update: INetworkUpdate,
@@ -872,6 +904,7 @@ export default class Client {
         this.emitReservationsChanged();
     }
 
+    @EnsureActive
     public async removeNetwork(id: NetworkId): Promise<void> {
         await NetworkManager.removeNetwork(id);
 

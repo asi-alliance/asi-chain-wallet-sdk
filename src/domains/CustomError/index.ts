@@ -7,6 +7,7 @@ export enum CustomErrorCode {
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
+    DOMAIN_CLOSED = "DOMAIN_CLOSED",
 }
 
 export enum WalletAction {
@@ -45,6 +46,19 @@ export class WalletOperationCancelledError extends CustomError {
         super(CustomErrorCode.WALLET_OPERATION_CANCELLED, message, 409);
 
         this.signerId = signerId;
+    }
+}
+
+export class DomainClosedError extends CustomError {
+    public readonly domainName: string;
+
+    constructor(
+        domainName: string,
+        message: string = `${domainName} is closed and cannot be used, create a new instance instead`,
+    ) {
+        super(CustomErrorCode.DOMAIN_CLOSED, message, 410);
+
+        this.domainName = domainName;
     }
 }
 

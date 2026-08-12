@@ -2,6 +2,7 @@ import { ICreateClientFlags } from "@domains/Client";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
+import { DomainClosedError } from "@domains/CustomError";
 import AccountManager from "@services/AccountManager";
 
 export function EnsureDatabaseInitialized<
@@ -118,6 +119,24 @@ export function EnsureActiveAccountExist<
     return function (this: This, ...args: Args): Return {
         if (!this.accountManager.getActiveAccount()) {
             throw new Error("Wallet hasn't active account for transfer!");
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export interface IClosableContext {
+    isActive(): boolean;
+}
+
+export function EnsureActive<
+    This extends IClosableContext,
+    Args extends any[],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        if (!this.isActive()) {
+            throw new DomainClosedError(this.constructor.name);
         }
 
         return target.apply(this, args);
