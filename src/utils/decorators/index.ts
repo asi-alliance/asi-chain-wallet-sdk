@@ -4,6 +4,7 @@ import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import { DomainClosedError } from "@domains/CustomError";
 import AccountManager from "@services/AccountManager";
+import LifecycleGuard from "@domains/LifecycleGuard";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -140,6 +141,23 @@ export function EnsureActive<
         }
 
         return target.apply(this, args);
+    };
+}
+
+export interface ITrackedOperationContext {
+    lifecycleGuard: LifecycleGuard;
+}
+
+export function TrackOperation<
+    This extends ITrackedOperationContext,
+    Args extends any[],
+    Return,
+>(
+    target: (...args: Args) => Promise<Return>,
+    _context: ClassMethodDecoratorContext,
+) {
+    return function (this: This, ...args: Args): Promise<Return> {
+        return this.lifecycleGuard.track(() => target.apply(this, args));
     };
 }
 

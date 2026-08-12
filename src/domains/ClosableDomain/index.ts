@@ -9,15 +9,15 @@ export default abstract class ClosableDomain {
         return this.active;
     }
 
-    public close(): void {
+    public async close(): Promise<void> {
         if (!this.active) {
             return;
         }
 
         this.active = false;
 
-        this.onClose();
+        await this.onClose();
     }
 
-    protected abstract onClose(): void;
+    protected abstract onClose(): Promise<void>;
 }

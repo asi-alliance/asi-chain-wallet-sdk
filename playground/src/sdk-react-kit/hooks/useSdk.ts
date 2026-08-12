@@ -81,7 +81,7 @@ const useSdk = () => {
             const createdClient = await init();
 
             if (disposed) {
-                createdClient.close();
+                await createdClient.close();
 
                 return;
             }
@@ -98,7 +98,7 @@ const useSdk = () => {
 
         return () => {
             disposed = true;
-            clientRef.current?.close();
+            void clientRef.current?.close();
             clientRef.current = null;
         };
     }, [refresh, refreshNetworks]);

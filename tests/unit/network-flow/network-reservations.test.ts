@@ -77,7 +77,7 @@ const createStoredSigner = async (): Promise<IStoredSigner> => {
         .getSigner()
         .resolveDataKey(new SecretsProvider(() => ({ password: PASSWORD })));
 
-    client.close();
+    await client.close();
 
     return { signerId, dataKeySecret };
 };
@@ -90,7 +90,7 @@ const createCustomNetwork = async (): Promise<NetworkId> => {
         CUSTOM_NETWORK_CONFIG,
     );
 
-    client.close();
+    await client.close();
 
     return custom.id;
 };
@@ -192,7 +192,7 @@ test("reservations of every network are restored and read per active network", a
 
     assert.deepEqual(stored, ["rust-1", "rust-2", "scala-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("switching a network emits the reservations of the new network", async () => {
@@ -221,7 +221,7 @@ test("switching a network emits the reservations of the new network", async () =
     assert.equal(restored.reservationEvents.length, 1);
     assert.deepEqual(toIds(lastEvent[restored.walletId]), ["rust-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("restore sweeps expired records and records of unknown networks", async () => {
@@ -258,7 +258,7 @@ test("restore sweeps expired records and records of unknown networks", async () 
 
     assert.deepEqual(toIds(reservations), ["alive"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("removing a network clears its reservations", async () => {
@@ -301,7 +301,7 @@ test("removing a network clears its reservations", async () => {
 
     assert.deepEqual(toIds(remaining), ["scala-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("an idle network is never reported as busy", async () => {
@@ -320,5 +320,5 @@ test("an idle network is never reported as busy", async () => {
     assert.equal(restored.client.isNetworkBusy(), false);
     assert.equal(restored.client.isNetworkBusy(RUST_NETWORK), false);
 
-    restored.client.close();
+    await restored.client.close();
 });

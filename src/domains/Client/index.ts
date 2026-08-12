@@ -53,6 +53,7 @@ import { IInsensitiveCacheRecord } from "@domains/InsensitiveCacheStorageReposit
 import {
     EnsureActive,
     EnsureWithInsensitiveCacheStorage,
+    TrackOperation,
 } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
 import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
@@ -252,14 +253,18 @@ export default class Client extends ClosableDomain {
     public async clearPersistence(): Promise<void> {
         this.resetRuntimeState();
 
+        await this.lifecycleGuard.drain();
+
         await StorageManager.clear();
         await InsensitiveCacheStorageManager.clear();
 
         this.emitWalletsChanged();
     }
 
-    protected onClose(): void {
+    protected async onClose(): Promise<void> {
         this.resetRuntimeState();
+
+        await this.lifecycleGuard.drain();
 
         StorageManager.close();
         InsensitiveCacheStorageManager.close();
@@ -524,10 +529,12 @@ export default class Client extends ClosableDomain {
             this.createPasswordProvider(password);
 
         const createdAccountData: ICreatedAccountData =
-            await this.walletManager.deriveAccount(
-                walletId,
-                accountName,
-                passwordProvider,
+            await this.lifecycleGuard.track(() =>
+                this.walletManager.deriveAccount(
+                    walletId,
+                    accountName,
+                    passwordProvider,
+                ),
             );
 
         this.emitAccountsChanged(walletId);
@@ -739,6 +746,7 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
     public transfer(
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
@@ -773,6 +781,7 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
     public deploy(
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
