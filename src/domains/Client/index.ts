@@ -56,7 +56,6 @@ import {
     TrackOperation,
 } from "@utils/decorators";
 import { DEFAULT_ASSET } from "@domains/Asset";
-import { createReservationAdapter } from "@fabrics/client/reservationAdapter";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
@@ -166,10 +165,11 @@ export default class Client extends ClosableDomain {
         super();
 
         this.walletManager = new WalletManager(walletsMap);
-        this.reservationAdapterManager = new ReservationAdapterManager(
-            reservationAdaptersMap,
-        );
         this.eventBus = new ClientEventBus(onListenerError);
+        this.reservationAdapterManager = new ReservationAdapterManager({
+            reservationAdapters: reservationAdaptersMap,
+            onReservationsChanged: () => this.emitReservationsChanged(),
+        });
         this.flags = flags;
         this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
         this.requirePassword =
@@ -246,7 +246,6 @@ export default class Client extends ClosableDomain {
         this.resetRuntimeState();
 
         this.emitWalletsChanged();
-        this.emitReservationsChanged();
     }
 
     @EnsureActive
@@ -259,10 +258,11 @@ export default class Client extends ClosableDomain {
         await InsensitiveCacheStorageManager.clear();
 
         this.emitWalletsChanged();
-        this.emitReservationsChanged();
     }
 
     protected async onClose(): Promise<void> {
+        this.eventBus.clear();
+
         this.resetRuntimeState();
 
         await this.lifecycleGuard.drain();
@@ -270,8 +270,6 @@ export default class Client extends ClosableDomain {
         StorageManager.close();
         InsensitiveCacheStorageManager.close();
         ApiClientManager.getInstance().close();
-
-        this.eventBus.clear();
     }
 
     public generateMnemonic(
@@ -308,14 +306,10 @@ export default class Client extends ClosableDomain {
                     passwordProvider,
                 );
 
-                await createReservationAdapter({
-                    reservationAdapterManager: this.reservationAdapterManager,
-                    wallet: createdWallet,
+                await this.reservationAdapterManager.create(
+                    createdWallet,
                     passwordProvider,
-                    emitReservationsChanged: () => {
-                        this.emitReservationsChanged();
-                    },
-                });
+                );
 
                 return createdWallet;
             },
@@ -352,14 +346,10 @@ export default class Client extends ClosableDomain {
                         secretProvider,
                     );
 
-                await createReservationAdapter({
-                    reservationAdapterManager: this.reservationAdapterManager,
-                    wallet: createdWallet,
-                    passwordProvider: secretProvider,
-                    emitReservationsChanged: () => {
-                        this.emitReservationsChanged();
-                    },
-                });
+                await this.reservationAdapterManager.create(
+                    createdWallet,
+                    secretProvider,
+                );
 
                 return createdWallet;
             },
@@ -462,14 +452,10 @@ export default class Client extends ClosableDomain {
                     await this.holdSession(openedWallet, passwordProvider);
                 }
 
-                await createReservationAdapter({
-                    reservationAdapterManager: this.reservationAdapterManager,
-                    wallet: openedWallet,
+                await this.reservationAdapterManager.create(
+                    openedWallet,
                     passwordProvider,
-                    emitReservationsChanged: () => {
-                        this.emitReservationsChanged();
-                    },
-                });
+                );
 
                 return openedWallet;
             },
@@ -490,7 +476,6 @@ export default class Client extends ClosableDomain {
         this.reservationAdapterManager.remove(walletId);
 
         this.emitWalletsChanged();
-        this.emitReservationsChanged();
     }
 
     public isWalletOpen(walletId: string): boolean {
@@ -918,8 +903,6 @@ export default class Client extends ClosableDomain {
         }
 
         await this.reservationAdapterManager.removeNetworkReservations(id);
-
-        this.emitReservationsChanged();
     }
 
     @EnsureActive
@@ -927,8 +910,6 @@ export default class Client extends ClosableDomain {
         await NetworkManager.removeNetwork(id);
 
         await this.reservationAdapterManager.removeNetworkReservations(id);
-
-        this.emitReservationsChanged();
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

@@ -1,9 +1,16 @@
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "@config/index";
 import AutoTimer from "@domains/AutoTimer";
 
+const DEFAULT_GENERATION: number = 0;
+
 export default class LifecycleGuard {
-    private generation: number = 0;
-    private readonly pendingOperations: Set<Promise<unknown>> = new Set();
+    private generation: number;
+    private readonly pendingOperations;
+
+    constructor() {
+        this.generation = DEFAULT_GENERATION;
+        this.pendingOperations = new Set();
+    }
 
     private isCurrentGeneration(generation: number): boolean {
         return this.generation === generation;
