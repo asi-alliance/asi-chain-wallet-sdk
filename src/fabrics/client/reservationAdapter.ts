@@ -2,23 +2,24 @@ import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter from "@domains/ReservationAdapter";
 import ReservationAdapterManager from "@services/ReservationAdapterManager";
-import { IClientEventDispatcher } from "@domains/Client";
+import ClientEventBus, { ClientEvent } from "@services/ClientEventBus";
 
 export interface IAddReservationAdapterToManagerOptions {
     reservationAdapterManager: ReservationAdapterManager;
     wallet: Wallet;
     passwordProvider: SecretsProvider;
-    eventDispatcher?: IClientEventDispatcher;
+    eventBus: ClientEventBus;
 }
 
 export const createReservationAdapter = async ({
     reservationAdapterManager,
     wallet,
     passwordProvider,
-    eventDispatcher,
+    eventBus,
 }: IAddReservationAdapterToManagerOptions): Promise<ReservationAdapter> => {
     const emitReservationsChanged = (): void => {
-        eventDispatcher?.onReservationsChanged?.(
+        eventBus.emit(
+            ClientEvent.RESERVATIONS_CHANGED,
             reservationAdapterManager.getReservationsByWallet(),
         );
     };

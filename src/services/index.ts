@@ -6,6 +6,8 @@ export * from "./AssetsService";
 export { default as AssetsService } from "./AssetsService";
 export * from "./BlockService";
 export { default as BlockService } from "./BlockService";
+export * from "./ClientEventBus";
+export { default as ClientEventBus } from "./ClientEventBus";
 export * from "./Crypto";
 export { default as Crypto } from "./Crypto";
 export * from "./DeployService";
