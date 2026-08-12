@@ -230,6 +230,7 @@ export default class Client {
         this.resetRuntimeState();
 
         this.emitWalletsChanged();
+        this.emitReservationsChanged();
     }
 
     public async clearPersistence(): Promise<void> {
@@ -284,7 +285,7 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider,
-            eventBus: this.eventBus,
+            emitReservationsChanged: this.emitReservationsChanged,
         });
 
         this.emitWalletsChanged();
@@ -318,7 +319,7 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider: secretProvider,
-            eventBus: this.eventBus,
+            emitReservationsChanged: this.emitReservationsChanged,
         });
 
         this.emitWalletsChanged();
@@ -404,8 +405,10 @@ export default class Client {
             reservationAdapterManager: this.reservationAdapterManager,
             wallet,
             passwordProvider,
-            eventBus: this.eventBus,
+            emitReservationsChanged: this.emitReservationsChanged,
         });
+
+        this.emitWalletsChanged();
 
         return wallet;
     }
@@ -419,6 +422,7 @@ export default class Client {
         this.reservationAdapterManager.remove(walletId);
 
         this.emitWalletsChanged();
+        this.emitReservationsChanged();
     }
 
     public isWalletOpen(walletId: string): boolean {

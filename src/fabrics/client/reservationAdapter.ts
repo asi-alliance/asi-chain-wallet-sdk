@@ -8,22 +8,15 @@ export interface IAddReservationAdapterToManagerOptions {
     reservationAdapterManager: ReservationAdapterManager;
     wallet: Wallet;
     passwordProvider: SecretsProvider;
-    eventBus: ClientEventBus;
+    emitReservationsChanged: () => void;
 }
 
 export const createReservationAdapter = async ({
     reservationAdapterManager,
     wallet,
     passwordProvider,
-    eventBus,
+    emitReservationsChanged,
 }: IAddReservationAdapterToManagerOptions): Promise<ReservationAdapter> => {
-    const emitReservationsChanged = (): void => {
-        eventBus.emit(
-            ClientEvent.RESERVATIONS_CHANGED,
-            reservationAdapterManager.getReservationsByWallet(),
-        );
-    };
-
     return reservationAdapterManager.create(wallet, passwordProvider, {
         onAdded: emitReservationsChanged,
         onConfirmed: emitReservationsChanged,
