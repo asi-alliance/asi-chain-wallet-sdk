@@ -253,6 +253,7 @@ export default class Client extends ClosableDomain {
         this.resetRuntimeState();
 
         await StorageManager.clear();
+        await InsensitiveCacheStorageManager.clear();
 
         this.emitWalletsChanged();
     }
@@ -261,6 +262,7 @@ export default class Client extends ClosableDomain {
         this.resetRuntimeState();
 
         StorageManager.close();
+        InsensitiveCacheStorageManager.close();
         ApiClientManager.getInstance().close();
 
         this.eventBus.clear();
