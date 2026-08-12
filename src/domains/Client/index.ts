@@ -312,7 +312,9 @@ export default class Client extends ClosableDomain {
                     reservationAdapterManager: this.reservationAdapterManager,
                     wallet: createdWallet,
                     passwordProvider,
-                    emitReservationsChanged: this.emitReservationsChanged,
+                    emitReservationsChanged: () => {
+                        this.emitReservationsChanged();
+                    },
                 });
 
                 return createdWallet;
@@ -354,7 +356,9 @@ export default class Client extends ClosableDomain {
                     reservationAdapterManager: this.reservationAdapterManager,
                     wallet: createdWallet,
                     passwordProvider: secretProvider,
-                    emitReservationsChanged: this.emitReservationsChanged,
+                    emitReservationsChanged: () => {
+                        this.emitReservationsChanged();
+                    },
                 });
 
                 return createdWallet;
@@ -462,7 +466,9 @@ export default class Client extends ClosableDomain {
                     reservationAdapterManager: this.reservationAdapterManager,
                     wallet: openedWallet,
                     passwordProvider,
-                    emitReservationsChanged: this.emitReservationsChanged,
+                    emitReservationsChanged: () => {
+                        this.emitReservationsChanged();
+                    },
                 });
 
                 return openedWallet;
