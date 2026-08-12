@@ -264,11 +264,20 @@ export default class Client {
         { mnemonic, accountName, index }: ICreateHDWalletPayload,
         password: string,
     ): Promise<Wallet> {
+        const normalizedMnemonic: string =
+            MnemonicService.normalizeMnemonic(mnemonic);
+
+        if (!MnemonicService.isMnemonicValid(normalizedMnemonic)) {
+            throw new Error(
+                "Client.createHDWallet: recovery mnemonic is invalid",
+            );
+        }
+
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
         const wallet: Wallet = await this.walletManager.createHD(
-            { mnemonic, accountName, index },
+            { mnemonic: normalizedMnemonic, accountName, index },
             passwordProvider,
         );
 

@@ -25,6 +25,10 @@ export default class MnemonicService {
         return bip39.validateMnemonic(mnemonic);
     }
 
+    public static normalizeMnemonic(mnemonic: string): string {
+        return mnemonic.trim().toLowerCase().split(/\s+/).join(" ");
+    }
+
     public static mnemonicToWordArray(mnemonic: string): string[] {
         return mnemonic.trim().split(" ");
     }

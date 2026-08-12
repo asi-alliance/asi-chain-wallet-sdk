@@ -19,6 +19,7 @@ export interface ISignerStorageRecord extends ITableRecord {
     type: WalletTypes;
     encryptedData: EncryptedData;
     encryptedDataKey: EncryptedData;
+    fingerprint: string;
 
     createdAt: number;
     updatedAt?: number;
@@ -47,18 +48,31 @@ export class SignersStorageRepository extends BaseStorageRepository<ISignerStora
         type: WalletTypes,
         encryptedData: EncryptedData,
         encryptedDataKey: EncryptedData,
+        fingerprint: string,
     ): Promise<void> {
         await this.insertRecord({
             id: signerId,
             type,
             encryptedData,
             encryptedDataKey,
+            fingerprint,
             createdAt: Date.now(),
         });
     }
 
     public async getSigner(id: string): Promise<ISignerStorageRecord | null> {
         return this.getRecordById(id);
+    }
+
+    public async findSignerByFingerprint(
+        fingerprint: string,
+    ): Promise<ISignerStorageRecord | null> {
+        const [record] = await this.getByFilter(
+            (signerRecord: ISignerStorageRecord) =>
+                signerRecord.fingerprint === fingerprint,
+        );
+
+        return record ?? null;
     }
 
     public async getAllSigners(): Promise<ISignerStorageRecord[]> {
