@@ -24,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
+import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter, {
     IReservedOperationResult,
@@ -147,6 +148,7 @@ export default class Client {
     private readonly flags?: ICreateClientFlags;
     private readonly autoLockMs: number;
     private readonly requirePassword: RequirePassword;
+    private readonly lifecycleGuard: ClientLifecycleGuard;
 
     private constructor({
         walletsMap,
@@ -165,6 +167,9 @@ export default class Client {
         this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
         this.requirePassword =
             security?.requirePassword ?? RequirePassword.ONCE_PER_SESSION;
+        this.lifecycleGuard = new ClientLifecycleGuard((wallet: Wallet) =>
+            this.discardWallet(wallet),
+        );
 
         if (eventDispatcher) {
             registerEventDispatcher(this.eventBus, eventDispatcher);
@@ -208,6 +213,8 @@ export default class Client {
     }
 
     private resetRuntimeState(): void {
+        this.lifecycleGuard.invalidate();
+
         this.lockAllSessions();
         this.walletManager.clear();
         this.reservationAdapterManager.clear();
@@ -276,17 +283,23 @@ export default class Client {
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
-        const wallet: Wallet = await this.walletManager.createHD(
-            { mnemonic: normalizedMnemonic, accountName, index },
-            passwordProvider,
-        );
+        const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
+            async () => {
+                const createdWallet: Wallet = await this.walletManager.createHD(
+                    { mnemonic: normalizedMnemonic, accountName, index },
+                    passwordProvider,
+                );
 
-        await createReservationAdapter({
-            reservationAdapterManager: this.reservationAdapterManager,
-            wallet,
-            passwordProvider,
-            emitReservationsChanged: this.emitReservationsChanged,
-        });
+                await createReservationAdapter({
+                    reservationAdapterManager: this.reservationAdapterManager,
+                    wallet: createdWallet,
+                    passwordProvider,
+                    emitReservationsChanged: this.emitReservationsChanged,
+                });
+
+                return createdWallet;
+            },
+        );
 
         this.emitWalletsChanged();
 
@@ -310,17 +323,24 @@ export default class Client {
             secret: { privateKey },
         }));
 
-        const wallet: Wallet = await this.walletManager.createPrivateKey(
-            accountName,
-            secretProvider,
-        );
+        const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
+            async () => {
+                const createdWallet: Wallet =
+                    await this.walletManager.createPrivateKey(
+                        accountName,
+                        secretProvider,
+                    );
 
-        await createReservationAdapter({
-            reservationAdapterManager: this.reservationAdapterManager,
-            wallet,
-            passwordProvider: secretProvider,
-            emitReservationsChanged: this.emitReservationsChanged,
-        });
+                await createReservationAdapter({
+                    reservationAdapterManager: this.reservationAdapterManager,
+                    wallet: createdWallet,
+                    passwordProvider: secretProvider,
+                    emitReservationsChanged: this.emitReservationsChanged,
+                });
+
+                return createdWallet;
+            },
+        );
 
         this.emitWalletsChanged();
 
@@ -349,6 +369,20 @@ export default class Client {
         this.emitWalletsChanged();
 
         return removedWallet;
+    }
+
+    private discardWallet(wallet: Wallet): void {
+        const walletId: string = wallet.getId();
+
+        wallet.lock();
+
+        if (this.walletManager.has(walletId)) {
+            this.walletManager.remove(walletId);
+        }
+
+        if (this.reservationAdapterManager.has(walletId)) {
+            this.reservationAdapterManager.remove(walletId);
+        }
     }
 
     private async holdSession(
@@ -392,21 +426,27 @@ export default class Client {
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
-        const wallet: Wallet = await this.walletManager.open(
-            signerId,
-            passwordProvider,
+        const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
+            async () => {
+                const openedWallet: Wallet = await this.walletManager.open(
+                    signerId,
+                    passwordProvider,
+                );
+
+                if (this.shouldHoldSession()) {
+                    await this.holdSession(openedWallet, passwordProvider);
+                }
+
+                await createReservationAdapter({
+                    reservationAdapterManager: this.reservationAdapterManager,
+                    wallet: openedWallet,
+                    passwordProvider,
+                    emitReservationsChanged: this.emitReservationsChanged,
+                });
+
+                return openedWallet;
+            },
         );
-
-        if (this.shouldHoldSession()) {
-            await this.holdSession(wallet, passwordProvider);
-        }
-
-        await createReservationAdapter({
-            reservationAdapterManager: this.reservationAdapterManager,
-            wallet,
-            passwordProvider,
-            emitReservationsChanged: this.emitReservationsChanged,
-        });
 
         this.emitWalletsChanged();
 

@@ -10,7 +10,7 @@ export enum CustomErrorCode {
 }
 
 export enum WalletAction {
-    UNLOCK = "UNLOCK",
+    OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
 }
 

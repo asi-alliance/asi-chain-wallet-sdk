@@ -27,6 +27,8 @@ export { default as Client } from "./Client";
 export * from "./Deploy";
 export * from "./IndexerClient";
 export { default as IndexerClient } from "./IndexerClient";
+export * from "./LifecycleGuard";
+export { default as LifecycleGuard } from "./LifecycleGuard";
 export * from "./Network";
 export * from "./NetworkBusyRegistry";
 export { default as NetworkBusyRegistry } from "./NetworkBusyRegistry";

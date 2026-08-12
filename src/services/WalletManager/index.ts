@@ -77,7 +77,7 @@ export default class WalletManager extends ItemManager<Wallet> {
         passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
         return WalletManager.operationsGuard.runWalletAction(
-            WalletAction.UNLOCK,
+            WalletAction.OPEN,
             signerId,
             async () => {
                 const wallet: Wallet = await StorageManager.getWallet({
