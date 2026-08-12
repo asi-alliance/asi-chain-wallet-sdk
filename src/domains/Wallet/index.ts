@@ -1,8 +1,5 @@
-import Signer, {
-    ISignerRecord,
-    ISignerUnlockOptions,
-    WalletTypes,
-} from "@domains/Signer";
+import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
+import { ISigningSessionOptions } from "@domains/SigningSession";
 import Account, {
     IAccountRecord,
     TCreateAccountPayload,
@@ -98,7 +95,7 @@ export default class Wallet {
 
     public unlock(
         passwordProvider: SecretsProvider,
-        options?: ISignerUnlockOptions,
+        options?: ISigningSessionOptions,
     ): Promise<void> {
         return this.signer.unlock(passwordProvider, options);
     }

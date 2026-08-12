@@ -6,6 +6,7 @@ export enum CustomErrorCode {
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+    WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
 }
 
 export enum WalletAction {
@@ -31,6 +32,19 @@ export class WalletLockedError extends CustomError {
         message: string = "Wallet signing session is locked or expired, re-authentication is required",
     ) {
         super(CustomErrorCode.WALLET_LOCKED, message, 403);
+    }
+}
+
+export class WalletOperationCancelledError extends CustomError {
+    public readonly signerId: string;
+
+    constructor(
+        signerId: string,
+        message: string = `Wallet ${signerId} operation was cancelled because the wallet was locked or closed while the operation was in progress`,
+    ) {
+        super(CustomErrorCode.WALLET_OPERATION_CANCELLED, message, 409);
+
+        this.signerId = signerId;
     }
 }
 

@@ -1,12 +1,10 @@
-import Bip44Path from "@domains/Bip44Path";
 import type SecretsProvider from "@domains/SecretsProvider";
-import type {
-    IHDSecret,
-    IPrivateKeyCredentials,
-} from "@domains/SecretsProvider";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import { WalletLockedError } from "@domains/CustomError";
-import AutoTimer from "@domains/AutoTimer";
+import SigningSession, {
+    ISigningSessionOptions,
+    TDecryptedSecret,
+} from "@domains/SigningSession";
 
 export const SIGNER_KEY_PREFIX: string = "SIGNER";
 
@@ -38,19 +36,6 @@ export type ISignedMessageResponse = {
 
 export type TSigningContext = TPKSigningContext | THDSigningContext;
 
-export type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
-
-export interface ISignerUnlockOptions {
-    autoLockMs?: number;
-    onAutoLock?: () => void;
-}
-
-interface ISignerSession {
-    secret: TDecryptedSecret;
-    dataKeySecret: string;
-    timer: AutoTimer;
-}
-
 export interface ISignerRecord {
     id: string;
     type: WalletTypes;
@@ -64,7 +49,7 @@ export default abstract class Signer {
     protected encryptedSecret: EncryptedData;
     protected encryptedDataKey: EncryptedData;
     private readonly fingerprint: string;
-    private session: ISignerSession | null = null;
+    private readonly session: SigningSession;
 
     constructor({
         id,
@@ -76,6 +61,7 @@ export default abstract class Signer {
         this.encryptedSecret = encryptedSecret;
         this.encryptedDataKey = encryptedDataKey;
         this.fingerprint = fingerprint;
+        this.session = new SigningSession(id);
     }
 
     public getId(): string {
@@ -95,13 +81,15 @@ export default abstract class Signer {
     }
 
     public isUnlocked(): boolean {
-        return this.session !== null;
+        return this.session.isActive();
     }
 
     public async unlock(
         passwordProvider: SecretsProvider,
-        options?: ISignerUnlockOptions,
+        options?: ISigningSessionOptions,
     ): Promise<void> {
+        const currentGeneration: number = this.session.getSessionGeneration();
+
         const secret: TDecryptedSecret = await CryptoService.decryptSignerData(
             this.encryptedSecret,
             passwordProvider,
@@ -112,29 +100,20 @@ export default abstract class Signer {
             passwordProvider.getSecret().password,
         );
 
-        this.lock();
-
-        const onAutoLock: (() => void) | undefined = options?.onAutoLock;
-
-        const timer: AutoTimer = new AutoTimer({
-            delayMs: options?.autoLockMs ?? 0,
-            onElapsed: () => {
-                this.lock();
-
-                onAutoLock?.();
-            },
-        });
-
-        this.session = { secret, dataKeySecret, timer };
-
-        timer.start();
+        this.session.hold(
+            currentGeneration,
+            { secret, dataKeySecret },
+            options,
+        );
     }
 
     public async resolveDataKey(
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        if (this.session) {
-            return this.session.dataKeySecret;
+        const dataKeySecret: string | null = this.session.getDataKey();
+
+        if (dataKeySecret) {
+            return dataKeySecret;
         }
 
         if (!passwordProvider) {
@@ -150,8 +129,11 @@ export default abstract class Signer {
     protected async resolveSecret(
         signingContext: TSigningContext,
     ): Promise<{ secret: TDecryptedSecret; ephemeral: boolean }> {
-        if (this.session) {
-            return { secret: this.session.secret, ephemeral: false };
+        const sessionSecret: TDecryptedSecret | null =
+            this.session.getSecret();
+
+        if (sessionSecret) {
+            return { secret: sessionSecret, ephemeral: false };
         }
 
         if (!signingContext.passwordProvider) {
@@ -167,17 +149,7 @@ export default abstract class Signer {
     }
 
     public lock(): void {
-        if (!this.session) {
-            return;
-        }
-
-        this.session.timer.clear();
-
-        if ("privateKey" in this.session.secret) {
-            this.session.secret.privateKey.fill(0);
-        }
-
-        this.session = null;
+        this.session.release();
     }
 
     public abstract sign(
