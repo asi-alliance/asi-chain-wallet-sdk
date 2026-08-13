@@ -40,7 +40,6 @@ import ExportKeyfileService, {
     IWalletKeyfile,
 } from "@services/ExportKeyfileService";
 import ImportKeyfileService from "@services/ImportKeyfileService";
-import { IKeyfileAccount } from "@services/KeyfileSerializer";
 import {
     fromAtomicAmount,
     isNetworkConfigChanged,
@@ -519,16 +518,7 @@ export default class Client {
             this.createPasswordProvider(password);
 
         const wallet: Wallet = await this.walletManager.importKeyfile(
-            {
-                walletType: keyfile.walletType,
-                encryptedSecret: keyfile.encryptedPrivateData,
-                accounts: keyfile.accounts.map(
-                    ({ name, index }: IKeyfileAccount) => ({
-                        name,
-                        index: index ?? undefined,
-                    }),
-                ),
-            },
+            ImportKeyfileService.toImportPayload(keyfile),
             passwordProvider,
         );
 

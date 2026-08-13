@@ -4,6 +4,8 @@ import {
 } from "@domains/CustomError";
 import SecretsProvider from "@domains/SecretsProvider";
 import { TDecryptedSecret, WalletTypes } from "@domains/Signer";
+import type { IImportKeyfileWalletPayload } from "@domains/Wallet";
+import type { IKeyfileAccount } from "@services/KeyfileSerializer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import type { IWalletKeyfile } from "@services/ExportKeyfileService";
 import { isPrivateKeySecretData } from "@utils/guards";
@@ -31,6 +33,21 @@ export default class ImportKeyfileService {
         }
 
         return keyfileSource as IWalletKeyfile;
+    }
+
+    public static toImportPayload(
+        keyfile: IWalletKeyfile,
+    ): IImportKeyfileWalletPayload {
+        return {
+            walletType: keyfile.walletType,
+            encryptedSecret: keyfile.encryptedPrivateData,
+            accounts: keyfile.accounts.map(
+                ({ name, index }: IKeyfileAccount) => ({
+                    name,
+                    index: index ?? undefined,
+                }),
+            ),
+        };
     }
 
     public static async decryptKeyfileSecret(
