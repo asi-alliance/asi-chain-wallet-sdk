@@ -11,7 +11,7 @@ import {
     Account,
     ClientEvent,
     ExportFormat,
-    ExportService,
+    ExportKeyfileService,
     THistorySource,
     Transaction,
 } from "asi-wallet-sdk";
@@ -214,7 +214,7 @@ const TxHistoryPage = (): ReactElement => {
             return;
         }
 
-        const content = ExportService.exportTransactions(
+        const content = ExportKeyfileService.exportTransactions(
             transactions,
             exportFormat,
         );

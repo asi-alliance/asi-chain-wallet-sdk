@@ -1,7 +1,11 @@
 import type { Address } from "@domains/Wallet";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
+import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
+import { ASI_WALLET_KEYFILE, ASI_WALLET_KEYFILE_VERSION } from "@config/index";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import { isEncryptedData, isKeyfileAccount } from "@utils/guards";
+import type { IWalletKeyfile } from "@services/ExportKeyfileService";
 import {
     decodeBase16,
     decodeBase58,
@@ -164,6 +168,58 @@ export const validateUrl = (
 };
 
 export const isValidUrl = (url: string): boolean => validateUrl(url).isValid;
+
+export const validateWalletKeyfile = (
+    source: unknown,
+): { isValid: boolean; error?: string } => {
+    if (typeof source !== "object" || source === null) {
+        return { isValid: false, error: "Keyfile is not an object" };
+    }
+
+    const keyfile = source as IWalletKeyfile;
+
+    if (keyfile.type !== ASI_WALLET_KEYFILE) {
+        return { isValid: false, error: "Keyfile has an unknown type" };
+    }
+
+    if (keyfile.version !== ASI_WALLET_KEYFILE_VERSION) {
+        return {
+            isValid: false,
+            error: `Keyfile version ${keyfile.version} is not supported`,
+        };
+    }
+
+    if (!Object.values(WalletTypes).includes(keyfile.walletType)) {
+        return { isValid: false, error: "Keyfile has an unknown wallet type" };
+    }
+
+    if (!isEncryptedData(keyfile.encryptedPrivateData)) {
+        return {
+            isValid: false,
+            error: "Keyfile has no encrypted private data",
+        };
+    }
+
+    if (
+        !Array.isArray(keyfile.accounts) ||
+        !keyfile.accounts.length ||
+        !keyfile.accounts.every(isKeyfileAccount)
+    ) {
+        return { isValid: false, error: "Keyfile has no valid accounts" };
+    }
+
+    if (
+        keyfile.walletType === WalletTypes.PRIVATE_KEY &&
+        keyfile.accounts.length > 1
+    ) {
+        return {
+            isValid: false,
+            error: "Private key keyfile must contain a single account",
+        };
+    }
+
+    return { isValid: true };
+};
 
 export const validateNodeApiProfile = (
     profile: unknown,

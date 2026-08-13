@@ -1,6 +1,6 @@
 import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
-import Wallet from "@domains/Wallet";
+import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
@@ -65,6 +65,20 @@ export default class WalletManager extends ItemManager<Wallet> {
         const wallet: Wallet = await Wallet.createPk(
             { name: accountName },
             secretProvider,
+        );
+
+        await this.persist(wallet);
+
+        return wallet;
+    }
+
+    public async importKeyfile(
+        payload: IImportKeyfileWalletPayload,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const wallet: Wallet = await Wallet.importKeyfile(
+            payload,
+            passwordProvider,
         );
 
         await this.persist(wallet);

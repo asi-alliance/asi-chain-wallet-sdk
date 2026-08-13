@@ -3,7 +3,17 @@ import CryptoService from "@services/Crypto";
 import KeyFingerprintService from "@services/KeyFingerprint";
 import PrivateKeySigner from "@domains/Signer/PK";
 import SecretsProvider from "@domains/SecretsProvider";
-import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
+import Signer, {
+    ISignerRecord,
+    TDecryptedSecret,
+    WalletTypes,
+} from "@domains/Signer";
+import { generateRandomId, isPrivateKeySecretData } from "@utils/index";
+
+export interface ICreateImportedSignerPayload {
+    secret: TDecryptedSecret;
+    passwordProvider: SecretsProvider;
+}
 
 export type TCreateSignerPayload =
     | {
@@ -54,6 +64,36 @@ export const createSigner = async (
             });
         }
     }
+};
+
+export const createImportedSigner = ({
+    secret,
+    passwordProvider,
+}: ICreateImportedSignerPayload): Promise<Signer> => {
+    const id: string = generateRandomId();
+
+    if (isPrivateKeySecretData(secret)) {
+        return createSigner({
+            id,
+            type: WalletTypes.PRIVATE_KEY,
+            secretProvider: new SecretsProvider(() => ({
+                password: passwordProvider.getSecret().password,
+                secret,
+            })),
+        });
+    }
+
+    return createSigner({
+        id,
+        type: WalletTypes.HD,
+        secretProvider: new SecretsProvider(() => ({
+            password: passwordProvider.getSecret().password,
+            secret: {
+                seed: secret.seed,
+                rootHDPath: secret.rootHDPath.toString(),
+            },
+        })),
+    });
 };
 
 export const restoreSigner = ({

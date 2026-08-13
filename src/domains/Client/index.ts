@@ -36,7 +36,11 @@ import {
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
-import ExportService from "@services/ExportService";
+import ExportKeyfileService, {
+    IWalletKeyfile,
+} from "@services/ExportKeyfileService";
+import ImportKeyfileService from "@services/ImportKeyfileService";
+import { IKeyfileAccount } from "@services/KeyfileSerializer";
 import {
     fromAtomicAmount,
     isNetworkConfigChanged,
@@ -482,21 +486,70 @@ export default class Client {
     }
 
     public getExportedAccountData(walletId: string, accountId: string): string {
-        const targetWallet: Wallet | null = this.walletManager.get(walletId);
-
-        if (!targetWallet) {
-            throw new Error("Client.getExportedAccountData: unknown wallet id");
-        }
-
         const exportedAccount: Account = this.walletManager.getAccount(
             walletId,
             accountId,
         );
 
-        return ExportService.exportAccountKeyfile({
-            address: exportedAccount.getAddress(),
-            encryptedPrivateKey: targetWallet.getSigner().getEncryptedSecret(),
+        return ExportKeyfileService.toJSON(
+            ExportKeyfileService.exportAccountKeyfile(exportedAccount),
+        );
+    }
+
+    public exportWalletKeyfile(walletId: string): string {
+        const targetWallet: Wallet | null = this.walletManager.get(walletId);
+
+        if (!targetWallet) {
+            throw new Error("Client.exportWalletKeyfile: unknown wallet id");
+        }
+
+        return ExportKeyfileService.toJSON(
+            ExportKeyfileService.exportWalletKeyfile(targetWallet),
+        );
+    }
+
+    public async importWalletKeyfile(
+        source: unknown,
+        password: string,
+    ): Promise<Wallet> {
+        const keyfile: IWalletKeyfile =
+            ImportKeyfileService.parseWalletKeyfile(source);
+
+        const passwordProvider: SecretsProvider =
+            this.createPasswordProvider(password);
+
+        const wallet: Wallet = await this.walletManager.importKeyfile(
+            {
+                walletType: keyfile.walletType,
+                encryptedSecret: keyfile.encryptedPrivateData,
+                accounts: keyfile.accounts.map(
+                    ({ name, index }: IKeyfileAccount) => ({
+                        name,
+                        index: index ?? undefined,
+                    }),
+                ),
+            },
+            passwordProvider,
+        );
+
+        await createReservationAdapter({
+            reservationAdapterManager: this.reservationAdapterManager,
+            wallet,
+            passwordProvider,
+            eventBus: this.eventBus,
         });
+
+        this.emitWalletsChanged();
+
+        if (this.flags?.withInsensitiveCacheStorage) {
+            for (const account of wallet.getAccounts()) {
+                InsensitiveCacheStorageManager.save(
+                    InsensitiveCacheStorageSerializer.serialize(account),
+                );
+            }
+        }
+
+        return wallet;
     }
 
     public async getExportedTransactionsData(
@@ -513,7 +566,7 @@ export default class Client {
         const transactions: Transaction[] =
             await currentAccount.getTransactionsHistory(networkId);
 
-        return ExportService.exportTransactions(transactions, format);
+        return ExportKeyfileService.exportTransactions(transactions, format);
     }
 
     public setActiveAccount(walletId: string, accountId: string): void {
