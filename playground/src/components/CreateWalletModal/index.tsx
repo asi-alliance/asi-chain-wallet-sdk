@@ -1,5 +1,9 @@
 import InputsForm from "../InputsForm";
-import { PRIVATE_KEY_LENGTH } from "asi-wallet-sdk";
+import {
+    decodeBase16,
+    PRIVATE_KEY_LENGTH,
+    validatePrivateKey,
+} from "asi-wallet-sdk";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
@@ -35,12 +39,18 @@ const normalizePrivateKeyHex = (hex: string): string => {
     return hex.trim().replace(/^0x/i, "");
 };
 
-const isPrivateKeyHexValid = (hex: string): boolean => {
+const getPrivateKeyError = (hex: string): string | null => {
     const clean = normalizePrivateKeyHex(hex);
 
-    return (
-        clean.length === PRIVATE_KEY_LENGTH * 2 && !/[^0-9a-fA-F]/.test(clean)
-    );
+    if (clean.length !== PRIVATE_KEY_LENGTH * 2) {
+        return `Invalid private key: expected ${PRIVATE_KEY_LENGTH * 2} hexadecimal characters`;
+    }
+
+    if (/[^0-9a-fA-F]/.test(clean)) {
+        return "Invalid private key: only hexadecimal characters are allowed";
+    }
+
+    return validatePrivateKey(decodeBase16(clean)).error ?? null;
 };
 
 const CreateWalletModal = ({
@@ -91,23 +101,19 @@ const CreateWalletModal = ({
                 return;
             }
 
-            if (!isPrivateKeyHexValid(privateKey)) {
-                setLocalError(
-                    "Invalid private key: expected 64 hexadecimal characters",
-                );
+            const privateKeyError = getPrivateKeyError(privateKey);
+
+            if (privateKeyError) {
+                setLocalError(privateKeyError);
                 return;
             }
 
-            try {
-                onSubmit({
-                    mode: "privateKey",
-                    name: name.trim(),
-                    privateKey,
-                    password,
-                });
-            } catch {
-                setLocalError("Invalid private key.");
-            }
+            onSubmit({
+                mode: "privateKey",
+                name: name.trim(),
+                privateKey: normalizePrivateKeyHex(privateKey),
+                password,
+            });
 
             return;
         }

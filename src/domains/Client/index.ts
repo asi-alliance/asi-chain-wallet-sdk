@@ -40,6 +40,7 @@ import ExportService from "@services/ExportService";
 import {
     fromAtomicAmount,
     isNetworkConfigChanged,
+    isPrivateKeyValid,
     toAtomicAmount,
 } from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -305,6 +306,12 @@ export default class Client {
         { privateKey, accountName }: ICreatePrivateKeyWalletPayload,
         password: string,
     ): Promise<Wallet> {
+        if (!isPrivateKeyValid(privateKey)) {
+            throw new Error(
+                "Client.createPrivateKeyWallet: private key is invalid",
+            );
+        }
+
         const secretProvider: SecretsProvider = new SecretsProvider(() => ({
             password,
             secret: { privateKey },
