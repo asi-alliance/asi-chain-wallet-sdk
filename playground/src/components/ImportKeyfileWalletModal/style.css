@@ -1,0 +1,8 @@
+.import-keyfile-wallet-modal__file {
+	padding: 8px 10px;
+	border: 1px dashed #ccc;
+	border-radius: 6px;
+	font-size: 0.95em;
+	background: #fafafa;
+	cursor: pointer;
+}

@@ -10,9 +10,9 @@ import CreateWalletModal, {
     IWalletCreateModalProps,
 } from "@components/CreateWalletModal";
 
-import ImportWalletModal, {
-    IImportWalletModalProps,
-} from "@components/ImportWalletModal";
+import ImportKeyfileWalletModal, {
+    IImportKeyfileWalletModalProps,
+} from "@components/ImportKeyfileWalletModal";
 
 import DeriveWalletModal, {
     IDeriveWalletModalProps,
@@ -49,10 +49,10 @@ const ModalManager = ({
                     {...(commonProps as IWalletCreateModalProps)}
                 />
             );
-        case Modals.IMPORT_WALLET_MODAL:
+        case Modals.IMPORT_KEYFILE_WALLET_MODAL:
             return (
-                <ImportWalletModal
-                    {...(commonProps as IImportWalletModalProps)}
+                <ImportKeyfileWalletModal
+                    {...(commonProps as IImportKeyfileWalletModalProps)}
                 />
             );
         case Modals.DERIVE_WALLET_MODAL:

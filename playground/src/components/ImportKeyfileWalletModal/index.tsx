@@ -1,6 +1,4 @@
-import CreateWalletModal, {
-    type TWalletCreatePayload,
-} from "@components/CreateWalletModal";
+import { WalletTypes } from "asi-wallet-sdk";
 import {
     useState,
     type ChangeEvent,
@@ -9,94 +7,92 @@ import {
 } from "react";
 import "./style.css";
 
-export type TWalletImportSource = "secret" | "keyfile";
-
 export interface IKeyfileImportPayload {
     keyfile: string;
     password: string;
 }
 
-export interface IImportWalletModalProps {
-    variant?: 12 | 24;
-    mode: "privateKey" | "mnemonic";
+export interface IImportKeyfileWalletModalProps {
     title?: string;
-    onSubmitSecret: (payload: TWalletCreatePayload) => void;
-    onSubmitKeyfile: (payload: IKeyfileImportPayload) => void;
+    onSubmit: (payload: IKeyfileImportPayload) => void;
     onClose?: () => void;
 }
 
 interface ISelectedKeyfile {
     name: string;
     content: string;
+    walletType: WalletTypes;
 }
 
-const ImportWalletModal = ({
-    variant = 12,
-    mode,
+const WALLET_TYPE_LABEL: Record<WalletTypes, string> = {
+    [WalletTypes.PRIVATE_KEY]: "Private Key",
+    [WalletTypes.HD]: "Mnemonic",
+};
+
+const readKeyfileWalletType = (content: string): WalletTypes | null => {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(content);
+    } catch {
+        return null;
+    }
+
+    if (typeof parsed !== "object" || parsed === null) {
+        return null;
+    }
+
+    const walletType = (parsed as { walletType?: WalletTypes }).walletType;
+
+    if (!walletType || !(walletType in WALLET_TYPE_LABEL)) {
+        return null;
+    }
+
+    return walletType;
+};
+
+const ImportKeyfileWalletModal = ({
     title,
-    onSubmitSecret,
-    onSubmitKeyfile,
+    onSubmit,
     onClose,
-}: IImportWalletModalProps): ReactElement => {
-    const [source, setSource] = useState<TWalletImportSource>("secret");
+}: IImportKeyfileWalletModalProps): ReactElement => {
     const [selectedKeyfile, setSelectedKeyfile] =
         useState<ISelectedKeyfile | null>(null);
     const [localError, setLocalError] = useState<string | null>(null);
 
-    const secretOptionLabel =
-        mode === "privateKey" ? "Private key" : "Mnemonic phrase";
+    const passwordLabel = selectedKeyfile
+        ? `Password of the ${WALLET_TYPE_LABEL[selectedKeyfile.walletType]} wallet`
+        : "Wallet password";
 
-    const handleSourceChange = (event: ChangeEvent<HTMLSelectElement>) => {
-        setLocalError(null);
-        setSource(event.target.value as TWalletImportSource);
-    };
-
-    const sourceRow = (
-        <div className="wallet-create-modal__row">
-            <label htmlFor="importSource">Import source</label>
-            <select
-                className="import-wallet-modal__select"
-                id="importSource"
-                name="importSource"
-                value={source}
-                onChange={handleSourceChange}
-            >
-                <option value="secret">{secretOptionLabel}</option>
-                <option value="keyfile">Keyfile</option>
-            </select>
-        </div>
-    );
-
-    if (source === "secret") {
-        return (
-            <CreateWalletModal
-                variant={variant}
-                mode={mode}
-                isInputMode
-                title={title}
-                headerContent={sourceRow}
-                onSubmit={onSubmitSecret}
-                onClose={onClose}
-            />
-        );
-    }
-
-    const handleKeyfileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const handleKeyfileChange = async (
+        event: ChangeEvent<HTMLInputElement>,
+    ) => {
         const file = event.target.files?.[0];
 
         setLocalError(null);
+        setSelectedKeyfile(null);
 
         if (!file) {
-            setSelectedKeyfile(null);
             return;
         }
 
+        let content: string;
+
         try {
-            setSelectedKeyfile({ name: file.name, content: await file.text() });
+            content = await file.text();
         } catch {
-            setSelectedKeyfile(null);
             setLocalError("Keyfile cannot be read.");
+            return;
         }
+
+        const walletType = readKeyfileWalletType(content);
+
+        if (!walletType) {
+            setLocalError("Selected file is not an ASI wallet keyfile.");
+            return;
+        }
+
+        setSelectedKeyfile({ name: file.name, content, walletType });
     };
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -111,7 +107,7 @@ const ImportWalletModal = ({
         const formData = new FormData(event.currentTarget);
         const password = (formData.get("password") as string) ?? "";
 
-        onSubmitKeyfile({ keyfile: selectedKeyfile.content, password });
+        onSubmit({ keyfile: selectedKeyfile.content, password });
     };
 
     return (
@@ -119,7 +115,7 @@ const ImportWalletModal = ({
             <div className="wallet-create-modal__content">
                 <div className="wallet-create-modal__header">
                     <h2 className="wallet-create-modal__title">
-                        {title ?? "Import wallet"}
+                        {title ?? "Import wallet from keyfile"}
                     </h2>
                     <button
                         className="wallet-create-modal__close"
@@ -135,12 +131,10 @@ const ImportWalletModal = ({
                     className="wallet-create-modal__form"
                     onSubmit={handleSubmit}
                 >
-                    {sourceRow}
-
                     <div className="wallet-create-modal__row">
                         <label htmlFor="keyfile">Keyfile</label>
                         <input
-                            className="import-wallet-modal__file"
+                            className="import-keyfile-wallet-modal__file"
                             id="keyfile"
                             name="keyfile"
                             type="file"
@@ -149,13 +143,13 @@ const ImportWalletModal = ({
                         />
                         <span className="wallet-create-modal__hint">
                             {selectedKeyfile
-                                ? `Loaded: ${selectedKeyfile.name}`
+                                ? `Loaded: ${selectedKeyfile.name} · ${WALLET_TYPE_LABEL[selectedKeyfile.walletType]} wallet`
                                 : "Not provided"}
                         </span>
                     </div>
 
                     <div className="wallet-create-modal__row">
-                        <label htmlFor="password">Keyfile password</label>
+                        <label htmlFor="password">{passwordLabel}</label>
                         <input
                             id="password"
                             name="password"
@@ -192,4 +186,4 @@ const ImportWalletModal = ({
     );
 };
 
-export default ImportWalletModal;
+export default ImportKeyfileWalletModal;

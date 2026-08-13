@@ -150,7 +150,16 @@ const WalletsPage = (): ReactElement => {
 
     return (
         <div className="wallets-page">
-            <NetworkSelector />
+            <div className="wallets-page__header">
+                <NetworkSelector />
+                <button
+                    className="wallets-page__action"
+                    type="button"
+                    onClick={handlers.importKeyfile}
+                >
+                    Import keyfile
+                </button>
+            </div>
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">

@@ -1,12 +1,6 @@
 import InputsForm from "../InputsForm";
 import { PRIVATE_KEY_LENGTH } from "asi-wallet-sdk";
-import {
-    useMemo,
-    useState,
-    type FormEvent,
-    type ReactElement,
-    type ReactNode,
-} from "react";
+import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
 
 export type TWalletCreatePayload =
@@ -32,7 +26,6 @@ export interface IWalletCreateModalProps {
     onClose?: () => void;
     initialMnemonic?: string;
     initialPrivateKey?: string;
-    headerContent?: ReactNode;
 }
 
 const toWordArray = (mnemonic?: string): string[] =>
@@ -59,7 +52,6 @@ const CreateWalletModal = ({
     isInputMode = false,
     initialMnemonic,
     initialPrivateKey = "",
-    headerContent,
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
@@ -166,8 +158,6 @@ const CreateWalletModal = ({
                     className="wallet-create-modal__form"
                     onSubmit={handleSubmit}
                 >
-                    {headerContent}
-
                     <div className="wallet-create-modal__row">
                         <label htmlFor="name">Name</label>
                         <input id="name" name="name" type="text" required />
