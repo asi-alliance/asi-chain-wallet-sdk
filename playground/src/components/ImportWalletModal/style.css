@@ -1,0 +1,23 @@
+.import-wallet-modal__select {
+	padding: 8px 10px;
+	border: 1px solid #ccc;
+	border-radius: 6px;
+	font-size: 1em;
+	background: #fff;
+	outline: none;
+	cursor: pointer;
+	transition: border 0.2s;
+}
+
+.import-wallet-modal__select:focus {
+	border: 1.5px solid #007bff;
+}
+
+.import-wallet-modal__file {
+	padding: 8px 10px;
+	border: 1px dashed #ccc;
+	border-radius: 6px;
+	font-size: 0.95em;
+	background: #fafafa;
+	cursor: pointer;
+}

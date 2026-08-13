@@ -2,6 +2,8 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
+import { IKeyfileImportPayload } from "@components/ImportWalletModal";
+import { downloadTextFile } from "@utils/functions";
 import {
     decodeBase16,
     KeysManager,
@@ -23,6 +25,7 @@ export type WalletPageHandlers = {
     importHd: (words: 12 | 24) => void;
     unlockWallet: (signerId: string) => void;
     deriveAccount: (walletId: string) => void;
+    exportWalletKeyfile: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
     renameAccount: (walletId: string, accountId: string) => void;
     removeAccount: (walletId: string, accountId: string) => void;
@@ -65,31 +68,61 @@ export const createWalletPageHandlers = ({
             }
         });
 
+    const submitImportKeyfile = ({ keyfile, password }: IKeyfileImportPayload) =>
+        withLoader(async () => {
+            try {
+                await sdk.importWalletKeyfile(keyfile, password);
+
+                closeModal();
+            } catch (error) {
+                console.error(error);
+                alert((error as Error)?.message ?? "Failed to import keyfile");
+            }
+        });
+
     const openCreateWalletModal = (options: {
         mode: "privateKey" | "mnemonic";
-        isInputMode: boolean;
         title: string;
         variant?: 12 | 24;
     }) => {
-        const { mode, isInputMode, title, variant } = options;
+        const { mode, title, variant } = options;
 
         setModalState({
             type: Modals.CREATE_WALLET_MODAL,
             props: {
                 mode,
-                isInputMode,
                 title,
                 variant,
                 onSubmit: submitCreate,
                 onClose: closeModal,
                 initialMnemonic:
-                    mode === "mnemonic" && !isInputMode && variant
+                    mode === "mnemonic" && variant
                         ? sdk.generateMnemonic(strengthFromWords(variant))
                         : undefined,
                 initialPrivateKey:
-                    mode === "privateKey" && !isInputMode
+                    mode === "privateKey"
                         ? KeysManager.convertKeyToHex(sdk.generatePrivateKey())
                         : undefined,
+            },
+        });
+    };
+
+    const openImportWalletModal = (options: {
+        mode: "privateKey" | "mnemonic";
+        title: string;
+        variant?: 12 | 24;
+    }) => {
+        const { mode, title, variant } = options;
+
+        setModalState({
+            type: Modals.IMPORT_WALLET_MODAL,
+            props: {
+                mode,
+                title,
+                variant,
+                onSubmitSecret: submitCreate,
+                onSubmitKeyfile: submitImportKeyfile,
+                onClose: closeModal,
             },
         });
     };
@@ -98,26 +131,22 @@ export const createWalletPageHandlers = ({
         createPk: () =>
             openCreateWalletModal({
                 mode: "privateKey",
-                isInputMode: false,
                 title: "Create Private Key wallet",
             }),
         importPk: () =>
-            openCreateWalletModal({
+            openImportWalletModal({
                 mode: "privateKey",
-                isInputMode: true,
                 title: "Import Private Key wallet",
             }),
         createHd: (words: 12 | 24) =>
             openCreateWalletModal({
                 mode: "mnemonic",
-                isInputMode: false,
                 title: `Create Mnemonic wallet (${words})`,
                 variant: words,
             }),
         importHd: (words: 12 | 24) =>
-            openCreateWalletModal({
+            openImportWalletModal({
                 mode: "mnemonic",
-                isInputMode: true,
                 title: `Import Mnemonic wallet (${words})`,
                 variant: words,
             }),
@@ -167,6 +196,22 @@ export const createWalletPageHandlers = ({
                     onClose: closeModal,
                 },
             }),
+
+        exportWalletKeyfile: (walletId: string) => {
+            try {
+                downloadTextFile(
+                    `asi-wallet-keyfile-${walletId}.json`,
+                    sdk.exportWalletKeyfile(walletId),
+                    "application/json",
+                );
+            } catch (error) {
+                console.error(error);
+                alert(
+                    (error as Error)?.message ??
+                        "Failed to export wallet keyfile",
+                );
+            }
+        },
 
         removeWallet: (walletId: string) =>
             withLoader(async () => {

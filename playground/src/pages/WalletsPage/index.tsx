@@ -68,6 +68,13 @@ const WalletRow = ({
                 <button
                     className="wallets-page__action"
                     type="button"
+                    onClick={() => handlers.exportWalletKeyfile(walletId)}
+                >
+                    Export keyfile
+                </button>
+                <button
+                    className="wallets-page__action"
+                    type="button"
                     onClick={() => handlers.removeWallet(walletId)}
                 >
                     Remove wallet

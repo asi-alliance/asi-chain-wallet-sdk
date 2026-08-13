@@ -371,6 +371,26 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const exportWalletKeyfile = useCallback(
+        (walletId: string): string =>
+            requireClient().exportWalletKeyfile(walletId),
+        [requireClient],
+    );
+
+    const importWalletKeyfile = useCallback(
+        async (source: string, password: string): Promise<Wallet> => {
+            const wallet = await requireClient().importWalletKeyfile(
+                source,
+                password,
+            );
+
+            await refresh();
+
+            return wallet;
+        },
+        [requireClient, refresh],
+    );
+
     const getBalance = useCallback(
         (address: string): Promise<bigint> =>
             requireClient().getBalance(address as never),
@@ -449,6 +469,8 @@ const useSdk = () => {
         exploreDeploy,
         watchDeploy,
         getExportedAccountData,
+        exportWalletKeyfile,
+        importWalletKeyfile,
         getBalance,
         getAvailableBalance,
         getReservations,
