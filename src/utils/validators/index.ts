@@ -218,6 +218,16 @@ export const validateWalletKeyfile = (
         };
     }
 
+    const indexes = keyfile.accounts.map(({ index }) => index);
+    const addresses = keyfile.accounts.map(({ address }) => address);
+
+    if (
+        new Set(indexes).size !== indexes.length ||
+        new Set(addresses).size !== addresses.length
+    ) {
+        return { isValid: false, error: "Keyfile contains duplicate accounts" };
+    }
+
     return { isValid: true };
 };
 
