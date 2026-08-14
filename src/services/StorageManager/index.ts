@@ -112,6 +112,7 @@ class StorageManager {
             type,
             signer.getEncryptedSecret(),
             signer.getEncryptedDataKey(),
+            signer.getFingerprint(),
         );
     };
 
@@ -125,6 +126,7 @@ class StorageManager {
                     signerOption.type,
                     signerOption.signer.getEncryptedSecret(),
                     signerOption.signer.getEncryptedDataKey(),
+                    signerOption.signer.getFingerprint(),
                 ),
             ),
         );
@@ -143,11 +145,20 @@ class StorageManager {
             type: signerStorageRecord.type,
             encryptedData: signerStorageRecord.encryptedData,
             encryptedDataKey: signerStorageRecord.encryptedDataKey,
+            fingerprint: signerStorageRecord.fingerprint,
         };
     };
 
     public static getSigners = async (): Promise<ISignerStorageRecord[]> => {
         return SignersStorageRepository.getInstance().getAllSigners();
+    };
+
+    public static findSignerByFingerprint = async (
+        fingerprint: string,
+    ): Promise<ISignerStorageRecord | null> => {
+        return SignersStorageRepository.getInstance().findSignerByFingerprint(
+            fingerprint,
+        );
     };
 
     public static updateSigner = async (
@@ -177,6 +188,7 @@ class StorageManager {
             signerId,
             account.getName(),
             account.getIndex(),
+            account.getFingerprint(),
         );
     };
 
@@ -189,6 +201,7 @@ class StorageManager {
                 signerId,
                 name: account.getName(),
                 index: account.getIndex(),
+                fingerprint: account.getFingerprint(),
                 createdAt: Date.now(),
             }),
         );
@@ -207,8 +220,24 @@ class StorageManager {
         return accountStorageRecord;
     };
 
-    public static getAccounts = async (): Promise<IAccountRecord[]> => {
+    public static getAccounts = async (): Promise<IAccountStorageRecord[]> => {
         return AccountsStorageRepository.getInstance().getAllAccounts();
+    };
+
+    public static getAccountsBySignerId = async (
+        signerId: string,
+    ): Promise<IAccountStorageRecord[]> => {
+        return AccountsStorageRepository.getInstance().getAccountsBySignerId(
+            signerId,
+        );
+    };
+
+    public static findAccountByFingerprint = async (
+        fingerprint: string,
+    ): Promise<IAccountStorageRecord | null> => {
+        return AccountsStorageRepository.getInstance().findAccountByFingerprint(
+            fingerprint,
+        );
     };
 
     public static updateAccount = async (
@@ -273,12 +302,8 @@ class StorageManager {
         const signerRecord: ISignerRecord =
             await StorageManager.getSigner(signerId);
 
-        const accountRecords: IAccountRecord[] = (
-            await StorageManager.getAccounts()
-        ).filter(
-            (accountRecord: IAccountRecord) =>
-                accountRecord.signerId === signerId,
-        );
+        const accountRecords: IAccountRecord[] =
+            await StorageManager.getAccountsBySignerId(signerId);
 
         return Wallet.restore(
             { signerRecord, accountRecords },
@@ -319,12 +344,8 @@ class StorageManager {
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
-        const records =
-            await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
-
-        return records.filter(
-            (record: ITransactionReservationsStorageRecord) =>
-                record.signerId === signerId,
+        return TransactionReservationsStorageRepository.getInstance().getTransactionReservationsBySignerId(
+            signerId,
         );
     };
 

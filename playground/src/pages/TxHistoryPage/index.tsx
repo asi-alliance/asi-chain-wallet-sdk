@@ -9,6 +9,7 @@ import { useSearchParams } from "react-router-dom";
 import "./styles.css";
 import {
     Account,
+    ClientEvent,
     ExportFormat,
     ExportService,
     THistorySource,
@@ -57,7 +58,7 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { client, unlockedWallets, currentNetwork, reservationsByWallet } =
+    const { client, openWallets, currentNetwork, reservationsByWallet } =
         useSdkContext();
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -75,8 +76,8 @@ const TxHistoryPage = (): ReactElement => {
     const page = Math.max(1, Number(searchParams.get(PAGE_QUERY_PARAM)) || 1);
 
     const accounts = useMemo<Account[]>(
-        () => unlockedWallets.flatMap((wallet) => wallet.getAccounts()),
-        [unlockedWallets],
+        () => openWallets.flatMap((wallet) => wallet.getAccounts()),
+        [openWallets],
     );
 
     const accountOptions = useMemo<SelectFilterOption[]>(
@@ -99,10 +100,10 @@ const TxHistoryPage = (): ReactElement => {
 
     const selectedWallet = useMemo(
         () =>
-            unlockedWallets.find((wallet) =>
+            openWallets.find((wallet) =>
                 wallet.getAccountsMap().has(selectedAccountId),
             ) ?? null,
-        [unlockedWallets, selectedAccountId],
+        [openWallets, selectedAccountId],
     );
 
     const startRequest: TStartRequest = useRelevantResultGuard(
@@ -159,13 +160,21 @@ const TxHistoryPage = (): ReactElement => {
         startRequest,
     ]);
 
-    const walletReservations = selectedWallet
-        ? reservationsByWallet[selectedWallet.getId()]
-        : undefined;
-
     useEffect(() => {
         void load();
-    }, [load, currentNetwork, walletReservations]);
+    }, [load, currentNetwork]);
+
+    useEffect(() => {
+        if (!client || !selectedWallet) {
+            return;
+        }
+
+        return client
+            .getEventBus()
+            .on(ClientEvent.RESERVATIONS_CHANGED, () => {
+                void load();
+            });
+    }, [client, selectedWallet, load]);
 
     const goToPage = (nextPage: number): void => {
         const params = new URLSearchParams(searchParams);

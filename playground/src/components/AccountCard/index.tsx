@@ -18,6 +18,22 @@ export interface IAccountCardProps {
     onRemove: () => void;
 }
 
+const getBalanceLabel = (
+    available: bigint | null,
+    isFetching: boolean,
+    error: string | null,
+): string => {
+    if (isFetching) {
+        return "loading balance ...";
+    }
+
+    if (error) {
+        return "balance unavailable";
+    }
+
+    return `${formatAmount(available)} ASI`;
+};
+
 const AccountCard = ({
     sdk,
     walletId,
@@ -32,7 +48,7 @@ const AccountCard = ({
     const accountId = account.getId();
     const index = account.getIndex();
 
-    const { balance, isFetching, reload } = useWalletBalance(
+    const { balance, isFetching, error, reload } = useWalletBalance(
         sdk,
         walletId,
         accountId,
@@ -167,11 +183,13 @@ const AccountCard = ({
                 <div className="account-card-address">{address}</div>
                 <div className="account-card-balance">
                     balance:{" "}
-                    {isFetching
-                        ? "loading balance ..."
-                        : `${formatAmount(balance.available)} ASI`}
+                    {getBalanceLabel(balance.available, isFetching, error)}
                 </div>
-                <ReservationStatus balance={balance} isFetching={isFetching} />
+                <ReservationStatus
+                    balance={balance}
+                    isFetching={isFetching}
+                    error={error}
+                />
                 <div className="buttons">
                     <button
                         className="account-card-button"

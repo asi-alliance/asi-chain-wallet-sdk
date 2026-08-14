@@ -21,7 +21,8 @@ export type WalletPageHandlers = {
     importPk: () => void;
     createHd: (words: 12 | 24) => void;
     importHd: (words: 12 | 24) => void;
-    unlockWallet: (signerId: string) => void;
+    openWallet: (signerId: string) => void;
+    closeWallet: (walletId: string) => void;
     deriveAccount: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
     renameAccount: (walletId: string, accountId: string) => void;
@@ -122,7 +123,7 @@ export const createWalletPageHandlers = ({
                 variant: words,
             }),
 
-        unlockWallet: (signerId: string) =>
+        openWallet: (signerId: string) =>
             setModalState({
                 type: Modals.PASSWORD_MODAL,
                 props: {
@@ -130,7 +131,7 @@ export const createWalletPageHandlers = ({
                     onSubmit: (password: string) =>
                         withLoader(async () => {
                             try {
-                                await sdk.unlockWallet(signerId, password);
+                                await sdk.openWallet(signerId, password);
                                 closeModal();
                             } catch (error) {
                                 console.error(error);
@@ -142,6 +143,8 @@ export const createWalletPageHandlers = ({
                     onClose: closeModal,
                 },
             }),
+
+        closeWallet: (walletId: string) => sdk.closeWallet(walletId),
 
         deriveAccount: (walletId: string) =>
             setModalState({

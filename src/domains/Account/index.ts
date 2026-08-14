@@ -14,6 +14,7 @@ import { NetworkId } from "@domains/Network";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { generateRandomId } from "@utils/index";
 import KeysManager from "@services/KeysManager";
+import KeyFingerprintService from "@services/KeyFingerprint";
 
 export interface IPortfolioOptions {
     assets?: Assets;
@@ -50,6 +51,7 @@ class Account {
     private readonly index: number | null;
     private readonly address: Address;
     private readonly publicKey: Uint8Array;
+    private readonly fingerprint: string;
     private name: string;
     private assets: Assets;
     private primaryAsset: Asset;
@@ -67,6 +69,7 @@ class Account {
         this.index = index;
         this.address = address;
         this.publicKey = publicKey;
+        this.fingerprint = KeyFingerprintService.fromPublicKey(publicKey);
         this.assets =
             portfolioOptions?.assets ??
             new Map([[DEFAULT_ASSET.getId(), DEFAULT_ASSET]]);
@@ -95,6 +98,10 @@ class Account {
 
     public getPublicKey(): Uint8Array {
         return this.publicKey;
+    }
+
+    public getFingerprint(): string {
+        return this.fingerprint;
     }
 
     public getAsset(id: Asset["id"]): Asset | null {

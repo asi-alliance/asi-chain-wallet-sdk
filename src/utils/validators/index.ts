@@ -1,7 +1,8 @@
 import type { Address } from "@domains/Wallet";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
-import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import { utils as secp256k1Utils } from "@noble/secp256k1";
+import { ASI_CHAIN_PREFIX, PRIVATE_KEY_LENGTH } from "@utils/constants";
 import {
     decodeBase16,
     decodeBase58,
@@ -129,6 +130,29 @@ export const validateAddress = (address: string): AddressValidationResult => {
 export const isAddress = (address: string): address is Address => {
     return validateAddress(address).isValid;
 };
+
+export const validatePrivateKey = (
+    privateKey: Uint8Array,
+): { isValid: boolean; error?: string } => {
+    if (privateKey.length !== PRIVATE_KEY_LENGTH) {
+        return {
+            isValid: false,
+            error: `Private key must be ${PRIVATE_KEY_LENGTH} bytes`,
+        };
+    }
+
+    if (!secp256k1Utils.isValidPrivateKey(privateKey)) {
+        return {
+            isValid: false,
+            error: "Private key is out of the secp256k1 curve range",
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const isPrivateKeyValid = (privateKey: Uint8Array): boolean =>
+    validatePrivateKey(privateKey).isValid;
 
 const ALLOWED_URL_PROTOCOLS: readonly string[] = ["http:", "https:"];
 

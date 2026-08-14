@@ -6,11 +6,24 @@ import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 export interface IReservationStatusProps {
     balance: WalletBalance;
     isFetching?: boolean;
+    error?: string | null;
 }
+
+const getAmountLabel = (
+    amount: bigint | null,
+    error?: string | null,
+): string => {
+    if (error) {
+        return "unavailable";
+    }
+
+    return `${formatAmount(amount)} ASI`;
+};
 
 const ReservationStatus = ({
     balance,
     isFetching = false,
+    error = null,
 }: IReservationStatusProps): ReactElement => {
     const totalReserved =
         balance.total !== null && balance.available !== null
@@ -33,7 +46,7 @@ const ReservationStatus = ({
                     <span className="reservation-status__value">
                         {isFetching
                             ? "updating..."
-                            : `${formatAmount(balance.total)} ASI`}
+                            : getAmountLabel(balance.total, error)}
                     </span>
                 </div>
 
@@ -53,7 +66,7 @@ const ReservationStatus = ({
                         Available:
                     </span>
                     <span className="reservation-status__value">
-                        {formatAmount(balance.available)} ASI
+                        {getAmountLabel(balance.available, error)}
                     </span>
                 </div>
 
@@ -68,6 +81,12 @@ const ReservationStatus = ({
                     </div>
                 )}
             </div>
+
+            {error && (
+                <div className="reservation-status__info">
+                    <p>Balance unavailable: {error}</p>
+                </div>
+            )}
 
             {hasReservations && (
                 <div className="reservation-status__info">

@@ -52,3 +52,5 @@ export type RequirePassword =
     (typeof RequirePassword)[keyof typeof RequirePassword];
 
 export const DEFAULT_AUTO_LOCK_MS: number = 15 * 60 * 1000;
+
+export const DEFAULT_DRAIN_TIMEOUT_MS: number = 10 * 1000;
