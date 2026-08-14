@@ -1,6 +1,6 @@
 import {
-  InvalidKeyfileError,
-  InvalidKeyfilePasswordError,
+    InvalidKeyfileError,
+    InvalidKeyfilePasswordError,
 } from "@domains/CustomError";
 import SecretsProvider from "@domains/SecretsProvider";
 import { TDecryptedSecret, WalletTypes } from "@domains/Signer";
@@ -9,109 +9,153 @@ import type { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import type { IWalletKeyfile } from "@services/ExportKeyfileService";
 import { isPrivateKeySecretData } from "@utils/guards";
+import { selectByField } from "@utils/functions";
 import {
-  validateWalletKeyfile,
-  validateWalletKeyfileAccounts,
+    validateWalletKeyfile,
+    validateWalletKeyfileAccounts,
 } from "@utils/validators";
 
+export interface IImportWalletKeyfileOptions {
+    accountIndexes?: number[];
+}
+
 export default class ImportKeyfileService {
-  public static fromJSON(source: string): unknown {
-    try {
-      return JSON.parse(source);
-    } catch {
-      throw new InvalidKeyfileError("Keyfile is not a valid JSON");
-    }
-  }
-
-  public static parseWalletKeyfile(source: unknown): IWalletKeyfile {
-    const keyfileSource: unknown =
-      typeof source === "string"
-        ? ImportKeyfileService.fromJSON(source)
-        : source;
-
-    const { isValid, error } = validateWalletKeyfile(keyfileSource);
-
-    if (!isValid) {
-      throw new InvalidKeyfileError(error);
+    public static fromJSON(source: string): unknown {
+        try {
+            return JSON.parse(source);
+        } catch {
+            throw new InvalidKeyfileError("Keyfile is not a valid JSON");
+        }
     }
 
-    return keyfileSource as IWalletKeyfile;
-  }
+    public static parseWalletKeyfile(source: unknown): IWalletKeyfile {
+        const keyfileSource: unknown =
+            typeof source === "string"
+                ? ImportKeyfileService.fromJSON(source)
+                : source;
 
-  public static async decryptKeyfileAccounts(
-    keyfile: IWalletKeyfile,
-    passwordProvider: SecretsProvider,
-  ): Promise<IKeyfileWalletAccount[]> {
-    let serializedAccounts: string;
+        const { isValid, error } = validateWalletKeyfile(keyfileSource);
 
-    try {
-      serializedAccounts = await CryptoService.decryptWithPassword(
-        keyfile.encryptedAccounts,
-        passwordProvider.getSecret().password,
-      );
-    } catch {
-      throw new InvalidKeyfilePasswordError();
+        if (!isValid) {
+            throw new InvalidKeyfileError(error);
+        }
+
+        return keyfileSource as IWalletKeyfile;
     }
 
-    const accounts: unknown = ImportKeyfileService.fromJSON(serializedAccounts);
+    public static async decryptKeyfileAccounts(
+        keyfile: IWalletKeyfile,
+        passwordProvider: SecretsProvider,
+    ): Promise<IKeyfileWalletAccount[]> {
+        let serializedAccounts: string;
 
-    const { isValid, error } = validateWalletKeyfileAccounts(
-      accounts,
-      keyfile.walletType,
-    );
+        try {
+            serializedAccounts = await CryptoService.decryptWithPassword(
+                keyfile.encryptedAccounts,
+                passwordProvider.getSecret().password,
+            );
+        } catch {
+            throw new InvalidKeyfilePasswordError();
+        }
 
-    if (!isValid) {
-      throw new InvalidKeyfileError(error);
+        const accounts: unknown =
+            ImportKeyfileService.fromJSON(serializedAccounts);
+
+        const { isValid, error } = validateWalletKeyfileAccounts(
+            accounts,
+            keyfile.walletType,
+        );
+
+        if (!isValid) {
+            throw new InvalidKeyfileError(error);
+        }
+
+        return accounts as IKeyfileWalletAccount[];
     }
 
-    return accounts as IKeyfileWalletAccount[];
-  }
+    private static selectAccounts(
+        accounts: IKeyfileWalletAccount[],
+        accountIndexes?: number[],
+    ): IKeyfileWalletAccount[] {
+        if (!accountIndexes) {
+            return accounts;
+        }
 
-  public static async toImportPayload(
-    keyfile: IWalletKeyfile,
-    passwordProvider: SecretsProvider,
-  ): Promise<IImportKeyfileWalletPayload> {
-    const accounts: IKeyfileWalletAccount[] =
-      await ImportKeyfileService.decryptKeyfileAccounts(
-        keyfile,
-        passwordProvider,
-      );
+        if (!accountIndexes.length) {
+            throw new InvalidKeyfileError(
+                "No keyfile accounts selected for import",
+            );
+        }
 
-    return {
-      walletType: keyfile.walletType,
-      encryptedSecret: keyfile.encryptedPrivateData,
-      accounts: accounts.map(({ name, index }: IKeyfileWalletAccount) => ({
-        name,
-        index: index ?? undefined,
-      })),
-    };
-  }
+        const { selected, missingValues } = selectByField(
+            accounts,
+            "index",
+            accountIndexes,
+        );
 
-  public static async decryptKeyfileSecret(
-    walletType: WalletTypes,
-    encryptedSecret: EncryptedData,
-    passwordProvider: SecretsProvider,
-  ): Promise<TDecryptedSecret> {
-    let secret: TDecryptedSecret;
+        if (missingValues.length) {
+            throw new InvalidKeyfileError(
+                `Keyfile has no accounts with indexes ${missingValues.join(", ")}`,
+            );
+        }
 
-    try {
-      secret = await CryptoService.decryptSignerData(
-        encryptedSecret,
-        passwordProvider,
-      );
-    } catch {
-      throw new InvalidKeyfilePasswordError();
+        return selected;
     }
 
-    const isPrivateKeyWalletKeyfile: boolean =
-      walletType === WalletTypes.PRIVATE_KEY;
+    public static async toImportPayload(
+        keyfile: IWalletKeyfile,
+        passwordProvider: SecretsProvider,
+        options?: IImportWalletKeyfileOptions,
+    ): Promise<IImportKeyfileWalletPayload> {
+        const accounts: IKeyfileWalletAccount[] =
+            await ImportKeyfileService.decryptKeyfileAccounts(
+                keyfile,
+                passwordProvider,
+            );
 
-    if (isPrivateKeySecretData(secret) !== isPrivateKeyWalletKeyfile) {
-      throw new InvalidKeyfileError(
-        "Keyfile secret does not match its wallet type",
-      );
+        const selectedAccounts: IKeyfileWalletAccount[] =
+            ImportKeyfileService.selectAccounts(
+                accounts,
+                options?.accountIndexes,
+            );
+
+        return {
+            walletType: keyfile.walletType,
+            encryptedSecret: keyfile.encryptedPrivateData,
+            accounts: selectedAccounts.map(
+                ({ name, index }: IKeyfileWalletAccount) => ({
+                    name,
+                    index: index ?? undefined,
+                }),
+            ),
+        };
     }
 
-    return secret;
-  }
+    public static async decryptKeyfileSecret(
+        walletType: WalletTypes,
+        encryptedSecret: EncryptedData,
+        passwordProvider: SecretsProvider,
+    ): Promise<TDecryptedSecret> {
+        let secret: TDecryptedSecret;
+
+        try {
+            secret = await CryptoService.decryptSignerData(
+                encryptedSecret,
+                passwordProvider,
+            );
+        } catch {
+            throw new InvalidKeyfilePasswordError();
+        }
+
+        const isPrivateKeyWalletKeyfile: boolean =
+            walletType === WalletTypes.PRIVATE_KEY;
+
+        if (isPrivateKeySecretData(secret) !== isPrivateKeyWalletKeyfile) {
+            throw new InvalidKeyfileError(
+                "Keyfile secret does not match its wallet type",
+            );
+        }
+
+        return secret;
+    }
 }

@@ -42,15 +42,15 @@ export const createSigner = async (
         password,
     );
 
+    const fingerprint: string = await KeyFingerprintService.fromSecret(secret);
+
     switch (payload.type) {
         case WalletTypes.PRIVATE_KEY:
             return new PrivateKeySigner({
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
-                fingerprint: KeyFingerprintService.fromPrivateKey(
-                    secret.privateKey,
-                ),
+                fingerprint,
             });
 
         case WalletTypes.HD: {
@@ -58,9 +58,7 @@ export const createSigner = async (
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
-                fingerprint: await KeyFingerprintService.fromMnemonic(
-                    secret.seed,
-                ),
+                fingerprint,
             });
         }
     }

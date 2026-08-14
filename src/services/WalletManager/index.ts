@@ -1,17 +1,14 @@
-import Account from "@domains/Account";
+import Account, { TCreateAccountPayload } from "@domains/Account";
 import ItemManager from "@services/ItemManager";
 import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
-import { ISignerStorageRecord } from "@domains/SignersStorageRepository";
-import { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
-import {
-    DuplicateAccountError,
-    DuplicateWalletError,
-    WalletAction,
-} from "@domains/CustomError";
+import { WalletAction, WalletLockedError } from "@domains/CustomError";
+import AccountsService from "@services/Accounts";
 import WalletOperationGuardService from "@services/WalletOperationGuard";
+import WalletPersistenceService from "@services/WalletPersistence";
+import WalletUniquenessService from "@services/WalletUniqueness";
 
 export interface IAccountMetadata {
     id: string;
@@ -36,9 +33,14 @@ export interface IDerivedAccount {
     account: Account;
 }
 
+export interface ICreatedWalletAccounts {
+    wallet: Wallet;
+    accounts: Account[];
+}
+
 export default class WalletManager extends ItemManager<Wallet> {
     private static readonly operationsGuard: WalletOperationGuardService =
-        new WalletOperationGuardService();
+        WalletOperationGuardService.getInstance();
 
     public async createHD(
         { mnemonic, accountName, index }: ICreateHDWalletParams,
@@ -70,6 +72,14 @@ export default class WalletManager extends ItemManager<Wallet> {
         await this.persist(wallet);
 
         return wallet;
+    }
+
+    public getBySignerId(signerId: string): Wallet | null {
+        return (
+            this.getAll().find(
+                (wallet: Wallet) => wallet.getSigner().getId() === signerId,
+            ) ?? null
+        );
     }
 
     public async importKeyfile(
@@ -120,6 +130,31 @@ export default class WalletManager extends ItemManager<Wallet> {
         await StorageManager.deleteSigner(currentWallet.getSigner().getId());
 
         return currentWallet;
+    }
+
+    public async createAccounts(
+        signerId: string,
+        accounts: TCreateAccountPayload[],
+        secretProvider: SecretsProvider,
+    ): Promise<ICreatedWalletAccounts> {
+        const wallet: Wallet | null = this.getBySignerId(signerId);
+
+        if (!wallet) {
+            throw new WalletLockedError(
+                `Wallet ${signerId} must be unlocked to create accounts in it`,
+            );
+        }
+
+        const createdAccounts: Account[] = await AccountsService.createAccounts(
+            accounts,
+            secretProvider,
+        );
+
+        await WalletPersistenceService.saveAccounts(signerId, createdAccounts);
+
+        wallet.addAccounts(createdAccounts);
+
+        return { wallet, accounts: createdAccounts };
     }
 
     public async deriveAccount(
@@ -241,38 +276,15 @@ export default class WalletManager extends ItemManager<Wallet> {
         return (await StorageManager.getSigners()).length;
     }
 
-    private async assertWalletIsNotDuplicate(wallet: Wallet): Promise<void> {
-        const existingSigner: ISignerStorageRecord | null =
-            await StorageManager.findSignerByFingerprint(
-                wallet.getSigner().getFingerprint(),
-            );
-
-        if (existingSigner) {
-            throw new DuplicateWalletError(existingSigner.id);
-        }
-
-        for (const account of wallet.getAccounts()) {
-            const existingAccount: IAccountStorageRecord | null =
-                await StorageManager.findAccountByFingerprint(
-                    account.getFingerprint(),
-                );
-
-            if (existingAccount) {
-                throw new DuplicateAccountError(
-                    existingAccount.signerId,
-                    existingAccount.id,
-                );
-            }
-        }
-    }
-
     private async persist(wallet: Wallet): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
         return WalletManager.operationsGuard.runWalletCreation(
             wallet,
             async () => {
-                await this.assertWalletIsNotDuplicate(wallet);
+                await WalletUniquenessService.assertWalletIsNotDuplicate(
+                    wallet,
+                );
 
                 await StorageManager.saveWallet({ signerId, wallet });
 

@@ -13,6 +13,7 @@ export enum CustomErrorCode {
 export enum WalletAction {
     UNLOCK = "UNLOCK",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+    SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
 }
 
 export class CustomError extends Error {

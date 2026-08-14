@@ -183,6 +183,10 @@ export default class Wallet {
     );
   }
 
+  public addAccounts(accounts: Account[]): void {
+    this.accountManager.addAccounts(accounts);
+  }
+
   public removeAccount(id: string): Account {
     return this.accountManager.remove(id);
   }
