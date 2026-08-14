@@ -28,11 +28,32 @@
   line-height: 1.2;
 }
 
-.app-header__reset {
+.app-header__lock-all {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   margin-left: auto;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #2563eb;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #2563eb;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.app-header__lock-all:hover {
+  background: #2563eb;
+  color: #fff;
+}
+
+.app-header__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.75rem 1.5rem;
   border: 2px solid #dc2626;
   border-radius: 0.5rem;

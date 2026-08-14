@@ -20,6 +20,13 @@ const Header = (): ReactElement => {
             </div>
             <ApplicationNavigation />
             <button
+                className="app-header__lock-all"
+                type="button"
+                onClick={sdk.closeAllWallets}
+            >
+                LOCK ALL WALLETS
+            </button>
+            <button
                 className="app-header__reset"
                 type="button"
                 onClick={handleResetApp}

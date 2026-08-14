@@ -136,9 +136,11 @@ export default class ReservationAdapter {
             networkId,
         );
 
+        const available: bigint = balance.amount - reserved;
+
         return {
             ...balance,
-            amount: balance.amount - reserved,
+            amount: available > 0n ? available : 0n,
         };
     }
 

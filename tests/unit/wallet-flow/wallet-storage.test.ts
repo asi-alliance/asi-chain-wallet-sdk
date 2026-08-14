@@ -498,10 +498,10 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
     });
 
     //
-    // 5. UNLOCK EACH WALLET
+    // 5. OPEN EACH WALLET
     //
 
-    console.log("\n[7] Unlocking wallets...");
+    console.log("\n[7] Opening wallets...");
 
     const restoredPk = await StorageManager.getWallet({
         signerId: pkSignerId,
