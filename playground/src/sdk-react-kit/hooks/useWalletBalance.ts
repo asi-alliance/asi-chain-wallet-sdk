@@ -19,10 +19,17 @@ export interface ILoadingBalanceOptions {
 export interface UseWalletBalanceValue {
     balance: WalletBalance;
     isFetching: boolean;
+    error: string | null;
     reload: () => Promise<void>;
 }
 
 const DEFAULT_RELOAD_INTERVAL_MS: number = 30000;
+
+const UNKNOWN_BALANCE: WalletBalance = {
+    total: null,
+    available: null,
+    reservationCount: null,
+};
 
 export const useWalletBalance = (
     sdk: UseSdkValue,
@@ -36,12 +43,9 @@ export const useWalletBalance = (
 
     const networkId: NetworkId | undefined = currentNetwork?.id;
 
-    const [balance, setBalance] = useState<WalletBalance>({
-        total: null,
-        available: null,
-        reservationCount: null,
-    });
+    const [balance, setBalance] = useState<WalletBalance>(UNKNOWN_BALANCE);
     const [isFetching, setIsFetching] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
 
     const startRequest: TStartRequest = useRelevantResultGuard(networkId);
 
@@ -64,8 +68,18 @@ export const useWalletBalance = (
                 available,
                 reservationCount: reservations.length,
             });
-        } catch (error) {
-            console.error(error);
+            setError(null);
+        } catch (balanceError) {
+            console.error(balanceError);
+
+            if (!isResultRelevant()) {
+                return;
+            }
+
+            setBalance(UNKNOWN_BALANCE);
+            setError(
+                (balanceError as Error)?.message ?? "Balance is unavailable",
+            );
         } finally {
             setIsFetching(false);
         }
@@ -92,7 +106,7 @@ export const useWalletBalance = (
     }, [reload, options?.reloadIntervalMs]);
 
     return useMemo(
-        () => ({ balance, isFetching, reload }),
-        [balance, isFetching, reload],
+        () => ({ balance, isFetching, error, reload }),
+        [balance, isFetching, error, reload],
     );
 };

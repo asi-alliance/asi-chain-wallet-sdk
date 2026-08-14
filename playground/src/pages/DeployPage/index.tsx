@@ -130,44 +130,56 @@ const DeployPage = (): ReactElement => {
         setIsLoading(true);
         resetOutput();
 
-        const parsedPhloLimit: number | undefined = phloLimit.trim()
-            ? Number(phloLimit)
-            : undefined;
-
-        if (
-            parsedPhloLimit !== undefined &&
-            !Number.isFinite(parsedPhloLimit)
-        ) {
-            setError("Phlo limit must be a number");
-            setIsLoading(false);
-
-            return;
-        }
-
-        const isBalanceRelevant: TIsResultRelevant = startRequest();
-
-        const balance = await getAvailableBalance(
-            selectedWalletId,
-            selectedAccountId,
-        );
-
-        if (!isBalanceRelevant()) {
-            setError("Deploy aborted: network changed");
-            setIsLoading(false);
-
-            return;
-        }
-
-        const minGasCost =
-            (Number(phloLimit) * DEFAULT_PHLO_PRICE) / 1000000000;
-        if (balance <= 0 || balance < minGasCost) {
-            setError("Transaction aborted: Insufficient balance");
-            setIsLoading(false);
-
-            return;
-        }
-
         try {
+            const parsedPhloLimit: number | undefined = phloLimit.trim()
+                ? Number(phloLimit)
+                : undefined;
+
+            if (
+                parsedPhloLimit !== undefined &&
+                !Number.isFinite(parsedPhloLimit)
+            ) {
+                setError("Phlo limit must be a number");
+
+                return;
+            }
+
+            const isBalanceRelevant: TIsResultRelevant = startRequest();
+
+            let balance: bigint;
+
+            try {
+                balance = await getAvailableBalance(
+                    selectedWalletId,
+                    selectedAccountId,
+                );
+            } catch (balanceError) {
+                if (!isBalanceRelevant()) {
+                    return;
+                }
+
+                setError(
+                    (balanceError as Error)?.message ??
+                        "Deploy aborted: balance is unavailable",
+                );
+
+                return;
+            }
+
+            if (!isBalanceRelevant()) {
+                setError("Deploy aborted: network changed");
+
+                return;
+            }
+
+            const minGasCost =
+                (Number(phloLimit) * DEFAULT_PHLO_PRICE) / 1000000000;
+            if (balance <= 0 || balance < minGasCost) {
+                setError("Transaction aborted: Insufficient balance");
+
+                return;
+            }
+
             const reserved: IReservedOperationResult | undefined =
                 await runSecureAction({
                     walletId: selectedEntry.walletId,
