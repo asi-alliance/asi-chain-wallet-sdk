@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 
 import { ASI_WALLET_KEYFILE, ASI_WALLET_KEYFILE_VERSION } from "@config/index";
 import Account from "@domains/Account";
+import Client from "@domains/Client";
 import SecretsProvider from "@domains/SecretsProvider";
 import Wallet from "@domains/Wallet";
+import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { NetworkName, TNetworksConfig } from "@domains/Network";
 import { WalletTypes } from "@domains/Signer";
 import {
   DuplicateAccountError,
@@ -28,6 +31,7 @@ import StorageManager from "@services/StorageManager";
 import WalletImportService, {
   IKeyfileImportPlan,
   IKeyfileImportPreview,
+  IKeyfileImportResult,
   KeyfileImportAccountStatus,
 } from "@services/WalletImport";
 import WalletManager, {
@@ -43,6 +47,24 @@ const PASSWORD = "12345678";
 const WRONG_PASSWORD = "87654321";
 
 const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/wallet-keyfile" };
+
+const NETWORK_NAME: NetworkName = "local";
+
+const NETWORKS_CONFIG: TNetworksConfig = {
+  [NETWORK_NAME]: {
+    ValidatorURL: "http://localhost:40403",
+    ReadOnlyURL: "http://localhost:40403",
+    IndexerURL: "http://localhost:9090",
+    nodeApiProfile: NodeApiProfile.RUST,
+  },
+};
+
+const createClient = (): Promise<Client> =>
+  Client.create({
+    networksConfig: NETWORKS_CONFIG,
+    defaultNetwork: NETWORK_NAME,
+    storageOptions: STORAGE_OPTIONS,
+  });
 
 const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
 
@@ -669,7 +691,54 @@ test("import rejects account indexes that are missing in the keyfile", async () 
   );
 });
 
-test("importing accounts into a locked wallet is rejected", async () => {
+test("keyfile import unlocks the stored wallet before adding accounts", async () => {
+  console.log("\n=== KEYFILE IMPORT UNLOCKS THE STORED WALLET ===");
+
+  const client: Client = await createClient();
+
+  const wallet: Wallet = await client.createHDWallet(
+    { mnemonic: MNEMONIC, accountName: "Main" },
+    PASSWORD,
+  );
+
+  const walletId: string = wallet.getId();
+
+  await client.deriveAccount(walletId, "Second", PASSWORD);
+  await client.deriveAccount(walletId, "Third", PASSWORD);
+
+  const keyfile: string = await client.exportWalletKeyfile(walletId, PASSWORD);
+
+  const secondAccount: Account | undefined = wallet
+    .getAccounts()
+    .find((account: Account) => account.getIndex() === 1);
+
+  assert.ok(secondAccount);
+
+  await client.removeAccount(walletId, secondAccount.getId());
+
+  client.lockWallet(walletId);
+
+  const restoredClient: Client = await createClient();
+
+  const result: IKeyfileImportResult = await restoredClient.importWalletKeyfile(
+    keyfile,
+    PASSWORD,
+    { accountIndexes: [1] },
+  );
+
+  console.log("    Imported accounts:", snapshotAccounts(result.wallet));
+
+  assert.equal(result.isMergedIntoExistingWallet, true);
+  assert.equal(result.signerId, wallet.getSigner().getId());
+  assert.equal(result.importedAccountIds.length, 1);
+  assert.deepEqual(accountIndexes(result.wallet.getAccounts()), [0, 1, 2]);
+  assert.equal((await StorageManager.getSigners()).length, 1);
+  assert.equal((await StorageManager.getAccounts()).length, 3);
+
+  restoredClient.lockWallet(result.walletId);
+});
+
+test("creating accounts requires an unlocked wallet", async () => {
   console.log("\n=== KEYFILE ACCOUNTS IMPORT INTO A LOCKED WALLET ===");
 
   const walletManager = new WalletManager();

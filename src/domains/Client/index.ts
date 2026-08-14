@@ -24,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address, IImportKeyfileWalletPayload } from "@domains/Wallet";
 import Account from "@domains/Account";
+import { CustomError, WalletLockedError } from "@domains/CustomError";
 import SecretsProvider from "@domains/SecretsProvider";
 import ReservationAdapter, {
     IReservedOperationResult,
@@ -421,6 +422,27 @@ export default class Client {
         return wallet;
     }
 
+    private async ensureWalletIsUnlocked(
+        signerId: string,
+        password: string,
+    ): Promise<void> {
+        if (this.walletManager.getBySignerId(signerId)) {
+            return;
+        }
+
+        try {
+            await this.unlockWallet(signerId, password);
+        } catch (error) {
+            if (error instanceof CustomError) {
+                throw error;
+            }
+
+            throw new WalletLockedError(
+                `Wallet ${signerId} cannot be unlocked with the provided password, unlock it manually before importing accounts`,
+            );
+        }
+    }
+
     public lockWallet(walletId: string): void {
         const wallet: Wallet = this.getUnlockedWallet(walletId);
 
@@ -573,6 +595,8 @@ export default class Client {
         if (!existingSignerId) {
             return this.createWalletFromKeyfile(payload, passwordProvider);
         }
+
+        await this.ensureWalletIsUnlocked(existingSignerId, password);
 
         const { wallet, accounts }: ICreatedWalletAccounts =
             await this.walletManager.createAccounts(

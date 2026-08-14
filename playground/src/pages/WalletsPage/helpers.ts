@@ -69,10 +69,18 @@ export const createWalletPageHandlers = ({
       }
     });
 
-  const submitImportKeyfile = ({ keyfile, password }: IKeyfileImportPayload) =>
+  const submitImportKeyfile = ({
+    keyfile,
+    password,
+    accountIndexes,
+  }: IKeyfileImportPayload) =>
     withLoader(async () => {
       try {
-        await sdk.importWalletKeyfile(keyfile, password);
+        await sdk.importWalletKeyfile(
+          keyfile,
+          password,
+          accountIndexes ? { accountIndexes } : undefined,
+        );
 
         closeModal();
       } catch (error) {
@@ -142,6 +150,8 @@ export const createWalletPageHandlers = ({
       setModalState({
         type: Modals.IMPORT_KEYFILE_WALLET_MODAL,
         props: {
+          onPreview: (keyfile: string, password: string) =>
+            sdk.previewWalletKeyfileImport(keyfile, password),
           onSubmit: submitImportKeyfile,
           onClose: closeModal,
         },
