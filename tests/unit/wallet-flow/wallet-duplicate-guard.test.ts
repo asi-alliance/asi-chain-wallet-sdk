@@ -128,9 +128,11 @@ test("concurrent HD creation and import of its derived key keep a single wallet"
 
     const walletManager = new WalletManager();
 
-    const rootHDPath: Bip44Path = await KeysManager.getInitialHDPathFromOptions({
-        index: 0,
-    });
+    const rootHDPath: Bip44Path = await KeysManager.getInitialHDPathFromOptions(
+        {
+            index: 0,
+        },
+    );
 
     const privateKey: Uint8Array =
         await KeyDerivationService.deriveKeyFromMnemonic(MNEMONIC, rootHDPath);
@@ -156,8 +158,8 @@ test("concurrent HD creation and import of its derived key keep a single wallet"
     assert.equal(accounts.length, 1);
 });
 
-test("concurrent unlock of the same signer opens a single wallet", async () => {
-    console.log("\n=== CONCURRENT UNLOCK ===");
+test("concurrent open of the same signer keeps a single wallet", async () => {
+    console.log("\n=== CONCURRENT OPEN ===");
 
     const creator = new WalletManager();
 
@@ -171,8 +173,8 @@ test("concurrent unlock of the same signer opens a single wallet", async () => {
     const walletManager = new WalletManager();
 
     const { fulfilled, errors } = await settleAll([
-        walletManager.unlock(signerId, passwordProvider),
-        walletManager.unlock(signerId, passwordProvider),
+        walletManager.open(signerId, passwordProvider),
+        walletManager.open(signerId, passwordProvider),
     ]);
 
     console.log("    Wallets in manager:", walletManager.getAll().length);
@@ -182,7 +184,7 @@ test("concurrent unlock of the same signer opens a single wallet", async () => {
     assert.ok(errors[0] instanceof WalletActionInProgressError);
     assert.equal(
         (errors[0] as WalletActionInProgressError).action,
-        WalletAction.UNLOCK,
+        WalletAction.OPEN,
     );
     assert.equal(walletManager.getAll().length, 1);
 });

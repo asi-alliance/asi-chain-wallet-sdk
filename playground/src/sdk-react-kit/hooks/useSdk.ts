@@ -38,7 +38,7 @@ const useSdk = () => {
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
         [],
     );
-    const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
+    const [openWallets, setOpenWallets] = useState<Wallet[]>([]);
     const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
     const [currentNetwork, setCurrentNetwork] =
         useState<INetworkRecord | null>(null);
@@ -59,7 +59,7 @@ const useSdk = () => {
             const walletManager = currentClient.getWalletManager();
 
             setWalletsMetadata(await walletManager.getPublicWalletsMetadata());
-            setUnlockedWallets([...walletManager.getAll()]);
+            setOpenWallets([...walletManager.getAll()]);
         },
         [],
     );
@@ -81,7 +81,7 @@ const useSdk = () => {
             const createdClient = await init();
 
             if (disposed) {
-                createdClient.close();
+                await createdClient.close();
 
                 return;
             }
@@ -98,7 +98,7 @@ const useSdk = () => {
 
         return () => {
             disposed = true;
-            clientRef.current?.close();
+            void clientRef.current?.close();
             clientRef.current = null;
         };
     }, [refresh, refreshNetworks]);
@@ -203,12 +203,9 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const unlockWallet = useCallback(
+    const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
-            const wallet = await requireClient().unlockWallet(
-                signerId,
-                password,
-            );
+            const wallet = await requireClient().openWallet(signerId, password);
 
             await refresh();
 
@@ -216,6 +213,17 @@ const useSdk = () => {
         },
         [requireClient, refresh],
     );
+
+    const closeWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().closeWallet(walletId);
+        },
+        [requireClient],
+    );
+
+    const closeAllWallets = useCallback((): void => {
+        requireClient().closeAllWallets();
+    }, [requireClient]);
 
     const removeWallet = useCallback(
         async (walletId: string): Promise<void> => {
@@ -425,7 +433,7 @@ const useSdk = () => {
         client,
         isReady: client !== null,
         walletsMetadata,
-        unlockedWallets,
+        openWallets,
         reservationsByWallet,
         networkRecords,
         currentNetwork,
@@ -437,7 +445,9 @@ const useSdk = () => {
         generatePrivateKey,
         createHDWallet,
         createPrivateKeyWallet,
-        unlockWallet,
+        openWallet,
+        closeWallet,
+        closeAllWallets,
         removeWallet,
         deriveAccount,
         renameAccount,

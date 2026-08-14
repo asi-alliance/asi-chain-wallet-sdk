@@ -8,6 +8,8 @@ export * from "./BlockService";
 export { default as BlockService } from "./BlockService";
 export * from "./ClientEventBus";
 export { default as ClientEventBus } from "./ClientEventBus";
+export * from "./ClientLifecycleGuard";
+export { default as ClientLifecycleGuard } from "./ClientLifecycleGuard";
 export * from "./Crypto";
 export { default as Crypto } from "./Crypto";
 export * from "./DeployService";
