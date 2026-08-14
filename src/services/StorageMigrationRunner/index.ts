@@ -1,6 +1,10 @@
 import { ITableRecord, ITableService } from "@domains/TableService";
 import { StorageMetadataStorageRepository } from "@domains/StorageMetadataStorageRepository";
-import { StorageVersionDowngradeError } from "@domains/CustomError";
+import {
+    StorageMigrationInterruptedError,
+    StorageMigrationInterruptionReason,
+    StorageVersionDowngradeError,
+} from "@domains/CustomError";
 import {
     BASELINE_STORAGE_VERSION,
     CURRENT_STORAGE_VERSION,
@@ -10,6 +14,7 @@ import { STORAGE_MIGRATIONS } from "./migrations";
 export interface IStorageMigration {
     version: number;
     description: string;
+    resumable?: boolean;
     run(storage: ITableService<ITableRecord>): Promise<void>;
 }
 
@@ -83,18 +88,78 @@ export default class StorageMigrationRunner {
         }
     }
 
+    private async revertMigration(backup: TTableBackup): Promise<void> {
+        try {
+            await this.restoreBackup(backup);
+        } catch (rollbackError: unknown) {
+            await this.metadataRepository.markRollbackFailure(
+                rollbackError instanceof Error
+                    ? rollbackError.message
+                    : String(rollbackError),
+            );
+
+            return;
+        }
+
+        await this.metadataRepository.clearPendingMigration();
+    }
+
     private async applyMigration(migration: IStorageMigration): Promise<void> {
         const backup: TTableBackup = await this.createBackup();
 
+        await this.metadataRepository.markPendingMigration(migration.version);
+
         try {
             await migration.run(this.storage);
+
+            await this.metadataRepository.saveVersion(migration.version);
         } catch (error) {
-            await this.restoreBackup(backup);
+            await this.revertMigration(backup);
 
             throw error;
         }
+    }
 
-        await this.metadataRepository.saveVersion(migration.version);
+    private async assertInterruptedMigrationIsResumable(): Promise<void> {
+        const pendingVersion: number | null =
+            await this.metadataRepository.getPendingVersion();
+
+        if (pendingVersion === null) {
+            return;
+        }
+
+        const rollbackFailure: string | null =
+            await this.metadataRepository.getRollbackFailure();
+
+        if (rollbackFailure) {
+            throw new StorageMigrationInterruptedError(
+                pendingVersion,
+                StorageMigrationInterruptionReason.ROLLBACK_FAILED,
+                `Migration to storage schema version ${pendingVersion} failed and its rollback did not complete: ${rollbackFailure}. Storage holds partially migrated data and must be restored from an export or re-imported`,
+            );
+        }
+
+        const interruptedMigration: IStorageMigration | undefined =
+            this.migrations.find(
+                (migration: IStorageMigration) =>
+                    migration.version === pendingVersion,
+            );
+
+        if (!interruptedMigration) {
+            throw new StorageMigrationInterruptedError(
+                pendingVersion,
+                StorageMigrationInterruptionReason.MIGRATION_NOT_FOUND,
+                `Storage was interrupted while migrating to schema version ${pendingVersion}, which this SDK build does not know. Storage state is unknown and cannot be resumed`,
+            );
+        }
+
+        if (interruptedMigration.resumable === false) {
+            throw new StorageMigrationInterruptedError(
+                pendingVersion,
+                StorageMigrationInterruptionReason.MIGRATION_NOT_RESUMABLE,
+                `Migration to storage schema version ${pendingVersion} was interrupted and is declared as not resumable. Storage must be restored from an export or re-imported`,
+            );
+        }
     }
 
     public async run(): Promise<number> {
@@ -106,6 +171,8 @@ export default class StorageMigrationRunner {
                 this.currentVersion,
             );
         }
+
+        await this.assertInterruptedMigrationIsResumable();
 
         for (const migration of this.getPendingMigrations(storedVersion)) {
             await this.applyMigration(migration);

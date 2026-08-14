@@ -5,6 +5,7 @@ export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
     STORAGE_VERSION_DOWNGRADE = "STORAGE_VERSION_DOWNGRADE",
+    STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
@@ -16,6 +17,12 @@ export enum CustomErrorCode {
 export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+}
+
+export enum StorageMigrationInterruptionReason {
+    ROLLBACK_FAILED = "ROLLBACK_FAILED",
+    MIGRATION_NOT_RESUMABLE = "MIGRATION_NOT_RESUMABLE",
+    MIGRATION_NOT_FOUND = "MIGRATION_NOT_FOUND",
 }
 
 export class CustomError extends Error {
@@ -136,6 +143,22 @@ export class StorageVersionDowngradeError extends CustomError {
 
         this.storedVersion = storedVersion;
         this.supportedVersion = supportedVersion;
+    }
+}
+
+export class StorageMigrationInterruptedError extends CustomError {
+    public readonly pendingVersion: number;
+    public readonly reason: StorageMigrationInterruptionReason;
+
+    constructor(
+        pendingVersion: number,
+        reason: StorageMigrationInterruptionReason,
+        message: string = `Migration to storage schema version ${pendingVersion} did not finish (${reason}). Storage state is unknown and cannot be migrated automatically`,
+    ) {
+        super(CustomErrorCode.STORAGE_MIGRATION_INTERRUPTED, message, 409);
+
+        this.pendingVersion = pendingVersion;
+        this.reason = reason;
     }
 }
 
