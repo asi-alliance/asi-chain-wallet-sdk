@@ -59,6 +59,15 @@ export class TransactionReservationsStorageRepository extends BaseStorageReposit
         return this.getAllRecords();
     }
 
+    public async getTransactionReservationsBySignerId(
+        signerId: string,
+    ): Promise<ITransactionReservationsStorageRecord[]> {
+        return this.getByFilter(
+            (record: ITransactionReservationsStorageRecord) =>
+                record.signerId === signerId,
+        );
+    }
+
     public async updateTransactionReservation(
         id: string,
         updates: Partial<ITransactionReservationsStorageRecord>,

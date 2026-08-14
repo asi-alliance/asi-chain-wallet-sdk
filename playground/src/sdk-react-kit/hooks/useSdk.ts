@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Client,
-    IClientEventDispatcher,
+    ClientEvent,
     ICreatedAccountData,
     IDeployRequest,
     IDeployWatchCallbacks,
@@ -18,6 +18,7 @@ import {
     NetworkId,
     NetworkName,
     TReservationsByWallet,
+    TUnsubscribe,
     Wallet,
 } from "asi-wallet-sdk";
 import { init } from "../helpers";
@@ -37,7 +38,7 @@ const useSdk = () => {
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
         [],
     );
-    const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
+    const [openWallets, setOpenWallets] = useState<Wallet[]>([]);
     const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
     const [currentNetwork, setCurrentNetwork] =
         useState<INetworkRecord | null>(null);
@@ -58,7 +59,7 @@ const useSdk = () => {
             const walletManager = currentClient.getWalletManager();
 
             setWalletsMetadata(await walletManager.getPublicWalletsMetadata());
-            setUnlockedWallets([...walletManager.getAll()]);
+            setOpenWallets([...walletManager.getAll()]);
         },
         [],
     );
@@ -73,43 +74,14 @@ const useSdk = () => {
         setNetworkRecords(currentClient.getNetworks());
     }, []);
 
-    const eventDispatcher = useMemo<IClientEventDispatcher>(
-        () => ({
-            onWalletsChanged: () => {
-                void refresh();
-            },
-            onAccountsChanged: () => {
-                void refresh();
-            },
-            onNetworkChanged: (network: INetworkRecord) => {
-                setCurrentNetwork(network);
-            },
-            onReservationsChanged: (
-                reservationsByWallet: TReservationsByWallet,
-            ) => {
-                setReservationsByWallet(reservationsByWallet);
-            },
-            onNetworkBusyChanged: (networkId: NetworkId, isBusy: boolean) => {
-                setBusyNetworkIds((currentIds: NetworkId[]) => {
-                    const restIds: NetworkId[] = currentIds.filter(
-                        (id: NetworkId) => id !== networkId,
-                    );
-
-                    return isBusy ? [...restIds, networkId] : restIds;
-                });
-            },
-        }),
-        [refresh],
-    );
-
     useEffect(() => {
         let disposed = false;
 
         const initialize = async (): Promise<void> => {
-            const createdClient = await init(eventDispatcher);
+            const createdClient = await init();
 
             if (disposed) {
-                createdClient.close();
+                await createdClient.close();
 
                 return;
             }
@@ -126,10 +98,57 @@ const useSdk = () => {
 
         return () => {
             disposed = true;
-            clientRef.current?.close();
+            void clientRef.current?.close();
             clientRef.current = null;
         };
-    }, [eventDispatcher, refresh, refreshNetworks]);
+    }, [refresh, refreshNetworks]);
+
+    useEffect(() => {
+        if (!client) {
+            return;
+        }
+
+        const eventBus = client.getEventBus();
+
+        const unsubscribes: TUnsubscribe[] = [
+            eventBus.on(ClientEvent.WALLETS_CHANGED, () => {
+                void refresh();
+            }),
+            eventBus.on(ClientEvent.ACCOUNTS_CHANGED, () => {
+                void refresh();
+            }),
+            eventBus.on(
+                ClientEvent.NETWORK_CHANGED,
+                (network: INetworkRecord) => {
+                    setCurrentNetwork(network);
+                },
+            ),
+            eventBus.on(
+                ClientEvent.RESERVATIONS_CHANGED,
+                (reservationsByWallet: TReservationsByWallet) => {
+                    setReservationsByWallet(reservationsByWallet);
+                },
+            ),
+            eventBus.on(
+                ClientEvent.NETWORK_BUSY_CHANGED,
+                (networkId: NetworkId, isBusy: boolean) => {
+                    setBusyNetworkIds((currentIds: NetworkId[]) => {
+                        const restIds: NetworkId[] = currentIds.filter(
+                            (id: NetworkId) => id !== networkId,
+                        );
+
+                        return isBusy ? [...restIds, networkId] : restIds;
+                    });
+                },
+            ),
+        ];
+
+        return () => {
+            for (const unsubscribe of unsubscribes) {
+                unsubscribe();
+            }
+        };
+    }, [client, refresh]);
 
     const requireClient = useCallback((): Client => {
         if (!clientRef.current) {
@@ -184,12 +203,9 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const unlockWallet = useCallback(
+    const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
-            const wallet = await requireClient().unlockWallet(
-                signerId,
-                password,
-            );
+            const wallet = await requireClient().openWallet(signerId, password);
 
             await refresh();
 
@@ -197,6 +213,17 @@ const useSdk = () => {
         },
         [requireClient, refresh],
     );
+
+    const closeWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().closeWallet(walletId);
+        },
+        [requireClient],
+    );
+
+    const closeAllWallets = useCallback((): void => {
+        requireClient().closeAllWallets();
+    }, [requireClient]);
 
     const removeWallet = useCallback(
         async (walletId: string): Promise<void> => {
@@ -406,7 +433,7 @@ const useSdk = () => {
         client,
         isReady: client !== null,
         walletsMetadata,
-        unlockedWallets,
+        openWallets,
         reservationsByWallet,
         networkRecords,
         currentNetwork,
@@ -418,7 +445,9 @@ const useSdk = () => {
         generatePrivateKey,
         createHDWallet,
         createPrivateKeyWallet,
-        unlockWallet,
+        openWallet,
+        closeWallet,
+        closeAllWallets,
         removeWallet,
         deriveAccount,
         renameAccount,

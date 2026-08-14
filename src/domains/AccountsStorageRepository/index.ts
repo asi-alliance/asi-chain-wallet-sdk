@@ -28,6 +28,7 @@ export interface IAccountStorageRecord extends ITableRecord {
     signerId: string;
     name: string;
     index: number | null;
+    fingerprint: string;
 
     createdAt: number;
     updatedAt?: number;
@@ -56,12 +57,14 @@ export class AccountsStorageRepository extends BaseStorageRepository<IAccountSto
         signerId: string,
         name: string,
         index: number | null,
+        fingerprint: string,
     ): Promise<void> {
         await this.insertRecord({
             id: accountId,
             signerId,
             name,
             index,
+            fingerprint,
             createdAt: Date.now(),
         });
     }
@@ -78,6 +81,26 @@ export class AccountsStorageRepository extends BaseStorageRepository<IAccountSto
 
     public async getAllAccounts(): Promise<IAccountStorageRecord[]> {
         return this.getAllRecords();
+    }
+
+    public async getAccountsBySignerId(
+        signerId: string,
+    ): Promise<IAccountStorageRecord[]> {
+        return this.getByFilter(
+            (accountRecord: IAccountStorageRecord) =>
+                accountRecord.signerId === signerId,
+        );
+    }
+
+    public async findAccountByFingerprint(
+        fingerprint: string,
+    ): Promise<IAccountStorageRecord | null> {
+        const [record] = await this.getByFilter(
+            (accountRecord: IAccountStorageRecord) =>
+                accountRecord.fingerprint === fingerprint,
+        );
+
+        return record ?? null;
     }
 
     public async updateAccount(

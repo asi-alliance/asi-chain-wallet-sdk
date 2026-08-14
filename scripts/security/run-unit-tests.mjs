@@ -5,9 +5,9 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
-const EXCLUDE_PATTERNS = [];
+// const EXCLUDE_PATTERNS = ["wallet-duplicate-guard.test.ts"];
 
-//wallet-transaction-reservations.test.ts
+const EXCLUDE_PATTERNS = [];
 
 async function findTestFiles(dir) {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -68,6 +68,7 @@ async function main() {
         [
             path.join("node_modules", "tsx", "dist", "cli.mjs"),
             "--test",
+            "--test-concurrency=1",
             ...tests,
         ],
         {

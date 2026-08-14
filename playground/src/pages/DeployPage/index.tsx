@@ -39,7 +39,7 @@ const stringify = (value: unknown): string =>
 
 const DeployPage = (): ReactElement => {
     const {
-        unlockedWallets,
+        openWallets,
         currentNetwork,
         deploy,
         exploreDeploy,
@@ -69,7 +69,7 @@ const DeployPage = (): ReactElement => {
     );
 
     const selectedWalletId: string = useMemo(() => {
-        for (const wallet of unlockedWallets) {
+        for (const wallet of openWallets) {
             if (
                 !wallet
                     .getAccounts()
@@ -83,15 +83,15 @@ const DeployPage = (): ReactElement => {
 
             return wallet.getId();
         }
-    }, [unlockedWallets, selectedAccountId]);
+    }, [openWallets, selectedAccountId]);
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
-            unlockedWallets.flatMap((wallet: Wallet) =>
+            openWallets.flatMap((wallet: Wallet) =>
                 wallet
                     .getAccounts()
                     .map((account) => ({ walletId: wallet.getId(), account })),
             ),
-        [unlockedWallets],
+        [openWallets],
     );
 
     const accountOptions = useMemo<SelectFilterOption[]>(
