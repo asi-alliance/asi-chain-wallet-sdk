@@ -1,8 +1,12 @@
 import { ITableRecord, ITableService } from "@domains/TableService";
-import { StorageMetadataStorageRepository } from "@domains/StorageMetadataStorageRepository";
+import {
+    STORAGE_METADATA_DATA_KEY,
+    StorageMetadataStorageRepository,
+} from "@domains/StorageMetadataStorageRepository";
 import {
     StorageMigrationInterruptedError,
     StorageMigrationInterruptionReason,
+    StorageMigrationRollbackError,
     StorageVersionDowngradeError,
 } from "@domains/CustomError";
 import {
@@ -26,7 +30,12 @@ export interface IStorageMigrationRunnerOptions {
     currentVersion?: number;
 }
 
-type TTableBackup = Record<string, ITableRecord[]>;
+type TTableRecords = Record<string, ITableRecord[]>;
+
+interface IStorageBackup {
+    records: TTableRecords;
+    tables: string[];
+}
 
 export default class StorageMigrationRunner {
     private readonly storage: ITableService<ITableRecord>;
@@ -68,44 +77,112 @@ export default class StorageMigrationRunner {
             );
     }
 
-    private async createBackup(): Promise<TTableBackup> {
-        const backup: TTableBackup = {};
+    private describeFailure(scope: string, error: unknown): string {
+        const reason: string =
+            error instanceof Error ? error.message : String(error);
+
+        return `${scope}: ${reason}`;
+    }
+
+    private async createBackup(): Promise<IStorageBackup> {
+        const tables: string[] = await this.storage.getTableNames();
+        const records: TTableRecords = {};
 
         for (const tableName of this.tables) {
-            if (await this.storage.tableExists(tableName)) {
-                backup[tableName] = await this.storage.getAll(tableName);
+            if (tables.includes(tableName)) {
+                records[tableName] = await this.storage.getAll(tableName);
             }
         }
 
-        return backup;
+        return { records, tables };
     }
 
-    private async restoreBackup(backup: TTableBackup): Promise<void> {
-        for (const [tableName, records] of Object.entries(backup)) {
-            await this.storage.clearTable(tableName);
+    private async dropTablesCreatedByMigration(
+        backup: IStorageBackup,
+    ): Promise<string[]> {
+        const failures: string[] = [];
 
-            await this.storage.insertMany(tableName, records);
-        }
-    }
+        let currentTables: string[];
 
-    private async revertMigration(backup: TTableBackup): Promise<void> {
         try {
-            await this.restoreBackup(backup);
-        } catch (rollbackError: unknown) {
+            currentTables = await this.storage.getTableNames();
+        } catch (error: unknown) {
+            return [this.describeFailure("reading the table list", error)];
+        }
+
+        const createdTables: string[] = currentTables.filter(
+            (tableName: string) =>
+                tableName !== STORAGE_METADATA_DATA_KEY &&
+                !backup.tables.includes(tableName),
+        );
+
+        for (const tableName of createdTables) {
+            try {
+                await this.storage.dropTable(tableName);
+            } catch (error: unknown) {
+                failures.push(
+                    this.describeFailure(`dropping ${tableName}`, error),
+                );
+            }
+        }
+
+        return failures;
+    }
+
+    private async restoreTable(
+        tableName: string,
+        records: ITableRecord[],
+    ): Promise<void> {
+        if (!(await this.storage.tableExists(tableName))) {
+            await this.storage.createTable(tableName, "id");
+        }
+
+        await this.storage.clearTable(tableName);
+
+        await this.storage.insertMany(tableName, records);
+    }
+
+    private async restoreBackup(backup: IStorageBackup): Promise<string[]> {
+        const failures: string[] =
+            await this.dropTablesCreatedByMigration(backup);
+
+        for (const [tableName, records] of Object.entries(backup.records)) {
+            try {
+                await this.restoreTable(tableName, records);
+            } catch (error: unknown) {
+                failures.push(
+                    this.describeFailure(`restoring ${tableName}`, error),
+                );
+            }
+        }
+
+        return failures;
+    }
+
+    private async revertMigration(
+        version: number,
+        backup: IStorageBackup,
+        migrationError: unknown,
+    ): Promise<void> {
+        const failures: string[] = await this.restoreBackup(backup);
+
+        if (failures.length) {
             await this.metadataRepository.markRollbackFailure(
-                rollbackError instanceof Error
-                    ? rollbackError.message
-                    : String(rollbackError),
+                failures.join("; "),
             );
 
-            return;
+            throw new StorageMigrationRollbackError(
+                version,
+                failures,
+                migrationError,
+            );
         }
 
         await this.metadataRepository.clearPendingMigration();
     }
 
     private async applyMigration(migration: IStorageMigration): Promise<void> {
-        const backup: TTableBackup = await this.createBackup();
+        const backup: IStorageBackup = await this.createBackup();
 
         await this.metadataRepository.markPendingMigration(migration.version);
 
@@ -114,7 +191,7 @@ export default class StorageMigrationRunner {
 
             await this.metadataRepository.saveVersion(migration.version);
         } catch (error) {
-            await this.revertMigration(backup);
+            await this.revertMigration(migration.version, backup, error);
 
             throw error;
         }

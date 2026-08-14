@@ -19,6 +19,7 @@ export interface ITableService<T extends ITableRecord> {
     clearTable(tableName: string): Promise<void>;
     dropTable(tableName: string): Promise<void>;
     tableExists(tableName: string): Promise<boolean>;
+    getTableNames(): Promise<string[]>;
     close: () => Promise<void>;
     init(): Promise<any>;
     isInitialized(): boolean;

@@ -6,6 +6,7 @@ export enum CustomErrorCode {
     NETWORK_BUSY = "NETWORK_BUSY",
     STORAGE_VERSION_DOWNGRADE = "STORAGE_VERSION_DOWNGRADE",
     STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
+    STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
@@ -159,6 +160,25 @@ export class StorageMigrationInterruptedError extends CustomError {
 
         this.pendingVersion = pendingVersion;
         this.reason = reason;
+    }
+}
+
+export class StorageMigrationRollbackError extends CustomError {
+    public readonly failedVersion: number;
+    public readonly failures: string[];
+    public readonly migrationError: unknown;
+
+    constructor(
+        failedVersion: number,
+        failures: string[],
+        migrationError: unknown,
+        message: string = `Migration to storage schema version ${failedVersion} failed and its rollback did not complete (${failures.join("; ")}). Storage holds partially migrated data and must be restored from an export or re-imported`,
+    ) {
+        super(CustomErrorCode.STORAGE_MIGRATION_ROLLBACK_FAILED, message, 500);
+
+        this.failedVersion = failedVersion;
+        this.failures = failures;
+        this.migrationError = migrationError;
     }
 }
 
