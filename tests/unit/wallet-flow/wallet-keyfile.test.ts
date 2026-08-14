@@ -7,9 +7,11 @@ import SecretsProvider from "@domains/SecretsProvider";
 import Wallet from "@domains/Wallet";
 import { WalletTypes } from "@domains/Signer";
 import {
+  DuplicateAccountError,
   DuplicateWalletError,
   InvalidKeyfileError,
   InvalidKeyfilePasswordError,
+  WalletLockedError,
 } from "@domains/CustomError";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
@@ -17,11 +19,20 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import ExportKeyfileService, {
   IWalletKeyfile,
 } from "@services/ExportKeyfileService";
-import ImportKeyfileService from "@services/ImportKeyfileService";
+import ImportKeyfileService, {
+  IImportWalletKeyfileOptions,
+} from "@services/ImportKeyfileService";
 import { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
 import KeysManager from "@services/KeysManager";
 import StorageManager from "@services/StorageManager";
-import WalletManager from "@services/WalletManager";
+import WalletImportService, {
+  IKeyfileImportPlan,
+  IKeyfileImportPreview,
+  KeyfileImportAccountStatus,
+} from "@services/WalletImport";
+import WalletManager, {
+  ICreatedWalletAccounts,
+} from "@services/WalletManager";
 import { encodeBase16 } from "@utils/codec";
 
 const MNEMONIC =
@@ -72,6 +83,7 @@ const importKeyfile = async (
   walletManager: WalletManager,
   source: unknown,
   password: string = PASSWORD,
+  options?: IImportWalletKeyfileOptions,
 ): Promise<Wallet> => {
   const provider = new SecretsProvider(() => ({ password }));
 
@@ -79,9 +91,67 @@ const importKeyfile = async (
     await ImportKeyfileService.toImportPayload(
       ImportKeyfileService.parseWalletKeyfile(source),
       provider,
+      options,
     ),
     provider,
   );
+};
+
+const previewKeyfileImport = (
+  source: unknown,
+): Promise<IKeyfileImportPreview> =>
+  WalletImportService.previewKeyfileImport(source, passwordProvider);
+
+const importKeyfileAccounts = async (
+  walletManager: WalletManager,
+  source: unknown,
+  options?: IImportWalletKeyfileOptions,
+): Promise<Account[]> => {
+  const { payload, secretProvider, existingSignerId }: IKeyfileImportPlan =
+    await WalletImportService.prepareKeyfileImport(
+      source,
+      passwordProvider,
+      options,
+    );
+
+  assert.ok(existingSignerId);
+
+  const { accounts }: ICreatedWalletAccounts =
+    await walletManager.createAccounts(
+      existingSignerId,
+      payload.accounts,
+      secretProvider,
+    );
+
+  return accounts;
+};
+
+const accountIndexes = (accounts: Account[]): (number | null)[] =>
+  accounts
+    .map((account: Account) => account.getIndex())
+    .sort((left, right) => (left ?? 0) - (right ?? 0));
+
+const createHDWalletWithMissingAccount = async (
+  walletManager: WalletManager,
+): Promise<{ wallet: Wallet; keyfile: IWalletKeyfile }> => {
+  const wallet: Wallet = await walletManager.createHD(
+    { mnemonic: MNEMONIC, accountName: "Main" },
+    passwordProvider,
+  );
+
+  const { accountId } = await walletManager.deriveAccount(
+    wallet.getId(),
+    "Second",
+    passwordProvider,
+  );
+
+  await walletManager.deriveAccount(wallet.getId(), "Third", passwordProvider);
+
+  const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
+
+  await walletManager.removeAccount(wallet.getId(), accountId);
+
+  return { wallet, keyfile };
 };
 
 const createHDWalletWithIndexGap = async (
@@ -451,6 +521,196 @@ test("import rejects malformed keyfile accounts", async () => {
       reason,
     );
   }
+});
+
+test("import preview lists every account of a wallet that is not stored yet", async () => {
+  console.log("\n=== KEYFILE IMPORT PREVIEW ===");
+
+  const walletManager = new WalletManager();
+
+  const wallet: Wallet = await createHDWalletWithIndexGap(walletManager);
+
+  const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
+
+  const originalAccounts: IAccountSnapshot[] = snapshotAccounts(wallet);
+
+  await walletManager.delete(wallet.getId());
+
+  const preview: IKeyfileImportPreview = await previewKeyfileImport(keyfile);
+
+  console.log("    Preview accounts:", preview.accounts);
+
+  assert.equal(preview.walletType, WalletTypes.HD);
+  assert.equal(preview.existingSignerId, null);
+  assert.deepEqual(
+    preview.accounts.map(({ index }) => index),
+    originalAccounts.map(({ index }) => index),
+  );
+  assert.deepEqual(
+    preview.accounts.map(({ address }) => address),
+    originalAccounts.map(({ address }) => address),
+  );
+  assert.deepEqual(
+    preview.accounts.map(({ status }) => status),
+    originalAccounts.map(() => KeyfileImportAccountStatus.NEW),
+  );
+  assert.deepEqual(
+    preview.accounts.map(({ existingAccountId }) => existingAccountId),
+    originalAccounts.map(() => null),
+  );
+});
+
+test("import preview points to the stored wallet and marks imported accounts", async () => {
+  console.log("\n=== KEYFILE IMPORT PREVIEW FOR A STORED WALLET ===");
+
+  const walletManager = new WalletManager();
+
+  const { wallet, keyfile } =
+    await createHDWalletWithMissingAccount(walletManager);
+
+  const preview: IKeyfileImportPreview = await previewKeyfileImport(keyfile);
+
+  console.log("    Preview accounts:", preview.accounts);
+
+  const statusByIndex = new Map(
+    preview.accounts.map(({ index, status }) => [index, status]),
+  );
+
+  assert.equal(preview.existingSignerId, wallet.getSigner().getId());
+  assert.equal(preview.accounts.length, 3);
+  assert.equal(
+    statusByIndex.get(0),
+    KeyfileImportAccountStatus.ALREADY_IMPORTED,
+  );
+  assert.equal(statusByIndex.get(1), KeyfileImportAccountStatus.NEW);
+  assert.equal(
+    statusByIndex.get(2),
+    KeyfileImportAccountStatus.ALREADY_IMPORTED,
+  );
+});
+
+test("import preview rejects a private key keyfile that is already stored", async () => {
+  console.log("\n=== KEYFILE IMPORT PREVIEW FOR A STORED PK WALLET ===");
+
+  const walletManager = new WalletManager();
+
+  const wallet: Wallet = await walletManager.createPrivateKey(
+    "Main",
+    createPkProvider(KeysManager.generateRandomKey()),
+  );
+
+  const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
+
+  await assert.rejects(
+    () => previewKeyfileImport(keyfile),
+    DuplicateWalletError,
+  );
+});
+
+test("selected keyfile accounts are imported into the stored wallet", async () => {
+  console.log("\n=== KEYFILE ACCOUNTS IMPORT ===");
+
+  const walletManager = new WalletManager();
+
+  const { wallet, keyfile } =
+    await createHDWalletWithMissingAccount(walletManager);
+
+  const importedAccounts: Account[] = await importKeyfileAccounts(
+    walletManager,
+    keyfile,
+    { accountIndexes: [1] },
+  );
+
+  console.log("    Imported accounts:", snapshotAccounts(wallet));
+
+  assert.equal(importedAccounts.length, 1);
+  assert.equal(importedAccounts[0].getIndex(), 1);
+  assert.equal(importedAccounts[0].getName(), "Second");
+  assert.deepEqual(accountIndexes(wallet.getAccounts()), [0, 1, 2]);
+  assert.equal((await StorageManager.getSigners()).length, 1);
+  assert.equal((await StorageManager.getAccounts()).length, 3);
+});
+
+test("importing an already imported account is rejected as a duplicate", async () => {
+  console.log("\n=== DUPLICATE KEYFILE ACCOUNT IMPORT ===");
+
+  const walletManager = new WalletManager();
+
+  const { wallet, keyfile } =
+    await createHDWalletWithMissingAccount(walletManager);
+
+  await assert.rejects(
+    () =>
+      importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [0] }),
+    DuplicateAccountError,
+  );
+
+  assert.deepEqual(accountIndexes(wallet.getAccounts()), [0, 2]);
+  assert.equal((await StorageManager.getAccounts()).length, 2);
+});
+
+test("import rejects account indexes that are missing in the keyfile", async () => {
+  console.log("\n=== UNKNOWN KEYFILE ACCOUNT INDEXES ===");
+
+  const walletManager = new WalletManager();
+
+  const { keyfile } = await createHDWalletWithMissingAccount(walletManager);
+
+  await assert.rejects(
+    () =>
+      importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [7] }),
+    (error: Error) =>
+      error instanceof InvalidKeyfileError && /indexes 7/.test(error.message),
+  );
+
+  await assert.rejects(
+    () => importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [] }),
+    InvalidKeyfileError,
+  );
+});
+
+test("importing accounts into a locked wallet is rejected", async () => {
+  console.log("\n=== KEYFILE ACCOUNTS IMPORT INTO A LOCKED WALLET ===");
+
+  const walletManager = new WalletManager();
+
+  const { keyfile } = await createHDWalletWithMissingAccount(walletManager);
+
+  const lockedWalletManager = new WalletManager();
+
+  await assert.rejects(
+    () =>
+      importKeyfileAccounts(lockedWalletManager, keyfile, {
+        accountIndexes: [1],
+      }),
+    WalletLockedError,
+  );
+
+  assert.equal((await StorageManager.getAccounts()).length, 2);
+});
+
+test("only selected accounts are imported for a wallet that is not stored yet", async () => {
+  console.log("\n=== SELECTED ACCOUNTS IMPORT ===");
+
+  const walletManager = new WalletManager();
+
+  const wallet: Wallet = await createHDWalletWithIndexGap(walletManager);
+
+  const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
+
+  await walletManager.delete(wallet.getId());
+
+  const imported: Wallet = await importKeyfile(
+    walletManager,
+    keyfile,
+    PASSWORD,
+    { accountIndexes: [2] },
+  );
+
+  console.log("    Imported accounts:", snapshotAccounts(imported));
+
+  assert.deepEqual(accountIndexes(imported.getAccounts()), [2]);
+  assert.equal((await StorageManager.getAccounts()).length, 1);
 });
 
 test("importing an already stored keyfile is rejected as a duplicate", async () => {
