@@ -10,6 +10,7 @@ export enum CustomErrorCode {
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
+    INVALID_PASSWORD = "INVALID_PASSWORD",
 }
 
 export enum WalletAction {
@@ -48,6 +49,20 @@ export class WalletOperationCancelledError extends CustomError {
         super(CustomErrorCode.WALLET_OPERATION_CANCELLED, message, 409);
 
         this.signerId = signerId;
+    }
+}
+
+export class InvalidPasswordError extends CustomError {
+    public readonly details: string | null;
+
+    constructor(details: string | null = null) {
+        super(
+            CustomErrorCode.INVALID_PASSWORD,
+            details ? `Password not valid: ${details}` : "Password not valid",
+            403,
+        );
+
+        this.details = details;
     }
 }
 

@@ -1,4 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
+import { InvalidPasswordError } from "@domains/CustomError";
 import SecretsProvider, {
     IHDSecret,
     IHDSecretRecord,
@@ -97,18 +98,22 @@ export default class CryptoService {
             throw new Error(`Unsupported version ${payload.version}`);
         }
 
-        const salt = new Uint8Array(base64ToArrayBuffer(payload.salt));
-        const iv = new Uint8Array(base64ToArrayBuffer(payload.iv));
+        try {
+            const salt = new Uint8Array(base64ToArrayBuffer(payload.salt));
+            const iv = new Uint8Array(base64ToArrayBuffer(payload.iv));
 
-        const key = await this.deriveKey(passphrase, salt);
+            const key = await this.deriveKey(passphrase, salt);
 
-        const decrypted = await crypto.subtle.decrypt(
-            { name: CryptoConfig.ALGORITHM, iv },
-            key,
-            base64ToArrayBuffer(payload.data),
-        );
+            const decrypted = await crypto.subtle.decrypt(
+                { name: CryptoConfig.ALGORITHM, iv },
+                key,
+                base64ToArrayBuffer(payload.data),
+            );
 
-        return new TextDecoder().decode(decrypted);
+            return new TextDecoder().decode(decrypted);
+        } catch {
+            throw new InvalidPasswordError();
+        }
     }
 
     public static async decryptSignerData(
