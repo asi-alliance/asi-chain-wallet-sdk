@@ -7,6 +7,7 @@ export enum CustomErrorCode {
     STORAGE_VERSION_DOWNGRADE = "STORAGE_VERSION_DOWNGRADE",
     STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
     STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
+    STORAGE_MIGRATION_CHAIN_INVALID = "STORAGE_MIGRATION_CHAIN_INVALID",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
@@ -18,6 +19,12 @@ export enum CustomErrorCode {
 export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+}
+
+export enum StorageMigrationChainViolation {
+    DUPLICATE_VERSION = "DUPLICATE_VERSION",
+    VERSION_OUT_OF_RANGE = "VERSION_OUT_OF_RANGE",
+    MISSING_MIGRATION = "MISSING_MIGRATION",
 }
 
 export enum StorageMigrationInterruptionReason {
@@ -144,6 +151,22 @@ export class StorageVersionDowngradeError extends CustomError {
 
         this.storedVersion = storedVersion;
         this.supportedVersion = supportedVersion;
+    }
+}
+
+export class StorageMigrationChainError extends CustomError {
+    public readonly violation: StorageMigrationChainViolation;
+    public readonly versions: number[];
+
+    constructor(
+        violation: StorageMigrationChainViolation,
+        versions: number[],
+        message: string = `Storage migration chain is invalid (${violation}) for schema versions ${versions.join(", ")}`,
+    ) {
+        super(CustomErrorCode.STORAGE_MIGRATION_CHAIN_INVALID, message, 500);
+
+        this.violation = violation;
+        this.versions = versions;
     }
 }
 

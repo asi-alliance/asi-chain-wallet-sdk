@@ -4,6 +4,8 @@ import {
     StorageMetadataStorageRepository,
 } from "@domains/StorageMetadataStorageRepository";
 import {
+    StorageMigrationChainError,
+    StorageMigrationChainViolation,
     StorageMigrationInterruptedError,
     StorageMigrationInterruptionReason,
     StorageMigrationRollbackError,
@@ -239,6 +241,67 @@ export default class StorageMigrationRunner {
         }
     }
 
+    private assertDeclaredVersionsAreValid(): void {
+        const versions: number[] = this.migrations.map(
+            (migration: IStorageMigration) => migration.version,
+        );
+
+        const duplicated: number[] = versions.filter(
+            (version: number, index: number) =>
+                versions.indexOf(version) !== index,
+        );
+
+        if (duplicated.length) {
+            throw new StorageMigrationChainError(
+                StorageMigrationChainViolation.DUPLICATE_VERSION,
+                duplicated,
+                `Storage schema versions ${duplicated.join(", ")} are declared by more than one migration, every version must have exactly one migration`,
+            );
+        }
+
+        const outOfRange: number[] = versions.filter(
+            (version: number) =>
+                version <= BASELINE_STORAGE_VERSION ||
+                version > this.currentVersion,
+        );
+
+        if (outOfRange.length) {
+            throw new StorageMigrationChainError(
+                StorageMigrationChainViolation.VERSION_OUT_OF_RANGE,
+                outOfRange,
+                `Storage migrations declare versions ${outOfRange.join(", ")} outside of the supported range ${BASELINE_STORAGE_VERSION + 1}..${this.currentVersion}`,
+            );
+        }
+    }
+
+    private assertChainIsComplete(storedVersion: number): void {
+        const declaredVersions: Set<number> = new Set(
+            this.migrations.map(
+                (migration: IStorageMigration) => migration.version,
+            ),
+        );
+
+        const missing: number[] = [];
+
+        for (
+            let version = storedVersion + 1;
+            version <= this.currentVersion;
+            version += 1
+        ) {
+            if (!declaredVersions.has(version)) {
+                missing.push(version);
+            }
+        }
+
+        if (missing.length) {
+            throw new StorageMigrationChainError(
+                StorageMigrationChainViolation.MISSING_MIGRATION,
+                missing,
+                `Storage schema versions ${missing.join(", ")} have no migration, storage cannot be upgraded from version ${storedVersion} to version ${this.currentVersion} without skipping a step`,
+            );
+        }
+    }
+
     public async assertCompatible(): Promise<void> {
         const storedVersion: number = await this.resolveStoredVersion();
 
@@ -248,6 +311,10 @@ export default class StorageMigrationRunner {
                 this.currentVersion,
             );
         }
+
+        this.assertDeclaredVersionsAreValid();
+
+        this.assertChainIsComplete(storedVersion);
 
         await this.assertInterruptedMigrationIsResumable();
     }
