@@ -77,7 +77,7 @@ const createStoredSigner = async (): Promise<IStoredSigner> => {
         .getSigner()
         .resolveDataKey(new SecretsProvider(() => ({ password: PASSWORD })));
 
-    client.close();
+    await client.close();
 
     return { signerId, dataKeySecret };
 };
@@ -90,17 +90,17 @@ const createCustomNetwork = async (): Promise<NetworkId> => {
         CUSTOM_NETWORK_CONFIG,
     );
 
-    client.close();
+    await client.close();
 
     return custom.id;
 };
 
-const reloadAndUnlock = async (signerId: string): Promise<IRestoredWallet> => {
+const reloadAndOpen = async (signerId: string): Promise<IRestoredWallet> => {
     const reservationEvents: TReservationsByWallet[] = [];
 
     const client: Client = await createClient(reservationEvents);
 
-    const wallet: Wallet = await client.unlockWallet(signerId, PASSWORD);
+    const wallet: Wallet = await client.openWallet(signerId, PASSWORD);
 
     return { client, walletId: wallet.getId(), reservationEvents };
 };
@@ -168,7 +168,7 @@ test("reservations of every network are restored and read per active network", a
     await saveReservationRecord(signer, RUST_NETWORK, "rust-1");
     await saveReservationRecord(signer, RUST_NETWORK, "rust-2");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
+    const restored: IRestoredWallet = await reloadAndOpen(signer.signerId);
 
     const onScala: ITransactionReservation[] =
         await restored.client.getReservations(restored.walletId);
@@ -192,7 +192,7 @@ test("reservations of every network are restored and read per active network", a
 
     assert.deepEqual(stored, ["rust-1", "rust-2", "scala-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("switching a network emits the reservations of the new network", async () => {
@@ -203,7 +203,7 @@ test("switching a network emits the reservations of the new network", async () =
     await saveReservationRecord(signer, SCALA_NETWORK, "scala-1");
     await saveReservationRecord(signer, RUST_NETWORK, "rust-1");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
+    const restored: IRestoredWallet = await reloadAndOpen(signer.signerId);
 
     restored.reservationEvents.length = 0;
 
@@ -221,7 +221,7 @@ test("switching a network emits the reservations of the new network", async () =
     assert.equal(restored.reservationEvents.length, 1);
     assert.deepEqual(toIds(lastEvent[restored.walletId]), ["rust-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("restore sweeps expired records and records of unknown networks", async () => {
@@ -243,7 +243,7 @@ test("restore sweeps expired records and records of unknown networks", async () 
         await readStoredIds(signer.signerId),
     );
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
+    const restored: IRestoredWallet = await reloadAndOpen(signer.signerId);
 
     const storedAfterRestore: string[] = await readStoredIds(signer.signerId);
 
@@ -258,7 +258,7 @@ test("restore sweeps expired records and records of unknown networks", async () 
 
     assert.deepEqual(toIds(reservations), ["alive"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("removing a network clears its reservations", async () => {
@@ -272,7 +272,7 @@ test("removing a network clears its reservations", async () => {
     await saveReservationRecord(signer, SCALA_NETWORK, "scala-1");
     await saveReservationRecord(signer, customNetworkId, "custom-1");
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
+    const restored: IRestoredWallet = await reloadAndOpen(signer.signerId);
 
     console.log(
         "    Stored before removal:",
@@ -301,7 +301,7 @@ test("removing a network clears its reservations", async () => {
 
     assert.deepEqual(toIds(remaining), ["scala-1"]);
 
-    restored.client.close();
+    await restored.client.close();
 });
 
 test("an idle network is never reported as busy", async () => {
@@ -309,7 +309,7 @@ test("an idle network is never reported as busy", async () => {
 
     const signer: IStoredSigner = await createStoredSigner();
 
-    const restored: IRestoredWallet = await reloadAndUnlock(signer.signerId);
+    const restored: IRestoredWallet = await reloadAndOpen(signer.signerId);
 
     console.log("    Active network busy:", restored.client.isNetworkBusy());
     console.log(
@@ -320,5 +320,5 @@ test("an idle network is never reported as busy", async () => {
     assert.equal(restored.client.isNetworkBusy(), false);
     assert.equal(restored.client.isNetworkBusy(RUST_NETWORK), false);
 
-    restored.client.close();
+    await restored.client.close();
 });

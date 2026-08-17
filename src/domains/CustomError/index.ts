@@ -1,17 +1,21 @@
 import { NetworkId } from "@domains/Network";
+import type { Address } from "@domains/Wallet";
 
 export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
+    BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
     INVALID_KEYFILE = "INVALID_KEYFILE",
     INVALID_KEYFILE_PASSWORD = "INVALID_KEYFILE_PASSWORD",
+    WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
+    DOMAIN_CLOSED = "DOMAIN_CLOSED",
 }
 
 export enum WalletAction {
-    UNLOCK = "UNLOCK",
+    OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
 }
@@ -34,6 +38,32 @@ export class WalletLockedError extends CustomError {
         message: string = "Wallet signing session is locked or expired, re-authentication is required",
     ) {
         super(CustomErrorCode.WALLET_LOCKED, message, 403);
+    }
+}
+
+export class WalletOperationCancelledError extends CustomError {
+    public readonly signerId: string;
+
+    constructor(
+        signerId: string,
+        message: string = `Wallet ${signerId} operation was cancelled because the wallet was locked or closed while the operation was in progress`,
+    ) {
+        super(CustomErrorCode.WALLET_OPERATION_CANCELLED, message, 409);
+
+        this.signerId = signerId;
+    }
+}
+
+export class DomainClosedError extends CustomError {
+    public readonly domainName: string;
+
+    constructor(
+        domainName: string,
+        message: string = `${domainName} is closed and cannot be used, create a new instance instead`,
+    ) {
+        super(CustomErrorCode.DOMAIN_CLOSED, message, 410);
+
+        this.domainName = domainName;
     }
 }
 
@@ -108,5 +138,21 @@ export class NetworkBusyError extends CustomError {
         super(CustomErrorCode.NETWORK_BUSY, message, 409);
 
         this.networkId = networkId;
+    }
+}
+
+export class BalanceUnavailableError extends CustomError {
+    public readonly address: Address;
+    public readonly reason: string;
+
+    constructor(address: Address, reason: string) {
+        super(
+            CustomErrorCode.BALANCE_UNAVAILABLE,
+            `Balance of ${address} could not be read: ${reason}`,
+            502,
+        );
+
+        this.address = address;
+        this.reason = reason;
     }
 }

@@ -96,12 +96,12 @@ export default class WalletManager extends ItemManager<Wallet> {
         return wallet;
     }
 
-    public async unlock(
+    public async open(
         signerId: string,
         passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
         return WalletManager.operationsGuard.runWalletAction(
-            WalletAction.UNLOCK,
+            WalletAction.OPEN,
             signerId,
             async () => {
                 const wallet: Wallet = await StorageManager.getWallet({

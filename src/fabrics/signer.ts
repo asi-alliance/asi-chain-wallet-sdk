@@ -2,12 +2,8 @@ import HDSigner from "@domains/Signer/HD";
 import CryptoService from "@services/Crypto";
 import KeyFingerprintService from "@services/KeyFingerprint";
 import PrivateKeySigner from "@domains/Signer/PK";
-import SecretsProvider from "@domains/SecretsProvider";
-import Signer, {
-    ISignerRecord,
-    TDecryptedSecret,
-    WalletTypes,
-} from "@domains/Signer";
+import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
+import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
 import { generateRandomId, isPrivateKeySecretData } from "@utils/index";
 
 export interface ICreateImportedSignerPayload {

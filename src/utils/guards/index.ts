@@ -5,76 +5,77 @@ import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { validateNodeApiProfile } from "@utils/validators";
 import type { EncryptedData } from "@services/Crypto";
 import type {
-  IKeyfileAccount,
-  IKeyfileWalletAccount,
+    IKeyfileAccount,
+    IKeyfileWalletAccount,
 } from "@services/KeyfileSerializer";
 
 export const isCustomCreateHDWalletOptions = (
-  options: TCreateHDPathWalletOptions,
+    options: TCreateHDPathWalletOptions,
 ): options is { customHDPath: Bip44Path } => {
-  return "customHDPath" in options;
+    return "customHDPath" in options;
 };
 
 export const isPrivateKeySecretData = (
-  secretData: IPrivateKeyCredentials | IHDSecret,
+    secretData: IPrivateKeyCredentials | IHDSecret,
 ): secretData is IPrivateKeyCredentials => {
-  return "privateKey" in secretData;
+    return "privateKey" in secretData;
 };
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
-  return validateNodeApiProfile(value).isValid;
+    return validateNodeApiProfile(value).isValid;
 };
 
 export const isEncryptedData = (value: unknown): value is EncryptedData => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
 
-  const { data, salt, iv, version } = value as EncryptedData;
+    const { data, salt, iv, version } = value as EncryptedData;
 
-  return (
-    typeof data === "string" &&
-    typeof salt === "string" &&
-    typeof iv === "string" &&
-    typeof version === "number"
-  );
+    return (
+        typeof data === "string" &&
+        typeof salt === "string" &&
+        typeof iv === "string" &&
+        typeof version === "number"
+    );
 };
 
 export const isKeyfileAccount = (value: unknown): value is IKeyfileAccount => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
 
-  const { name, address, index } = value as IKeyfileAccount;
+    const { name, address, index } = value as IKeyfileAccount;
 
-  return (
-    typeof name === "string" &&
-    typeof address === "string" &&
-    (index === null || typeof index === "number")
-  );
+    return (
+        typeof name === "string" &&
+        typeof address === "string" &&
+        (index === null || typeof index === "number")
+    );
 };
 
 export const isKeyfileWalletAccount = (
-  value: unknown,
+    value: unknown,
 ): value is IKeyfileWalletAccount => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
 
-  const { name, index } = value as IKeyfileWalletAccount;
+    const { name, index } = value as IKeyfileWalletAccount;
 
-  return (
-    typeof name === "string" && (index === null || typeof index === "number")
-  );
+    return (
+        typeof name === "string" &&
+        (index === null || typeof index === "number")
+    );
 };
 
 export const isPromiseLike = (
-  value: unknown,
+    value: unknown,
 ): value is PromiseLike<unknown> => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "then" in value &&
-    typeof value.then === "function"
-  );
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "then" in value &&
+        typeof value.then === "function"
+    );
 };

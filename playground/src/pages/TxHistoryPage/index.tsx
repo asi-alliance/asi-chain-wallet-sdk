@@ -58,7 +58,8 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { client, unlockedWallets, currentNetwork } = useSdkContext();
+    const { client, openWallets, currentNetwork, reservationsByWallet } =
+        useSdkContext();
 
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -75,8 +76,8 @@ const TxHistoryPage = (): ReactElement => {
     const page = Math.max(1, Number(searchParams.get(PAGE_QUERY_PARAM)) || 1);
 
     const accounts = useMemo<Account[]>(
-        () => unlockedWallets.flatMap((wallet) => wallet.getAccounts()),
-        [unlockedWallets],
+        () => openWallets.flatMap((wallet) => wallet.getAccounts()),
+        [openWallets],
     );
 
     const accountOptions = useMemo<SelectFilterOption[]>(
@@ -99,10 +100,10 @@ const TxHistoryPage = (): ReactElement => {
 
     const selectedWallet = useMemo(
         () =>
-            unlockedWallets.find((wallet) =>
+            openWallets.find((wallet) =>
                 wallet.getAccountsMap().has(selectedAccountId),
             ) ?? null,
-        [unlockedWallets, selectedAccountId],
+        [openWallets, selectedAccountId],
     );
 
     const startRequest: TStartRequest = useRelevantResultGuard(

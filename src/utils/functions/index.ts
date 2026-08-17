@@ -13,6 +13,7 @@ export const generateRandomId = (): string => {
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
+const REGEX_ATOMIC_AMOUNT: RegExp = /^\d+$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
@@ -120,6 +121,18 @@ export const fromAtomicAmountToNumber = (
 };
 
 export const fromAtomicAmount = fromAtomicAmountToString;
+
+export const parseAtomicAmount = (value: unknown): bigint | null => {
+    if (typeof value === "number") {
+        return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
+    }
+
+    if (typeof value === "string" && REGEX_ATOMIC_AMOUNT.test(value)) {
+        return BigInt(value);
+    }
+
+    return null;
+};
 
 export const toUint8Array = (value: unknown): Uint8Array => {
     if (value instanceof Uint8Array) {

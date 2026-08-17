@@ -10,18 +10,18 @@ import { WalletTypes, type IWalletMetadata, type Wallet } from "asi-wallet-sdk";
 
 interface WalletRowProps {
     meta: IWalletMetadata;
-    unlocked?: Wallet;
+    openWallet?: Wallet;
     handlers: WalletPageHandlers;
     sdk: UseSdkValue;
 }
 
 const WalletRow = ({
     meta,
-    unlocked,
+    openWallet,
     handlers,
     sdk,
 }: WalletRowProps): ReactElement => {
-    if (!unlocked) {
+    if (!openWallet) {
         return (
             <div className="wallets-page__card-wrap">
                 <div className="wallet-card">
@@ -38,7 +38,7 @@ const WalletRow = ({
                                 className="wallet-card-button"
                                 type="button"
                                 onClick={() =>
-                                    handlers.unlockWallet(meta.signerId)
+                                    handlers.openWallet(meta.signerId)
                                 }
                             >
                                 Unlock
@@ -50,7 +50,7 @@ const WalletRow = ({
         );
     }
 
-    const walletId = unlocked.getId();
+    const walletId = openWallet.getId();
 
     return (
         <div className="wallets-page__card-wrap">
@@ -75,13 +75,20 @@ const WalletRow = ({
                 <button
                     className="wallets-page__action"
                     type="button"
+                    onClick={() => handlers.closeWallet(walletId)}
+                >
+                    Lock wallet
+                </button>
+                <button
+                    className="wallets-page__action"
+                    type="button"
                     onClick={() => handlers.removeWallet(walletId)}
                 >
                     Remove wallet
                 </button>
             </div>
 
-            {unlocked.getAccounts().map((account) => (
+            {openWallet.getAccounts().map((account) => (
                 <AccountCard
                     key={account.getId()}
                     sdk={sdk}
@@ -117,11 +124,8 @@ const WalletsPage = (): ReactElement => {
         return <div>Loading SDK...</div>;
     }
 
-    const unlockedBySigner = new Map<string, Wallet>(
-        sdk.unlockedWallets.map((wallet) => [
-            wallet.getSigner().getId(),
-            wallet,
-        ]),
+    const openWalletsBySigner = new Map<string, Wallet>(
+        sdk.openWallets.map((wallet) => [wallet.getSigner().getId(), wallet]),
     );
 
     const handleMnemonicWords = (words: 12 | 24) => {
@@ -142,7 +146,7 @@ const WalletsPage = (): ReactElement => {
                 <WalletRow
                     key={meta.signerId}
                     meta={meta}
-                    unlocked={unlockedBySigner.get(meta.signerId)}
+                    openWallet={openWalletsBySigner.get(meta.signerId)}
                     handlers={handlers}
                     sdk={sdk}
                 />

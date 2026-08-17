@@ -1,8 +1,8 @@
 import Account from "@domains/Account";
-import SecretsProvider from "@domains/SecretsProvider";
+import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
 import type Wallet from "@domains/Wallet";
 import type { Address, IImportKeyfileWalletPayload } from "@domains/Wallet";
-import { TDecryptedSecret, WalletTypes } from "@domains/Signer";
+import { WalletTypes } from "@domains/Signer";
 import type { ISignerStorageRecord } from "@domains/SignersStorageRepository";
 import type { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
 import { DuplicateWalletError } from "@domains/CustomError";

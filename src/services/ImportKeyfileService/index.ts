@@ -2,8 +2,8 @@ import {
     InvalidKeyfileError,
     InvalidKeyfilePasswordError,
 } from "@domains/CustomError";
-import SecretsProvider from "@domains/SecretsProvider";
-import { TDecryptedSecret, WalletTypes } from "@domains/Signer";
+import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
+import { WalletTypes } from "@domains/Signer";
 import type { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import type { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
