@@ -22,6 +22,7 @@ import {
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import { LastAccountRemovalError } from "@domains/CustomError";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -170,7 +171,12 @@ export default class Wallet {
         );
     }
 
+    @OnlyHDWallet
     public removeAccount(id: string): Account {
+        if (this.getAccounts().length === 1) {
+            throw new LastAccountRemovalError(this.id, id);
+        }
+
         return this.accountManager.remove(id);
     }
 

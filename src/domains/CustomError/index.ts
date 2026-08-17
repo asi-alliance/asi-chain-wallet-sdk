@@ -10,6 +10,8 @@ export enum CustomErrorCode {
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
+    HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
+    LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
 }
 
 export enum WalletAction {
@@ -106,6 +108,35 @@ export class WalletActionInProgressError extends CustomError {
 
         this.action = action;
         this.signerId = signerId;
+    }
+}
+
+export class HDWalletOnlyOperationError extends CustomError {
+    public readonly operation: string;
+
+    constructor(
+        operation: string,
+        message: string = `Operation ${operation} is available only for HD wallets`,
+    ) {
+        super(CustomErrorCode.HD_WALLET_ONLY_OPERATION, message, 403);
+
+        this.operation = operation;
+    }
+}
+
+export class LastAccountRemovalError extends CustomError {
+    public readonly walletId: string;
+    public readonly accountId: string;
+
+    constructor(
+        walletId: string,
+        accountId: string,
+        message: string = `Account ${accountId} is the last account of the wallet ${walletId} and cannot be removed`,
+    ) {
+        super(CustomErrorCode.LAST_ACCOUNT_REMOVAL, message, 409);
+
+        this.walletId = walletId;
+        this.accountId = accountId;
     }
 }
 

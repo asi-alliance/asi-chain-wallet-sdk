@@ -2,13 +2,7 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
-import {
-    decodeBase16,
-    KeysManager,
-    MnemonicStrength,
-    Wallet,
-    WalletTypes,
-} from "asi-wallet-sdk";
+import { decodeBase16, KeysManager, MnemonicStrength } from "asi-wallet-sdk";
 
 type CreateWalletPageHandlersParams = {
     sdk: UseSdkValue;
@@ -207,17 +201,7 @@ export const createWalletPageHandlers = ({
                 if (!window.confirm("Remove this account?")) return;
 
                 try {
-                    const targetWallet: Wallet = sdk.client
-                        .getWalletManager()
-                        .get(walletId);
-
                     await sdk.removeAccount(walletId, accountId);
-
-                    if (targetWallet.getType() !== WalletTypes.PRIVATE_KEY) {
-                        return;
-                    }
-
-                    sdk.removeWallet(walletId);
                 } catch (error) {
                     console.error(error);
                     alert(

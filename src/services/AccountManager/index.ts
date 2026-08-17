@@ -46,7 +46,9 @@ export default class AccountManager extends ItemManager<Account> {
     public remove(id: string): Account {
         const removedAccount: Account = super.remove(id);
 
-        this.activeAccount = this.items.values().next().value ?? null;
+        if (this.activeAccount === removedAccount) {
+            this.activeAccount = this.items.values().next().value ?? null;
+        }
 
         return removedAccount;
     }
