@@ -239,7 +239,7 @@ export default class StorageMigrationRunner {
         }
     }
 
-    public async run(): Promise<number> {
+    public async assertCompatible(): Promise<void> {
         const storedVersion: number = await this.resolveStoredVersion();
 
         if (storedVersion > this.currentVersion) {
@@ -250,6 +250,12 @@ export default class StorageMigrationRunner {
         }
 
         await this.assertInterruptedMigrationIsResumable();
+    }
+
+    public async run(): Promise<number> {
+        await this.assertCompatible();
+
+        const storedVersion: number = await this.resolveStoredVersion();
 
         for (const migration of this.getPendingMigrations(storedVersion)) {
             await this.applyMigration(migration);

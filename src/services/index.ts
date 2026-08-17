@@ -36,6 +36,8 @@ export * from "./Mnemonic";
 export { default as Mnemonic } from "./Mnemonic";
 export * from "./Signer";
 export { default as SignerService } from "./Signer";
+export * from "./StorageBootstrap";
+export { default as StorageBootstrap } from "./StorageBootstrap";
 export * from "./StorageManager";
 export { default as StorageManager } from "./StorageManager";
 export * from "./StorageMigrationRunner";

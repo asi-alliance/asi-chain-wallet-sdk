@@ -14,6 +14,7 @@ import {
 } from "@domains/Network";
 import { IStorageFabricOptions } from "@fabrics/storage";
 import StorageManager from "@services/StorageManager";
+import StorageBootstrap from "@services/StorageBootstrap";
 import NetworkManager from "@services/NetworkManager";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
@@ -193,14 +194,13 @@ export default class Client extends ClosableDomain {
         flags,
         security,
     }: ICreateClientOptions): Promise<Client> {
-        await StorageManager.init(storageOptions);
+        await StorageBootstrap.init({
+            storageOptions,
+            withInsensitiveCacheStorage: flags?.withInsensitiveCacheStorage,
+        });
 
         await NetworkManager.initialize(networksConfig, defaultNetwork);
         ApiServiceRegistry.getInstance();
-
-        if (flags?.withInsensitiveCacheStorage) {
-            await InsensitiveCacheStorageManager.init();
-        }
 
         return new Client({
             eventDispatcher,
@@ -270,6 +270,7 @@ export default class Client extends ClosableDomain {
 
         StorageManager.close();
         InsensitiveCacheStorageManager.close();
+        StorageBootstrap.close();
         ApiClientManager.getInstance().close();
     }
 
