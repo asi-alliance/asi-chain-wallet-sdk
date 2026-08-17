@@ -6,9 +6,11 @@ import {
 import {
     StorageMigrationChainError,
     StorageMigrationChainViolation,
+    StorageMigrationFailedError,
     StorageMigrationInterruptedError,
     StorageMigrationInterruptionReason,
     StorageMigrationRollbackError,
+    StorageSchemaError,
     StorageVersionDowngradeError,
 } from "@domains/CustomError";
 import {
@@ -183,7 +185,9 @@ export default class StorageMigrationRunner {
         await this.metadataRepository.clearPendingMigration();
     }
 
-    private async applyMigration(migration: IStorageMigration): Promise<void> {
+    private async runMigrationStep(
+        migration: IStorageMigration,
+    ): Promise<void> {
         const backup: IStorageBackup = await this.createBackup();
 
         await this.metadataRepository.markPendingMigration(migration.version);
@@ -196,6 +200,23 @@ export default class StorageMigrationRunner {
             await this.revertMigration(migration.version, backup, error);
 
             throw error;
+        }
+    }
+
+    private async applyMigration(migration: IStorageMigration): Promise<void> {
+        try {
+            await this.runMigrationStep(migration);
+        } catch (error: unknown) {
+            if (error instanceof StorageSchemaError) {
+                throw error;
+            }
+
+            throw new StorageMigrationFailedError(
+                migration.version,
+                migration.description,
+                await this.resolveStoredVersion(),
+                error,
+            );
         }
     }
 

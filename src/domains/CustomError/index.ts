@@ -5,6 +5,7 @@ export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
     STORAGE_VERSION_DOWNGRADE = "STORAGE_VERSION_DOWNGRADE",
+    STORAGE_MIGRATION_FAILED = "STORAGE_MIGRATION_FAILED",
     STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
     STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
     STORAGE_MIGRATION_CHAIN_INVALID = "STORAGE_MIGRATION_CHAIN_INVALID",
@@ -138,7 +139,22 @@ export class NetworkBusyError extends CustomError {
     }
 }
 
-export class StorageVersionDowngradeError extends CustomError {
+export class StorageSchemaError extends CustomError {
+    public readonly isStorageIntact: boolean;
+
+    constructor(
+        code: CustomErrorCode,
+        message: string,
+        status: number,
+        isStorageIntact: boolean,
+    ) {
+        super(code, message, status);
+
+        this.isStorageIntact = isStorageIntact;
+    }
+}
+
+export class StorageVersionDowngradeError extends StorageSchemaError {
     public readonly storedVersion: number;
     public readonly supportedVersion: number;
 
@@ -147,14 +163,14 @@ export class StorageVersionDowngradeError extends CustomError {
         supportedVersion: number,
         message: string = `Persisted storage uses schema version ${storedVersion}, while this SDK build supports version ${supportedVersion}. Storage was left untouched, update the SDK to read this data`,
     ) {
-        super(CustomErrorCode.STORAGE_VERSION_DOWNGRADE, message, 409);
+        super(CustomErrorCode.STORAGE_VERSION_DOWNGRADE, message, 409, true);
 
         this.storedVersion = storedVersion;
         this.supportedVersion = supportedVersion;
     }
 }
 
-export class StorageMigrationChainError extends CustomError {
+export class StorageMigrationChainError extends StorageSchemaError {
     public readonly violation: StorageMigrationChainViolation;
     public readonly versions: number[];
 
@@ -163,14 +179,41 @@ export class StorageMigrationChainError extends CustomError {
         versions: number[],
         message: string = `Storage migration chain is invalid (${violation}) for schema versions ${versions.join(", ")}`,
     ) {
-        super(CustomErrorCode.STORAGE_MIGRATION_CHAIN_INVALID, message, 500);
+        super(
+            CustomErrorCode.STORAGE_MIGRATION_CHAIN_INVALID,
+            message,
+            500,
+            true,
+        );
 
         this.violation = violation;
         this.versions = versions;
     }
 }
 
-export class StorageMigrationInterruptedError extends CustomError {
+export class StorageMigrationFailedError extends StorageSchemaError {
+    public readonly failedVersion: number;
+    public readonly description: string;
+    public readonly storedVersion: number;
+    public readonly migrationError: unknown;
+
+    constructor(
+        failedVersion: number,
+        description: string,
+        storedVersion: number,
+        migrationError: unknown,
+        message: string = `Migration to storage schema version ${failedVersion} (${description}) failed and was rolled back. Storage is intact on schema version ${storedVersion} and can be read by the previous SDK build`,
+    ) {
+        super(CustomErrorCode.STORAGE_MIGRATION_FAILED, message, 500, true);
+
+        this.failedVersion = failedVersion;
+        this.description = description;
+        this.storedVersion = storedVersion;
+        this.migrationError = migrationError;
+    }
+}
+
+export class StorageMigrationInterruptedError extends StorageSchemaError {
     public readonly pendingVersion: number;
     public readonly reason: StorageMigrationInterruptionReason;
 
@@ -179,14 +222,19 @@ export class StorageMigrationInterruptedError extends CustomError {
         reason: StorageMigrationInterruptionReason,
         message: string = `Migration to storage schema version ${pendingVersion} did not finish (${reason}). Storage state is unknown and cannot be migrated automatically`,
     ) {
-        super(CustomErrorCode.STORAGE_MIGRATION_INTERRUPTED, message, 409);
+        super(
+            CustomErrorCode.STORAGE_MIGRATION_INTERRUPTED,
+            message,
+            409,
+            false,
+        );
 
         this.pendingVersion = pendingVersion;
         this.reason = reason;
     }
 }
 
-export class StorageMigrationRollbackError extends CustomError {
+export class StorageMigrationRollbackError extends StorageSchemaError {
     public readonly failedVersion: number;
     public readonly failures: string[];
     public readonly migrationError: unknown;
@@ -197,7 +245,12 @@ export class StorageMigrationRollbackError extends CustomError {
         migrationError: unknown,
         message: string = `Migration to storage schema version ${failedVersion} failed and its rollback did not complete (${failures.join("; ")}). Storage holds partially migrated data and must be restored from an export or re-imported`,
     ) {
-        super(CustomErrorCode.STORAGE_MIGRATION_ROLLBACK_FAILED, message, 500);
+        super(
+            CustomErrorCode.STORAGE_MIGRATION_ROLLBACK_FAILED,
+            message,
+            500,
+            false,
+        );
 
         this.failedVersion = failedVersion;
         this.failures = failures;
