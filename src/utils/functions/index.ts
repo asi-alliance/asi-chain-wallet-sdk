@@ -1,6 +1,7 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 import { isPromiseLike } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { TransactionType } from "@domains/Transaction";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -197,11 +198,24 @@ export const buildUrl = (
     return queryString ? `${url}?${queryString}` : url;
 };
 
-/**
- * @returns address in the format accepted within the SDK application
- */
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
+}
+
+export function isSameAddress(
+    address: string | undefined,
+    other: string | undefined,
+): boolean {
+    const normalized: string = normalizeAddress(address);
+
+    return normalized !== "" && normalized === normalizeAddress(other);
+}
+
+export function resolveTransferType(
+    from: string,
+    viewerAddress: string,
+): TransactionType {
+    return isSameAddress(from, viewerAddress) ? "send" : "receive";
 }
 
 export const runProtected = (

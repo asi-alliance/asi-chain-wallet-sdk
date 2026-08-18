@@ -1,6 +1,10 @@
 import Account from "@domains/Account";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { fromAtomicAmount, generateRandomId } from "@utils/index";
+import {
+    fromAtomicAmount,
+    generateRandomId,
+    resolveTransferType,
+} from "@utils/index";
 import { NetworkId } from "@domains/Network";
 import { Address } from "@domains/Wallet";
 import {
@@ -11,7 +15,9 @@ import {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationDetails,
     Transaction,
+    TransactionReservationKind,
 } from "@domains/Transaction";
 
 interface IReservationPayload {
@@ -35,7 +41,8 @@ export interface ICreateDeployReservationPayload extends IReservationPayload {
 export default class TransactionReservationFabric {
     private static build(
         { networkId, account, pendingAmount }: IReservationPayload,
-        transaction: Transaction,
+        kind: TransactionReservationKind,
+        details: ITransactionReservationDetails,
     ): ITransactionReservation {
         return {
             id: generateRandomId(),
@@ -43,21 +50,19 @@ export default class TransactionReservationFabric {
             accountId: account.getId(),
             pendingAmount: pendingAmount.toString(),
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-            transaction,
+            kind,
+            details,
         };
     }
 
     public static createTransfer(
         payload: ICreateTransferReservationPayload,
     ): ITransactionReservation {
-        const { deployId, networkId, account, details } = payload;
+        const { deployId, account, details } = payload;
 
-        return TransactionReservationFabric.build(payload, {
-            id: deployId,
+        return TransactionReservationFabric.build(payload, "transfer", {
             deployId,
             timestamp: new Date(),
-            type: "send",
-            status: "pending",
             from: account.getAddress(),
             to: details.to,
             amount: fromAtomicAmount(
@@ -65,46 +70,64 @@ export default class TransactionReservationFabric {
                 NATIVE_TOKEN_DECIMALS_AMOUNT,
             ),
             gasCost: fromAtomicAmount(GasFee.MAX, NATIVE_TOKEN_DECIMALS_AMOUNT),
-            networkId,
-            detectedBy: "manual",
         });
     }
 
     public static createDeploy(
         payload: ICreateDeployReservationPayload,
     ): ITransactionReservation {
-        const { deployId, networkId, account, pendingAmount, term } = payload;
+        const { deployId, account, pendingAmount, term } = payload;
 
-        return TransactionReservationFabric.build(payload, {
-            id: deployId,
+        return TransactionReservationFabric.build(payload, "deploy", {
             deployId,
             timestamp: new Date(),
-            type: "deploy",
-            status: "pending",
             from: account.getAddress(),
-            contractCode: term,
             gasCost: fromAtomicAmount(
                 pendingAmount,
                 NATIVE_TOKEN_DECIMALS_AMOUNT,
             ),
+            contractCode: term,
+        });
+    }
+
+    public static toPendingTransaction(
+        { networkId, kind, details }: ITransactionReservation,
+        viewerAddress: Address,
+    ): Transaction {
+        return {
+            id: details.deployId,
+            deployId: details.deployId,
+            timestamp: details.timestamp,
+            type:
+                kind === "deploy"
+                    ? "deploy"
+                    : resolveTransferType(details.from, viewerAddress),
+            status: "pending",
+            from: details.from,
+            to: details.to,
+            amount: details.amount,
+            gasCost: details.gasCost,
+            contractCode: details.contractCode,
             networkId,
             detectedBy: "manual",
-        });
+        };
     }
 
     public static toPrivateData({
         accountId,
         pendingAmount,
         expirationTime,
-        transaction,
+        kind,
+        details,
     }: ITransactionReservation): ISerializedTransactionReservationPrivateData {
         return {
             accountId,
             pendingAmount,
             expirationTime,
-            transaction: {
-                ...transaction,
-                timestamp: transaction.timestamp.toISOString(),
+            kind,
+            details: {
+                ...details,
+                timestamp: details.timestamp.toISOString(),
             },
         };
     }
@@ -119,9 +142,10 @@ export default class TransactionReservationFabric {
             accountId: privateData.accountId,
             pendingAmount: privateData.pendingAmount,
             expirationTime: privateData.expirationTime,
-            transaction: {
-                ...privateData.transaction,
-                timestamp: new Date(privateData.transaction.timestamp),
+            kind: privateData.kind,
+            details: {
+                ...privateData.details,
+                timestamp: new Date(privateData.details.timestamp),
             },
         };
     }

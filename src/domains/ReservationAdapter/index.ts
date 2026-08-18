@@ -7,6 +7,7 @@ import {
     ITransactionReservation,
     Transaction,
 } from "@domains/Transaction";
+import { isSerializedTransactionReservationPrivateData } from "@utils/guards";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
@@ -65,7 +66,7 @@ export default class ReservationAdapter {
     private static async readPrivateData(
         record: ITransactionReservationsStorageRecord,
         dataKeySecret: string,
-    ): Promise<ISerializedTransactionReservationPrivateData> {
+    ): Promise<unknown> {
         const decrypted: string = await CryptoService.decryptWithPassword(
             record.encryptedData,
             dataKeySecret,
@@ -94,10 +95,11 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const privateData: ISerializedTransactionReservationPrivateData =
+            const privateData: unknown =
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
+                !isSerializedTransactionReservationPrivateData(privateData) ||
                 privateData.expirationTime <= Date.now() ||
                 !knownNetworkIds.has(record.networkId)
             ) {
@@ -150,16 +152,18 @@ export default class ReservationAdapter {
         );
     }
 
-    public getPendingTransactions(accountId?: string): Transaction[] {
+    public getOutgoingPendingTransactions(account: Account): Transaction[] {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const reservations: ITransactionReservation[] = accountId
-            ? this.reservationsManager.getByAccountId(accountId, networkId)
-            : this.reservationsManager.getByNetworkId(networkId);
+        const reservations: ITransactionReservation[] =
+            this.reservationsManager.getByAccountId(account.getId(), networkId);
 
-        return reservations.map(
-            (reservation: ITransactionReservation) => reservation.transaction,
+        return reservations.map((reservation: ITransactionReservation) =>
+            TransactionReservationFabric.toPendingTransaction(
+                reservation,
+                account.getAddress(),
+            ),
         );
     }
 

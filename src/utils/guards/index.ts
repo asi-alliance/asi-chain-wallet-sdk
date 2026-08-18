@@ -2,6 +2,7 @@ import Bip44Path from "@domains/Bip44Path";
 import { IHDSecret, IPrivateKeyCredentials } from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { ISerializedTransactionReservationPrivateData } from "@domains/Transaction";
 import { validateNodeApiProfile } from "@utils/validators";
 
 export const isCustomCreateHDWalletOptions = (
@@ -18,6 +19,26 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return validateNodeApiProfile(value).isValid;
+};
+
+export const isSerializedTransactionReservationPrivateData = (
+    value: unknown,
+): value is ISerializedTransactionReservationPrivateData => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    if (!("kind" in value) || !("details" in value)) {
+        return false;
+    }
+
+    const { details } = value;
+
+    if (typeof details !== "object" || details === null) {
+        return false;
+    }
+
+    return "deployId" in details && typeof details.deployId === "string";
 };
 
 export const isPromiseLike = (

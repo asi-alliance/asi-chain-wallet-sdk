@@ -707,7 +707,7 @@ export default class Client extends ClosableDomain {
 
         const pendingTransactions: Transaction[] =
             sources.includes("pending") && reservationAdapter
-                ? reservationAdapter.getPendingTransactions(accountId)
+                ? reservationAdapter.getOutgoingPendingTransactions(account)
                 : [];
 
         const networkId: NetworkId =

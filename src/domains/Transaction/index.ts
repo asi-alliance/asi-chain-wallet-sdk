@@ -3,6 +3,7 @@ import { ITableRecord } from "@domains/TableService";
 
 export type TransactionStatus = "pending" | "completed" | "failed";
 export type TransactionType = "send" | "receive" | "deploy";
+export type TransactionReservationKind = "transfer" | "deploy";
 
 export interface Transaction {
     id: string;
@@ -25,16 +26,34 @@ export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
     timestamp: string;
 };
 
+export interface ITransactionReservationDetails {
+    deployId: string;
+    timestamp: Date;
+    from: string;
+    to?: string;
+    amount?: string;
+    gasCost?: string;
+    contractCode?: string;
+}
+
+export type TSerializedTransactionReservationDetails = Omit<
+    ITransactionReservationDetails,
+    "timestamp"
+> & {
+    timestamp: string;
+};
+
 export interface ITransactionReservationPrivateData {
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
-    transaction: Transaction;
+    kind: TransactionReservationKind;
+    details: ITransactionReservationDetails;
 }
 
 export interface ISerializedTransactionReservationPrivateData
-    extends Omit<ITransactionReservationPrivateData, "transaction"> {
-    transaction: TSerializedTransaction;
+    extends Omit<ITransactionReservationPrivateData, "details"> {
+    details: TSerializedTransactionReservationDetails;
 }
 
 export interface ITransactionReservation
