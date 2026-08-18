@@ -26,7 +26,6 @@ export interface IWalletMetadata {
 }
 
 export interface ICreateHDWalletParams {
-    mnemonic: string;
     accountName: string;
     index?: number;
 }
@@ -41,16 +40,15 @@ export default class WalletManager extends ItemManager<Wallet> {
         new WalletOperationGuardService();
 
     public async createHD(
-        { mnemonic, accountName, index }: ICreateHDWalletParams,
-        passwordProvider: SecretsProvider,
+        { accountName, index }: ICreateHDWalletParams,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const wallet: Wallet = await Wallet.createHD(
             {
-                mnemonic,
                 pathOptions: { index: index ?? 0 },
                 accountOptions: { name: accountName },
             },
-            passwordProvider,
+            secretProvider,
         );
 
         await this.persist(wallet);

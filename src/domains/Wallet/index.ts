@@ -45,7 +45,6 @@ export type TCreateHDPathWalletOptions =
       };
 
 export interface ICreateHDWalletOptions {
-    mnemonic: string;
     pathOptions: TCreateHDPathWalletOptions;
     accountOptions: TCreateAccountPayload;
 }
@@ -207,7 +206,7 @@ export default class Wallet {
 
     public static async createHD(
         options: ICreateHDWalletOptions,
-        passwordProvider: SecretsProvider,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
             options.pathOptions,
@@ -215,12 +214,14 @@ export default class Wallet {
 
         const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
             () => {
+                const { password, secret } = secretProvider.getSecret();
+
                 return {
                     secret: {
                         rootHDPath: rootHDPath.toString(),
-                        seed: options.mnemonic,
+                        seed: secret.seed,
                     },
-                    password: passwordProvider.getSecret().password,
+                    password,
                 };
             },
         );
@@ -235,7 +236,7 @@ export default class Wallet {
             () => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed: options.mnemonic,
+                    seed: secretProvider.getSecret().secret.seed,
                 };
             },
         );
