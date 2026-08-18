@@ -8,6 +8,7 @@ import SecretsProvider, {
 import {
     arrayBufferToBase64,
     base64ToArrayBuffer,
+    parseDecryptedJson,
     toUint8Array,
 } from "@utils/index";
 
@@ -127,7 +128,7 @@ export default class CryptoService {
             );
 
         const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials =
-            JSON.parse(stringifiedKeyMaterial);
+            parseDecryptedJson(stringifiedKeyMaterial, "wallet secret");
 
         if ("privateKey" in keyMaterial) {
             const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);

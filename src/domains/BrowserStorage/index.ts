@@ -3,6 +3,8 @@ import {
     EnsureTableExists,
 } from "@utils/decorators";
 import { ITableRecord, ITableService } from "@domains/TableService";
+import { UnknownErrorReason } from "@domains/CustomError";
+import { getErrorMessage } from "@utils/index";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private static instance: BrowserStorage | null = null;
@@ -50,7 +52,10 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             openDatabaseRequest.onerror = () => {
                 reject(
                     new Error(
-                        `Failed to open database: ${openDatabaseRequest.error?.message}`,
+                        `Failed to open database '${this.name}': ${getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        )}`,
                     ),
                 );
             };
@@ -97,7 +102,10 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             openDatabaseRequest.onerror = () => {
                 reject(
                     new Error(
-                        `Failed to create table: ${openDatabaseRequest.error?.message}`,
+                        `Failed to create table '${tableName}': ${getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        )}`,
                     ),
                 );
             };
@@ -243,7 +251,10 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             openDatabaseRequest.onerror = () => {
                 reject(
                     new Error(
-                        `Failed to drop table: ${openDatabaseRequest.error?.message}`,
+                        `Failed to drop table '${tableName}': ${getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        )}`,
                     ),
                 );
             };
@@ -303,13 +314,23 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             transaction.onerror = () => {
                 reject(
                     new Error(
-                        `Transaction failed: ${transaction.error?.message}`,
+                        `Transaction on table '${tableName}' failed: ${getErrorMessage(
+                            transaction.error,
+                            UnknownErrorReason.STORAGE,
+                        )}`,
                     ),
                 );
             };
 
             transaction.onabort = () => {
-                reject(new Error("Transaction aborted"));
+                reject(
+                    new Error(
+                        `Transaction on table '${tableName}' was aborted: ${getErrorMessage(
+                            transaction.error,
+                            UnknownErrorReason.STORAGE,
+                        )}`,
+                    ),
+                );
             };
         });
     }

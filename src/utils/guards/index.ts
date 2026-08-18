@@ -20,6 +20,17 @@ export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return validateNodeApiProfile(value).isValid;
 };
 
+export const isRecordWithMessage = (
+    value: unknown,
+): value is { message: string } => {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "message" in value &&
+        typeof value.message === "string"
+    );
+};
+
 export const isPromiseLike = (
     value: unknown,
 ): value is PromiseLike<unknown> => {

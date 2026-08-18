@@ -11,11 +11,18 @@ export enum CustomErrorCode {
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
     INVALID_PASSWORD = "INVALID_PASSWORD",
+    CORRUPTED_DATA = "CORRUPTED_DATA",
 }
 
 export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+}
+
+export enum UnknownErrorReason {
+    STORAGE = "browser storage did not report a reason",
+    NODE_API = "node api did not report a reason",
+    GRAPHQL_API = "graphql api did not report a reason",
 }
 
 export class CustomError extends Error {
@@ -63,6 +70,19 @@ export class InvalidPasswordError extends CustomError {
         );
 
         this.details = details;
+    }
+}
+
+export class CorruptedDataError extends CustomError {
+    public readonly source: string;
+
+    constructor(
+        source: string,
+        message: string = `Decrypted ${source} is corrupted and cannot be parsed`,
+    ) {
+        super(CustomErrorCode.CORRUPTED_DATA, message, 422);
+
+        this.source = source;
     }
 }
 

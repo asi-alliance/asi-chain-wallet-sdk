@@ -1,6 +1,7 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
-import { isPromiseLike } from "@utils/guards";
+import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { CorruptedDataError } from "@domains/CustomError";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -203,6 +204,30 @@ export const buildUrl = (
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
 }
+
+export const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    if (error instanceof Error) {
+        return error.message.trim() || error.name || fallback;
+    }
+
+    if (isRecordWithMessage(error) && error.message.trim()) {
+        return error.message;
+    }
+
+    return fallback;
+};
+
+export const parseDecryptedJson = <T>(payload: string, source: string): T => {
+    try {
+        return JSON.parse(payload);
+    } catch {
+        throw new CorruptedDataError(source);
+    }
+};
 
 export const runProtected = (
     run: () => void | Promise<void>,

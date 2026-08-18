@@ -1,5 +1,7 @@
 import ApiWorker from "@domains/ApiWorker";
 import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
+import { UnknownErrorReason } from "@domains/CustomError";
+import { getErrorMessage } from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -111,7 +113,16 @@ export default class DeployStatusPoller extends ApiWorker {
                     );
                 }
             } catch (error: unknown) {
-                fail(error instanceof Error ? error : new Error(String(error)));
+                fail(
+                    error instanceof Error
+                        ? error
+                        : new Error(
+                              `DeployStatusPoller: status check for ${deployId} failed: ${getErrorMessage(
+                                  error,
+                                  UnknownErrorReason.NODE_API,
+                              )}`,
+                          ),
+                );
             } finally {
                 checking = false;
             }

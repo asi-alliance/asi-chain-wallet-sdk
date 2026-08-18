@@ -19,6 +19,7 @@ import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
+import { parseDecryptedJson } from "@utils/index";
 
 export interface IReservedOperationResult {
     deployId: string;
@@ -71,7 +72,7 @@ export default class ReservationAdapter {
             dataKeySecret,
         );
 
-        return JSON.parse(decrypted);
+        return parseDecryptedJson(decrypted, "reservation data");
     }
 
     public static async create(

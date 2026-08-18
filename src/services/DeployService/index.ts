@@ -2,6 +2,8 @@ import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import { IDeployInfo, IDeployStatusResult } from "@domains/Deploy";
 import { SignedResult } from "@services/Signer";
+import { UnknownErrorReason } from "@domains/CustomError";
+import { getErrorMessage } from "@utils/index";
 
 export default class DeployService {
     private readonly nodeApiProvider: NodeApiProvider;
@@ -42,9 +44,10 @@ export default class DeployService {
             return this.extractDeployId(result);
         } catch (error) {
             throw new Error(
-                `DeployService.submitDeploy: ${
-                    error instanceof Error ? error.message : String(error)
-                }`,
+                `DeployService.submitDeploy: ${getErrorMessage(
+                    error,
+                    UnknownErrorReason.NODE_API,
+                )}`,
             );
         }
     }
@@ -58,8 +61,10 @@ export default class DeployService {
             return result.expr;
         } catch (error) {
             throw new Error(
-                "DeployService.exploreDeployData: " +
-                    (error instanceof Error ? error.message : String(error)),
+                `DeployService.exploreDeployData: ${getErrorMessage(
+                    error,
+                    UnknownErrorReason.NODE_API,
+                )}`,
             );
         }
     }
