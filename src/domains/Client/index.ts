@@ -702,13 +702,12 @@ export default class Client extends ClosableDomain {
 
         const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
 
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
-
-        const pendingTransactions: Transaction[] =
-            sources.includes("pending") && reservationAdapter
-                ? reservationAdapter.getOutgoingPendingTransactions(account)
-                : [];
+        const pendingTransactions: Transaction[] = sources.includes("pending")
+            ? this.reservationAdapterManager.getPendingTransactions(
+                  walletId,
+                  account,
+              )
+            : [];
 
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
