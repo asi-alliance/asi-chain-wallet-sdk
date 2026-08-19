@@ -14,8 +14,6 @@ export default class HttpResponseParser {
     }
 
     public static parseWithBigIntegersAsStrings(data: unknown): unknown {
-        console.log("DATA: ", data);
-
         if (typeof data !== "string") {
             return data;
         }
