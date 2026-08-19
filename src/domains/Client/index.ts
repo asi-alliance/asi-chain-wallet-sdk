@@ -44,7 +44,10 @@ import WalletImportService, {
     IKeyfileImportPreview,
     IKeyfileImportResult,
 } from "@services/WalletImport";
-import ExportKeyfileService from "@services/ExportKeyfileService";
+import ExportKeyfileService, {
+    IAccountKeyfile,
+    IWalletKeyfile,
+} from "@services/ExportKeyfileService";
 import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
@@ -602,33 +605,32 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
-    public getExportedAccountData(walletId: string, accountId: string): string {
+    public getExportedAccountData(
+        walletId: string,
+        accountId: string,
+    ): IAccountKeyfile {
         const exportedAccount: Account = this.walletManager.getAccount(
             walletId,
             accountId,
         );
 
-        return ExportKeyfileService.toJSON(
-            ExportKeyfileService.exportAccountKeyfile(exportedAccount),
-        );
+        return ExportKeyfileService.exportAccountKeyfile(exportedAccount);
     }
 
     @EnsureActive
     public async exportWalletKeyfile(
         walletId: string,
         password: string,
-    ): Promise<string> {
+    ): Promise<IWalletKeyfile> {
         const targetWallet: Wallet | null = this.walletManager.get(walletId);
 
         if (!targetWallet) {
             throw new Error("Client.exportWalletKeyfile: unknown wallet id");
         }
 
-        return ExportKeyfileService.toJSON(
-            await ExportKeyfileService.exportWalletKeyfile(
-                targetWallet,
-                this.createPasswordProvider(password),
-            ),
+        return ExportKeyfileService.exportWalletKeyfile(
+            targetWallet,
+            this.createPasswordProvider(password),
         );
     }
 

@@ -34,9 +34,7 @@ import WalletImportService, {
     IKeyfileImportResult,
     KeyfileImportAccountStatus,
 } from "@services/WalletImport";
-import WalletManager, {
-    ICreatedWalletAccounts,
-} from "@services/WalletManager";
+import WalletManager, { ICreatedWalletAccounts } from "@services/WalletManager";
 import { encodeBase16 } from "@utils/codec";
 
 const MNEMONIC =
@@ -167,7 +165,11 @@ const createHDWalletWithMissingAccount = async (
         passwordProvider,
     );
 
-    await walletManager.deriveAccount(wallet.getId(), "Third", passwordProvider);
+    await walletManager.deriveAccount(
+        wallet.getId(),
+        "Third",
+        passwordProvider,
+    );
 
     const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
 
@@ -190,7 +192,11 @@ const createHDWalletWithIndexGap = async (
         passwordProvider,
     );
 
-    await walletManager.deriveAccount(wallet.getId(), "Third", passwordProvider);
+    await walletManager.deriveAccount(
+        wallet.getId(),
+        "Third",
+        passwordProvider,
+    );
     await walletManager.removeAccount(wallet.getId(), accountId);
 
     return wallet;
@@ -215,7 +221,8 @@ test("private key keyfile carries the encrypted secret and a single account", as
 
     const serialized: string = ExportKeyfileService.toJSON(keyfile);
 
-    const accounts: IKeyfileWalletAccount[] = await readKeyfileAccounts(keyfile);
+    const accounts: IKeyfileWalletAccount[] =
+        await readKeyfileAccounts(keyfile);
 
     console.log("    Wallet type:", keyfile.walletType);
     console.log("    Accounts:", accounts);
@@ -246,7 +253,8 @@ test("hd keyfile keeps every account with its derivation index", async () => {
 
     const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
 
-    const accounts: IKeyfileWalletAccount[] = await readKeyfileAccounts(keyfile);
+    const accounts: IKeyfileWalletAccount[] =
+        await readKeyfileAccounts(keyfile);
 
     const exportedIndexes: (number | null)[] = accounts
         .map((account: IKeyfileWalletAccount) => account.index)
@@ -261,7 +269,10 @@ test("hd keyfile keeps every account with its derivation index", async () => {
         accounts.map((account: IKeyfileWalletAccount) => account.name).sort(),
         ["Main", "Third"],
     );
-    assert.equal(ExportKeyfileService.toJSON(keyfile).includes(MNEMONIC), false);
+    assert.equal(
+        ExportKeyfileService.toJSON(keyfile).includes(MNEMONIC),
+        false,
+    );
 });
 
 test("account keyfile exports metadata without any secret", async () => {
@@ -663,7 +674,9 @@ test("importing an already imported account is rejected as a duplicate", async (
 
     await assert.rejects(
         () =>
-            importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [0] }),
+            importKeyfileAccounts(walletManager, keyfile, {
+                accountIndexes: [0],
+            }),
         DuplicateAccountError,
     );
 
@@ -680,13 +693,19 @@ test("import rejects account indexes that are missing in the keyfile", async () 
 
     await assert.rejects(
         () =>
-            importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [7] }),
+            importKeyfileAccounts(walletManager, keyfile, {
+                accountIndexes: [7],
+            }),
         (error: Error) =>
-            error instanceof InvalidKeyfileError && /indexes 7/.test(error.message),
+            error instanceof InvalidKeyfileError &&
+            /indexes 7/.test(error.message),
     );
 
     await assert.rejects(
-        () => importKeyfileAccounts(walletManager, keyfile, { accountIndexes: [] }),
+        () =>
+            importKeyfileAccounts(walletManager, keyfile, {
+                accountIndexes: [],
+            }),
         InvalidKeyfileError,
     );
 });
@@ -706,7 +725,9 @@ test("keyfile import unlocks the stored wallet before adding accounts", async ()
     await client.deriveAccount(walletId, "Second", PASSWORD);
     await client.deriveAccount(walletId, "Third", PASSWORD);
 
-    const keyfile: string = await client.exportWalletKeyfile(walletId, PASSWORD);
+    const keyfile: string = ExportKeyfileService.toJSON(
+        await client.exportWalletKeyfile(walletId, PASSWORD),
+    );
 
     const secondAccount: Account | undefined = wallet
         .getAccounts()
@@ -720,11 +741,10 @@ test("keyfile import unlocks the stored wallet before adding accounts", async ()
 
     const restoredClient: Client = await createClient();
 
-    const result: IKeyfileImportResult = await restoredClient.importWalletKeyfile(
-        keyfile,
-        PASSWORD,
-        { accountIndexes: [1] },
-    );
+    const result: IKeyfileImportResult =
+        await restoredClient.importWalletKeyfile(keyfile, PASSWORD, {
+            accountIndexes: [1],
+        });
 
     console.log("    Imported accounts:", snapshotAccounts(result.wallet));
 

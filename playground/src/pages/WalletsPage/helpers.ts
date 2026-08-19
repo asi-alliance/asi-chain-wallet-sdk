@@ -6,6 +6,7 @@ import { IKeyfileImportPayload } from "@components/ImportKeyfileWalletModal";
 import { downloadTextFile } from "@utils/functions";
 import {
     decodeBase16,
+    ExportKeyfileService,
     KeysManager,
     MnemonicStrength,
     Wallet,
@@ -216,9 +217,11 @@ export const createWalletPageHandlers = ({
                             try {
                                 downloadTextFile(
                                     `asi-wallet-keyfile-${walletId}.json`,
-                                    await sdk.exportWalletKeyfile(
-                                        walletId,
-                                        password,
+                                    ExportKeyfileService.toJSON(
+                                        await sdk.exportWalletKeyfile(
+                                            walletId,
+                                            password,
+                                        ),
                                     ),
                                     "application/json",
                                 );

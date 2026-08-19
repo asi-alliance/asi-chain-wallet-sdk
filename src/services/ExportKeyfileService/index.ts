@@ -79,14 +79,11 @@ export default class ExportKeyfileService {
         };
     }
 
-    public static exportTransactions(
-        transactions: Transaction[],
-        format: ExportFormat = ExportFormat.JSON,
-    ): string {
-        if (format === ExportFormat.JSON) {
-            return ExportKeyfileService.toJSON(transactions);
-        }
+    private static escapeCsvValue(value: string): string {
+        return `"${value.replace(/"/g, '""')}"`;
+    }
 
+    public static transactionsToCsv(transactions: Transaction[]): string {
         const rows: string[] = transactions.map((transaction: Transaction) => {
             const date: Date = new Date(transaction.timestamp);
 
@@ -116,7 +113,15 @@ export default class ExportKeyfileService {
         ].join("\r\n");
     }
 
-    private static escapeCsvValue(value: string): string {
-        return `"${value.replace(/"/g, '""')}"`;
+    public static exportTransactions(
+        transactions: Transaction[],
+        format: ExportFormat = ExportFormat.JSON,
+    ): string {
+        switch (format) {
+            case ExportFormat.JSON:
+                return ExportKeyfileService.toJSON(transactions);
+            case ExportFormat.CSV:
+                return ExportKeyfileService.transactionsToCsv(transactions);
+        }
     }
 }

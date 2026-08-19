@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account } from "asi-wallet-sdk";
+import { Account, ExportKeyfileService } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -126,7 +126,7 @@ const AccountCard = ({
 
             downloadTextFile(
                 `asi-keyfile-${account.getName()}.json`,
-                keyfile,
+                ExportKeyfileService.toJSON(keyfile),
                 "application/json",
             );
         } catch (error) {

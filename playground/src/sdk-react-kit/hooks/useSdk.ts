@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Client,
     ClientEvent,
+    IAccountKeyfile,
     ICreatedAccountData,
     IDeployRequest,
     IDeployWatchCallbacks,
@@ -16,6 +17,7 @@ import {
     IReservedOperationResult,
     ITransactionReservation,
     ITransferRequest,
+    IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
@@ -378,13 +380,13 @@ const useSdk = () => {
     );
 
     const getExportedAccountData = useCallback(
-        (walletId: string, accountId: string): string =>
+        (walletId: string, accountId: string): IAccountKeyfile =>
             requireClient().getExportedAccountData(walletId, accountId),
         [requireClient],
     );
 
     const exportWalletKeyfile = useCallback(
-        (walletId: string, password: string): Promise<string> =>
+        (walletId: string, password: string): Promise<IWalletKeyfile> =>
             requireClient().exportWalletKeyfile(walletId, password),
         [requireClient],
     );
