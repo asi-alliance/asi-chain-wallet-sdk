@@ -24,7 +24,6 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address, IImportKeyfileWalletPayload } from "@domains/Wallet";
 import Account from "@domains/Account";
-import { CustomError, WalletLockedError } from "@domains/CustomError";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -483,27 +482,6 @@ export default class Client extends ClosableDomain {
         return wallet;
     }
 
-    private async ensureWalletIsOpened(
-        signerId: string,
-        password: string,
-    ): Promise<void> {
-        if (this.walletManager.getBySignerId(signerId)) {
-            return;
-        }
-
-        try {
-            await this.openWallet(signerId, password);
-        } catch (error) {
-            if (error instanceof CustomError) {
-                throw error;
-            }
-
-            throw new WalletLockedError(
-                `Wallet ${signerId} cannot be opened with the provided password, unlock it manually`,
-            );
-        }
-    }
-
     @EnsureActive
     public closeWallet(walletId: string): void {
         const wallet: Wallet = this.getOpenWallet(walletId);
@@ -639,10 +617,19 @@ export default class Client extends ClosableDomain {
         source: unknown,
         password: string,
     ): Promise<IKeyfileImportPreview> {
-        return WalletImportService.previewKeyfileImport(
-            source,
-            this.createPasswordProvider(password),
-        );
+        const preview: Omit<IKeyfileImportPreview, "isExistingWalletOpen"> =
+            await WalletImportService.previewKeyfileImport(
+                source,
+                this.createPasswordProvider(password),
+            );
+
+        return {
+            ...preview,
+            isExistingWalletOpen: Boolean(
+                preview.existingSignerId &&
+                    this.walletManager.getBySignerId(preview.existingSignerId),
+            ),
+        };
     }
 
     private async createWalletFromKeyfile(
@@ -671,7 +658,6 @@ export default class Client extends ClosableDomain {
 
         return {
             signerId: wallet.getSigner().getId(),
-            walletId: wallet.getId(),
             isMergedIntoExistingWallet: false,
             importedAccountIds: wallet
                 .getAccounts()
@@ -703,24 +689,24 @@ export default class Client extends ClosableDomain {
             return this.createWalletFromKeyfile(payload, passwordProvider);
         }
 
-        await this.ensureWalletIsOpened(existingSignerId, password);
-
         const { wallet, accounts }: ICreatedWalletAccounts =
             await this.lifecycleGuard.runAccountsUpdate(existingSignerId, () =>
-                this.walletManager.createAccounts(
+                this.walletManager.createAccountsBySignerId(
                     existingSignerId,
                     payload.accounts,
                     secretProvider,
                 ),
             );
 
-        this.emitAccountsChanged(wallet.getId());
-        this.emitWalletsChanged();
+        if (wallet) {
+            this.emitAccountsChanged(wallet.getId());
+            this.emitWalletsChanged();
+        }
+
         this.cacheInsensitiveAccountsData(accounts);
 
         return {
             signerId: existingSignerId,
-            walletId: wallet.getId(),
             isMergedIntoExistingWallet: true,
             importedAccountIds: accounts.map((account: Account) =>
                 account.getId(),

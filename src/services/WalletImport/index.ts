@@ -28,6 +28,7 @@ export interface IKeyfileImportAccountPreview {
 export interface IKeyfileImportPreview {
     walletType: WalletTypes;
     existingSignerId: string | null;
+    isExistingWalletOpen: boolean;
     accounts: IKeyfileImportAccountPreview[];
 }
 
@@ -39,10 +40,9 @@ export interface IKeyfileImportPlan {
 
 export interface IKeyfileImportResult {
     signerId: string;
-    walletId: string;
     isMergedIntoExistingWallet: boolean;
     importedAccountIds: string[];
-    wallet: Wallet;
+    wallet: Wallet | null;
 }
 
 export default class WalletImportService {
@@ -86,7 +86,7 @@ export default class WalletImportService {
     public static async previewKeyfileImport(
         source: unknown,
         passwordProvider: SecretsProvider,
-    ): Promise<IKeyfileImportPreview> {
+    ): Promise<Omit<IKeyfileImportPreview, "isExistingWalletOpen">> {
         const {
             payload,
             secretProvider,

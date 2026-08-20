@@ -4,7 +4,7 @@ import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
-import { WalletAction, WalletLockedError } from "@domains/CustomError";
+import { WalletAction } from "@domains/CustomError";
 import AccountsService from "@services/Accounts";
 import WalletOperationGuardService from "@services/WalletOperationGuard";
 import WalletPersistenceService from "@services/WalletPersistence";
@@ -34,7 +34,7 @@ export interface IDerivedAccount {
 }
 
 export interface ICreatedWalletAccounts {
-    wallet: Wallet;
+    wallet: Wallet | null;
     accounts: Account[];
 }
 
@@ -132,19 +132,11 @@ export default class WalletManager extends ItemManager<Wallet> {
         return currentWallet;
     }
 
-    public async createAccounts(
+    public async createAccountsBySignerId(
         signerId: string,
         accounts: TCreateAccountPayload[],
         secretProvider: SecretsProvider,
     ): Promise<ICreatedWalletAccounts> {
-        const wallet: Wallet | null = this.getBySignerId(signerId);
-
-        if (!wallet) {
-            throw new WalletLockedError(
-                `Wallet ${signerId} must be unlocked to create accounts in it`,
-            );
-        }
-
         const createdAccounts: Account[] = await AccountsService.createAccounts(
             accounts,
             secretProvider,
@@ -152,7 +144,9 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         await WalletPersistenceService.saveAccounts(signerId, createdAccounts);
 
-        wallet.addAccounts(createdAccounts);
+        const wallet: Wallet | null = this.getBySignerId(signerId);
+
+        wallet?.addAccounts(createdAccounts);
 
         return { wallet, accounts: createdAccounts };
     }
