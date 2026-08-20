@@ -14,7 +14,6 @@ import {
     DuplicateWalletError,
     InvalidKeyfileError,
     InvalidKeyfilePasswordError,
-    WalletLockedError,
 } from "@domains/CustomError";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
@@ -119,14 +118,14 @@ const importKeyfile = async (
 
 const previewKeyfileImport = (
     source: unknown,
-): Promise<IKeyfileImportPreview> =>
+): Promise<Omit<IKeyfileImportPreview, "isExistingWalletOpen">> =>
     WalletImportService.previewKeyfileImport(source, passwordProvider);
 
 const importKeyfileAccounts = async (
     walletManager: WalletManager,
     source: unknown,
     options?: IImportWalletKeyfileOptions,
-): Promise<Account[]> => {
+): Promise<ICreatedWalletAccounts> => {
     const { payload, secretProvider, existingSignerId }: IKeyfileImportPlan =
         await WalletImportService.prepareKeyfileImport(
             source,
@@ -136,14 +135,11 @@ const importKeyfileAccounts = async (
 
     assert.ok(existingSignerId);
 
-    const { accounts }: ICreatedWalletAccounts =
-        await walletManager.createAccounts(
-            existingSignerId,
-            payload.accounts,
-            secretProvider,
-        );
-
-    return accounts;
+    return walletManager.createAccountsBySignerId(
+        existingSignerId,
+        payload.accounts,
+        secretProvider,
+    );
 };
 
 const accountIndexes = (accounts: Account[]): (number | null)[] =>
@@ -569,7 +565,7 @@ test("import preview lists every account of a wallet that is not stored yet", as
 
     await walletManager.delete(wallet.getId());
 
-    const preview: IKeyfileImportPreview = await previewKeyfileImport(keyfile);
+    const preview = await previewKeyfileImport(keyfile);
 
     console.log("    Preview accounts:", preview.accounts);
 
@@ -601,7 +597,7 @@ test("import preview points to the stored wallet and marks imported accounts", a
     const { wallet, keyfile } =
         await createHDWalletWithMissingAccount(walletManager);
 
-    const preview: IKeyfileImportPreview = await previewKeyfileImport(keyfile);
+    const preview = await previewKeyfileImport(keyfile);
 
     console.log("    Preview accounts:", preview.accounts);
 
@@ -648,11 +644,10 @@ test("selected keyfile accounts are imported into the stored wallet", async () =
     const { wallet, keyfile } =
         await createHDWalletWithMissingAccount(walletManager);
 
-    const importedAccounts: Account[] = await importKeyfileAccounts(
-        walletManager,
-        keyfile,
-        { accountIndexes: [1] },
-    );
+    const { accounts: importedAccounts }: ICreatedWalletAccounts =
+        await importKeyfileAccounts(walletManager, keyfile, {
+            accountIndexes: [1],
+        });
 
     console.log("    Imported accounts:", snapshotAccounts(wallet));
 
@@ -710,72 +705,93 @@ test("import rejects account indexes that are missing in the keyfile", async () 
     );
 });
 
-test("keyfile import unlocks the stored wallet before adding accounts", async () => {
-    console.log("\n=== KEYFILE IMPORT UNLOCKS THE STORED WALLET ===");
+test("keyfile import adds accounts to a closed wallet without opening it", async () => {
+    console.log("\n=== KEYFILE IMPORT INTO A CLOSED WALLET ===");
 
     const client: Client = await createClient();
 
-    const wallet: Wallet = await client.createHDWallet(
+    const exportedWallet: Wallet = await client.createHDWallet(
         { mnemonic: MNEMONIC, accountName: "Main" },
         PASSWORD,
     );
 
-    const walletId: string = wallet.getId();
-
-    await client.deriveAccount(walletId, "Second", PASSWORD);
-    await client.deriveAccount(walletId, "Third", PASSWORD);
+    await client.deriveAccount(exportedWallet.getId(), "Second", PASSWORD);
 
     const keyfile: string = ExportKeyfileService.toJSON(
-        await client.exportWalletKeyfile(walletId, PASSWORD),
+        await client.exportWalletKeyfile(exportedWallet.getId(), PASSWORD),
     );
 
-    const secondAccount: Account | undefined = wallet
-        .getAccounts()
-        .find((account: Account) => account.getIndex() === 1);
+    await client.clearPersistence();
 
-    assert.ok(secondAccount);
+    const storedWallet: Wallet = await client.createHDWallet(
+        { mnemonic: MNEMONIC, accountName: "Main" },
+        WRONG_PASSWORD,
+    );
 
-    await client.removeAccount(walletId, secondAccount.getId());
+    const storedSignerId: string = storedWallet.getSigner().getId();
 
-    client.lockWallet(walletId);
+    const openedWalletPreview: IKeyfileImportPreview =
+        await client.previewWalletKeyfileImport(keyfile, PASSWORD);
 
-    const restoredClient: Client = await createClient();
+    assert.equal(openedWalletPreview.existingSignerId, storedSignerId);
+    assert.equal(openedWalletPreview.isExistingWalletOpen, true);
 
-    const result: IKeyfileImportResult =
-        await restoredClient.importWalletKeyfile(keyfile, PASSWORD, {
-            accountIndexes: [1],
-        });
+    client.closeWallet(storedWallet.getId());
 
-    console.log("    Imported accounts:", snapshotAccounts(result.wallet));
+    const closedWalletPreview: IKeyfileImportPreview =
+        await client.previewWalletKeyfileImport(keyfile, PASSWORD);
+
+    assert.equal(closedWalletPreview.existingSignerId, storedSignerId);
+    assert.equal(closedWalletPreview.isExistingWalletOpen, false);
+
+    const result: IKeyfileImportResult = await client.importWalletKeyfile(
+        keyfile,
+        PASSWORD,
+        { accountIndexes: [1] },
+    );
+
+    console.log("    Imported account ids:", result.importedAccountIds);
 
     assert.equal(result.isMergedIntoExistingWallet, true);
-    assert.equal(result.signerId, wallet.getSigner().getId());
+    assert.equal(result.signerId, storedSignerId);
+    assert.equal(result.wallet, null);
     assert.equal(result.importedAccountIds.length, 1);
-    assert.deepEqual(accountIndexes(result.wallet.getAccounts()), [0, 1, 2]);
+    assert.equal(client.getWalletManager().getBySignerId(storedSignerId), null);
     assert.equal((await StorageManager.getSigners()).length, 1);
-    assert.equal((await StorageManager.getAccounts()).length, 3);
+    assert.equal((await StorageManager.getAccounts()).length, 2);
 
-    restoredClient.lockWallet(result.walletId);
+    const reopenedWallet: Wallet = await client.openWallet(
+        storedSignerId,
+        WRONG_PASSWORD,
+    );
+
+    console.log("    Reopened accounts:", snapshotAccounts(reopenedWallet));
+
+    assert.deepEqual(accountIndexes(reopenedWallet.getAccounts()), [0, 1]);
+
+    client.lockWallet(reopenedWallet.getId());
 });
 
-test("creating accounts requires an unlocked wallet", async () => {
-    console.log("\n=== KEYFILE ACCOUNTS IMPORT INTO A LOCKED WALLET ===");
+test("creating accounts for a closed wallet only saves them to storage", async () => {
+    console.log("\n=== KEYFILE ACCOUNTS IMPORT WITHOUT AN OPEN WALLET ===");
 
     const walletManager = new WalletManager();
 
     const { keyfile } = await createHDWalletWithMissingAccount(walletManager);
 
-    const lockedWalletManager = new WalletManager();
+    const closedWalletManager = new WalletManager();
 
-    await assert.rejects(
-        () =>
-            importKeyfileAccounts(lockedWalletManager, keyfile, {
-                accountIndexes: [1],
-            }),
-        WalletLockedError,
-    );
+    const { wallet, accounts }: ICreatedWalletAccounts =
+        await importKeyfileAccounts(closedWalletManager, keyfile, {
+            accountIndexes: [1],
+        });
 
-    assert.equal((await StorageManager.getAccounts()).length, 2);
+    console.log("    Imported account indexes:", accountIndexes(accounts));
+
+    assert.equal(wallet, null);
+    assert.equal(accounts.length, 1);
+    assert.equal(accounts[0].getIndex(), 1);
+    assert.equal((await StorageManager.getAccounts()).length, 3);
 });
 
 test("only selected accounts are imported for a wallet that is not stored yet", async () => {
