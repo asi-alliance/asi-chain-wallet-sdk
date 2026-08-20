@@ -2,7 +2,7 @@ import type { Address } from "@domains/Wallet";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
-import { ASI_WALLET_KEYFILE, ASI_WALLET_KEYFILE_VERSION } from "@config/index";
+import { ASI_WALLET_KEYFILE_VERSION, KeyfileTypes } from "@config/index";
 import { isEncryptedData, isKeyfileWalletAccount } from "@utils/guards";
 import type { IWalletKeyfile } from "@services/ExportKeyfileService";
 import type { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
@@ -203,7 +203,7 @@ export const validateWalletKeyfile = (
 
     const keyfile = source as IWalletKeyfile;
 
-    if (keyfile.type !== ASI_WALLET_KEYFILE) {
+    if (keyfile.type !== KeyfileTypes.WALLET) {
         return { isValid: false, error: "Keyfile has an unknown type" };
     }
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ASI_WALLET_KEYFILE, ASI_WALLET_KEYFILE_VERSION } from "@config/index";
+import { ASI_WALLET_KEYFILE_VERSION, KeyfileTypes } from "@config/index";
 import Account from "@domains/Account";
 import Client from "@domains/Client";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -227,7 +227,7 @@ test("private key keyfile carries the encrypted secret and a single account", as
     console.log("    Wallet type:", keyfile.walletType);
     console.log("    Accounts:", accounts);
 
-    assert.equal(keyfile.type, ASI_WALLET_KEYFILE);
+    assert.equal(keyfile.type, KeyfileTypes.WALLET);
     assert.equal(keyfile.version, ASI_WALLET_KEYFILE_VERSION);
     assert.equal(keyfile.walletType, WalletTypes.PRIVATE_KEY);
     assert.equal(accounts.length, 1);
@@ -295,7 +295,7 @@ test("account keyfile exports metadata without any secret", async () => {
 
     const parsed = JSON.parse(serialized);
 
-    assert.equal(parsed.type, ASI_WALLET_KEYFILE);
+    assert.equal(parsed.type, KeyfileTypes.ACCOUNT);
     assert.deepEqual(parsed.account, {
         name: "Main",
         address: account.getAddress(),

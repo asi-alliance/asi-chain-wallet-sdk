@@ -1,7 +1,7 @@
 import {
-    ASI_WALLET_KEYFILE,
     ASI_WALLET_KEYFILE_VERSION,
     ExportFormat,
+    KeyfileTypes,
     TRANSACTIONS_CSV_HEADERS,
 } from "@config/index";
 import Account from "@domains/Account";
@@ -37,17 +37,17 @@ export default class ExportKeyfileService {
         return JSON.stringify(data, JSON_REPLACER, JSON_INDENT);
     }
 
-    private static createKeyfileEnvelope(): IKeyfileEnvelope {
+    private static createKeyfileEnvelope(type: KeyfileTypes): IKeyfileEnvelope {
         return {
             version: ASI_WALLET_KEYFILE_VERSION,
-            type: ASI_WALLET_KEYFILE,
+            type,
             timestamp: new Date().toISOString(),
         };
     }
 
     public static exportAccountKeyfile(account: Account): IAccountKeyfile {
         return {
-            ...ExportKeyfileService.createKeyfileEnvelope(),
+            ...ExportKeyfileService.createKeyfileEnvelope(KeyfileTypes.ACCOUNT),
             account: KeyfileSerializer.serializeAccount(account),
         };
     }
@@ -74,7 +74,7 @@ export default class ExportKeyfileService {
         }
 
         return {
-            ...ExportKeyfileService.createKeyfileEnvelope(),
+            ...ExportKeyfileService.createKeyfileEnvelope(KeyfileTypes.WALLET),
             ...serializedWallet,
         };
     }
