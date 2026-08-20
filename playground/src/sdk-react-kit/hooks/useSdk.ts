@@ -9,8 +9,8 @@ import {
     IDeployWatchHandle,
     IDeployWatchOptions,
     IImportWalletKeyfileOptions,
+    IKeyfileAccountsImportResult,
     IKeyfileImportPreview,
-    IKeyfileImportResult,
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
@@ -402,8 +402,27 @@ const useSdk = () => {
             source: string,
             password: string,
             options?: IImportWalletKeyfileOptions,
-        ): Promise<IKeyfileImportResult> => {
-            const result = await requireClient().importWalletKeyfile(
+        ): Promise<Wallet> => {
+            const wallet = await requireClient().importWalletKeyfile(
+                source,
+                password,
+                options,
+            );
+
+            await refresh();
+
+            return wallet;
+        },
+        [requireClient, refresh],
+    );
+
+    const importKeyfileAccounts = useCallback(
+        async (
+            source: string,
+            password: string,
+            options?: IImportWalletKeyfileOptions,
+        ): Promise<IKeyfileAccountsImportResult> => {
+            const result = await requireClient().importKeyfileAccounts(
                 source,
                 password,
                 options,
@@ -499,6 +518,7 @@ const useSdk = () => {
         exportWalletKeyfile,
         previewWalletKeyfileImport,
         importWalletKeyfile,
+        importKeyfileAccounts,
         getBalance,
         getAvailableBalance,
         getReservations,

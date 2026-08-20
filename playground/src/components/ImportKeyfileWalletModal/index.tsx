@@ -15,6 +15,7 @@ import "./style.css";
 export interface IKeyfileImportPayload {
     keyfile: string;
     password: string;
+    existingSignerId: string | null;
     accountIndexes?: number[];
 }
 
@@ -170,7 +171,11 @@ const ImportKeyfileWalletModal = ({
         }
 
         if (preview.walletType !== WalletTypes.HD) {
-            onSubmit({ keyfile: selectedKeyfile.content, password });
+            onSubmit({
+                keyfile: selectedKeyfile.content,
+                password,
+                existingSignerId: preview.existingSignerId,
+            });
             return;
         }
 
@@ -182,6 +187,7 @@ const ImportKeyfileWalletModal = ({
         onSubmit({
             keyfile: selectedKeyfile.content,
             password,
+            existingSignerId: preview.existingSignerId,
             accountIndexes: selectedIndexes,
         });
     };

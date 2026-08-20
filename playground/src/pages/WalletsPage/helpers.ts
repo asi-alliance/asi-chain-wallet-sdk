@@ -74,15 +74,20 @@ export const createWalletPageHandlers = ({
     const submitImportKeyfile = ({
         keyfile,
         password,
+        existingSignerId,
         accountIndexes,
     }: IKeyfileImportPayload) =>
         withLoader(async () => {
             try {
-                await sdk.importWalletKeyfile(
-                    keyfile,
-                    password,
-                    accountIndexes ? { accountIndexes } : undefined,
-                );
+                const options = accountIndexes
+                    ? { accountIndexes }
+                    : undefined;
+
+                if (existingSignerId) {
+                    await sdk.importKeyfileAccounts(keyfile, password, options);
+                } else {
+                    await sdk.importWalletKeyfile(keyfile, password, options);
+                }
 
                 closeModal();
             } catch (error) {
