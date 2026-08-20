@@ -1,11 +1,13 @@
 import Account from "@domains/Account";
 import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
-import type Wallet from "@domains/Wallet";
 import type { Address, IImportKeyfileWalletPayload } from "@domains/Wallet";
 import { WalletTypes } from "@domains/Signer";
 import type { ISignerStorageRecord } from "@domains/SignersStorageRepository";
 import type { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
-import { DuplicateWalletError } from "@domains/CustomError";
+import {
+    DuplicateWalletError,
+    KeyfileWalletNotFoundError,
+} from "@domains/CustomError";
 import AccountsService from "@services/Accounts";
 import ImportKeyfileService, {
     IImportWalletKeyfileOptions,
@@ -35,22 +37,27 @@ export interface IKeyfileImportPreview {
 export interface IKeyfileImportPlan {
     payload: IImportKeyfileWalletPayload;
     secretProvider: SecretsProvider;
+}
+
+export interface IKeyfileAccountsImportPlan extends IKeyfileImportPlan {
+    signerId: string;
+}
+
+interface IResolvedKeyfileImport extends IKeyfileImportPlan {
     existingSignerId: string | null;
 }
 
-export interface IKeyfileImportResult {
+export interface IKeyfileAccountsImportResult {
     signerId: string;
-    isMergedIntoExistingWallet: boolean;
     importedAccountIds: string[];
-    wallet: Wallet | null;
 }
 
 export default class WalletImportService {
-    public static async prepareKeyfileImport(
+    private static async resolveKeyfileImport(
         source: unknown,
         passwordProvider: SecretsProvider,
         options?: IImportWalletKeyfileOptions,
-    ): Promise<IKeyfileImportPlan> {
+    ): Promise<IResolvedKeyfileImport> {
         const payload: IImportKeyfileWalletPayload =
             await ImportKeyfileService.toImportPayload(
                 ImportKeyfileService.parseWalletKeyfile(source),
@@ -83,6 +90,44 @@ export default class WalletImportService {
         };
     }
 
+    public static async prepareKeyfileImport(
+        source: unknown,
+        passwordProvider: SecretsProvider,
+        options?: IImportWalletKeyfileOptions,
+    ): Promise<IKeyfileImportPlan> {
+        const { payload, secretProvider, existingSignerId } =
+            await WalletImportService.resolveKeyfileImport(
+                source,
+                passwordProvider,
+                options,
+            );
+
+        if (existingSignerId) {
+            throw new DuplicateWalletError(existingSignerId);
+        }
+
+        return { payload, secretProvider };
+    }
+
+    public static async prepareKeyfileAccountsImport(
+        source: unknown,
+        passwordProvider: SecretsProvider,
+        options?: IImportWalletKeyfileOptions,
+    ): Promise<IKeyfileAccountsImportPlan> {
+        const { payload, secretProvider, existingSignerId } =
+            await WalletImportService.resolveKeyfileImport(
+                source,
+                passwordProvider,
+                options,
+            );
+
+        if (!existingSignerId) {
+            throw new KeyfileWalletNotFoundError();
+        }
+
+        return { payload, secretProvider, signerId: existingSignerId };
+    }
+
     public static async previewKeyfileImport(
         source: unknown,
         passwordProvider: SecretsProvider,
@@ -91,10 +136,11 @@ export default class WalletImportService {
             payload,
             secretProvider,
             existingSignerId,
-        }: IKeyfileImportPlan = await WalletImportService.prepareKeyfileImport(
-            source,
-            passwordProvider,
-        );
+        }: IResolvedKeyfileImport =
+            await WalletImportService.resolveKeyfileImport(
+                source,
+                passwordProvider,
+            );
 
         const accounts: Account[] = await AccountsService.createAccounts(
             payload.accounts,

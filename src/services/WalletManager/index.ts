@@ -1,13 +1,11 @@
-import Account, { TCreateAccountPayload } from "@domains/Account";
+import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
 import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
 import { WalletAction } from "@domains/CustomError";
-import AccountsService from "@services/Accounts";
 import WalletOperationGuardService from "@services/WalletOperationGuard";
-import WalletPersistenceService from "@services/WalletPersistence";
 import WalletUniquenessService from "@services/WalletUniqueness";
 
 export interface IAccountMetadata {
@@ -31,11 +29,6 @@ export interface ICreateHDWalletParams {
 export interface IDerivedAccount {
     accountId: string;
     account: Account;
-}
-
-export interface ICreatedWalletAccounts {
-    wallet: Wallet | null;
-    accounts: Account[];
 }
 
 export default class WalletManager extends ItemManager<Wallet> {
@@ -130,25 +123,6 @@ export default class WalletManager extends ItemManager<Wallet> {
         await StorageManager.deleteSigner(currentWallet.getSigner().getId());
 
         return currentWallet;
-    }
-
-    public async createAccountsBySignerId(
-        signerId: string,
-        accounts: TCreateAccountPayload[],
-        secretProvider: SecretsProvider,
-    ): Promise<ICreatedWalletAccounts> {
-        const createdAccounts: Account[] = await AccountsService.createAccounts(
-            accounts,
-            secretProvider,
-        );
-
-        await WalletPersistenceService.saveAccounts(signerId, createdAccounts);
-
-        const wallet: Wallet | null = this.getBySignerId(signerId);
-
-        wallet?.addAccounts(createdAccounts);
-
-        return { wallet, accounts: createdAccounts };
     }
 
     public async deriveAccount(

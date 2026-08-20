@@ -10,6 +10,7 @@ export enum CustomErrorCode {
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
     INVALID_KEYFILE = "INVALID_KEYFILE",
     INVALID_KEYFILE_PASSWORD = "INVALID_KEYFILE_PASSWORD",
+    KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
 }
@@ -125,6 +126,14 @@ export class InvalidKeyfilePasswordError extends CustomError {
         message: string = "Keyfile cannot be decrypted with the provided password",
     ) {
         super(CustomErrorCode.INVALID_KEYFILE_PASSWORD, message, 401);
+    }
+}
+
+export class KeyfileWalletNotFoundError extends CustomError {
+    constructor(
+        message: string = "Keyfile secret does not belong to any stored wallet, its accounts have no wallet to be imported into",
+    ) {
+        super(CustomErrorCode.KEYFILE_WALLET_NOT_FOUND, message, 404);
     }
 }
 
