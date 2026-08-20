@@ -31,6 +31,26 @@ This document defines the current cryptographic profile used by `asi-chain-walle
   - `src/fabrics/signer.ts`
   - `src/domains/Signer/index.ts`
 
+## 1b. Key Fingerprint Profile
+
+- Purpose: recognize that a secret is already stored, without decrypting
+  anything, so duplicate wallets and accounts can be refused while every wallet
+  is closed.
+- Hash function: `sha256` (from `@noble/hashes`), hex-encoded.
+- Private-key / account input: the `secp256k1` public key.
+- HD signer input: the BIP-32 master node's `publicKey || chainCode`. Hashing the
+  master node rather than the seed keeps the value stable per mnemonic while
+  nothing recoverable is derived from it; the seed is zeroized in a `finally`.
+- Storage: plaintext field on the signer and account records, next to the
+  encrypted payload. It is public-material-derived and one-way, so it discloses
+  nothing the chain does not already expose.
+- Not a KDF and not a secret: it never participates in encryption, signing, or
+  key derivation.
+- Source of truth:
+  - `src/services/KeyFingerprint/index.ts`
+  - `src/fabrics/signer.ts`
+  - `src/domains/Account/index.ts`
+
 ## 2. Address Derivation Profile
 
 - Public key curve: `secp256k1`
@@ -45,17 +65,25 @@ This document defines the current cryptographic profile used by `asi-chain-walle
 
 - Signature scheme: `secp256k1`
 - Deploy digest hash: `blake2b-256`
+- Private key validation: imported keys must be `32` bytes and within the
+  `secp256k1` scalar range (`@noble/secp256k1` `isValidPrivateKey`) before a
+  wallet is created from them.
 - Key-handling boundary:
   - Raw key export is disabled by default.
   - Signing uses scoped decrypted-key callbacks with post-use zeroization.
   - Decrypted-key lifetime is either ephemeral (per-signature, when no session is
     held) or bounded by an in-memory signing session with a fixed, configurable
     auto-lock window; locking/expiry clears and zeroizes the session secret.
+  - The session is a distinct object with a generation counter, so an unlock that
+    completes after a concurrent lock zeroizes its secret and is cancelled rather
+    than installed.
 - Source of truth:
   - `src/services/Signer/index.ts`
   - `src/domains/Signer/index.ts`
+  - `src/domains/SigningSession/index.ts`
   - `src/domains/AutoTimer/index.ts`
   - `src/domains/Wallet/index.ts`
+  - `src/utils/validators/index.ts`
 
 ## 4. Versioning and Migration Notes
 

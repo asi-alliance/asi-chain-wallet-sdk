@@ -24,14 +24,32 @@ look when integrating the SDK into your own app.
 
 ### useSdk (`hooks/useSdk.ts`)
 
-The core hook. Creates a `Client` on mount (via `helpers.init`), wires an
-`IClientEventDispatcher` into React state, and exposes a flat, memoized API. It
-tears the client down on unmount.
+The core hook. Creates a `Client` on mount (via `helpers.init`), subscribes to
+the client event bus, mirrors those events into React state, and exposes a flat,
+memoized API. It tears the client down on unmount (`await client.close()`).
+
+Two effects, deliberately separate: one owns the client's life, the other owns
+the subscriptions. The second runs once `client` is set, collects the
+`TUnsubscribe` returned by each `eventBus.on(...)` into an array, and calls them
+all on cleanup — the pattern the SDK's post-creation subscription model is meant
+for, and the reason the hook does not need a constructor-time dispatcher.
+
+```ts
+const eventBus = client.getEventBus();
+
+const unsubscribes: TUnsubscribe[] = [
+    eventBus.on(ClientEvent.WALLETS_CHANGED, () => void refresh()),
+    eventBus.on(ClientEvent.ACCOUNTS_CHANGED, () => void refresh()),
+    eventBus.on(ClientEvent.NETWORK_CHANGED, setCurrentNetwork),
+    eventBus.on(ClientEvent.RESERVATIONS_CHANGED, setReservationsByWallet),
+    eventBus.on(ClientEvent.NETWORK_BUSY_CHANGED, updateBusyNetworkIds),
+];
+```
 
 Returned value (`UseSdkValue`):
 
 - State: `client`, `isReady`, `walletsMetadata: IWalletMetadata[]`,
-  `unlockedWallets: Wallet[]`, `reservationsByWallet`,
+  `openWallets: Wallet[]`, `reservationsByWallet`,
   `networkRecords: INetworkRecord[]`, `currentNetwork: INetworkRecord | null`.
 - Network: `setNetwork(id)`, `addNetwork(name, config): INetworkRecord`,
   `updateNetwork(id, update)`, `removeNetwork(id)`. Networks are identified by a
@@ -40,15 +58,19 @@ Returned value (`UseSdkValue`):
   `client.getNetworks()` and is refreshed after every CRUD call.
   `updateNetwork`/`removeNetwork` also re-sync `currentNetwork` from
   `getCurrentNetwork()`, since the SDK switches the active network internally
-  without emitting `onNetworkChanged`. `onNetworkChanged(record)` delivers the
-  full active-network record.
+  without emitting `NETWORK_CHANGED`. The `NETWORK_CHANGED` event itself delivers
+  the full active-network record.
 - Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
 - Wallet lifecycle: `createHDWallet(input, password)`,
-  `createPrivateKeyWallet(input, password)`, `unlockWallet(signerId, password)`,
-  `removeWallet(walletId)`.
+  `createPrivateKeyWallet(input, password)`, `openWallet(signerId, password)`,
+  `closeWallet(walletId)`, `closeAllWallets()`, `removeWallet(walletId)`.
+  `openWallet` loads a stored wallet into memory, `closeWallet` drops it again
+  without touching storage, and only `removeWallet` deletes it. `openWallets`
+  holds whatever is currently in memory.
 - Signing sessions: `isWalletUnlocked(walletId)` — used by `useSecureAction` to
-  decide whether a password prompt is needed (see below). `unlockWallet` starts
-  the session; the SDK auto-locks it after the policy's timeout.
+  decide whether a password prompt is needed (see below). `openWallet` starts the
+  session as a side effect of opening; the SDK auto-locks it after the policy's
+  timeout (`SDK_CLIENT_SESSION_AUTO_LOCK_MS`).
 - Account lifecycle: `deriveAccount(walletId, name, password)`,
   `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`,
   `setActiveAccount(walletId, accountId)`.
@@ -64,6 +86,12 @@ Returned value (`UseSdkValue`):
   `subscribe` instead of a separate watch handle.
 - Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
   keyfile JSON (downloaded from `AccountCard`).
+- Network busy & reservations: `isNetworkBusy(networkId)`,
+  `isCurrentNetworkBusy`, `hasNetworkReservations(networkId)`. The first two read
+  a local `busyNetworkIds` list kept in sync by the `NETWORK_BUSY_CHANGED` event
+  rather than polling the SDK, so rendering stays synchronous;
+  `hasNetworkReservations` delegates straight to the client and answers whether
+  funds are still locked on a network before it is removed.
 - Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
 - Persistence: `clearPersistence()`.
 
@@ -119,10 +147,16 @@ previous network is never rendered as the new network's data.
 ### helpers.ts
 
 ```ts
-init(eventDispatcher: IClientEventDispatcher): Promise<Client>
+init(): Promise<Client>
 ```
 
-Calls `Client.create({ networksConfig: NETWORKS_CONFIG, defaultNetwork, eventDispatcher })`.
+Calls `Client.create({ networksConfig: NETWORKS_CONFIG, defaultNetwork, onListenerError, security })`.
+
+No `eventDispatcher` is passed: `useSdk` subscribes to the event bus after the
+client exists, which is why `init` takes no arguments any more. `onListenerError`
+logs a failing listener to the console so a broken subscriber is visible instead
+of silently swallowed, and `security.autoLockMs` comes from
+`SDK_CLIENT_SESSION_AUTO_LOCK_MS`.
 
 ### networksConfig.ts
 
@@ -190,14 +224,19 @@ loader.
 ### WalletsPage (`pages/WalletsPage/index.tsx`)
 
 Two columns — Private Key wallets and Mnemonic (HD) wallets — rendered from
-`sdk.walletsMetadata`. Locked wallets show an "Unlock" button; unlocked wallets
-render their accounts as `AccountCard`s and (for HD) a "Derive" action. HD create/
-import offers a 12/24-word choice.
+`sdk.walletsMetadata`. Closed wallets show an "Open" button; open wallets render
+their accounts as `AccountCard`s, a "Close" action, and (for HD) a "Derive"
+action. HD create/import offers a 12/24-word choice.
+
+The page matches metadata to open wallets through a
+`Map<signerId, Wallet>` built from `sdk.openWallets`, because
+`walletsMetadata` is keyed by `signerId` while the in-memory wallets are keyed by
+`walletId`.
 
 `helpers.ts` builds `WalletPageHandlers`: `createPk`, `importPk`, `createHd`,
-`importHd`, `unlockWallet`, `deriveAccount`, `removeWallet`, `renameAccount`,
-`removeAccount`. These open the relevant modals and call the matching `useSdk`
-methods through `withLoader`.
+`importHd`, `openWallet`, `closeWallet`, `deriveAccount`, `removeWallet`,
+`renameAccount`, `removeAccount`. These open the relevant modals and call the
+matching `useSdk` methods through `withLoader`.
 
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 

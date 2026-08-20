@@ -7,6 +7,8 @@ Services split into a few groups:
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
   `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
   `TransactionReservationsManager`, `DisposableItemManager`).
+- **Events & lifecycle** — `ClientEventBus`, `ClientLifecycleGuard`,
+  `ConcurrentOperationGuardService`, `WalletOperationGuardService`.
 - **Read models** — `TransactionsHistoryAggregator`, `CollectionQueryService`.
 - **Persistence orchestration** — `StorageManager`, `NetworkManager`,
   `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
@@ -16,7 +18,7 @@ Services split into a few groups:
 - **Export** — `ExportService` (account keyfile + transactions JSON/CSV).
 - **Crypto / key primitives** — `CryptoService`, `WalletsService`,
   `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
-  `BinaryWriter` (documented under domains).
+  `KeyFingerprintService`, `BinaryWriter` (documented under domains).
 
 ---
 
@@ -32,6 +34,8 @@ remove(id: string): T          // throws when missing
 get(id: string): T | null
 has(id: string): boolean
 hasByFilter(filter: (item: T) => boolean): boolean
+getByFilter(filter: (item: T) => boolean): T[]
+removeByFilter(filter: (item: T) => boolean): T[]
 getAll(): T[]
 getMap(): Map<string, T>
 clear(): void
@@ -55,7 +59,7 @@ interface IDisposable {
 ```ts
 createHD(params: ICreateHDWalletParams, passwordProvider): Promise<Wallet>
 createPrivateKey(accountName: string, secretProvider): Promise<Wallet>
-unlock(signerId: string, passwordProvider): Promise<Wallet>
+open(signerId: string, passwordProvider): Promise<Wallet>
 delete(id: string): Promise<Wallet>              // removes signer + accounts from storage
 deriveAccount(walletId, accountName, passwordProvider): Promise<IDerivedAccount>
 removeAccount(walletId, accountId): Promise<Account>
@@ -67,7 +71,30 @@ countInStorage(): Promise<number>
 ```
 
 `IWalletMetadata = { signerId, type, accounts: IAccountMetadata[] }` is the
-lightweight, non-secret listing used by UIs to render locked wallets.
+lightweight, non-secret listing used by UIs to render closed wallets.
+
+`open` replaces the former `unlock`: loading a stored wallet into memory and
+holding a signing session are separate steps now, and only the first belongs
+here (see [Open vs unlocked](DOMAINS.md#open-vs-unlocked)).
+
+Concurrency and duplicates are enforced here, not in `Client`, through a
+**static** `WalletOperationGuardService` shared by every `WalletManager`
+instance. Sharing it is deliberate: two managers over the same storage must not
+each think they are the only writer.
+
+- `open` and `deriveAccount` run inside `runWalletAction`, so a second concurrent
+  attempt at the same action on the same signer throws
+  `WalletActionInProgressError` instead of racing.
+- `persist` (the tail of both create paths) runs inside `runWalletCreation`,
+  which reserves the wallet's fingerprints for the duration and then calls
+  `assertWalletIsNotDuplicate`: the signer fingerprint is looked up through
+  `StorageManager.findSignerByFingerprint`, each account fingerprint through
+  `findAccountByFingerprint`, and a hit raises `DuplicateWalletError` or
+  `DuplicateAccountError`.
+
+The reservation is what closes the window a storage-only check would leave open:
+two identical wallets created in the same tick would both read an empty storage,
+so the second one is rejected on the in-memory reservation instead.
 
 ### AccountManager (`src/services/AccountManager/index.ts`)
 
@@ -91,16 +118,34 @@ getAccount(id: string): Account | null
 `DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
 
 ```ts
-create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
+new ReservationAdapterManager({ reservationAdapters?, onReservationsChanged? })
+
+create(wallet, passwordProvider?): Promise<ReservationAdapter>
+remove(id: string): ReservationAdapter
+removeByFilter(filter: (adapter: ReservationAdapter) => boolean): ReservationAdapter[]
+clear(): void
 getReservationsByWallet(): TReservationsByWallet
+hasNetworkReservations(networkId: NetworkId): boolean
 removeNetworkReservations(networkId: NetworkId): Promise<void>
 ```
 
 Reservations are encrypted with the signer's data key, so building the adapter
 needs an active session or the optional `passwordProvider` — `Client` forwards
-the provider it already has when creating, importing, or unlocking a wallet.
-`getReservationsByWallet` is the payload of `onReservationsChanged`;
-`removeNetworkReservations` fans a removed network out to every adapter.
+the provider it already has when creating or opening a wallet.
+
+This manager owns the reservation change notification. `Client` passes a single
+`onReservationsChanged` callback at construction, and every path that can alter
+the picture re-fires it: `create`, `remove`, `removeByFilter`, `clear`,
+`removeNetworkReservations` (in a `finally`, so a partial failure still notifies),
+plus the `onAdded` / `onConfirmed` / `onExpired` callbacks it subscribes on each
+adapter. `Client` turns that one callback into the `reservationsChanged` event
+with `getReservationsByWallet()` as the payload, so no caller has to wire adapter
+callbacks itself.
+
+`hasNetworkReservations` answers whether any open wallet still holds funds on a
+network, which is what `Client.hasNetworkReservations` exposes to UIs before a
+network is removed. `removeNetworkReservations` fans a removed or reconfigured
+network out to every adapter.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
@@ -147,6 +192,106 @@ constructor stay silent — the caller already knows about them.
 `onFailed` is a notification, not a release signal: the reservation survives it
 and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
 `ReservationAdapter` uses to delete the stored record.
+
+---
+
+## Events & lifecycle
+
+### ClientEventBus (`src/services/ClientEventBus/index.ts`)
+
+Typed pub/sub behind `Client.getEventBus()`. Owned by `Client`, which is the only
+code allowed to `emit`.
+
+```ts
+new ClientEventBus(onListenerError?: TClientEventListenerErrorHandler)
+
+getSource(): IClientEventSource // frozen { on, off } handed to integrators
+on<TName>(name: TName, listener: TClientEventListener<TName>): TUnsubscribe
+off<TName>(name: TName, listener: TClientEventListener<TName>): void
+emit<TName>(name: TName, ...payload: IClientEventMap[TName]): void
+clear(): void
+```
+
+`IClientEventMap` ties each `ClientEvent` member to its payload tuple, so
+`on(ClientEvent.ACCOUNTS_CHANGED, listener)` type-checks the listener's
+`(walletId, accounts)` signature. The event names and payloads are listed in
+[Client events](DOMAINS.md#events).
+
+Two properties matter for integrators:
+
+- **Late subscription.** Listeners can be attached and detached at any point in
+  the client's life, unlike the constructor-time `IClientEventDispatcher`. `on`
+  returns its own unsubscribe.
+- **Listener isolation.** `emit` iterates over a snapshot of the bucket, so a
+  listener that unsubscribes during dispatch cannot corrupt the loop, and each
+  listener is invoked through `runProtected`. A synchronous throw or a rejected
+  promise is routed to `onListenerError(name, error)`; an error handler that
+  throws in turn is only logged. A broken listener can therefore never break the
+  SDK operation that emitted the event, and the bus does not await async
+  listeners.
+
+`getSource` returns a frozen facade so that handing the bus to UI code does not
+hand over `emit` and `clear` with it.
+
+### ClientLifecycleGuard (`src/services/ClientLifecycleGuard/index.ts`)
+
+`LifecycleGuard` specialized for publishing a wallet.
+
+```ts
+new ClientLifecycleGuard(discardWallet: (wallet: Wallet) => void)
+
+runWalletPublication(operation: () => Promise<Wallet>): Promise<Wallet>
+```
+
+`Client` wraps `createHDWallet`, `createPrivateKeyWallet`, and `openWallet` in
+`runWalletPublication`. If the guard was invalidated while the wallet was being
+built (a logout, a `clearPersistence`, or a `close`), the finished wallet is
+handed to `discardWallet` — which locks it and drops it from both the wallet
+manager and the reservation adapter manager — and the caller gets a
+`WalletOperationCancelledError`. The base `LifecycleGuard` contract is documented
+under [domains](DOMAINS.md#lifecycleguard-srcdomainslifecycleguardindexts).
+
+### ConcurrentOperationGuardService (`src/services/ConcurrentOperationGuard/index.ts`)
+
+Generic mutual exclusion over named keys. An `ItemManager<TOwner>` where a present
+key means "an operation owns this right now".
+
+```ts
+class ConcurrentOperationGuardService<TOwner = string> extends ItemManager<TOwner> {
+    run<T>(
+        reservations: Map<string, TOwner>,
+        createConflictError: (conflictOwner: TOwner) => Error,
+        operation: () => Promise<T>,
+    ): Promise<T>;
+}
+```
+
+`run` claims **all** keys atomically or none: it scans for a conflict first,
+throws the caller's error when one is found, and otherwise registers every key,
+runs the operation, and releases the keys in a `finally`. The owner value stored
+under each key is what the error factory receives, so the rejection can name what
+already holds the key rather than just reporting a generic clash.
+
+### WalletOperationGuardService (`src/services/WalletOperationGuard/index.ts`)
+
+The wallet-specific guard, built on the generic one. Used as a **static** member
+of `WalletManager` so all instances share one lock table.
+
+```ts
+runWalletCreation<T>(wallet: Wallet, operation: () => Promise<T>): Promise<T>
+runWalletAction<T>(action: WalletAction, signerId: string, operation: () => Promise<T>): Promise<T>
+```
+
+Two key namespaces keep the two concerns apart:
+
+- `runWalletCreation` reserves `SIGNER:<signerFingerprint>` plus
+  `ACCOUNT:<accountFingerprint>` for every account of the wallet. A conflict means
+  the same secret is already being created, and it surfaces as
+  `DuplicateWalletError` or `DuplicateAccountError` depending on which key
+  matched — the owner record carries `signerId` and, for accounts, `accountId`.
+- `runWalletAction` reserves `<action>:<signerId>` and raises
+  `WalletActionInProgressError`, which is how `open` and `deriveAccount` refuse
+  to run twice at once for one signer.
 
 ---
 
@@ -249,11 +394,14 @@ composes/decomposes the `Wallet` aggregate.
 ```ts
 StorageManager.init(options?: IStorageFabricOptions): Promise<void>
 
-// signers (encrypted secret + encrypted data key)
+// signers (encrypted secret + encrypted data key + plaintext fingerprint)
 saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
+findSignerByFingerprint(fingerprint: string): Promise<ISignerStorageRecord | null>
 
 // accounts
 saveAccount / saveAccounts / getAccount / getAccounts / updateAccount / deleteAccount / deleteMultipleAccounts
+getAccountsBySignerId(signerId: string): Promise<IAccountStorageRecord[]>
+findAccountByFingerprint(fingerprint: string): Promise<IAccountStorageRecord | null>
 
 // wallets (aggregate of signer + accounts)
 saveWallet(options): Promise<void>
@@ -275,6 +423,17 @@ deleteCustomNetwork(id: NetworkId): Promise<void>
 clear(): Promise<void>
 close(): void
 ```
+
+Signer and account records carry a plaintext `fingerprint` next to the encrypted
+payload. That is what the two `find*ByFingerprint` lookups match on, and it is
+why duplicate detection works while every wallet is closed — nothing has to be
+decrypted to answer "is this secret already stored?". The fingerprint is a
+one-way hash of public material only; see
+[KeyFingerprintService](#keyfingerprintservice-srcserviceskeyfingerprintindexts).
+
+`getAccountsBySignerId` and `getTransactionReservationsBySignerId` now resolve
+inside their repositories through `getByFilter` rather than by reading every row
+and filtering in the manager.
 
 ### NetworkManager (`src/services/NetworkManager/index.ts`)
 
@@ -429,12 +588,26 @@ Balance reads via an exploratory deploy.
 getBalance(address: Address, asset: Asset): Promise<IBalanceData> // { amount: bigint; asset }
 ```
 
-Validates the address first (throws on invalid); any exploration/parse failure
-resolves to `{ amount: 0n, asset }`. The balance term comes from
+Validates the address first (throws on invalid). The balance term comes from
 `this.terms.createCheckBalanceDeploy(address)`, so the vault contract it addresses
-follows the active network's profile. Note that the catch-all fallback means a
-transport failure is reported as a zero balance, not as an error — callers cannot
-distinguish "no funds" from "node unreachable" here.
+follows the active network's profile.
+
+**The zero-balance fallback is gone.** A read that cannot be trusted now throws
+`BalanceUnavailableError` (status `502`) carrying the address and a reason, so
+"no funds" and "the node did not answer" are no longer the same value. Four cases
+raise it:
+
+- the exploratory deploy itself fails (transport, node error) — the reason is the
+  underlying message;
+- the node answers with `ExprString`, which is how the vault reports its own
+  error;
+- `ExprInt` carries something that is not a non-negative integer — validated
+  through `parseAtomicAmount`, so an overflowing or fractional value is rejected
+  instead of being coerced;
+- no expression comes back at all.
+
+Only a genuine `ExprInt` amount resolves. Callers that previously relied on a
+falsy balance to mean "empty account" have to handle the error explicitly.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
@@ -586,10 +759,39 @@ enum MnemonicStrength { TWELVE_WORDS = 128, TWENTY_FOUR_WORDS = 256 }
 MnemonicService.generateMnemonic(strength?): string
 MnemonicService.generateMnemonicArray(strength?): string[]
 MnemonicService.isMnemonicValid(mnemonic: string): boolean
+MnemonicService.normalizeMnemonic(mnemonic: string): string
 MnemonicService.mnemonicToWordArray(mnemonic: string): string[]
 MnemonicService.wordArrayToMnemonic(words: string[]): string
 MnemonicService.mnemonicToSeed(mnemonic: string | string[], passphrase?): Promise<Uint8Array>
 ```
+
+`normalizeMnemonic` trims, lowercases, and collapses runs of whitespace to single
+spaces. `Client.createHDWallet` normalizes before validating and before deriving,
+so a phrase pasted with stray casing or double spaces produces the same wallet
+(and therefore the same fingerprint) as its canonical form, instead of slipping
+past duplicate detection.
+
+### KeyFingerprintService (`src/services/KeyFingerprint/index.ts`)
+
+Derives the stable, non-reversible identity of a key pair. Used to detect
+duplicate wallets and accounts without decrypting anything.
+
+```ts
+KeyFingerprintService.fromPublicKey(publicKey: Uint8Array): string   // sha256(publicKey), hex
+KeyFingerprintService.fromPrivateKey(privateKey: Uint8Array): string // public key first, then as above
+KeyFingerprintService.fromMnemonic(mnemonic: string): Promise<string>
+```
+
+`fromMnemonic` derives the BIP-32 master node and hashes
+`publicKey || chainCode`, then zeroizes the seed in a `finally`. Hashing the
+master node rather than the seed means the same mnemonic always yields the same
+fingerprint while nothing recoverable is stored.
+
+Where each one is used: `Account` computes `fromPublicKey` in its constructor,
+and the signer fabric computes `fromPrivateKey` for a private-key signer and
+`fromMnemonic` for an HD signer. Both values are persisted in plaintext next to
+the encrypted secret, because a hash of public material discloses nothing that
+the chain does not already show.
 
 ### KeyDerivationService (`src/services/KeyDerivation/index.ts`)
 

@@ -17,6 +17,9 @@ Date: 2026-03-19
    (transaction reservations) and are themselves stored password-encrypted.
 4. Signed deploy payloads before submission.
 5. Wallet metadata and vault contents stored in browser storage.
+6. Key fingerprints stored in plaintext. These are one-way hashes of public
+   material and are not confidential, but they do link stored records to a key
+   pair, so they are listed here as metadata rather than as secrets.
 
 ## 3. Trust Boundaries
 
@@ -37,9 +40,14 @@ Date: 2026-03-19
 
 1. Secret leakage through logs/errors/debug tooling.
 2. Injection in deploy term construction.
-3. Weak or incorrect input validation (addresses, amounts).
+3. Weak or incorrect input validation (addresses, amounts, imported private keys).
 4. Offline brute-force attempts on stolen ciphertext.
 5. Recovery failure due mnemonic-handling defects.
+6. State races around lock and logout: an unlock or a wallet publication that
+   completes after the user locked, closed, or logged out, and persistence writes
+   landing after a `clearPersistence`.
+7. A hostile or faulty node answer being read as valid state, in particular an
+   unreadable balance being treated as zero funds.
 
 ## 6. Out-of-Scope / Assumptions
 
@@ -60,6 +68,18 @@ Current controls:
 5. Key separation for stored user data: transaction reservations are encrypted
    with a per-signer data key rather than the signing secret, so persistence code
    never touches key material that can sign.
+6. Cancellation on lock: the signing session carries a generation counter, so an
+   unlock that resolves after a lock zeroizes its secret and fails with
+   `WalletOperationCancelledError` instead of silently reopening the wallet.
+7. Bounded teardown: `close()` and `clearPersistence()` invalidate in-flight work
+   and drain it under a timeout before clearing storage, and a wallet published
+   after that point is discarded rather than exposed.
+8. Fail-closed reads: unreadable or unparsable balances raise
+   `BalanceUnavailableError` instead of collapsing to zero, so a hostile or
+   unreachable node cannot present an account as empty.
+9. Duplicate rejection without decryption: wallets and accounts are matched on
+   one-way key fingerprints, so re-importing a stored secret is refused while
+   everything remains locked.
 
 Planned/required controls:
 

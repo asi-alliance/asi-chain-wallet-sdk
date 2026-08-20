@@ -25,6 +25,12 @@ Signing-session policy:
   `"every-signature"`. Controls whether the client holds an unlocked session.
 - `DEFAULT_AUTO_LOCK_MS: number` — default session auto-lock delay (15 min).
 
+Teardown:
+
+- `DEFAULT_DRAIN_TIMEOUT_MS: number` — how long `LifecycleGuard.drain` waits for
+  in-flight operations before giving up (10s). It bounds `Client.close` and
+  `Client.clearPersistence` so a hung request cannot block a logout forever.
+
 Data export:
 
 - `ExportFormat` — `"json"` | `"csv"` (const object + matching type).
@@ -86,7 +92,15 @@ pass `NATIVE_TOKEN_DECIMALS_AMOUNT` for you.
 toAtomicAmount(amount: number | string, decimals: number): bigint
 fromAtomicAmountToNumber(atomicAmount: bigint, decimals: number): number
 fromAtomicAmount(atomicAmount: bigint, decimals: number): string // = fromAtomicAmountToString
+parseAtomicAmount(value: unknown): bigint | null
 ```
+
+`parseAtomicAmount` is the strict inbound parser for an atomic amount of unknown
+provenance. It accepts a non-negative safe integer `number` or a string of digits
+only, and returns `null` for everything else — floats, negatives, values beyond
+`Number.MAX_SAFE_INTEGER`, and non-numeric input. `AssetsService` uses it on the
+node's balance expression so an unparsable value becomes
+`BalanceUnavailableError` rather than a silently wrong `BigInt`.
 
 `toAtomicAmount` handles negatives and thousands separators, validates format,
 truncates excess fractional digits, and pads to the allowed decimals. It throws
@@ -112,20 +126,42 @@ buildUrl(pathPrefix: string, params?: IUrlParams): string // fills :path params 
 normalizeAddress(address: string | undefined): string     // trim + lowercase
 ```
 
+### Failure isolation
+
+```ts
+runProtected(run: () => void | Promise<void>, onFailure: (error: unknown) => void): void
+```
+
+Runs a callback that must never take its caller down with it. A synchronous throw
+is caught; a returned thenable (detected through the `isPromiseLike` guard) gets
+a `.catch`, so a rejected promise reaches `onFailure` too. It returns `void`
+without awaiting anything, which is the point: the caller keeps going regardless.
+`ClientEventBus` uses it for every listener invocation and for the error handler
+itself.
+
 ---
 
 ## Validators (`src/utils/validators/index.ts`)
 
-Account-name, address, URL, and node-profile validation.
+Account-name, address, private-key, URL, and node-profile validation.
 
 ```ts
 validateAccountName(name: string, maxLength?: number): { isValid: boolean; error?: string }
 validateAddress(address: string): AddressValidationResult
 isAddress(address: string): address is Address // type-guard over validateAddress
+validatePrivateKey(privateKey: Uint8Array): { isValid: boolean; error?: string }
+isPrivateKeyValid(privateKey: Uint8Array): boolean              // boolean shorthand
 validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
 isValidUrl(url: string): boolean                               // boolean shorthand
 validateNodeApiProfile(profile: unknown): { isValid: boolean; error?: string } // membership in NodeApiProfile
 ```
+
+`validatePrivateKey` checks both things a raw key can get wrong: the byte length
+(`PRIVATE_KEY_LENGTH`, 32) and membership in the secp256k1 scalar range, via
+`@noble/secp256k1`'s `isValidPrivateKey` — zero and any value at or above the
+curve order are rejected. `Client.createPrivateKeyWallet` runs `isPrivateKeyValid`
+before touching storage, so an imported key that could never sign is refused up
+front instead of failing later at signing time.
 
 `validateUrl` powers custom-network endpoint validation in
 `NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
@@ -151,13 +187,19 @@ names, and forbidden characters `<>:"/\|?*`.
 
 ## Guards (`src/utils/guards/index.ts`)
 
-Type guards for wallet/secret discriminated unions and the node API profile.
+Type guards for wallet/secret discriminated unions, the node API profile, and
+thenables.
 
 ```ts
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
 isNodeApiProfile(value: unknown): value is NodeApiProfile // delegates to validateNodeApiProfile
+isPromiseLike(value: unknown): value is PromiseLike<unknown>
 ```
+
+`isPromiseLike` is a structural check (`then` is callable) rather than an
+`instanceof Promise`, so `runProtected` also catches rejections from async
+listeners returning a foreign thenable.
 
 `isNodeApiProfile` narrows untyped values at the storage boundary
 (`restoreCustomNetworks`), mirroring how `isValidUrl` sits on top of
@@ -188,6 +230,24 @@ EnsureApiClientManagerInitialized; // throws before ApiClientManager.initialize(
 EnsureApiClientManagerConfigured; // throws when the network config isn't ready
 EnsureWithInsensitiveCacheStorage; // throws when the cache-storage flag is off
 ```
+
+Lifecycle guards:
+
+```ts
+EnsureActive; // throws DomainClosedError once the domain has been closed
+TrackOperation; // registers the returned promise with this.lifecycleGuard
+```
+
+`EnsureActive` works on anything satisfying `IClosableContext` (`isActive()`), so
+it pairs with `ClosableDomain`; it names the offending class through
+`this.constructor.name` in the error. `Client` puts it on every state-changing
+method and leaves pure reads unguarded.
+
+`TrackOperation` expects an `ITrackedOperationContext` (a `lifecycleGuard` field)
+and wraps the call in `lifecycleGuard.track`, so the operation is counted among
+the pending ones that `drain` waits for. `Client.transfer` and `Client.deploy`
+carry it, which is what makes a logout wait for an in-flight deploy instead of
+tearing storage out from under it.
 
 Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 
@@ -247,6 +307,12 @@ rebuilds it from the stored record. The data key is what encrypts non-secret use
 data such as transaction reservations; it is resolved through
 `Signer.resolveDataKey(passwordProvider?)` — an active session already holds it,
 otherwise the password decrypts it.
+
+`createSigner` also computes the signer's **fingerprint** while it still has the
+plaintext secret in hand: `KeyFingerprintService.fromPrivateKey` for a
+private-key signer, `fromMnemonic` for an HD one. It travels on `ISignerRecord`
+as a plaintext field and `restoreSigner` passes it straight back, so it is
+available for duplicate detection without decrypting anything.
 
 ### Node API adapter fabric (`src/fabrics/nodeApiAdapter.ts`)
 
@@ -321,15 +387,23 @@ private data and revives `transaction.timestamp` into a `Date`.
 Composition helpers for `Client`.
 
 ```ts
-createReservationAdapter(
-    options: IAddReservationAdapterToManagerOptions, // { reservationAdapterManager, wallet, passwordProvider, eventDispatcher? }
-): Promise<ReservationAdapter>
+registerEventDispatcher(
+    eventBus: IClientEventSource,
+    eventDispatcher: IClientEventDispatcher,
+): TUnsubscribe
 ```
 
-Creates the wallet's `ReservationAdapter` through `ReservationAdapterManager`,
-forwarding the `passwordProvider` that resolves the signer data key, and
-subscribes `onAdded` / `onConfirmed` / `onExpired` / `onFailed` so each of them
-re-emits `IClientEventDispatcher.onReservationsChanged` with every unlocked
-wallet's current reservations, read back through
-`ReservationAdapterManager.getReservationsByWallet`. `Client` goes through it on
-wallet create, import, and unlock.
+Adapts the legacy callback object to the event bus. It walks
+`IClientEventDispatcher`, and for each method that is actually present subscribes
+a bound listener to the matching `ClientEvent`, collecting the unsubscribes into
+one combined `TUnsubscribe`. Absent callbacks register nothing, and binding keeps
+`this` intact for dispatchers implemented as class instances.
+
+`Client.create` calls it when `eventDispatcher` is supplied, so the dispatcher
+and any `getEventBus()` subscriber are the same mechanism and see the same
+events.
+
+Reservation-adapter composition used to live here too, as
+`createReservationAdapter`. It is gone: `ReservationAdapterManager` now owns
+adapter creation and the change notification itself (see
+[SERVICES.md](SERVICES.md#reservationadaptermanager-srcservicesreservationadaptermanagerindexts)).

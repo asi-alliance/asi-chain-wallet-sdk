@@ -43,6 +43,9 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 
 - **Client Facade** - Single entry point for wallet lifecycle, networks, balances, and transfers via [Client](docs/DOMAINS.md)
 - **Multi-Account HD Wallets** - Private-key and BIP-39/BIP-44 HD wallets with on-demand account derivation via [Wallet](docs/DOMAINS.md) and [Account](docs/DOMAINS.md)
+- **Separate Open and Unlocked States** - Wallets are loaded into memory independently of the signing session that holds the decrypted secret, via [Client](docs/DOMAINS.md#open-vs-unlocked) and [SigningSession](docs/DOMAINS.md)
+- **Event Subscriptions** - Typed, isolated listeners attachable at any time through `client.getEventBus()` via [ClientEventBus](docs/SERVICES.md)
+- **Duplicate Protection** - Wallets and accounts are matched on non-reversible key fingerprints, so re-importing the same secret is refused even while everything is locked, via [KeyFingerprintService](docs/SERVICES.md)
 - **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
@@ -145,6 +148,67 @@ console.log("New address:", account.getAddress());
 
 See [Client](docs/DOMAINS.md), [Wallet](docs/DOMAINS.md), and [Account](docs/DOMAINS.md) for the full API reference.
 
+Creating a wallet whose secret is already stored throws `DuplicateWalletError`,
+and one whose key already belongs to a stored account throws
+`DuplicateAccountError`. Both carry the ids of the existing owner, and both work
+while every wallet is closed, because the match runs on a key fingerprint rather
+than on decrypted material.
+
+### Open, Unlock, and Close Wallets
+
+A wallet being **open** (present in memory) and a wallet being **unlocked** (able
+to sign without a password) are two different states.
+
+```typescript
+// Load a stored wallet into memory. With the default session policy it comes
+// back already unlocked.
+const wallet = await client.openWallet(signerId, "wallet-password");
+
+client.isWalletOpen(wallet.getId()); // true
+client.isWalletUnlocked(wallet.getId()); // true
+
+// End the signing session, keep the wallet open
+client.lockWallet(wallet.getId());
+
+// Start a new session on the wallet that is already open
+await client.unlockWallet(wallet.getId(), "wallet-password");
+
+// Drop it from memory; storage is untouched
+client.closeWallet(wallet.getId());
+
+// Delete it from storage for good
+await client.removeWallet(wallet.getId());
+```
+
+Sessions are fixed-duration: they auto-lock `autoLockMs` after unlock (15 min by
+default) and are not extended by activity. Signing after expiry without a
+password throws `WalletLockedError` with an HTTP-style status `403`, so a UI can
+treat it like an expired token and re-prompt. See
+[Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
+
+### Subscribe to Events
+
+`client.getEventBus()` returns a typed `on` / `off` source. Unlike the
+constructor-time `eventDispatcher`, subscriptions can be added and removed at any
+point in the client's life, and `on` hands back its own unsubscribe.
+
+```typescript
+import { ClientEvent } from "@asichain/asi-wallet-sdk";
+
+const unsubscribe = client
+    .getEventBus()
+    .on(ClientEvent.WALLETS_CHANGED, (wallets) => {
+        render(wallets);
+    });
+
+// later
+unsubscribe();
+```
+
+Listeners are isolated: one that throws or rejects never breaks the emit loop or
+the SDK operation behind it. Route those failures somewhere visible with the
+`onListenerError` option on `Client.create`.
+
 ### Check Balance and Transfer
 
 ```typescript
@@ -177,6 +241,12 @@ const unsubscribe = reserved.subscribe({
 });
 ```
 
+A balance read that cannot be trusted now throws `BalanceUnavailableError`
+(status `502`) carrying the address and a reason, instead of resolving to `0n`.
+A node that is unreachable, a vault that reports an error, and an account with no
+funds are three different outcomes, so handle the error rather than reading a
+falsy balance as "empty".
+
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
 
 ---
@@ -203,6 +273,8 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │                      Domains                                  │  │
 │  │  • Wallet / Account    - Multi-account HD & PK wallets        │  │
 │  │  • Signer (HD / PK)    - No-raw-export signing boundary       │  │
+│  │  • SigningSession      - Fixed-window in-memory secret        │  │
+│  │  • LifecycleGuard      - Invalidate + drain in-flight work    │  │
 │  │  • Asset               - Token representation                 │  │
 │  │  • ReservationAdapter  - Pending-transaction reservations     │  │
 │  │  • ApiClientManager    - Per-network transport clients        │  │
@@ -214,9 +286,12 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │                  Services / Managers                          │  │
 │  │  • WalletManager / AccountManager - In-memory ownership       │  │
 │  │  • StorageManager      - Persistence orchestration            │  │
+│  │  • ClientEventBus      - Typed client event subscriptions     │  │
+│  │  • WalletOperationGuard- Duplicate & concurrency guards       │  │
 │  │  • DeployService / BlockService / AccountDataService          │  │
 │  │  • AssetsService / TransactionService / DeployStatusPoller    │  │
 │  │  • CryptoService / KeysManager / KeyDerivation / Mnemonic     │  │
+│  │  • KeyFingerprintService - Non-reversible key identity        │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │

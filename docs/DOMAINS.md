@@ -9,6 +9,13 @@ through the singletons `ApiClientManager` (transport) and `ApiServiceRegistry`
 is never exposed directly — it flows through `SecretsProvider` closures and the
 `Signer` boundary.
 
+Two cross-cutting concerns have their own small domains rather than being spread
+across the facade: a `SigningSession` per signer holds the decrypted secret under
+a fixed auto-lock window, and a `LifecycleGuard` tracks in-flight work so a
+logout can invalidate and drain it. `Client` itself is a `ClosableDomain`, and it
+publishes state changes through a `ClientEventBus` that callers subscribe to at
+any time.
+
 Node access is layered, because two f1r3node implementations (legacy Scala, new
 Rust) expose different HTTP contracts:
 
@@ -48,6 +55,7 @@ interface ICreateClientOptions {
     defaultNetwork?: NetworkName;
     storageOptions?: IStorageFabricOptions;
     eventDispatcher?: IClientEventDispatcher;
+    onListenerError?: TClientEventListenerErrorHandler; // (name, error) => void
     flags?: ICreateClientFlags; // { withInsensitiveCacheStorage?: boolean }
     security?: ISessionPolicy; // signing-session policy (see below)
 }
@@ -84,8 +92,12 @@ generatePrivateKey(): Uint8Array
 
 createHDWallet(payload: ICreateHDWalletPayload, password: string): Promise<Wallet>
 createPrivateKeyWallet(payload: ICreatePrivateKeyWalletPayload, password: string): Promise<Wallet>
-unlockWallet(signerId: string, password: string): Promise<Wallet> // starts a session when policy holds one
-removeWallet(walletId: string): Promise<Wallet>
+
+openWallet(signerId: string, password: string): Promise<Wallet> // load a stored wallet into memory
+closeWallet(walletId: string): void                             // drop it from memory, keep it in storage
+closeAllWallets(): void                                         // close every open wallet at once
+isWalletOpen(walletId: string): boolean
+removeWallet(walletId: string): Promise<Wallet>                 // delete it from storage for good
 
 deriveAccount(walletId: string, accountName: string, password: string): Promise<ICreatedAccountData>
 removeAccount(walletId: string, accountId: string): Promise<Account>
@@ -96,19 +108,63 @@ getWalletManager(): WalletManager
 getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> // requires withInsensitiveCacheStorage flag
 ```
 
+### Open vs unlocked
+
+These are two independent states, and the API keeps them apart.
+
+**Open** is about presence: the wallet, its accounts, and its reservation adapter
+are materialized in memory and addressable by `walletId`. `openWallet` reads the
+stored signer, decrypts it with the password, and publishes the wallet;
+`closeWallet` and `closeAllWallets` drop it again without touching storage;
+`removeWallet` deletes it permanently. Only `removeWallet` destroys data.
+
+**Unlocked** is about signing: an in-memory signing session holds the decrypted
+secret, so transfers and deploys do not re-prompt for the password.
+
+`openWallet` needs the password either way (it has to decrypt the signer) and,
+when the policy holds sessions, opens the wallet already unlocked. A wallet can
+then be locked and unlocked any number of times while staying open, and closing
+a wallet always locks it first.
+
+Opening the same signer twice throws: `openWallet` rejects a signer that is
+already open, and `WalletManager` serializes concurrent `open` calls for one
+signer through `WalletActionInProgressError` (status `409`).
+
 Signing sessions:
 
 ```ts
 isWalletUnlocked(walletId: string): boolean // true while an in-memory session is active
-lockWallet(walletId: string): void          // clears the session + zeroizes the secret, fires onWalletLocked
+unlockWallet(walletId: string, password: string): Promise<void> // (re)start the session of an open wallet
+lockWallet(walletId: string): void          // clears the session + zeroizes the secret, fires walletLocked
 ```
 
-`unlockWallet` decrypts the signer secret and, when the policy holds a session
-(`requirePassword !== "every-signature"`), keeps it in memory until it
-auto-locks after `autoLockMs`. The session is **fixed-duration**: activity does
-not extend it. When a session expires, signing without a password throws a
-`WalletLockedError` (HTTP-style status `403`) so callers can distinguish an
-expired session from a server error and re-prompt for the password.
+`unlockWallet` addresses an **open wallet by `walletId`**, not a stored signer by
+`signerId` — use `openWallet` for the latter. It decrypts the signer secret and
+keeps it in memory until it auto-locks after `autoLockMs`. Under
+`requirePassword: "every-signature"` no session is ever held, so `unlockWallet`
+throws instead of pretending to start one.
+
+The session is **fixed-duration**: activity does not extend it. When a session
+expires, signing without a password throws a `WalletLockedError` (HTTP-style
+status `403`) so callers can distinguish an expired session from a server error
+and re-prompt for the password.
+
+Locking, closing, or clearing persistence while an unlock is still decrypting
+cancels that unlock: the resolved secret is zeroized instead of being installed,
+and the caller gets a `WalletOperationCancelledError` (status `409`). The same
+guard covers wallet publication — a `createHDWallet`, `createPrivateKeyWallet`,
+or `openWallet` that finishes after a logout discards the wallet it just built
+rather than leaking it into the post-logout state. See
+[SigningSession](#signingsession-srcdomainssigningsessionindexts) and
+[LifecycleGuard](#lifecycleguard-srcdomainslifecycleguardindexts).
+
+Duplicate protection is enforced at creation time, not at the UI layer:
+`createHDWallet` and `createPrivateKeyWallet` reject a secret that is already
+stored with `DuplicateWalletError`, and a key that already belongs to a stored
+account with `DuplicateAccountError` (both status `409`, both carrying the ids of
+the existing owner). Matching is done on a non-reversible key fingerprint, so it
+works while every wallet is locked. `createPrivateKeyWallet` additionally
+validates the raw key against the secp256k1 range before doing any work.
 
 Network (runtime registry — see `NetworkManager` / `ApiClientManager`):
 
@@ -124,7 +180,13 @@ updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            /
 removeNetwork(id: NetworkId): Promise<void>                                    // custom only
 
 isNetworkBusy(networkId?: NetworkId): boolean              // defaults to the active network
+hasNetworkReservations(networkId?: NetworkId): boolean    // any open wallet still holds funds there
 ```
+
+`isNetworkBusy` and `hasNetworkReservations` answer different questions:
+the first is about an operation running right now, the second about funds still
+locked by pending reservations on that network. A UI that warns before removing
+a network reads the second one.
 
 Built-in networks (those provided to `Client.create`) are marked
 `isDefault: true` and are immutable: `updateNetwork` / `removeNetwork` reject
@@ -243,34 +305,90 @@ toAtomicAmount(amount: number | string): bigint
 Persistence & teardown:
 
 ```ts
-clearPersistence(): Promise<void> // wipes storage + in-memory state
-close(): void                     // releases managers and API clients
+isActive(): boolean               // false once close() ran
+clearPersistence(): Promise<void> // wipes storage + in-memory state, keeps the client usable
+close(): Promise<void>            // releases managers, listeners, and API clients for good
 ```
 
-Event callbacks are delivered through `IClientEventDispatcher`:
+`Client` extends [ClosableDomain](#closabledomain-srcdomainsclosabledomainindexts):
+`close()` is idempotent and terminal. Every state-changing method is guarded by
+`@EnsureActive` and throws `DomainClosedError` (status `410`) afterwards, so a
+call that survives a teardown fails loudly instead of resurrecting a dead client.
+Pure reads that cannot corrupt anything (`isWalletOpen`, `isWalletUnlocked`,
+`getNetworks`, `getCurrentNetwork`, `isNetworkBusy`, `hasNetworkReservations`,
+`getEventBus`, the amount helpers) stay callable.
+
+Both `close()` and `clearPersistence()` first invalidate the lifecycle guard and
+lock every open wallet, then **drain** the operations still in flight (bounded by
+`DEFAULT_DRAIN_TIMEOUT_MS`, 10s) before touching storage, so a transfer running
+concurrently with a logout cannot write after the wipe.
+
+### Events
+
+Subscribe through the event bus:
 
 ```ts
-interface IClientEventDispatcher {
-    onWalletsChanged?(wallets: Wallet[]): void;
-    onAccountsChanged?(walletId: string, accounts: Account[]): void;
-    onNetworkChanged?(network: INetworkRecord): void;
-    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void;
-    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void;
-    onWalletLocked?(walletId: string): void; // fired on manual lock and on auto-lock expiry
+getEventBus(): IClientEventSource
+
+interface IClientEventSource {
+    on<TName extends TClientEventName>(name: TName, listener: TClientEventListener<TName>): TUnsubscribe;
+    off<TName extends TClientEventName>(name: TName, listener: TClientEventListener<TName>): void;
 }
 ```
 
-`onReservationsChanged` carries every unlocked wallet's reservations at once
+```ts
+enum ClientEvent {
+    WALLETS_CHANGED = "walletsChanged",         // (wallets: Wallet[])
+    ACCOUNTS_CHANGED = "accountsChanged",       // (walletId: string, accounts: Account[])
+    NETWORK_CHANGED = "networkChanged",         // (network: INetworkRecord)
+    RESERVATIONS_CHANGED = "reservationsChanged", // (reservationsByWallet: TReservationsByWallet)
+    NETWORK_BUSY_CHANGED = "networkBusyChanged",  // (networkId: NetworkId, isBusy: boolean)
+    WALLET_LOCKED = "walletLocked",             // (walletId: string) manual lock and auto-lock expiry
+}
+```
+
+`on` returns its own unsubscribe, so a caller never has to keep the listener
+reference around. Subscriptions can be added and dropped at any point in the
+client's life, which is what separates the bus from the constructor-time
+dispatcher: a component mounted long after `Client.create` can still listen.
+`getEventBus` returns a frozen `on`/`off` view — `emit` and `clear` stay internal
+so integrators cannot fire client events themselves. `close()` clears every
+listener.
+
+Listeners are isolated: a throwing or rejecting listener never breaks the emit
+loop or the SDK operation that triggered it. Failures are routed to the optional
+`onListenerError(name, error)` handler passed to `Client.create`, and a handler
+that throws in turn is only logged. Listeners may be `async`; the bus does not
+await them.
+
+The legacy callback object is still supported and is now a thin bridge over the
+bus:
+
+```ts
+interface IClientEventDispatcher {
+    onWalletsChanged?(wallets: Wallet[]): void | Promise<void>;
+    onAccountsChanged?(walletId: string, accounts: Account[]): void | Promise<void>;
+    onNetworkChanged?(network: INetworkRecord): void | Promise<void>;
+    onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void | Promise<void>;
+    onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void | Promise<void>;
+    onWalletLocked?(walletId: string): void | Promise<void>;
+}
+```
+
+Passing `eventDispatcher` to `Client.create` registers each present method as a
+bus listener through `registerEventDispatcher`
+(`src/fabrics/client/eventDispatcherBridge.ts`). Both styles can be used at once
+and receive the same events.
+
+`onReservationsChanged` carries every open wallet's reservations at once
 (`TReservationsByWallet` — `Record<walletId, ITransactionReservation[]>`, current
-network only) and is wired by the `createReservationAdapter` fabric
-(`src/fabrics/client/reservationAdapter.ts`), which every `Client` path
-that builds an adapter (create, import, unlock) goes through: it forwards the
-`passwordProvider` needed for the data key and re-emits the reservations when one
-is added, confirmed, expired, or its watch fails. The `added` edge is what lets a
-history view reload as soon as a transfer or deploy reserves its funds, so
-`Client.transfer` and `Client.deploy` do not emit the event themselves.
-`Client` emits it directly only where no reservation changes hands: after
-`setNetwork` and `removeNetwork`.
+network only). It is emitted by `ReservationAdapterManager`, which owns the
+adapter callbacks: creating, removing, or clearing an adapter re-emits, and each
+adapter re-emits when a reservation is added, confirmed, or expired. The `added`
+edge is what lets a history view reload as soon as a transfer or deploy reserves
+its funds, so `Client.transfer` and `Client.deploy` do not emit the event
+themselves. `Client` emits it directly only where no reservation changes hands:
+after `setNetwork`.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
@@ -324,7 +442,7 @@ Session (delegated to the `Signer`):
 
 ```ts
 isUnlocked(): boolean
-unlock(passwordProvider: SecretsProvider, options?: ISignerUnlockOptions): Promise<void>
+unlock(passwordProvider: SecretsProvider, options?: ISigningSessionOptions): Promise<void>
 lock(): void
 ```
 
@@ -382,6 +500,7 @@ getName(): string
 getIndex(): number | null
 getAddress(): Address
 getPublicKey(): Uint8Array
+getFingerprint(): string
 listAssets(): Asset[]
 getAsset(id: string): Asset | null
 registerAsset(asset: Asset): void
@@ -398,6 +517,12 @@ address and the account's public key (`encodeBase16(getPublicKey())`) to
 by address) and its **deployments** (matched by deployer public key),
 de-duplicated by deploy id and sorted newest-first. Associated record shape:
 `IAccountRecord = { id, signerId, name, index }`.
+
+`getFingerprint` returns `sha256(publicKey)` in hex, computed once in the
+constructor by
+[KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts).
+It is a stable, non-reversible identity for the key pair, used to detect that an
+account is already stored without decrypting anything.
 
 ---
 
@@ -428,6 +553,7 @@ user data at rest (currently transaction reservations).
 ```ts
 abstract class Signer {
     getId(): string;
+    getFingerprint(): string;
     getEncryptedSecret(): EncryptedData;
     getEncryptedDataKey(): EncryptedData;
 
@@ -438,7 +564,7 @@ abstract class Signer {
     isUnlocked(): boolean;
     unlock(
         passwordProvider: SecretsProvider,
-        options?: ISignerUnlockOptions,
+        options?: ISigningSessionOptions,
     ): Promise<void>;
     lock(): void;
 
@@ -455,7 +581,7 @@ type TPKSigningContext = { passwordProvider?: SecretsProvider };
 type THDSigningContext = { passwordProvider?: SecretsProvider; index: number };
 type TSigningContext = TPKSigningContext | THDSigningContext;
 
-interface ISignerUnlockOptions {
+interface ISigningSessionOptions {
     autoLockMs?: number; // 0 / omitted -> no auto-lock timer
     onAutoLock?: () => void;
 }
@@ -465,20 +591,45 @@ interface ISignerRecord {
     type: WalletTypes;
     encryptedData: EncryptedData;
     encryptedDataKey: EncryptedData;
+    fingerprint: string;
 }
+
+const SIGNER_KEY_PREFIX = "SIGNER"; // namespaces signer keys in the operation guard
 ```
 
 Session lifecycle:
 
-- `unlock` decrypts the secret **and** the data key once and stores both together
-  with an `AutoTimer`. The timer is started immediately and is **fixed-duration**
-  — it is never restarted on activity, so the session ends `autoLockMs` after
-  unlock.
+- The session itself lives in a dedicated
+  [SigningSession](#signingsession-srcdomainssigningsessionindexts) object. The
+  signer owns one for its whole life and delegates `isUnlocked` / `unlock` /
+  `lock` to it, so the timer, the zeroization, and the cancellation rules sit in
+  one place instead of being spread across `Signer`.
+- `unlock` decrypts the secret **and** the data key once and hands both to the
+  session, which arms an `AutoTimer` immediately. The timer is
+  **fixed-duration**: it is never restarted on activity, so the session ends
+  `autoLockMs` after unlock.
+- `unlock` reads the session generation **before** decrypting and passes it to
+  `hold`. If the wallet was locked or closed while the decryption was in flight,
+  the generation no longer matches: the freshly decrypted secret is zeroized on
+  the spot and `WalletOperationCancelledError` is thrown, instead of a stale
+  unlock silently reopening a wallet the user just locked.
 - The protected `resolveSecret(signingContext)` returns the in-memory secret when
   a session is active; otherwise it decrypts using `signingContext.passwordProvider`,
   and throws `WalletLockedError` when no password is available (locked/expired).
 - `lock` clears the timer, zeroizes the private-key bytes when present, and drops
   the session (including the resolved data key). It is idempotent.
+
+Fingerprint:
+
+- `getFingerprint` returns the non-reversible identity of the stored secret,
+  computed by
+  [KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts)
+  when the signer fabric builds it: `sha256(publicKey)` for a private-key signer,
+  `sha256(masterPublicKey || chainCode)` for an HD signer.
+- It is stored in plaintext next to the encrypted secret, which is what allows
+  duplicate detection across locked wallets. It reveals no key material and,
+  because the HD variant hashes the master node rather than the seed, two wallets
+  restored from the same mnemonic collide as intended.
 
 Data key:
 
@@ -499,11 +650,58 @@ and zeroize any ephemeral private key after signing.
 
 ---
 
+## SigningSession (`src/domains/SigningSession/index.ts`)
+
+The in-memory signing session of one `Signer`, extracted so that holding a
+decrypted secret is a single object with a single set of rules. Each `Signer`
+constructs one at birth and keeps it for life; `hold` and `release` swap the
+state inside it.
+
+```ts
+new SigningSession(signerId: string)
+
+isActive(): boolean
+getSecret(): TDecryptedSecret | null
+getDataKey(): string | null
+getSessionGeneration(): number
+
+hold(currentGeneration: number, secrets: ISigningSessionSecrets, options?: ISigningSessionOptions): void
+release(): void
+```
+
+```ts
+type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
+
+interface ISigningSessionSecrets {
+    secret: TDecryptedSecret;
+    dataKeySecret: string;
+}
+
+interface ISigningSessionOptions {
+    autoLockMs?: number; // 0 / omitted -> no auto-lock timer
+    onAutoLock?: () => void;
+}
+```
+
+The **generation counter** is what makes a lock beat a slow unlock. `release`
+increments it unconditionally, even when there is nothing to release, so a caller
+that read the generation before an `await` can tell that a lock happened in
+between. `hold` compares the generation it was given with the current one and, on
+a mismatch, zeroizes the secret it was handed and throws
+`WalletOperationCancelledError` instead of installing it. Without that check, an
+unlock started before a logout would quietly reopen the wallet after it.
+
+`hold` also releases any previous session first, so re-unlocking never leaks the
+old secret or leaves a second timer armed. `release` clears the timer, zeroizes
+private-key bytes when the secret carries them, and drops the data key. It is
+idempotent.
+
+---
+
 ## AutoTimer (`src/domains/AutoTimer/index.ts`)
 
-One-shot, restartable timer used by the `Signer` to auto-lock a session. A fresh
-`start()` cancels any pending timer first; `delayMs <= 0` is a no-op (no
-auto-lock).
+One-shot, restartable timer. A fresh `start()` cancels any pending timer first;
+`delayMs <= 0` is a no-op (no auto-lock).
 
 ```ts
 interface IAutoTimerOptions { delayMs: number; onElapsed: () => void }
@@ -514,8 +712,64 @@ start(): void   // (re)arm; clears first, then schedules onElapsed after delayMs
 clear(): void   // cancel a pending timer
 ```
 
-The signing session arms the timer once at unlock and never restarts it, giving
-a **fixed** (non-sliding) session lifetime.
+`SigningSession` arms the timer once at unlock and never restarts it, giving a
+**fixed** (non-sliding) session lifetime. `LifecycleGuard` uses a second instance
+as the drain timeout.
+
+---
+
+## ClosableDomain (`src/domains/ClosableDomain/index.ts`)
+
+Base class for domains with a terminal teardown. Implemented by `Client`.
+
+```ts
+abstract class ClosableDomain {
+    isActive(): boolean;
+    close(): Promise<void>;
+    protected abstract onClose(): Promise<void>;
+}
+```
+
+`close()` flips the flag **before** awaiting `onClose()` and returns early on a
+second call, so teardown runs exactly once and anything racing it already sees an
+inactive domain. Subclasses put the actual release work in `onClose` and guard
+their public methods with the `@EnsureActive` decorator, which throws
+`DomainClosedError` (status `410`) once the flag is down. Nothing here revives a
+closed domain: the contract is to construct a new one.
+
+---
+
+## LifecycleGuard (`src/domains/LifecycleGuard/index.ts`)
+
+Tracks in-flight async work and tells the difference between "this finished" and
+"this finished, but the world moved on". `ClientLifecycleGuard` extends it for
+wallet publication.
+
+```ts
+class LifecycleGuard {
+    invalidate(): void;                                     // bump the generation
+    drain(timeoutMs?: number): Promise<void>;               // wait out pending work
+    track<T>(operation: () => Promise<T>): Promise<T>;
+    run<T>(operation: () => Promise<T>, onInvalidated: (result: T) => Error): Promise<T>;
+}
+```
+
+- `track` registers the promise and always deregisters it, so `drain` knows what
+  is still running. `Client.transfer` / `Client.deploy` are tracked through the
+  `@TrackOperation` decorator.
+- `run` is `track` plus a generation check: the operation runs, and if
+  `invalidate()` was called meanwhile, `onInvalidated(result)` turns the finished
+  result into the error to throw. The callback receives the result so it can
+  dispose of it — this is how a wallet published after a logout gets discarded
+  rather than orphaned.
+- `drain` races the pending set against a timeout (`DEFAULT_DRAIN_TIMEOUT_MS`,
+  10s) and never rejects: it uses `allSettled`, because the point is to wait for
+  quiet, not to inspect outcomes. The timeout bounds a hung request so a logout
+  cannot block forever.
+
+`Client` calls `invalidate()` first and `drain()` second in both
+`clearPersistence` and `close`, so in-flight operations are marked stale before
+the wait and cannot commit after it.
 
 ---
 
@@ -528,20 +782,35 @@ an HTTP-style `status` instead of matching message strings.
 enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
     NETWORK_BUSY = "NETWORK_BUSY",
+    BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
+    DUPLICATE_WALLET = "DUPLICATE_WALLET",
+    DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
+    WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+    WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
+    DOMAIN_CLOSED = "DOMAIN_CLOSED",
 }
 
 class CustomError extends Error {
     readonly code: CustomErrorCode;
     readonly status: number;
 }
+```
 
-class WalletLockedError extends CustomError {
-    // code WALLET_LOCKED, status 403
-}
+| Class | Code | Status | Extra fields |
+| --- | --- | --- | --- |
+| `WalletLockedError` | `WALLET_LOCKED` | `403` | — |
+| `NetworkBusyError` | `NETWORK_BUSY` | `409` | `networkId` |
+| `DuplicateWalletError` | `DUPLICATE_WALLET` | `409` | `existingSignerId` |
+| `DuplicateAccountError` | `DUPLICATE_ACCOUNT` | `409` | `existingSignerId`, `existingAccountId` |
+| `WalletActionInProgressError` | `WALLET_ACTION_IN_PROGRESS` | `409` | `action`, `signerId` |
+| `WalletOperationCancelledError` | `WALLET_OPERATION_CANCELLED` | `409` | `signerId` |
+| `DomainClosedError` | `DOMAIN_CLOSED` | `410` | `domainName` |
+| `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
 
-class NetworkBusyError extends CustomError {
-    // code NETWORK_BUSY, status 409
-    readonly networkId: NetworkId;
+```ts
+enum WalletAction {
+    OPEN = "OPEN",
+    DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
 }
 ```
 
@@ -555,6 +824,36 @@ while it still has an operation in flight; it carries the offending `networkId`,
 and its `409` status marks it as a conflict the caller can retry once the network
 goes idle. See
 [NetworkBusyRegistry](#networkbusyregistry-srcdomainsnetworkbusyregistryindexts).
+
+`DuplicateWalletError` and `DuplicateAccountError` are thrown while creating a
+wallet whose key fingerprint is already stored. They name the existing owner
+(`existingSignerId`, and for accounts `existingAccountId`) so a UI can point at
+it instead of just refusing. Because matching runs on fingerprints, the check
+works without opening or decrypting anything.
+
+`WalletActionInProgressError` marks a second concurrent attempt at the same
+guarded action on the same signer — opening the same wallet twice, or deriving
+two accounts at once. `action` says which one. See
+[WalletOperationGuardService](SERVICES.md#walletoperationguardservice-srcserviceswalletoperationguardindexts).
+
+`WalletOperationCancelledError` means the operation completed but its result was
+thrown away because the wallet was locked, closed, or logged out while it was
+running: a cancelled unlock (see
+[SigningSession](#signingsession-srcdomainssigningsessionindexts)) or a wallet
+published after teardown (see
+[LifecycleGuard](#lifecycleguard-srcdomainslifecycleguardindexts)). It is not a
+failure to retry blindly; the user's intent changed.
+
+`DomainClosedError` is thrown by `@EnsureActive` on a domain that has already
+been closed. Its `410` status says the resource is permanently gone: build a new
+`Client` rather than retry.
+
+`BalanceUnavailableError` replaces the old "unreadable balance reads as zero"
+behaviour. It carries the `address` and a human-readable `reason` (transport
+failure, a vault error string, an unparsable amount, or a missing expression),
+and its `502` status marks it as an upstream problem rather than an empty
+account. Callers must now handle it explicitly: a caught error is no longer the
+same thing as `0`.
 
 ---
 
@@ -1257,17 +1556,24 @@ storageFabric(options?: IStorageFabricOptions): ITableService<ITableRecord>
 ### Repositories
 
 Each repository is a singleton over a named table, with `initialize()` /
-`ensureInitialized()` and typed CRUD.
+`ensureInitialized()` and typed CRUD. `BaseStorageRepository` also exposes a
+protected `getByFilter(predicate)` (initialize, read all, filter), so lookups by
+a non-key field live in the repository instead of being re-implemented by every
+caller.
 
 - **SignersStorageRepository** (`SIGNERS` table) — persists `ISignerStorageRecord`
-  (`{ id, type, encryptedData, encryptedDataKey, createdAt }`).
+  (`{ id, type, encryptedData, encryptedDataKey, fingerprint, createdAt }`) and
+  offers `findSignerByFingerprint(fingerprint)`.
 - **AccountsStorageRepository** (`ACCOUNTS` table) — persists
-  `IAccountStorageRecord` (`{ id, signerId, name, index, createdAt }`).
+  `IAccountStorageRecord` (`{ id, signerId, name, index, fingerprint, createdAt }`)
+  and offers `getAccountsBySignerId(signerId)` and
+  `findAccountByFingerprint(fingerprint)`.
 - **TransactionReservationsStorageRepository** (`TRANSACTION_RESERVATIONS` table) —
   persists `ITransactionReservationsStorageRecord`
   (`{ id, networkId, signerId, encryptedData, createdAt }`), where `encryptedData`
   is the JSON of `ISerializedTransactionReservationPrivateData` encrypted with the
-  signer's data key.
+  signer's data key. Reads are scoped through
+  `getTransactionReservationsBySignerId(signerId)`.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
   runtime-registered custom networks survive a reload. `config` is a full
