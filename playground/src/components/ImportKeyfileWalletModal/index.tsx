@@ -272,8 +272,10 @@ const ImportKeyfileWalletModal = ({
                                 This keyfile belongs to the wallet{" "}
                                 {preview.existingSignerId}, which is already in
                                 the system. Selected accounts will be added to
-                                it. If the wallet is locked, it will be unlocked
-                                with the entered password.
+                                it.{" "}
+                                {preview.isExistingWalletOpen
+                                    ? "The wallet is unlocked, so the accounts appear right after the import."
+                                    : "The wallet stays locked and its own password is not required. The accounts are saved to it and appear the next time you unlock it."}
                             </div>
                         )}
 
