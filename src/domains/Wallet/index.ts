@@ -24,6 +24,7 @@ import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import { LastAccountRemovalError } from "@domains/CustomError";
 import ImportKeyfileService from "@services/ImportKeyfileService";
 
 type AddressBrand = { readonly __brand: unique symbol };
@@ -189,7 +190,12 @@ export default class Wallet {
         this.accountManager.addAccounts(accounts);
     }
 
+    @OnlyHDWallet
     public removeAccount(id: string): Account {
+        if (this.getAccounts().length === 1) {
+            throw new LastAccountRemovalError(this.id, id);
+        }
+
         return this.accountManager.remove(id);
     }
 

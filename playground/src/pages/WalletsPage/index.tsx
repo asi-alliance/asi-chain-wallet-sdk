@@ -51,6 +51,9 @@ const WalletRow = ({
     }
 
     const walletId = openWallet.getId();
+    const accounts = openWallet.getAccounts();
+    const canRemoveAccount =
+        openWallet.getType() === WalletTypes.HD && accounts.length > 1;
 
     return (
         <div className="wallets-page__card-wrap">
@@ -88,7 +91,7 @@ const WalletRow = ({
                 </button>
             </div>
 
-            {openWallet.getAccounts().map((account) => (
+            {accounts.map((account) => (
                 <AccountCard
                     key={account.getId()}
                     sdk={sdk}
@@ -97,8 +100,14 @@ const WalletRow = ({
                     onRename={() =>
                         handlers.renameAccount(walletId, account.getId())
                     }
-                    onRemove={() =>
-                        handlers.removeAccount(walletId, account.getId())
+                    onRemove={
+                        canRemoveAccount
+                            ? () =>
+                                  handlers.removeAccount(
+                                      walletId,
+                                      account.getId(),
+                                  )
+                            : undefined
                     }
                 />
             ))}

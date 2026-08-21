@@ -9,8 +9,6 @@ import {
     ExportKeyfileService,
     KeysManager,
     MnemonicStrength,
-    Wallet,
-    WalletTypes,
 } from "asi-wallet-sdk";
 
 type CreateWalletPageHandlersParams = {
@@ -79,9 +77,7 @@ export const createWalletPageHandlers = ({
     }: IKeyfileImportPayload) =>
         withLoader(async () => {
             try {
-                const options = accountIndexes
-                    ? { accountIndexes }
-                    : undefined;
+                const options = accountIndexes ? { accountIndexes } : undefined;
 
                 if (existingSignerId) {
                     await sdk.importKeyfileAccounts(keyfile, password, options);
@@ -279,17 +275,7 @@ export const createWalletPageHandlers = ({
                 if (!window.confirm("Remove this account?")) return;
 
                 try {
-                    const targetWallet: Wallet = sdk.client
-                        .getWalletManager()
-                        .get(walletId);
-
                     await sdk.removeAccount(walletId, accountId);
-
-                    if (targetWallet.getType() !== WalletTypes.PRIVATE_KEY) {
-                        return;
-                    }
-
-                    sdk.removeWallet(walletId);
                 } catch (error) {
                     console.error(error);
                     alert(
