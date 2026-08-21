@@ -9,6 +9,12 @@ export default class ItemManager<T> {
         this.items.set(id, item);
     }
 
+    public addMany(entries: Iterable<[string, T]>): void {
+        for (const [id, item] of entries) {
+            this.add(id, item);
+        }
+    }
+
     public remove(id: string): T {
         if (!this.items.has(id)) {
             throw new Error("ItemManager.remove: not found item by id");

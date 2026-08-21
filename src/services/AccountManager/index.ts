@@ -43,6 +43,18 @@ export default class AccountManager extends ItemManager<Account> {
         return { account, accountId };
     }
 
+    public addAccounts(accounts: Account[]): void {
+        const entries: [string, Account][] = accounts.map(
+            (account: Account) => [account.getId(), account],
+        );
+
+        this.addMany(entries);
+
+        if (!this.activeAccount) {
+            this.setActiveAccount(entries[0][0]);
+        }
+    }
+
     public remove(id: string): Account {
         const removedAccount: Account = super.remove(id);
 

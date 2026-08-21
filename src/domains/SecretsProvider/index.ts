@@ -28,6 +28,8 @@ export interface IAccountHDData extends ISeedCredentials {
     path: string;
 }
 
+export type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
+
 export type TSecretsProviderInterface = () => any;
 
 export default class SecretsProvider {

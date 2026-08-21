@@ -21,6 +21,17 @@ export type TWalletOperationOwner =
     | IAccountOperationOwner;
 
 export default class WalletOperationGuardService extends ConcurrentOperationGuardService<TWalletOperationOwner> {
+    private static instance: WalletOperationGuardService;
+
+    public static getInstance(): WalletOperationGuardService {
+        if (!WalletOperationGuardService.instance) {
+            WalletOperationGuardService.instance =
+                new WalletOperationGuardService();
+        }
+
+        return WalletOperationGuardService.instance;
+    }
+
     private getSignerKey(fingerprint: string): string {
         return `${SIGNER_KEY_PREFIX}:${fingerprint}`;
     }

@@ -52,6 +52,7 @@ export { default as SecretsProvider } from "./SecretsProvider";
 export * from "./Signer";
 export { default as Signer } from "./Signer";
 export * from "./SignersStorageRepository";
+export * from "./StorageMetadataStorageRepository";
 export * from "./SigningSession";
 export { default as SigningSession } from "./SigningSession";
 export * from "./TableService";

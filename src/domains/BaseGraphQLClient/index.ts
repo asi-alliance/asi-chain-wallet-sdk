@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import { TAxiosClientConfig } from "@domains/BaseHttpClient";
+import HttpResponseParser from "@services/HttpResponseParser";
 
 export default class BaseGraphQLClient {
     private readonly client: AxiosInstance;
@@ -11,6 +12,9 @@ export default class BaseGraphQLClient {
                 "Content-Type": "application/json",
             },
             ...config.axiosConfig,
+            transformResponse: [
+                HttpResponseParser.parseWithBigIntegersAsStrings,
+            ],
         });
     }
 
