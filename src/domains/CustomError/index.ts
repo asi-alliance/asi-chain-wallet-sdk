@@ -170,7 +170,7 @@ export class StorageVersionDowngradeError extends StorageSchemaError {
     }
 }
 
-export class StorageMigrationChainError extends StorageSchemaError {
+export class StorageMigrationChainError extends CustomError {
     public readonly violation: StorageMigrationChainViolation;
     public readonly versions: number[];
 
@@ -179,12 +179,7 @@ export class StorageMigrationChainError extends StorageSchemaError {
         versions: number[],
         message: string = `Storage migration chain is invalid (${violation}) for schema versions ${versions.join(", ")}`,
     ) {
-        super(
-            CustomErrorCode.STORAGE_MIGRATION_CHAIN_INVALID,
-            message,
-            500,
-            true,
-        );
+        super(CustomErrorCode.STORAGE_MIGRATION_CHAIN_INVALID, message, 500);
 
         this.violation = violation;
         this.versions = versions;
