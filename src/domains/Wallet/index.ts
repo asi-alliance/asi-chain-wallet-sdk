@@ -141,8 +141,7 @@ export default class Wallet {
 
         const indexes = this.getAccounts()
             .map((account: Account) => account.getIndex())
-            .filter((index: number | null): index is number => index !== null)
-            .sort((a, b) => a - b);
+            .filter((index: number | null): index is number => index !== null);
 
         if (!indexes.length) {
             return initialAccountIndex;
@@ -317,7 +316,6 @@ export default class Wallet {
             type: walletType,
             signer,
             accounts: accountsMap,
-            activeAccount: accountsMap.values().next().value,
         });
     }
 

@@ -64,6 +64,25 @@ export default class KeyDerivationService {
         return BIP32Factory(ECC).fromSeed(Buffer.from(seed));
     }
 
+    public static compareIndexes(
+        firstIndex: number | null,
+        secondIndex: number | null,
+    ): number {
+        if (firstIndex === null && secondIndex === null) {
+            return 0;
+        }
+
+        if (firstIndex === null) {
+            return 1;
+        }
+
+        if (secondIndex === null) {
+            return -1;
+        }
+
+        return firstIndex - secondIndex;
+    }
+
     public static async deriveNextKeyFromMnemonic(
         mnemonicWords: string[],
         currentIndex: number,
