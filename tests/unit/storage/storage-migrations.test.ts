@@ -96,6 +96,7 @@ const createRecordingMigration = (
     applied: number[],
 ): IStorageMigration => ({
     version,
+    resumable: true,
     description: `recording migration ${version}`,
     run: async () => {
         applied.push(version);
@@ -105,6 +106,7 @@ const createRecordingMigration = (
 const createFailingMigration = (version: number): IStorageMigration => ({
     version,
     description: `failing migration ${version}`,
+    resumable: false,
     run: async (tableStorage: ITableService<ITableRecord>) => {
         await tableStorage.insert(SIGNERS_DATA_KEY, {
             id: "signer-written-by-migration",
@@ -124,6 +126,7 @@ const createTableCreatingMigration = (
 ): IStorageMigration => ({
     version,
     description: `table creating migration ${version}`,
+    resumable: true,
     run: async (tableStorage: ITableService<ITableRecord>) => {
         await tableStorage.createTable(tableName, "id");
 
@@ -139,6 +142,7 @@ const createTableDroppingMigration = (
 ): IStorageMigration => ({
     version,
     description: `table dropping migration ${version}`,
+    resumable: false,
     run: async (tableStorage: ITableService<ITableRecord>) => {
         await tableStorage.dropTable(tableName);
 
@@ -308,8 +312,18 @@ test("schema version is persisted after every successful migration", async () =>
     };
 
     const migrations: IStorageMigration[] = [
-        { version: 2, description: "first", run: readVersionOnStart },
-        { version: 3, description: "second", run: readVersionOnStart },
+        {
+            version: 2,
+            description: "first",
+            resumable: true,
+            run: readVersionOnStart,
+        },
+        {
+            version: 3,
+            description: "second",
+            resumable: true,
+            run: readVersionOnStart,
+        },
     ];
 
     await createRunner(migrations, 3).run();
@@ -409,6 +423,7 @@ test("the journal marks a migration in flight and clears it on success", async (
         {
             version: 2,
             description: "journal probe",
+            resumable: true,
             run: async () => {
                 pendingVersionsSeen.push(
                     await metadataRepository.getPendingVersion(),
