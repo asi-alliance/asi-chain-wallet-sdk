@@ -9,6 +9,8 @@ export enum KeyfileTypes {
     WALLET = "asi-wallet-keyfile",
     ACCOUNT = "asi-account-keyfile",
 }
+export const CURRENT_STORAGE_VERSION: number = 1;
+export const BASELINE_STORAGE_VERSION: number = 1;
 
 export const ASI_WALLET_KEYFILE_VERSION: number = 1;
 
