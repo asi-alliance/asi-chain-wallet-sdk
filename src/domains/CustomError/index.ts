@@ -13,6 +13,9 @@ export enum CustomErrorCode {
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+    INVALID_KEYFILE = "INVALID_KEYFILE",
+    INVALID_KEYFILE_PASSWORD = "INVALID_KEYFILE_PASSWORD",
+    KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
 }
@@ -20,6 +23,7 @@ export enum CustomErrorCode {
 export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+    SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
 }
 
 export enum StorageMigrationChainViolation {
@@ -123,6 +127,30 @@ export class WalletActionInProgressError extends CustomError {
 
         this.action = action;
         this.signerId = signerId;
+    }
+}
+
+export class InvalidKeyfileError extends CustomError {
+    constructor(
+        message: string = "Keyfile is malformed or has an unsupported version",
+    ) {
+        super(CustomErrorCode.INVALID_KEYFILE, message, 400);
+    }
+}
+
+export class InvalidKeyfilePasswordError extends CustomError {
+    constructor(
+        message: string = "Keyfile cannot be decrypted with the provided password",
+    ) {
+        super(CustomErrorCode.INVALID_KEYFILE_PASSWORD, message, 401);
+    }
+}
+
+export class KeyfileWalletNotFoundError extends CustomError {
+    constructor(
+        message: string = "Keyfile secret does not belong to any stored wallet, its accounts have no wallet to be imported into",
+    ) {
+        super(CustomErrorCode.KEYFILE_WALLET_NOT_FOUND, message, 404);
     }
 }
 

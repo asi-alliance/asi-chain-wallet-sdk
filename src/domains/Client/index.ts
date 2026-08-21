@@ -39,7 +39,18 @@ import {
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
-import ExportService from "@services/ExportService";
+import WalletPersistenceService from "@services/WalletPersistence";
+import WalletImportService, {
+    IKeyfileAccountsImportPlan,
+    IKeyfileAccountsImportResult,
+    IKeyfileImportPlan,
+    IKeyfileImportPreview,
+} from "@services/WalletImport";
+import ExportKeyfileService, {
+    IAccountKeyfile,
+    IWalletKeyfile,
+} from "@services/ExportKeyfileService";
+import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
     isNetworkConfigChanged,
@@ -284,6 +295,18 @@ export default class Client extends ClosableDomain {
         return KeysManager.generateKeyPair().privateKey;
     }
 
+    private cacheInsensitiveAccountsData(accounts: Account[]): void {
+        if (!this.flags?.withInsensitiveCacheStorage) {
+            return;
+        }
+
+        for (const account of accounts) {
+            InsensitiveCacheStorageManager.save(
+                InsensitiveCacheStorageSerializer.serialize(account),
+            );
+        }
+    }
+
     @EnsureActive
     public async createHDWallet(
         { mnemonic, accountName, index }: ICreateHDWalletPayload,
@@ -319,13 +342,7 @@ export default class Client extends ClosableDomain {
 
         this.emitWalletsChanged();
 
-        if (this.flags?.withInsensitiveCacheStorage) {
-            InsensitiveCacheStorageManager.save(
-                InsensitiveCacheStorageSerializer.serialize(
-                    wallet.getActiveAccount()!,
-                ),
-            );
-        }
+        this.cacheInsensitiveAccountsData(wallet.getAccounts());
 
         return wallet;
     }
@@ -365,13 +382,7 @@ export default class Client extends ClosableDomain {
 
         this.emitWalletsChanged();
 
-        if (this.flags?.withInsensitiveCacheStorage) {
-            InsensitiveCacheStorageManager.save(
-                InsensitiveCacheStorageSerializer.serialize(
-                    wallet.getActiveAccount()!,
-                ),
-            );
-        }
+        this.cacheInsensitiveAccountsData(wallet.getAccounts());
 
         return wallet;
     }
@@ -539,13 +550,7 @@ export default class Client extends ClosableDomain {
 
         this.emitAccountsChanged(walletId);
 
-        if (this.flags?.withInsensitiveCacheStorage) {
-            InsensitiveCacheStorageManager.save(
-                InsensitiveCacheStorageSerializer.serialize(
-                    createdAccountData.account,
-                ),
-            );
-        }
+        this.cacheInsensitiveAccountsData([createdAccountData.account]);
 
         return createdAccountData;
     }
@@ -580,22 +585,140 @@ export default class Client extends ClosableDomain {
         this.emitAccountsChanged(walletId);
     }
 
-    public getExportedAccountData(walletId: string, accountId: string): string {
-        const targetWallet: Wallet | null = this.walletManager.get(walletId);
-
-        if (!targetWallet) {
-            throw new Error("Client.getExportedAccountData: unknown wallet id");
-        }
-
+    @EnsureActive
+    public getExportedAccountData(
+        walletId: string,
+        accountId: string,
+    ): IAccountKeyfile {
         const exportedAccount: Account = this.walletManager.getAccount(
             walletId,
             accountId,
         );
 
-        return ExportService.exportAccountKeyfile({
-            address: exportedAccount.getAddress(),
-            encryptedPrivateKey: targetWallet.getSigner().getEncryptedSecret(),
-        });
+        return ExportKeyfileService.exportAccountKeyfile(exportedAccount);
+    }
+
+    @EnsureActive
+    public async exportWalletKeyfile(
+        walletId: string,
+        password: string,
+    ): Promise<IWalletKeyfile> {
+        const targetWallet: Wallet | null = this.walletManager.get(walletId);
+
+        if (!targetWallet) {
+            throw new Error("Client.exportWalletKeyfile: unknown wallet id");
+        }
+
+        return ExportKeyfileService.exportWalletKeyfile(
+            targetWallet,
+            this.createPasswordProvider(password),
+        );
+    }
+
+    @EnsureActive
+    public async previewWalletKeyfileImport(
+        source: unknown,
+        password: string,
+    ): Promise<IKeyfileImportPreview> {
+        const preview: Omit<IKeyfileImportPreview, "isExistingWalletOpen"> =
+            await WalletImportService.previewKeyfileImport(
+                source,
+                this.createPasswordProvider(password),
+            );
+
+        return {
+            ...preview,
+            isExistingWalletOpen: Boolean(
+                preview.existingSignerId &&
+                    this.walletManager.getBySignerId(preview.existingSignerId),
+            ),
+        };
+    }
+
+    @EnsureActive
+    public async importWalletKeyfile(
+        source: unknown,
+        password: string,
+        options?: IImportWalletKeyfileOptions,
+    ): Promise<Wallet> {
+        const passwordProvider: SecretsProvider =
+            this.createPasswordProvider(password);
+
+        const { payload }: IKeyfileImportPlan =
+            await WalletImportService.prepareKeyfileImport(
+                source,
+                passwordProvider,
+                options,
+            );
+
+        const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
+            async () => {
+                const importedWallet: Wallet =
+                    await this.walletManager.importKeyfile(
+                        payload,
+                        passwordProvider,
+                    );
+
+                await this.reservationAdapterManager.create(
+                    importedWallet,
+                    passwordProvider,
+                );
+
+                return importedWallet;
+            },
+        );
+
+        this.emitWalletsChanged();
+        this.cacheInsensitiveAccountsData(wallet.getAccounts());
+
+        return wallet;
+    }
+
+    @EnsureActive
+    public async importKeyfileAccounts(
+        source: unknown,
+        password: string,
+        options?: IImportWalletKeyfileOptions,
+    ): Promise<IKeyfileAccountsImportResult> {
+        const {
+            payload,
+            secretProvider,
+            signerId,
+        }: IKeyfileAccountsImportPlan =
+            await WalletImportService.prepareKeyfileAccountsImport(
+                source,
+                this.createPasswordProvider(password),
+                options,
+            );
+
+        const accounts: Account[] = await this.lifecycleGuard.runAccountsUpdate(
+            signerId,
+            () =>
+                WalletPersistenceService.createAccounts(
+                    signerId,
+                    payload.accounts,
+                    secretProvider,
+                ),
+        );
+
+        const wallet: Wallet | null =
+            this.walletManager.getBySignerId(signerId);
+
+        if (wallet) {
+            wallet.addAccounts(accounts);
+
+            this.emitAccountsChanged(wallet.getId());
+            this.emitWalletsChanged();
+        }
+
+        this.cacheInsensitiveAccountsData(accounts);
+
+        return {
+            signerId,
+            importedAccountIds: accounts.map((account: Account) =>
+                account.getId(),
+            ),
+        };
     }
 
     @EnsureActive
@@ -613,7 +736,7 @@ export default class Client extends ClosableDomain {
         const transactions: Transaction[] =
             await currentAccount.getTransactionsHistory(networkId);
 
-        return ExportService.exportTransactions(transactions, format);
+        return ExportKeyfileService.exportTransactions(transactions, format);
     }
 
     @EnsureActive

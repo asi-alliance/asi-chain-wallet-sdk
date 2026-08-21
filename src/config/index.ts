@@ -5,10 +5,12 @@ export const DEFAULT_PHLO_PRICE: number = 1;
 
 export const DEFAULT_NODE_STORAGE_DIR: string = "./storage";
 
+export enum KeyfileTypes {
+    WALLET = "asi-wallet-keyfile",
+    ACCOUNT = "asi-account-keyfile",
+}
 export const CURRENT_STORAGE_VERSION: number = 1;
 export const BASELINE_STORAGE_VERSION: number = 1;
-
-export const ASI_WALLET_KEYFILE: string = "asi-wallet-keyfile";
 
 export const ASI_WALLET_KEYFILE_VERSION: number = 1;
 

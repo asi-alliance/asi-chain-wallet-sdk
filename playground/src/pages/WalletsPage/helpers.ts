@@ -2,8 +2,11 @@ import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
+import { IKeyfileImportPayload } from "@components/ImportKeyfileWalletModal";
+import { downloadTextFile } from "@utils/functions";
 import {
     decodeBase16,
+    ExportKeyfileService,
     KeysManager,
     MnemonicStrength,
     Wallet,
@@ -21,9 +24,11 @@ export type WalletPageHandlers = {
     importPk: () => void;
     createHd: (words: 12 | 24) => void;
     importHd: (words: 12 | 24) => void;
+    importKeyfile: () => void;
     openWallet: (signerId: string) => void;
     closeWallet: (walletId: string) => void;
     deriveAccount: (walletId: string) => void;
+    exportWalletKeyfile: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
     renameAccount: (walletId: string, accountId: string) => void;
     removeAccount: (walletId: string, accountId: string) => void;
@@ -63,6 +68,31 @@ export const createWalletPageHandlers = ({
             } catch (error) {
                 console.error(error);
                 alert((error as Error)?.message ?? "Failed to create wallet");
+            }
+        });
+
+    const submitImportKeyfile = ({
+        keyfile,
+        password,
+        existingSignerId,
+        accountIndexes,
+    }: IKeyfileImportPayload) =>
+        withLoader(async () => {
+            try {
+                const options = accountIndexes
+                    ? { accountIndexes }
+                    : undefined;
+
+                if (existingSignerId) {
+                    await sdk.importKeyfileAccounts(keyfile, password, options);
+                } else {
+                    await sdk.importWalletKeyfile(keyfile, password, options);
+                }
+
+                closeModal();
+            } catch (error) {
+                console.error(error);
+                alert((error as Error)?.message ?? "Failed to import keyfile");
             }
         });
 
@@ -123,6 +153,17 @@ export const createWalletPageHandlers = ({
                 variant: words,
             }),
 
+        importKeyfile: () =>
+            setModalState({
+                type: Modals.IMPORT_KEYFILE_WALLET_MODAL,
+                props: {
+                    onPreview: (keyfile: string, password: string) =>
+                        sdk.previewWalletKeyfileImport(keyfile, password),
+                    onSubmit: submitImportKeyfile,
+                    onClose: closeModal,
+                },
+            }),
+
         openWallet: (signerId: string) =>
             setModalState({
                 type: Modals.PASSWORD_MODAL,
@@ -164,6 +205,37 @@ export const createWalletPageHandlers = ({
                                 alert(
                                     (error as Error)?.message ??
                                         "Failed to derive account",
+                                );
+                            }
+                        }),
+                    onClose: closeModal,
+                },
+            }),
+
+        exportWalletKeyfile: (walletId: string) =>
+            setModalState({
+                type: Modals.PASSWORD_MODAL,
+                props: {
+                    title: "Enter wallet password to export keyfile",
+                    onSubmit: (password: string) =>
+                        withLoader(async () => {
+                            try {
+                                downloadTextFile(
+                                    `asi-wallet-keyfile-${walletId}.json`,
+                                    ExportKeyfileService.toJSON(
+                                        await sdk.exportWalletKeyfile(
+                                            walletId,
+                                            password,
+                                        ),
+                                    ),
+                                    "application/json",
+                                );
+                                closeModal();
+                            } catch (error) {
+                                console.error(error);
+                                alert(
+                                    (error as Error)?.message ??
+                                        "Failed to export wallet keyfile",
                                 );
                             }
                         }),
