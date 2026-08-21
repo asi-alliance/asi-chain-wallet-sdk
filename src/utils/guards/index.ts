@@ -1,8 +1,7 @@
 import Bip44Path from "@domains/Bip44Path";
 import { IHDSecret, IPrivateKeyCredentials } from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { validateNodeApiProfile } from "@utils/validators";
+import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import type { EncryptedData } from "@services/Crypto";
 import type {
     IKeyfileAccount,
@@ -22,7 +21,7 @@ export const isPrivateKeySecretData = (
 };
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
-    return validateNodeApiProfile(value).isValid;
+    return NODE_API_PROFILES.includes(value as NodeApiProfile);
 };
 
 export const isEncryptedData = (value: unknown): value is EncryptedData => {
