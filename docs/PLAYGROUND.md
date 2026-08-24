@@ -84,8 +84,14 @@ Returned value (`UseSdkValue`):
   `transfer` and `deploy` both resolve to an `IReservedOperationResult`
   (`{ deployId, subscribe }`), so the caller follows the deploy through
   `subscribe` instead of a separate watch handle.
-- Export: `getExportedAccountData(walletId, accountId)` — the encrypted account
-  keyfile JSON (downloaded from `AccountCard`).
+- Export: `getExportedAccountData(walletId, accountId)` — the public account
+  descriptor object, and `exportWalletKeyfile(walletId, password)` — the
+  password-protected wallet keyfile. Both return objects now, so the playground
+  serializes them with `ExportKeyfileService.toJSON` before offering a download.
+- Keyfile import: `previewWalletKeyfileImport(source, password)`,
+  `importWalletKeyfile(source, password, options?)`,
+  `importKeyfileAccounts(source, password, options?)`. The two import calls
+  refresh the wallet list afterwards; the preview writes nothing.
 - Network busy & reservations: `isNetworkBusy(networkId)`,
   `isCurrentNetworkBusy`, `hasNetworkReservations(networkId)`. The first two read
   a local `busyNetworkIds` list kept in sync by the `NETWORK_BUSY_CHANGED` event
@@ -225,18 +231,44 @@ loader.
 
 Two columns — Private Key wallets and Mnemonic (HD) wallets — rendered from
 `sdk.walletsMetadata`. Closed wallets show an "Open" button; open wallets render
-their accounts as `AccountCard`s, a "Close" action, and (for HD) a "Derive"
-action. HD create/import offers a 12/24-word choice.
+their accounts as `AccountCard`s plus "Export keyfile", "Close", and (for HD)
+"Derive" actions. A page-level "Import keyfile" button sits next to the network
+selector. HD create/import offers a 12/24-word choice.
 
 The page matches metadata to open wallets through a
 `Map<signerId, Wallet>` built from `sdk.openWallets`, because
 `walletsMetadata` is keyed by `signerId` while the in-memory wallets are keyed by
 `walletId`.
 
+Account removal is offered only when the SDK would actually allow it:
+`canRemoveAccount` requires an HD wallet with more than one account, and
+`AccountCard`'s `onRemove` prop is optional, so the delete control is not
+rendered at all otherwise. This mirrors the `@OnlyHDWallet` and
+`LastAccountRemovalError` guards rather than letting the user click into an
+error.
+
 `helpers.ts` builds `WalletPageHandlers`: `createPk`, `importPk`, `createHd`,
-`importHd`, `openWallet`, `closeWallet`, `deriveAccount`, `removeWallet`,
-`renameAccount`, `removeAccount`. These open the relevant modals and call the
-matching `useSdk` methods through `withLoader`.
+`importHd`, `importKeyfile`, `openWallet`, `closeWallet`, `deriveAccount`,
+`exportWalletKeyfile`, `removeWallet`, `renameAccount`, `removeAccount`. These
+open the relevant modals and call the matching `useSdk` methods through
+`withLoader`.
+
+`submitImportKeyfile` is where the two-way import branch lives: the modal hands
+back `{ keyfile, password, existingSignerId, accountIndexes }`, and the handler
+calls `importKeyfileAccounts` when `existingSignerId` is set and
+`importWalletKeyfile` otherwise.
+
+### ImportKeyfileWalletModal (`components/ImportKeyfileWalletModal`)
+
+The preview-then-select flow for wallet keyfile import, registered as
+`Modals.IMPORT_KEYFILE_WALLET_MODAL`.
+
+The user picks a file and enters its password; the modal calls
+`previewWalletKeyfileImport` and renders the result: the wallet type, whether the
+secret already belongs to a stored wallet, and the per-account list with each
+entry marked `new` or `already-imported`. Only the new accounts are selectable,
+so a selection cannot be built that the SDK would reject as a duplicate. It
+submits `IKeyfileImportPayload` with the chosen `accountIndexes`.
 
 ### TxHistoryPage (`pages/TxHistoryPage/index.tsx`)
 

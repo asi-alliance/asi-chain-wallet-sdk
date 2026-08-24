@@ -46,6 +46,8 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Separate Open and Unlocked States** - Wallets are loaded into memory independently of the signing session that holds the decrypted secret, via [Client](docs/DOMAINS.md#open-vs-unlocked) and [SigningSession](docs/DOMAINS.md)
 - **Event Subscriptions** - Typed, isolated listeners attachable at any time through `client.getEventBus()` via [ClientEventBus](docs/SERVICES.md)
 - **Duplicate Protection** - Wallets and accounts are matched on non-reversible key fingerprints, so re-importing the same secret is refused even while everything is locked, via [KeyFingerprintService](docs/SERVICES.md)
+- **Encrypted Wallet Keyfiles** - Password-protected export and import of a whole wallet, with a preview that reports which accounts are new before anything is written, via [Client](docs/DOMAINS.md#keyfile-export--import)
+- **Versioned Storage with Migrations** - Persisted data carries a schema version; incompatible or interrupted state is refused up front instead of being silently rewritten, via [StorageMigrationRunner](docs/SERVICES.md)
 - **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
@@ -109,6 +111,13 @@ const client = await Client.create({
     defaultNetwork: "DevNet",
 });
 ```
+
+`Client.create` also brings storage up to date. Persisted data carries a schema
+version, and startup refuses to touch anything it cannot safely handle: data
+written by a newer SDK build, a malformed migration chain, or a migration that a
+previous run left unfinished. Those rejections are `StorageSchemaError`s carrying
+an `isStorageIntact` flag, which tells you whether the data on disk is still
+readable (update the SDK) or needs restoring from an export.
 
 `nodeApiProfile` is required on every network. It selects which f1r3node
 implementation the SDK talks to — `SCALA` for the legacy node, `RUST` for the new
@@ -185,6 +194,42 @@ default) and are not extended by activity. Signing after expiry without a
 password throws `WalletLockedError` with an HTTP-style status `403`, so a UI can
 treat it like an expired token and re-prompt. See
 [Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
+
+### Export and Import a Wallet Keyfile
+
+A wallet keyfile is the password-protected backup of a whole wallet: its secret
+plus its account list, both encrypted.
+
+```typescript
+// Export (returns an object; serialize it however you like)
+const keyfile = await client.exportWalletKeyfile(wallet.getId(), "wallet-password");
+
+// Import: look before you write
+const preview = await client.previewWalletKeyfileImport(keyfile, "wallet-password");
+
+if (preview.existingSignerId) {
+    // The secret is already stored - add only the accounts that are new
+    const newIndexes = preview.accounts
+        .filter((account) => account.status === "new")
+        .map((account) => account.index!);
+
+    await client.importKeyfileAccounts(keyfile, "wallet-password", {
+        accountIndexes: newIndexes,
+    });
+} else {
+    // Unknown secret - create the wallet
+    await client.importWalletKeyfile(keyfile, "wallet-password");
+}
+```
+
+`previewWalletKeyfileImport` writes nothing. It decrypts the keyfile, derives
+every account it declares, and reports each one as `"new"` or
+`"already-imported"`, so a UI can show what an import would actually do and let
+the user choose. `source` accepts either the object or its JSON string.
+
+Note that `getExportedAccountData` is a different thing: a public, passwordless
+descriptor of one account (name, address, index). It carries no key material and
+cannot restore anything. See [keyfile export & import](docs/DOMAINS.md#keyfile-export--import).
 
 ### Subscribe to Events
 
@@ -288,6 +333,8 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │  • StorageManager      - Persistence orchestration            │  │
 │  │  • ClientEventBus      - Typed client event subscriptions     │  │
 │  │  • WalletOperationGuard- Duplicate & concurrency guards       │  │
+│  │  • StorageBootstrap / StorageMigrationRunner (schema)         │  │
+│  │  • ExportKeyfileService / ImportKeyfileService                │  │
 │  │  • DeployService / BlockService / AccountDataService          │  │
 │  │  • AssetsService / TransactionService / DeployStatusPoller    │  │
 │  │  • CryptoService / KeysManager / KeyDerivation / Mnemonic     │  │

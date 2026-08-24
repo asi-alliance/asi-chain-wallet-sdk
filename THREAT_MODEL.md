@@ -20,6 +20,9 @@ Date: 2026-03-19
 6. Key fingerprints stored in plaintext. These are one-way hashes of public
    material and are not confidential, but they do link stored records to a key
    pair, so they are listed here as metadata rather than as secrets.
+7. Exported wallet keyfiles. They carry the encrypted signing secret and an
+   encrypted account list, so a keyfile is exactly as sensitive as the vault it
+   came from once its password is known.
 
 ## 3. Trust Boundaries
 
@@ -47,7 +50,16 @@ Date: 2026-03-19
    completes after the user locked, closed, or logged out, and persistence writes
    landing after a `clearPersistence`.
 7. A hostile or faulty node answer being read as valid state, in particular an
-   unreadable balance being treated as zero funds.
+   unreadable balance being treated as zero funds, or a large integer amount
+   being rounded during JSON parsing.
+8. Malicious or corrupted keyfiles supplied as import input: malformed
+   structure, a secret contradicting the declared wallet type, or crafted
+   account lists.
+9. Offline attacks on an exported keyfile, which travels outside the app's
+   storage boundary and is only as strong as its password.
+10. Storage schema confusion: data written by a different SDK build being read or
+    rewritten under the wrong assumptions, or a migration interrupted mid-way
+    leaving partially converted data.
 
 ## 6. Out-of-Scope / Assumptions
 
@@ -80,6 +92,15 @@ Current controls:
 9. Duplicate rejection without decryption: wallets and accounts are matched on
    one-way key fingerprints, so re-importing a stored secret is refused while
    everything remains locked.
+10. Keyfile boundary validation: structure, envelope type, and version are
+    checked before decryption, and the decrypted secret is cross-checked against
+    the declared wallet type. Export never decrypts the secret, and import
+    re-encrypts it locally with a fresh data key.
+11. Version-gated storage: compatibility is asserted before any table is opened,
+    migrations run under backup and rollback, and an unrecoverable state is
+    reported with `isStorageIntact: false` rather than being migrated on a guess.
+12. Precision-preserving response parsing: unsafe integer literals are quoted
+    before `JSON.parse`, so chain amounts are never silently rounded in transit.
 
 Planned/required controls:
 

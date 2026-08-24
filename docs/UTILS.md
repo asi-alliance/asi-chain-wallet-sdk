@@ -31,11 +31,22 @@ Teardown:
   in-flight operations before giving up (10s). It bounds `Client.close` and
   `Client.clearPersistence` so a hung request cannot block a logout forever.
 
+Storage schema:
+
+- `CURRENT_STORAGE_VERSION: number` — the schema version this build writes (`1`).
+- `BASELINE_STORAGE_VERSION: number` — the version assumed for storage that
+  carries no schema record yet (`1`). Migrations may only declare versions in
+  `BASELINE + 1 .. CURRENT`.
+
 Data export:
 
 - `ExportFormat` — `"json"` | `"csv"` (const object + matching type).
-- `ASI_WALLET_KEYFILE: string` / `ASI_WALLET_KEYFILE_VERSION: number` — keyfile
-  envelope `type` tag and version (`"asi-wallet-keyfile"`, `1`).
+- `KeyfileTypes` — enum of envelope `type` tags: `WALLET` (`"asi-wallet-keyfile"`)
+  and `ACCOUNT` (`"asi-account-keyfile"`). Replaces the single
+  `ASI_WALLET_KEYFILE` constant, because the two keyfile kinds must not be
+  interchangeable.
+- `ASI_WALLET_KEYFILE_VERSION: number` — keyfile envelope version (`1`); import
+  refuses anything else.
 - `TRANSACTIONS_CSV_HEADERS: string[]` — column order for CSV transaction export.
 
 ---
@@ -126,6 +137,32 @@ buildUrl(pathPrefix: string, params?: IUrlParams): string // fills :path params 
 normalizeAddress(address: string | undefined): string     // trim + lowercase
 ```
 
+### Selection
+
+```ts
+selectByField<T, K extends keyof T>(
+    items: T[],
+    field: K,
+    values: readonly T[K][],
+): { selected: T[]; missingValues: T[K][] }
+```
+
+Picks the items whose `field` is in `values` and, crucially, reports which
+requested values matched nothing. Keyfile import uses it to narrow accounts to
+the requested derivation indexes and to reject a selection that names an index
+the keyfile does not contain, instead of silently importing a subset.
+
+### Schema stamping
+
+```ts
+withSchemaVersion<T extends ITableRecord>(record: T): T
+```
+
+Returns the record with a `schemaVersion` defaulted to
+`BASELINE_STORAGE_VERSION` when absent. A helper for per-record migrations: it is
+not wired into any write path yet, since the current schema version is the
+baseline.
+
 ### Failure isolation
 
 ```ts
@@ -163,6 +200,27 @@ curve order are rejected. `Client.createPrivateKeyWallet` runs `isPrivateKeyVali
 before touching storage, so an imported key that could never sign is refused up
 front instead of failing later at signing time.
 
+Keyfile validation:
+
+```ts
+validateWalletKeyfile(source: unknown): { isValid: boolean; error?: string }
+validateWalletKeyfileAccounts(source: unknown, walletType: WalletTypes): { isValid: boolean; error?: string }
+```
+
+`validateWalletKeyfile` runs on the untrusted outer envelope: it must be an
+object, its `type` must be `KeyfileTypes.WALLET` (an account keyfile is rejected
+here, since it cannot restore anything), its `version` must match
+`ASI_WALLET_KEYFILE_VERSION`, its `walletType` must be a known `WalletTypes`, and
+both `encryptedPrivateData` and `encryptedAccounts` must look like
+`EncryptedData` (via the `isEncryptedData` guard).
+
+`validateWalletKeyfileAccounts` runs on the account list **after** decryption,
+because until then it is ciphertext. It requires a non-empty array of well-shaped
+entries, rejects duplicate indexes (two accounts at one derivation index is a
+corrupted or hand-edited file), and enforces that a private-key keyfile declares
+exactly one account. Both return the specific reason as `error`, which
+`ImportKeyfileService` turns into the `InvalidKeyfileError` message.
+
 `validateUrl` powers custom-network endpoint validation in
 `NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
 field on the same write paths and is the source of truth behind the
@@ -195,7 +253,18 @@ isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is {
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
 isNodeApiProfile(value: unknown): value is NodeApiProfile // delegates to validateNodeApiProfile
 isPromiseLike(value: unknown): value is PromiseLike<unknown>
+
+isEncryptedData(value: unknown): value is EncryptedData
+isKeyfileAccount(value: unknown): value is IKeyfileAccount
+isKeyfileWalletAccount(value: unknown): value is IKeyfileWalletAccount
 ```
+
+The three keyfile guards narrow untrusted parsed JSON at the import boundary,
+where nothing about the shape can be assumed. `isEncryptedData` checks the four
+fields a ciphertext envelope must carry (`data`, `salt`, `iv`, `version`);
+`isKeyfileWalletAccount` accepts `{ name, index }` and `isKeyfileAccount` the
+richer `{ name, address, index }` of a standalone account keyfile. Both treat a
+`null` index as valid, since private-key accounts have no derivation index.
 
 `isPromiseLike` is a structural check (`then` is callable) rather than an
 `instanceof Promise`, so `runProtected` also catches rejections from async
@@ -224,12 +293,19 @@ SkipIfTableExists;
 Wallet / client / API guards:
 
 ```ts
-OnlyHDWallet; // throws on non-HD wallets
+OnlyHDWallet; // throws HDWalletOnlyOperationError on non-HD wallets
 EnsureActiveAccountExist; // throws when the wallet has no active account
 EnsureApiClientManagerInitialized; // throws before ApiClientManager.initialize()
 EnsureApiClientManagerConfigured; // throws when the network config isn't ready
 EnsureWithInsensitiveCacheStorage; // throws when the cache-storage flag is off
 ```
+
+`OnlyHDWallet` is synchronous and throws a typed
+`HDWalletOnlyOperationError` naming the guarded method (read from the decorator
+context), so a caller can branch on `code` and show which operation was refused.
+It used to be `async` and to throw a plain `Error`, which forced every guarded
+method to return a promise even when it was synchronous — `Wallet.removeAccount`
+is one, and it can now stay synchronous under the guard.
 
 Lifecycle guards:
 
@@ -297,6 +373,7 @@ Builds and restores the correct `Signer` subclass from encrypted material.
 
 ```ts
 createSigner(payload: TCreateSignerPayload): Promise<Signer>  // HDSigner / PrivateKeySigner
+createImportedSigner(payload: ICreateImportedSignerPayload): Promise<Signer>
 restoreSigner(record: ISignerRecord): Signer
 ```
 
@@ -309,10 +386,29 @@ data such as transaction reservations; it is resolved through
 otherwise the password decrypts it.
 
 `createSigner` also computes the signer's **fingerprint** while it still has the
-plaintext secret in hand: `KeyFingerprintService.fromPrivateKey` for a
-private-key signer, `fromMnemonic` for an HD one. It travels on `ISignerRecord`
-as a plaintext field and `restoreSigner` passes it straight back, so it is
-available for duplicate detection without decrypting anything.
+plaintext secret in hand, through the single `KeyFingerprintService.fromSecret`
+entry point. It travels on `ISignerRecord` as a plaintext field and
+`restoreSigner` passes it straight back, so it is available for duplicate
+detection without decrypting anything.
+
+`createImportedSigner` builds a signer from an already-decrypted secret, which is
+what wallet keyfile import has. It generates a fresh signer id, re-wraps the
+secret in a `SecretsProvider` shaped for its type, and delegates to
+`createSigner`.
+
+```ts
+interface ICreateImportedSignerPayload {
+    secret: TDecryptedSecret;
+    passwordProvider: SecretsProvider;
+}
+```
+
+Delegating rather than assembling a signer directly is deliberate: an imported
+wallet goes through the same encryption and the same **freshly generated data
+key** as one created from scratch. The keyfile's ciphertext is never adopted as
+the local at-rest ciphertext, so an imported wallet is encrypted under the
+importing user's password with new salts and a new data key, independent of
+whatever the exporting side used.
 
 ### Node API adapter fabric (`src/fabrics/nodeApiAdapter.ts`)
 

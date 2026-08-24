@@ -61,9 +61,19 @@ interface ICreateClientOptions {
 }
 ```
 
-`create()` initializes `StorageManager`, `NetworkManager` (which restores any
-persisted custom networks into `ApiClientManager`), `ApiServiceRegistry`, and
-(when the flag is set) `InsensitiveCacheStorageManager`.
+`create()` initializes storage through `StorageBootstrap`, then `NetworkManager`
+(which restores any persisted custom networks into `ApiClientManager`) and
+`ApiServiceRegistry`.
+
+`StorageBootstrap` is what makes storage version-aware: it opens the schema
+metadata table, **refuses to touch anything** if the persisted schema is newer
+than this build understands or if a previous migration was interrupted, and only
+then initializes `StorageManager` (plus `InsensitiveCacheStorageManager` when the
+flag is set) and runs any pending migrations. A `Client.create` that rejects with
+a `StorageSchemaError` therefore tells the caller whether the data on disk is
+still intact — see
+[CustomError](#customerror-srcdomainscustomerrorindexts) and
+[StorageMigrationRunner](SERVICES.md#storagemigrationrunner-srcservicesstoragemigrationrunner).
 
 Signing-session policy (optional): the client can hold a wallet unlocked in
 memory so repeated signatures don't re-prompt for the password. See the
@@ -98,6 +108,9 @@ closeWallet(walletId: string): void                             // drop it from 
 closeAllWallets(): void                                         // close every open wallet at once
 isWalletOpen(walletId: string): boolean
 removeWallet(walletId: string): Promise<Wallet>                 // delete it from storage for good
+
+importWalletKeyfile(source: unknown, password: string, options?): Promise<Wallet> // see keyfiles below
+importKeyfileAccounts(source: unknown, password: string, options?): Promise<IKeyfileAccountsImportResult>
 
 deriveAccount(walletId: string, accountName: string, password: string): Promise<ICreatedAccountData>
 removeAccount(walletId: string, accountId: string): Promise<Account>
@@ -278,10 +291,116 @@ deploy-watch callbacks to that reservation. Both also run inside
 `ApiClientManager.runNetworkOperation`, which marks the network busy for the
 duration and reports it through `onNetworkBusyChanged`.
 
-Data export:
+### Keyfile export & import
 
 ```ts
-getExportedAccountData(walletId: string, accountId: string): string // encrypted keyfile JSON (ASI keyfile format)
+getExportedAccountData(walletId: string, accountId: string): IAccountKeyfile
+exportWalletKeyfile(walletId: string, password: string): Promise<IWalletKeyfile>
+
+previewWalletKeyfileImport(source: unknown, password: string): Promise<IKeyfileImportPreview>
+importWalletKeyfile(source: unknown, password: string, options?: IImportWalletKeyfileOptions): Promise<Wallet>
+importKeyfileAccounts(source: unknown, password: string, options?: IImportWalletKeyfileOptions): Promise<IKeyfileAccountsImportResult>
+```
+
+There are **two keyfile kinds**, tagged by the envelope's `type`
+(`KeyfileTypes`), and they are not interchangeable:
+
+| Kind | `type` | Produced by | Contains | Restores a wallet? |
+| --- | --- | --- | --- | --- |
+| Account keyfile | `asi-account-keyfile` | `getExportedAccountData` | name, address, index | no, it is a public descriptor |
+| Wallet keyfile | `asi-wallet-keyfile` | `exportWalletKeyfile` | wallet type, encrypted secret, encrypted account list | yes |
+
+`getExportedAccountData` is a **non-secret descriptor** of one account and needs
+no password. It carries no key material at all, so it can be shared freely; it
+exists to describe an address, not to restore it.
+
+`exportWalletKeyfile` is the one that can restore a wallet. It verifies the
+password against the stored signer first (`InvalidKeyfilePasswordError` on a
+mismatch), then emits the signer's already-encrypted secret together with the
+account list encrypted under the same password. The plaintext secret is never
+materialized during export, and the account names and indexes are encrypted too,
+so a stolen keyfile leaks neither keys nor the shape of the wallet.
+
+Both export methods return **objects**, not strings. Serializing is the caller's
+choice (`ExportKeyfileService.toJSON` is available for the SDK's own 2-space JSON
+formatting). Import accepts either: `source` may be the parsed object or the raw
+JSON string.
+
+```ts
+interface IKeyfileEnvelope { version: number; type: string; timestamp: string }
+
+interface IAccountKeyfile extends IKeyfileEnvelope {
+    account: { name: string; address: string; index: number | null };
+}
+
+interface IWalletKeyfile extends IKeyfileEnvelope {
+    walletType: WalletTypes;
+    encryptedPrivateData: EncryptedData;
+    encryptedAccounts: EncryptedData;
+}
+
+interface IImportWalletKeyfileOptions {
+    accountIndexes?: number[]; // omit for every account in the keyfile
+}
+```
+
+### Importing a wallet keyfile
+
+The same keyfile can land in two different situations, so import is split into
+two methods and a preview that tells the caller which one applies.
+
+```ts
+interface IKeyfileImportPreview {
+    walletType: WalletTypes;
+    existingSignerId: string | null;   // the keyfile secret is already stored
+    isExistingWalletOpen: boolean;     // ...and that wallet is currently open
+    accounts: IKeyfileImportAccountPreview[];
+}
+
+interface IKeyfileImportAccountPreview {
+    name: string;
+    index: number | null;
+    address: Address;
+    status: KeyfileImportAccountStatus; // "new" | "already-imported"
+    existingAccountId: string | null;
+}
+```
+
+`previewWalletKeyfileImport` decrypts the keyfile, derives every account it
+declares, and reports per account whether that key is already stored. Nothing is
+written. It is what lets a UI show "3 new accounts, 2 already imported" and offer
+a selection before committing.
+
+- **The secret is unknown** (`existingSignerId === null`): call
+  `importWalletKeyfile`. It creates a new wallet from the keyfile secret with the
+  selected accounts, publishes it, and returns it. If the secret turns out to be
+  stored after all, it throws `DuplicateWalletError`.
+- **The secret is already stored** (`existingSignerId !== null`): call
+  `importKeyfileAccounts`. It adds the selected accounts to the wallet that
+  already owns that secret instead of creating a second copy of it, and returns
+  `{ signerId, importedAccountIds }`. If the secret belongs to no stored wallet,
+  it throws `KeyfileWalletNotFoundError`.
+
+Private-key keyfiles never take the second path: a private-key wallet holds
+exactly one account, so a keyfile whose secret is already stored is a plain
+duplicate and `DuplicateWalletError` is raised during preparation.
+
+`options.accountIndexes` narrows the import to the listed derivation indexes.
+An empty array is rejected, and an index the keyfile does not declare is
+rejected by name (`InvalidKeyfileError`) rather than silently skipped.
+`importKeyfileAccounts` still rejects an account whose key is already stored, so
+re-importing an overlapping selection fails with `DuplicateAccountError` instead
+of creating a twin.
+
+`importKeyfileAccounts` updates an open wallet in place when the target wallet
+happens to be open (`isExistingWalletOpen`), emitting `accountsChanged` and
+`walletsChanged`; when the wallet is closed the accounts are persisted and will
+be there the next time it is opened. Either way the import itself does not open
+anything.
+
+Transaction export:
+
+```ts
 getExportedTransactionsData(
     walletId: string,
     accountId: string,
@@ -290,10 +409,8 @@ getExportedTransactionsData(
 ): Promise<string>
 ```
 
-`getExportedAccountData` returns the account's address plus its **encrypted**
-private key wrapped in the versioned ASI keyfile envelope — the plaintext key is
-never exposed. `getExportedTransactionsData` serializes the account's history
-(transfers + deployments) as JSON or CSV.
+Serializes the account's history (transfers + deployments) as JSON or CSV. This
+one still returns a string, because a spreadsheet export has no object form.
 
 Amount helpers (bound to the native token decimals):
 
@@ -422,9 +539,38 @@ Factories:
 
 ```ts
 Wallet.createPk(accountOptions: TCreateAccountPayload, secretProvider: SecretsProvider): Promise<Wallet>
-Wallet.createHD(options: ICreateHDWalletOptions, passwordProvider: SecretsProvider): Promise<Wallet>
+Wallet.createHD(options: ICreateHDWalletOptions, secretProvider: SecretsProvider): Promise<Wallet>
+Wallet.importKeyfile(payload: IImportKeyfileWalletPayload, passwordProvider: SecretsProvider): Promise<Wallet>
 Wallet.restore(payload: IRestoreWalletPayload, passwordProvider: SecretsProvider): Promise<Wallet>
 ```
+
+```ts
+interface ICreateHDWalletOptions {
+    pathOptions: TCreateHDPathWalletOptions;
+    accountOptions: TCreateAccountPayload;
+}
+
+interface IImportKeyfileWalletPayload {
+    walletType: WalletTypes;
+    encryptedSecret: EncryptedData;
+    accounts: TCreateAccountPayload[];
+}
+```
+
+`createHD` no longer takes the mnemonic as a plain option. `ICreateHDWalletOptions`
+carries only the derivation path and the first account; the recovery phrase
+arrives inside the `SecretsProvider` as `{ password, secret: { seed } }`, the
+same envelope every other secret already used. The mnemonic is therefore never a
+loose string on an options object travelling through the call stack — it is
+pulled from the provider closure at the moment it is needed. Callers that used to
+pass `{ mnemonic, accountName, index }` now pass the phrase through the provider
+instead.
+
+`importKeyfile` builds a wallet from a decrypted wallet keyfile: it decrypts the
+keyfile secret, mints a **new** signer for it through `createImportedSigner`
+(a new signer id, freshly encrypted secret, and a freshly generated data key),
+recreates the declared accounts, and makes the first one active. Importing the
+same secret twice is prevented above this layer, not here.
 
 Account access:
 
@@ -444,13 +590,15 @@ Session (delegated to the `Signer`):
 isUnlocked(): boolean
 unlock(passwordProvider: SecretsProvider, options?: ISigningSessionOptions): Promise<void>
 lock(): void
+isPasswordValid(passwordProvider: SecretsProvider): Promise<boolean>
 ```
 
 Mutations:
 
 ```ts
 deriveAccount(payload: Omit<TCreateAccountPayload, "index">, passwordProvider: SecretsProvider): Promise<ICreatedAccountData> // HD only
-removeAccount(id: string): Account
+addAccounts(accounts: Account[]): void
+removeAccount(id: string): Account // HD only, never the last one
 updateAccount(id: string, payload: TEditableAccountOptions): void
 ```
 
@@ -464,7 +612,23 @@ deploy(payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<str
 Behavior notes:
 
 - `deriveAccount` is guarded by the `@OnlyHDWallet` decorator; calling it on a
-  private-key wallet throws. It auto-computes the next free derivation index.
+  private-key wallet throws `HDWalletOnlyOperationError`. It auto-computes the
+  next free derivation index.
+- `removeAccount` is guarded twice. `@OnlyHDWallet` keeps it off private-key
+  wallets, whose single account **is** the wallet — removing it would leave a
+  wallet that can sign nothing while its secret stays in storage; use
+  `Client.removeWallet` for that intent. The second guard rejects removing the
+  last remaining account of an HD wallet with `LastAccountRemovalError`, for the
+  same reason.
+- `addAccounts` is the bulk counterpart used by keyfile account import. It adds
+  the accounts to the internal `AccountManager` and promotes the first of them to
+  active only when the wallet had no active account.
+- Removing an account no longer disturbs the active one unless the active account
+  is the one being removed.
+- `isPasswordValid` attempts a decrypt of the stored secret and reports the
+  outcome as a boolean instead of throwing. It exists so an export can reject a
+  wrong password up front with a precise error rather than failing halfway
+  through serialization.
 - `transfer` and `deploy` are guarded by `@EnsureActiveAccountExist` and delegate
   to `ApiServiceRegistry.transactions`. `passwordProvider` is optional
   — when a session is active the signer uses the in-memory secret; otherwise the
@@ -568,6 +732,9 @@ abstract class Signer {
     ): Promise<void>;
     lock(): void;
 
+    // password check without a session side effect
+    isPasswordValid(passwordProvider: SecretsProvider): Promise<boolean>;
+
     abstract sign(
         payload: string,
         signingContext: TSigningContext,
@@ -624,8 +791,9 @@ Fingerprint:
 - `getFingerprint` returns the non-reversible identity of the stored secret,
   computed by
   [KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts)
-  when the signer fabric builds it: `sha256(publicKey)` for a private-key signer,
-  `sha256(masterPublicKey || chainCode)` for an HD signer.
+  when the signer fabric builds it. The fabric calls the single entry point
+  `fromSecret(secret)`, which dispatches on the secret shape: `sha256(publicKey)`
+  for a private-key signer, `sha256(masterPublicKey || chainCode)` for an HD one.
 - It is stored in plaintext next to the encrypted secret, which is what allows
   duplicate detection across locked wallets. It reveals no key material and,
   because the HD variant hashes the master node rather than the seed, two wallets
@@ -779,38 +947,69 @@ Public error taxonomy so integrators can branch on a machine-readable `code` and
 an HTTP-style `status` instead of matching message strings.
 
 ```ts
-enum CustomErrorCode {
-    WALLET_LOCKED = "WALLET_LOCKED",
-    NETWORK_BUSY = "NETWORK_BUSY",
-    BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
-    DUPLICATE_WALLET = "DUPLICATE_WALLET",
-    DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
-    WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
-    WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
-    DOMAIN_CLOSED = "DOMAIN_CLOSED",
-}
-
 class CustomError extends Error {
     readonly code: CustomErrorCode;
     readonly status: number;
 }
 ```
 
+Wallet and account errors:
+
 | Class | Code | Status | Extra fields |
 | --- | --- | --- | --- |
 | `WalletLockedError` | `WALLET_LOCKED` | `403` | — |
-| `NetworkBusyError` | `NETWORK_BUSY` | `409` | `networkId` |
+| `HDWalletOnlyOperationError` | `HD_WALLET_ONLY_OPERATION` | `403` | `operation` |
 | `DuplicateWalletError` | `DUPLICATE_WALLET` | `409` | `existingSignerId` |
 | `DuplicateAccountError` | `DUPLICATE_ACCOUNT` | `409` | `existingSignerId`, `existingAccountId` |
 | `WalletActionInProgressError` | `WALLET_ACTION_IN_PROGRESS` | `409` | `action`, `signerId` |
 | `WalletOperationCancelledError` | `WALLET_OPERATION_CANCELLED` | `409` | `signerId` |
+| `LastAccountRemovalError` | `LAST_ACCOUNT_REMOVAL` | `409` | `walletId`, `accountId` |
+
+Keyfile errors:
+
+| Class | Code | Status | Extra fields |
+| --- | --- | --- | --- |
+| `InvalidKeyfileError` | `INVALID_KEYFILE` | `400` | — |
+| `InvalidKeyfilePasswordError` | `INVALID_KEYFILE_PASSWORD` | `401` | — |
+| `KeyfileWalletNotFoundError` | `KEYFILE_WALLET_NOT_FOUND` | `404` | — |
+
+Storage schema errors (all extend `StorageSchemaError` except the chain one):
+
+| Class | Code | Status | `isStorageIntact` | Extra fields |
+| --- | --- | --- | --- | --- |
+| `StorageVersionDowngradeError` | `STORAGE_VERSION_DOWNGRADE` | `409` | `true` | `storedVersion`, `supportedVersion` |
+| `StorageMigrationInterruptedError` | `STORAGE_MIGRATION_INTERRUPTED` | `409` | `false` | `pendingVersion`, `reason` |
+| `StorageMigrationFailedError` | `STORAGE_MIGRATION_FAILED` | `500` | `true` | `failedVersion`, `description`, `storedVersion`, `migrationError` |
+| `StorageMigrationRollbackError` | `STORAGE_MIGRATION_ROLLBACK_FAILED` | `500` | `false` | `failedVersion`, `failures`, `migrationError` |
+| `StorageMigrationChainError` | `STORAGE_MIGRATION_CHAIN_INVALID` | `500` | n/a | `violation`, `versions` |
+
+Runtime and network errors:
+
+| Class | Code | Status | Extra fields |
+| --- | --- | --- | --- |
 | `DomainClosedError` | `DOMAIN_CLOSED` | `410` | `domainName` |
+| `NetworkBusyError` | `NETWORK_BUSY` | `409` | `networkId` |
 | `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
+
+Supporting enums:
 
 ```ts
 enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
+    SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+}
+
+enum StorageMigrationChainViolation {
+    DUPLICATE_VERSION = "DUPLICATE_VERSION",
+    VERSION_OUT_OF_RANGE = "VERSION_OUT_OF_RANGE",
+    MISSING_MIGRATION = "MISSING_MIGRATION",
+}
+
+enum StorageMigrationInterruptionReason {
+    ROLLBACK_FAILED = "ROLLBACK_FAILED",
+    MIGRATION_NOT_RESUMABLE = "MIGRATION_NOT_RESUMABLE",
+    MIGRATION_NOT_FOUND = "MIGRATION_NOT_FOUND",
 }
 ```
 
@@ -844,6 +1043,16 @@ published after teardown (see
 [LifecycleGuard](#lifecycleguard-srcdomainslifecycleguardindexts)). It is not a
 failure to retry blindly; the user's intent changed.
 
+`HDWalletOnlyOperationError` is raised by the `@OnlyHDWallet` decorator and names
+the `operation` it guarded, taken from the decorated method. It covers
+`deriveAccount` and `removeAccount`, both of which are meaningless on a
+private-key wallet that owns exactly one account.
+
+`LastAccountRemovalError` refuses to empty a wallet: removing the only remaining
+account would leave a wallet that can sign nothing while its secret stays in
+storage. It carries both ids so a UI can explain which wallet is affected, and
+`Client.removeWallet` remains the way to actually get rid of the wallet.
+
 `DomainClosedError` is thrown by `@EnsureActive` on a domain that has already
 been closed. Its `410` status says the resource is permanently gone: build a new
 `Client` rather than retry.
@@ -854,6 +1063,61 @@ failure, a vault error string, an unparsable amount, or a missing expression),
 and its `502` status marks it as an upstream problem rather than an empty
 account. Callers must now handle it explicitly: a caught error is no longer the
 same thing as `0`.
+
+### Keyfile errors
+
+`InvalidKeyfileError` (`400`) covers everything structurally wrong with a
+keyfile: not JSON, not an object, the wrong `type` tag, an unsupported `version`,
+a missing or malformed encrypted section, an account list that fails validation,
+duplicate account indexes, a secret that does not match the declared wallet type,
+or a requested account index the keyfile does not declare. Its message names the
+specific problem.
+
+`InvalidKeyfilePasswordError` (`401`) is separate on purpose: the keyfile is
+well-formed but the password does not decrypt it. Splitting it from
+`InvalidKeyfileError` lets a UI re-prompt for the password instead of telling the
+user their file is broken. It is also what `exportWalletKeyfile` throws when the
+password does not match the wallet being exported.
+
+`KeyfileWalletNotFoundError` (`404`) is raised by `importKeyfileAccounts` when
+the keyfile's secret belongs to no stored wallet, so there is nothing to add the
+accounts to. The caller should use `importWalletKeyfile` instead;
+`previewWalletKeyfileImport` tells the two cases apart before either is called.
+
+### Storage schema errors
+
+These are raised during `Client.create`, before any wallet exists. The whole
+family exposes `isStorageIntact`, which is the field an integrator actually needs
+to decide what to tell the user:
+
+- `isStorageIntact: true` — the persisted data is untouched and still readable.
+  The right response is to stop and fix the environment (usually: update the
+  SDK), not to wipe anything.
+- `isStorageIntact: false` — storage may hold partially migrated data. It cannot
+  be repaired automatically and must be restored from an export or re-imported.
+
+`StorageVersionDowngradeError` means the data was written by a newer SDK build
+than the one reading it. Nothing was touched, hence `isStorageIntact: true`.
+
+`StorageMigrationFailedError` means a migration threw and was **successfully
+rolled back**: storage is back on `storedVersion` and the previous build can
+still read it. It carries the original `migrationError` for diagnostics.
+
+`StorageMigrationInterruptedError` means a previous run stopped mid-migration
+(a closed tab, a crash) and the state cannot be resumed. `reason` says why:
+`ROLLBACK_FAILED`, `MIGRATION_NOT_RESUMABLE` (the migration declared itself
+non-resumable), or `MIGRATION_NOT_FOUND` (this build does not know the version
+that was in flight, typically an SDK downgrade).
+
+`StorageMigrationRollbackError` is the worst case: a migration failed **and** the
+rollback failed too. `failures` lists what could not be restored.
+
+`StorageMigrationChainError` is a **developer error, not a user error** - it
+means the SDK's own migration list is malformed: two migrations claiming one
+version, a version outside the supported range, or a gap that would require
+skipping a step. It is a `CustomError` rather than a `StorageSchemaError` because
+storage was never reached; `500` and the `violation` field mark it as a build
+defect to fix in the SDK.
 
 ---
 
@@ -887,7 +1151,21 @@ interface IHDSecret extends ISeedCredentials {
 interface IHDSecretRecord extends ISeedCredentials {
     rootHDPath: string;
 } // serialized form
+
+type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
 ```
+
+`TDecryptedSecret` is the union of everything a signer can hold once decrypted.
+It lives here rather than on `Signer` or `SigningSession` because this module
+owns the secret shapes; the session, the signer, the fabric, and the keyfile
+import path all consume the same type from one place.
+
+Every secret now travels through a provider, including the HD recovery phrase.
+`Wallet.createHD` used to receive the mnemonic as a plain option field alongside
+a password provider; it now receives one provider yielding
+`{ password, secret: { seed } }`. The phrase is read from the closure at the
+moment of derivation rather than sitting on an options object passed down the
+call stack.
 
 ---
 
@@ -1287,6 +1565,14 @@ active at construction time and survive `switchNetwork` unchanged.
 
 HTTP/GraphQL transport clients selected per network by `ApiClientManager`.
 
+Both base clients install the same Axios `transformResponse`:
+`HttpResponseParser.parseWithBigIntegersAsStrings`. Chain amounts routinely
+exceed `Number.MAX_SAFE_INTEGER`, and Axios' default `JSON.parse` would round
+them off before any SDK code sees the response. The parser re-quotes unsafe
+integer literals so they survive as strings and can be turned into `BigInt`
+losslessly. See
+[HttpResponseParser](SERVICES.md#httpresponseparser-srcserviceshttpresponseparserindexts).
+
 ### BaseHttpClient (`src/domains/BaseHttpClient/index.ts`)
 
 Abstract Axios wrapper; exposes protected `get`/`post` returning `response.data`.
@@ -1528,10 +1814,16 @@ interface ITableService<T extends ITableRecord> {
     isInitialized(): boolean;
     createTable(tableName: string, keyPath?: string): Promise<void>;
     tableExists(tableName: string): Promise<boolean>;
+    getTableNames(): Promise<string[]>;
     insert / insertMany / getById / getAll / update / delete / deleteMany / clearTable / dropTable;
     close(): Promise<void>;
 }
 ```
+
+`getTableNames` exists for the migration runner: taking a backup and undoing a
+failed migration both require knowing which tables existed beforehand, which no
+single-table API can answer. `BrowserStorage` reads the `IndexedDB` object-store
+names, `NodeStorage` reads its table index key.
 
 ### BrowserStorage (`src/domains/BrowserStorage/index.ts`)
 
@@ -1581,6 +1873,53 @@ caller.
   existed are skipped with a warning on restore (no schema migration).
 - **InsensitiveCacheStorageRepository** (`INSENSITIVE_CACHE` table) — persists
   `IInsensitiveCacheRecord` (`{ id, address }`) for the optional address cache.
+- **StorageMetadataStorageRepository** (`STORAGE_METADATA` table) — holds the
+  schema bookkeeping described below.
 
 These repositories are orchestrated by `StorageManager` (and
 `InsensitiveCacheStorageManager`) in the service layer — see `SERVICES.md`.
+
+### StorageMetadataStorageRepository (`src/domains/StorageMetadataStorageRepository/index.ts`)
+
+A single row (`id: "schema"`) recording what version the persisted data is on and
+whether a migration is in flight.
+
+```ts
+interface IStorageMetadataRecord extends ITableRecord {
+    version: number;
+    pendingVersion?: number | null;
+    rollbackFailure?: string | null;
+    createdAt: number;
+    updatedAt?: number;
+}
+```
+
+```ts
+getVersion(): Promise<number | null>
+saveVersion(version: number): Promise<void>          // also clears pendingVersion
+
+getPendingVersion(): Promise<number | null>
+markPendingMigration(version: number): Promise<void>
+clearPendingMigration(): Promise<void>
+
+getRollbackFailure(): Promise<string | null>
+markRollbackFailure(reason: string): Promise<void>
+
+getRawDB(): ITableService<ITableRecord>              // inherited, used by the runner
+```
+
+The three fields answer three different questions, and the combination is what a
+restart reads to decide whether it may proceed:
+
+- `version` — the schema the data is known to be on.
+- `pendingVersion` — a migration was started and has not reported an outcome.
+  Non-null at startup means the previous run was interrupted.
+- `rollbackFailure` — a migration failed **and** its rollback failed. This is the
+  sticky flag that makes storage permanently unsafe to auto-migrate.
+
+`saveVersion` clears `pendingVersion` in the same write, so a completed migration
+cannot leave a stale in-flight marker behind. A missing row is treated as
+`BASELINE_STORAGE_VERSION` (fresh storage), and the row is created lazily on the
+first write. This table is deliberately excluded from migration backups and from
+the rollback's table cleanup — the bookkeeping has to survive the operation it
+describes.

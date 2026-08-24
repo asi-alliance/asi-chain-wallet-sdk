@@ -31,6 +31,26 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    states. Closing a wallet must always release its session first; releasing a
    session must never require closing the wallet.
 
+### 1a-1. Keyfile Invariants
+
+1. Exporting a wallet keyfile must never decrypt the signing secret. The stored
+   ciphertext is copied into the keyfile as-is.
+2. A wallet keyfile must be refused before serialization when the supplied
+   password does not match the wallet.
+3. The account list inside a wallet keyfile must be encrypted, so a keyfile
+   discloses neither key material nor the number and derivation indexes of the
+   wallet's accounts.
+4. Importing a wallet keyfile must re-encrypt the secret locally with a newly
+   generated data key and fresh salts. The exporting side's ciphertext must never
+   become the local at-rest ciphertext.
+5. A keyfile must be validated before use: envelope type, version, wallet type,
+   and both encrypted sections. A decrypted secret whose shape contradicts the
+   declared wallet type must be rejected.
+6. A failed decryption and a malformed file must surface as distinct errors, so a
+   wrong password is never reported as a corrupt file or the reverse.
+7. Account keyfiles must contain no key material and must never be accepted as a
+   wallet keyfile.
+
 ### 1b. Key Fingerprint Invariants
 
 1. A key fingerprint must be derived only from public material: `sha256` of the
@@ -65,6 +85,35 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 9. A closed `Client` must stay closed: state-changing methods must fail with
    `DomainClosedError` rather than partially operate on released resources.
 
+### 2a. Storage Schema Invariants
+
+1. Persisted data carries a schema version. Compatibility must be verified before
+   any other table is opened or created, so an SDK that cannot read the current
+   schema never modifies it.
+2. Storage written by a newer SDK build must be refused, never rewritten or
+   downgraded.
+3. Every migration must take a backup first and must restore it on failure,
+   including dropping tables the migration created.
+4. A migration that fails and rolls back successfully must leave storage readable
+   by the previous build.
+5. A failed rollback must be recorded persistently and must permanently block
+   further automatic migration of that storage.
+6. An interrupted migration must never resume on an unknown or non-resumable
+   state.
+7. Every schema error must report whether storage is still intact, so an
+   integrator can distinguish "update the SDK" from "restore from an export".
+8. The schema metadata table must be excluded from migration backups and rollback
+   cleanup, so the bookkeeping survives the operation it describes.
+
+### 2b. Account Removal Invariants
+
+1. A wallet must never be left with zero accounts. Removing the last account of
+   an HD wallet must be refused.
+2. Account removal must be refused on private-key wallets, whose single account
+   is the wallet itself; removing the wallet is a separate, explicit operation.
+3. Removing an account must not silently change which account is active unless
+   the removed account was the active one.
+
 ## 3. Deploy Integrity Invariants
 
 1. User-controlled strings interpolated into deploy terms must be escaped.
@@ -76,6 +125,8 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 5. Node-supplied amounts must be parsed strictly. A balance that cannot be read
    or parsed must surface as `BalanceUnavailableError`, never as `0`, so an
    unreachable node is never mistaken for an empty account.
+6. Integer values in node and indexer responses must survive JSON parsing without
+   precision loss, so an amount is never silently rounded before it is used.
 
 ## 4. Recovery Invariants
 

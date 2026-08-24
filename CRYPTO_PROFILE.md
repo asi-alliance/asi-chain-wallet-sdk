@@ -31,6 +31,28 @@ This document defines the current cryptographic profile used by `asi-chain-walle
   - `src/fabrics/signer.ts`
   - `src/domains/Signer/index.ts`
 
+## 1a-1. Wallet Keyfile Profile
+
+- Format version: `1` (`ASI_WALLET_KEYFILE_VERSION`); import rejects any other
+  version.
+- Envelope: `{ version, type, timestamp }`, where `type` is a `KeyfileTypes`
+  member — `asi-wallet-keyfile` (restorable) or `asi-account-keyfile` (a public
+  descriptor with no key material).
+- Secret: the signer's existing `encryptedSecret`, copied unchanged. Export never
+  decrypts it, so no plaintext key exists during export.
+- Account list: encrypted with the wallet password under the profile in
+  section 1, so a keyfile leaks neither keys nor the wallet's account layout.
+- Import: the decrypted secret is re-encrypted locally through the normal signer
+  fabric, producing a new signer id, new salts, and a **newly generated data
+  key**. The exporting side's ciphertext is never adopted as local at-rest data.
+- Password handling: verified against the wallet before export; a failed decrypt
+  on import is reported separately from a malformed file.
+- Source of truth:
+  - `src/services/KeyfileSerializer/index.ts`
+  - `src/services/ExportKeyfileService/index.ts`
+  - `src/services/ImportKeyfileService/index.ts`
+  - `src/fabrics/signer.ts`
+
 ## 1b. Key Fingerprint Profile
 
 - Purpose: recognize that a secret is already stored, without decrypting
@@ -93,6 +115,27 @@ This document defines the current cryptographic profile used by `asi-chain-walle
   1. Introduce a new version number.
   2. Keep deterministic migration guidance in this document.
   3. Avoid silent fallback to weaker/legacy parameters.
+
+### 4a. Storage Schema Versioning
+
+Distinct from the payload `version` above: that one versions a single ciphertext,
+this one versions the shape of persisted storage as a whole.
+
+- Current schema version: `1` (`CURRENT_STORAGE_VERSION`).
+- Baseline version: `1` (`BASELINE_STORAGE_VERSION`), assumed for storage that
+  carries no schema record yet.
+- Declared migrations: none yet; `STORAGE_MIGRATIONS` is empty because existing
+  installs are already on the supported version.
+- Compatibility is asserted before any table other than the metadata table is
+  opened. Storage newer than the running build is refused untouched.
+- A crypto profile change that alters stored payloads must ship as a storage
+  migration with a new schema version, so the re-encryption is backed by the
+  backup and rollback machinery rather than performed opportunistically on read.
+- Source of truth:
+  - `src/config/index.ts`
+  - `src/services/StorageBootstrap/index.ts`
+  - `src/services/StorageMigrationRunner/`
+  - `src/domains/StorageMetadataStorageRepository/index.ts`
 
 ## 5. KDF Cost Evaluation
 

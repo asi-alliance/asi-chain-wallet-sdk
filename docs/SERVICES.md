@@ -5,17 +5,22 @@ This file documents the current service modules under `src/services`.
 Services split into a few groups:
 
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
-  `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
-  `TransactionReservationsManager`, `DisposableItemManager`).
+  `WalletManager`, `AccountManager`, `AccountsService`,
+  `ReservationAdapterManager`, `TransactionReservationsManager`,
+  `DisposableItemManager`).
 - **Events & lifecycle** — `ClientEventBus`, `ClientLifecycleGuard`,
   `ConcurrentOperationGuardService`, `WalletOperationGuardService`.
 - **Read models** — `TransactionsHistoryAggregator`, `CollectionQueryService`.
-- **Persistence orchestration** — `StorageManager`, `NetworkManager`,
-  `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
+- **Persistence orchestration** — `StorageBootstrap`, `StorageMigrationRunner`,
+  `StorageManager`, `NetworkManager`, `InsensitiveCacheStorageManager`,
+  `InsensitiveCacheStorageSerializer`, `WalletPersistenceService`,
+  `WalletUniquenessService`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
   `BlockService`, `AccountDataService`, `AssetsService`, `TransactionService`,
-  `DeployStatusPoller`, plus the `GraphqlParser` helpers.
-- **Export** — `ExportService` (account keyfile + transactions JSON/CSV).
+  `DeployStatusPoller`, plus the `GraphqlParser` and `HttpResponseParser`
+  helpers.
+- **Keyfiles** — `ExportKeyfileService`, `ImportKeyfileService`,
+  `KeyfileSerializer`, `WalletImportService`.
 - **Crypto / key primitives** — `CryptoService`, `WalletsService`,
   `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
   `KeyFingerprintService`, `BinaryWriter` (documented under domains).
@@ -30,6 +35,7 @@ Generic in-memory `Map<string, T>` registry used as a base class.
 
 ```ts
 add(id: string, item: T): void
+addMany(entries: Iterable<[string, T]>): void
 remove(id: string): T          // throws when missing
 get(id: string): T | null
 has(id: string): boolean
@@ -57,10 +63,12 @@ interface IDisposable {
 `ItemManager<Wallet>` that bridges wallets to `StorageManager`. Owned by `Client`.
 
 ```ts
-createHD(params: ICreateHDWalletParams, passwordProvider): Promise<Wallet>
+createHD(params: ICreateHDWalletParams, secretProvider): Promise<Wallet> // { accountName, index? }
 createPrivateKey(accountName: string, secretProvider): Promise<Wallet>
+importKeyfile(payload: IImportKeyfileWalletPayload, passwordProvider): Promise<Wallet>
 open(signerId: string, passwordProvider): Promise<Wallet>
 delete(id: string): Promise<Wallet>              // removes signer + accounts from storage
+getBySignerId(signerId: string): Wallet | null
 deriveAccount(walletId, accountName, passwordProvider): Promise<IDerivedAccount>
 removeAccount(walletId, accountId): Promise<Account>
 renameAccount(walletId, accountId, name): Promise<void>
@@ -70,6 +78,14 @@ count(): Promise<number>
 countInStorage(): Promise<number>
 ```
 
+`ICreateHDWalletParams` no longer carries the mnemonic: the recovery phrase
+arrives through the `SecretsProvider` instead (see
+[SecretsProvider](DOMAINS.md#secretsprovider-srcdomainssecretsproviderindexts)).
+
+`getBySignerId` exists because wallets are keyed by `walletId` in memory while
+keyfiles and stored records identify a wallet by its `signerId`. Keyfile account
+import uses it to find the open wallet a set of accounts belongs to.
+
 `IWalletMetadata = { signerId, type, accounts: IAccountMetadata[] }` is the
 lightweight, non-secret listing used by UIs to render closed wallets.
 
@@ -77,20 +93,18 @@ lightweight, non-secret listing used by UIs to render closed wallets.
 holding a signing session are separate steps now, and only the first belongs
 here (see [Open vs unlocked](DOMAINS.md#open-vs-unlocked)).
 
-Concurrency and duplicates are enforced here, not in `Client`, through a
-**static** `WalletOperationGuardService` shared by every `WalletManager`
-instance. Sharing it is deliberate: two managers over the same storage must not
-each think they are the only writer.
+Concurrency and duplicates are enforced here, not in `Client`, through the
+`WalletOperationGuardService` **singleton**, shared by every `WalletManager`
+instance and by `WalletPersistenceService`. Sharing it is deliberate: two
+managers over the same storage must not each think they are the only writer.
 
 - `open` and `deriveAccount` run inside `runWalletAction`, so a second concurrent
   attempt at the same action on the same signer throws
   `WalletActionInProgressError` instead of racing.
-- `persist` (the tail of both create paths) runs inside `runWalletCreation`,
-  which reserves the wallet's fingerprints for the duration and then calls
-  `assertWalletIsNotDuplicate`: the signer fingerprint is looked up through
-  `StorageManager.findSignerByFingerprint`, each account fingerprint through
-  `findAccountByFingerprint`, and a hit raises `DuplicateWalletError` or
-  `DuplicateAccountError`.
+- `persist` (the tail of every create and import path) runs inside
+  `runWalletCreation`, which reserves the wallet's fingerprints for the duration
+  and then delegates the storage check to
+  [WalletUniquenessService](#walletuniquenessservice-srcserviceswalletuniquenessindexts).
 
 The reservation is what closes the window a storage-only check would leave open:
 two identical wallets created in the same tick would both read an empty storage,
@@ -102,6 +116,7 @@ so the second one is rejected on the in-memory reservation instead.
 
 ```ts
 create(payload: TCreateAccountPayload, secretProvider): Promise<ICreatedAccountData>
+addAccounts(accounts: Account[]): void
 remove(id: string): Account
 update(id: string, payload: TEditableAccountOptions): void
 setActiveAccount(id: string): void
@@ -112,6 +127,28 @@ getAccount(id: string): Account | null
 ```
 
 `ICreatedAccountData = { accountId: string; account: Account }`.
+
+`addAccounts` registers several already-created accounts at once and promotes the
+first of them to active **only when there was no active account**, so a bulk
+keyfile import never steals the selection the user is currently on.
+
+`remove` reassigns the active account only when the removed one was active.
+It previously reset the active account on every removal, which moved the
+selection out from under the user when they deleted some other account.
+
+### AccountsService (`src/services/Accounts/index.ts`)
+
+Creates a batch of accounts from one secret provider, sequentially.
+
+```ts
+AccountsService.createAccounts(accounts: TCreateAccountPayload[], secretProvider): Promise<Account[]>
+```
+
+Deliberately sequential rather than `Promise.all`: each `Account.create` derives
+a key from the shared secret, and serializing keeps only one derivation in flight
+at a time. It creates accounts in memory only — persistence is
+`WalletPersistenceService`'s job, which is what lets the keyfile import preview
+derive addresses without writing anything.
 
 ### ReservationAdapterManager (`src/services/ReservationAdapterManager/index.ts`)
 
@@ -235,21 +272,29 @@ hand over `emit` and `clear` with it.
 
 ### ClientLifecycleGuard (`src/services/ClientLifecycleGuard/index.ts`)
 
-`LifecycleGuard` specialized for publishing a wallet.
+`LifecycleGuard` specialized for wallet-scoped work.
 
 ```ts
 new ClientLifecycleGuard(discardWallet: (wallet: Wallet) => void)
 
 runWalletPublication(operation: () => Promise<Wallet>): Promise<Wallet>
+runAccountsUpdate<T>(signerId: string, operation: () => Promise<T>): Promise<T>
 ```
 
-`Client` wraps `createHDWallet`, `createPrivateKeyWallet`, and `openWallet` in
-`runWalletPublication`. If the guard was invalidated while the wallet was being
-built (a logout, a `clearPersistence`, or a `close`), the finished wallet is
-handed to `discardWallet` — which locks it and drops it from both the wallet
-manager and the reservation adapter manager — and the caller gets a
-`WalletOperationCancelledError`. The base `LifecycleGuard` contract is documented
-under [domains](DOMAINS.md#lifecycleguard-srcdomainslifecycleguardindexts).
+`Client` wraps `createHDWallet`, `createPrivateKeyWallet`, `openWallet`, and
+`importWalletKeyfile` in `runWalletPublication`. If the guard was invalidated
+while the wallet was being built (a logout, a `clearPersistence`, or a `close`),
+the finished wallet is handed to `discardWallet` — which locks it and drops it
+from both the wallet manager and the reservation adapter manager — and the caller
+gets a `WalletOperationCancelledError`.
+
+`runAccountsUpdate` is the same generation check for work that produces accounts
+rather than a wallet, used by `importKeyfileAccounts`. There is nothing to
+discard here (the accounts are already persisted against a stored signer), so it
+only reports the cancellation, naming the `signerId` the work belonged to.
+
+The base `LifecycleGuard` contract is documented under
+[domains](DOMAINS.md#lifecycleguard-srcdomainslifecycleguardindexts).
 
 ### ConcurrentOperationGuardService (`src/services/ConcurrentOperationGuard/index.ts`)
 
@@ -274,10 +319,13 @@ already holds the key rather than just reporting a generic clash.
 
 ### WalletOperationGuardService (`src/services/WalletOperationGuard/index.ts`)
 
-The wallet-specific guard, built on the generic one. Used as a **static** member
-of `WalletManager` so all instances share one lock table.
+The wallet-specific guard, built on the generic one. A process-wide **singleton**
+(`WalletOperationGuardService.getInstance()`) so every `WalletManager` and
+`WalletPersistenceService` share one lock table.
 
 ```ts
+WalletOperationGuardService.getInstance(): WalletOperationGuardService
+
 runWalletCreation<T>(wallet: Wallet, operation: () => Promise<T>): Promise<T>
 runWalletAction<T>(action: WalletAction, signerId: string, operation: () => Promise<T>): Promise<T>
 ```
@@ -290,8 +338,10 @@ Two key namespaces keep the two concerns apart:
   `DuplicateWalletError` or `DuplicateAccountError` depending on which key
   matched — the owner record carries `signerId` and, for accounts, `accountId`.
 - `runWalletAction` reserves `<action>:<signerId>` and raises
-  `WalletActionInProgressError`, which is how `open` and `deriveAccount` refuse
-  to run twice at once for one signer.
+  `WalletActionInProgressError`. `WalletAction` covers `OPEN`, `DERIVE_ACCOUNT`,
+  and `SAVE_ACCOUNTS`, so opening a wallet twice, deriving two accounts at once,
+  or importing two overlapping keyfile selections into the same signer all
+  serialize instead of racing.
 
 ---
 
@@ -382,6 +432,100 @@ the indexer has caught up resolves them.
 ---
 
 ## Persistence orchestration
+
+### StorageBootstrap (`src/services/StorageBootstrap/index.ts`)
+
+The ordered startup of the whole storage layer. `Client.create` calls it instead
+of `StorageManager.init` directly.
+
+```ts
+StorageBootstrap.init(options?: IStorageBootstrapOptions): Promise<void>
+StorageBootstrap.close(): void
+
+interface IStorageBootstrapOptions {
+    storageOptions?: IStorageFabricOptions;
+    withInsensitiveCacheStorage?: boolean;
+}
+```
+
+The order is the point:
+
+1. Open the schema metadata table on its own. It has to be readable before
+   anything else is touched.
+2. `runner.assertCompatible()` — **before** any other table is created. A newer
+   schema, a malformed migration chain, or an interrupted previous migration
+   aborts here, while storage is still untouched.
+3. Initialize `StorageManager` and, when the flag is set,
+   `InsensitiveCacheStorageManager`.
+4. `runner.run()` — apply pending migrations.
+
+Checking compatibility before step 3 is what keeps a downgrade harmless: opening
+a table can create it, so an SDK that cannot read the current schema must not
+reach that code at all. `MIGRATABLE_TABLES` lists the tables the runner backs up
+and restores; the metadata table is deliberately not among them.
+
+### StorageMigrationRunner (`src/services/StorageMigrationRunner/`)
+
+Applies schema migrations with a per-step backup and rollback. Split across
+`runner.ts` (the engine) and `migrations.ts` (the declared list) to keep the
+import cycle out.
+
+```ts
+new StorageMigrationRunner({ storage, metadataRepository, tables, migrations?, currentVersion? })
+
+assertCompatible(): Promise<void>
+run(): Promise<number> // returns the version storage ends on
+
+interface IStorageMigration {
+    version: number;
+    description: string;
+    resumable: boolean;
+    run(storage: ITableService<ITableRecord>): Promise<void>;
+}
+```
+
+`STORAGE_MIGRATIONS` is currently empty: `CURRENT_STORAGE_VERSION` and
+`BASELINE_STORAGE_VERSION` are both `1`, so existing installs are already on the
+supported version. The machinery is in place so the first real schema change does
+not have to invent it under pressure.
+
+**`assertCompatible` runs four checks**, in this order:
+
+1. *Downgrade.* Stored version greater than `currentVersion` raises
+   `StorageVersionDowngradeError`. Storage is left alone.
+2. *Declared versions are valid.* Duplicate versions, or versions outside
+   `BASELINE + 1 .. currentVersion`, raise `StorageMigrationChainError`. This is
+   a defect in the SDK's own migration list.
+3. *The chain has no gaps.* Every version between the stored one and the current
+   one must have a migration, or `StorageMigrationChainError` again. A gap would
+   mean silently skipping a schema step.
+4. *A previous interruption is resumable.* A non-null `pendingVersion` means the
+   last run stopped mid-migration; unless it is safe to retry, it raises
+   `StorageMigrationInterruptedError` with the reason (`ROLLBACK_FAILED`,
+   `MIGRATION_NOT_RESUMABLE`, `MIGRATION_NOT_FOUND`).
+
+**Each migration step** is wrapped in a backup and rollback:
+
+1. Snapshot every migratable table that currently exists, plus the table-name
+   list.
+2. Mark `pendingVersion` so a crash mid-step is detectable on the next start.
+3. Run the migration, then `saveVersion` (which clears `pendingVersion`).
+4. On failure, roll back: drop tables the migration created, restore every
+   snapshotted table, then clear `pendingVersion`.
+
+The rollback drops created tables **as well as** restoring rows, because a
+migration that added a table and then failed would otherwise leave a table the
+previous SDK build does not expect. The metadata table is excluded from that
+cleanup for the obvious reason.
+
+If the rollback itself fails, the failures are recorded in `rollbackFailure` and
+`StorageMigrationRollbackError` is raised. That flag is sticky: every subsequent
+start refuses to migrate, because storage now holds partially migrated data that
+cannot be reasoned about. A successful rollback instead produces
+`StorageMigrationFailedError` with `isStorageIntact: true`.
+
+`run` writes `currentVersion` at the end even when no migration ran, which is how
+fresh storage gets stamped on first use.
 
 ### StorageManager (`src/services/StorageManager/index.ts`)
 
@@ -484,26 +628,184 @@ InsensitiveCacheStorageSerializer.serialize(account: Account): IInsensitiveCache
 
 ---
 
-## Export
+## Keyfiles
 
-### ExportService (`src/services/ExportService/index.ts`)
+Four services split one flow into layers that can be reasoned about separately:
+`KeyfileSerializer` decides the on-disk shape, `ExportKeyfileService` and
+`ImportKeyfileService` own the two directions of the boundary, and
+`WalletImportService` turns a validated keyfile into a decision about what the
+caller should do with it. `Client` only calls the last one.
 
-Serializes account and transaction data for download. Pure formatting — it never
-decrypts anything.
+The two keyfile kinds and the public entry points are described in
+[Client keyfile export & import](DOMAINS.md#keyfile-export--import).
+
+### KeyfileSerializer (`src/services/KeyfileSerializer/index.ts`)
+
+The single place that decides what a keyfile contains.
 
 ```ts
-ExportService.exportAccountKeyfile(input: IAccountKeyfileInput): string
-ExportService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
-
-interface IAccountKeyfileInput { address: string; encryptedPrivateKey: EncryptedData }
+KeyfileSerializer.serializeAccount(account: Account): IKeyfileAccount            // { name, address, index }
+KeyfileSerializer.serializeWalletAccount(account: Account): IKeyfileWalletAccount // { name, index }
+KeyfileSerializer.serializeWallet(wallet, passwordProvider): Promise<IKeyfileWallet>
 ```
 
-`exportAccountKeyfile` wraps the address and the **encrypted** private key in the
-versioned ASI keyfile envelope (`{ version, type: "asi-wallet-keyfile", address,
-encryptedPrivateKey, timestamp }`) — the plaintext key never leaves the signer.
-`exportTransactions` returns pretty-printed JSON (default) or CSV built from
-`TRANSACTIONS_CSV_HEADERS` with RFC-4180 quoting. `Client.getExportedAccountData`
-and `Client.getExportedTransactionsData` are the high-level entry points.
+```ts
+interface IKeyfileWallet {
+    walletType: WalletTypes;
+    encryptedPrivateData: EncryptedData; // the signer's stored ciphertext, reused as-is
+    encryptedAccounts: EncryptedData;    // the account list, encrypted under the password
+}
+```
+
+Two details carry the security properties of the whole feature:
+
+- `encryptedPrivateData` is the signer's **existing** `encryptedSecret`, copied
+  out unchanged. Export never decrypts the secret, so no plaintext key exists at
+  any point during it.
+- The account list is encrypted rather than stored in the clear. A wallet
+  keyfile therefore leaks neither keys nor how many accounts a wallet has or at
+  which indexes, which would otherwise be a usable fingerprint of the owner.
+
+Note the asymmetry between the two account shapes: a wallet keyfile stores
+`{ name, index }` **without** the address, because the address is re-derived from
+the secret on import and storing it would be redundant data to keep consistent.
+The standalone account keyfile stores the address precisely because it has no
+secret to derive it from.
+
+### ExportKeyfileService (`src/services/ExportKeyfileService/index.ts`)
+
+Builds keyfile envelopes and serializes transaction exports. Replaces the former
+`ExportService`.
+
+```ts
+ExportKeyfileService.exportAccountKeyfile(account: Account): IAccountKeyfile
+ExportKeyfileService.exportWalletKeyfile(wallet, passwordProvider): Promise<IWalletKeyfile>
+ExportKeyfileService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
+ExportKeyfileService.transactionsToCsv(transactions: Transaction[]): string
+ExportKeyfileService.toJSON(data: unknown): string
+```
+
+Every keyfile gets the same envelope: `{ version, type, timestamp }`, where
+`type` is a `KeyfileTypes` member. `version` is `ASI_WALLET_KEYFILE_VERSION` and
+import refuses anything else.
+
+`exportWalletKeyfile` checks the password through `Wallet.isPasswordValid`
+**before** serializing and throws `InvalidKeyfilePasswordError` on a mismatch, so
+a wrong password produces a precise error rather than a half-built file. Any
+other serialization failure is normalized to `InvalidKeyfileError`, so the export
+path never leaks a crypto-layer message.
+
+The keyfile builders return objects; only `exportTransactions` returns a string
+(pretty-printed JSON by default, or CSV built from `TRANSACTIONS_CSV_HEADERS`
+with RFC-4180 quoting). `toJSON` is exposed so a caller that wants a downloadable
+file gets the same 2-space formatting the SDK uses.
+
+### ImportKeyfileService (`src/services/ImportKeyfileService/index.ts`)
+
+The parsing and decryption half of the boundary. Every failure here is a typed
+keyfile error.
+
+```ts
+ImportKeyfileService.fromJSON(source: string): unknown
+ImportKeyfileService.parseWalletKeyfile(source: unknown): IWalletKeyfile
+ImportKeyfileService.decryptKeyfileAccounts(keyfile, passwordProvider): Promise<IKeyfileWalletAccount[]>
+ImportKeyfileService.toImportPayload(keyfile, passwordProvider, options?): Promise<IImportKeyfileWalletPayload>
+ImportKeyfileService.decryptKeyfileSecret(walletType, encryptedSecret, passwordProvider): Promise<TDecryptedSecret>
+```
+
+`parseWalletKeyfile` accepts either a parsed object or a raw JSON string and runs
+`validateWalletKeyfile`: envelope type, version, wallet type, and both encrypted
+sections. `decryptKeyfileAccounts` then validates the decrypted list with
+`validateWalletKeyfileAccounts` — non-empty, well-shaped, no duplicate indexes,
+and at most one account for a private-key keyfile.
+
+`toImportPayload` narrows the accounts to `options.accountIndexes` when given.
+An empty array and an index the keyfile does not declare are both rejected with
+`InvalidKeyfileError`, the latter naming the missing indexes, so a selection
+built against a stale preview fails loudly instead of importing a subset.
+
+`decryptKeyfileSecret` cross-checks the decrypted secret against the declared
+`walletType`: an HD keyfile must decrypt to a seed, a private-key keyfile to a
+private key. A mismatch is a tampered or corrupted file, not a usable wallet.
+
+Throughout, a failed decrypt becomes `InvalidKeyfilePasswordError` and a failed
+structural check becomes `InvalidKeyfileError` — the split a UI needs to decide
+between re-prompting for the password and rejecting the file.
+
+### WalletImportService (`src/services/WalletImport/index.ts`)
+
+Turns a keyfile into a decision. This is the layer `Client` talks to.
+
+```ts
+WalletImportService.previewKeyfileImport(source, passwordProvider): Promise<Omit<IKeyfileImportPreview, "isExistingWalletOpen">>
+WalletImportService.prepareKeyfileImport(source, passwordProvider, options?): Promise<IKeyfileImportPlan>
+WalletImportService.prepareKeyfileAccountsImport(source, passwordProvider, options?): Promise<IKeyfileAccountsImportPlan>
+```
+
+All three share one private `resolveKeyfileImport`, which parses, decrypts,
+builds a `SecretsProvider` over the decrypted secret, and looks the secret up in
+storage by fingerprint. That single lookup is what the three entry points then
+interpret differently:
+
+| Entry point | Secret already stored | Secret unknown |
+| --- | --- | --- |
+| `previewKeyfileImport` | reports `existingSignerId` | reports `null` |
+| `prepareKeyfileImport` | throws `DuplicateWalletError` | returns the plan |
+| `prepareKeyfileAccountsImport` | returns the plan plus `signerId` | throws `KeyfileWalletNotFoundError` |
+
+A private-key keyfile whose secret is already stored is rejected inside
+`resolveKeyfileImport` itself, before the split: a private-key wallet has exactly
+one account, so there is no "add accounts to the existing wallet" case for it.
+
+`previewKeyfileImport` derives every declared account through `AccountsService`
+and checks each one's fingerprint against storage, marking it `new` or
+`already-imported` with the existing account id. Nothing is persisted, so a
+preview is safe to run on any file the user drops in.
+
+`Client` adds the one fact this service cannot know — whether the existing wallet
+is currently **open** — and returns the completed `IKeyfileImportPreview`.
+
+### WalletUniquenessService (`src/services/WalletUniqueness/index.ts`)
+
+The one place that answers "is this key already stored?".
+
+```ts
+WalletUniquenessService.findSignerBySecret(secretProvider): Promise<ISignerStorageRecord | null>
+WalletUniquenessService.findExistingAccount(account): Promise<IAccountStorageRecord | null>
+WalletUniquenessService.assertAccountIsNotDuplicate(account): Promise<void>
+WalletUniquenessService.assertWalletIsNotDuplicate(wallet): Promise<void>
+```
+
+The lookups are fingerprint-based, so they work while every wallet is closed and
+never decrypt stored data. `findSignerBySecret` fingerprints a decrypted secret
+through `KeyFingerprintService.fromSecret`, which is what lets keyfile import ask
+"does this secret already exist?" before creating anything.
+
+The `assert*` variants raise `DuplicateWalletError` / `DuplicateAccountError`
+naming the existing owner. This logic was previously private to `WalletManager`;
+it moved here because keyfile import, account import, and wallet creation all
+need it and must agree on the answer.
+
+### WalletPersistenceService (`src/services/WalletPersistence/index.ts`)
+
+Creates and persists accounts against an existing signer, without going through a
+`Wallet` aggregate.
+
+```ts
+WalletPersistenceService.createAccounts(signerId, accounts: TCreateAccountPayload[], secretProvider): Promise<Account[]>
+WalletPersistenceService.saveAccounts(signerId, accounts: Account[]): Promise<void>
+```
+
+This is the path `Client.importKeyfileAccounts` uses, and it exists because that
+import must work whether or not the target wallet is currently open. Writing
+through storage rather than through the in-memory wallet means a closed wallet
+receives its new accounts just as well; `Client` separately updates the wallet in
+memory when it happens to be open.
+
+`saveAccounts` runs inside `runWalletAction(SAVE_ACCOUNTS, signerId)` and
+re-checks every account for duplicates **inside** the guard, so two concurrent
+imports of overlapping selections cannot both pass their checks and then both
+write.
 
 ---
 
@@ -699,6 +1001,31 @@ hash) and sorting by timestamp descending. Deployment-only rows map to
 comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`
 defines `Pagination` (`{ offset?, limit? }`), `Order`, and `QueryOptions`.
 
+### HttpResponseParser (`src/services/HttpResponseParser/index.ts`)
+
+Keeps large chain integers intact across JSON parsing. Installed as the
+`transformResponse` of both `BaseHttpClient` and `BaseGraphQLClient`, so it
+applies to every node and indexer response.
+
+```ts
+HttpResponseParser.parseWithBigIntegersAsStrings(data: unknown): unknown
+```
+
+The problem it solves: balances and phlo amounts routinely exceed
+`Number.MAX_SAFE_INTEGER`, and `JSON.parse` silently rounds them to the nearest
+representable double. By the time SDK code sees the value, the precision is
+already gone — `BigInt` conversion afterwards cannot recover it.
+
+The parser scans the raw response text and re-quotes any **integer literal that
+is not a safe integer**, turning it into a string before parsing. The scanning
+regex matches string literals as well as numbers so that digits already inside a
+quoted string are skipped rather than double-quoted. Non-integers (floats,
+exponent notation) are left alone, since they were never exact to begin with.
+
+It is deliberately total: a non-string input is returned unchanged, and a parse
+failure falls back to the raw data instead of throwing, so a malformed response
+surfaces through the normal error path rather than as a transform crash.
+
 ---
 
 ## Crypto / key primitives
@@ -780,7 +1107,14 @@ duplicate wallets and accounts without decrypting anything.
 KeyFingerprintService.fromPublicKey(publicKey: Uint8Array): string   // sha256(publicKey), hex
 KeyFingerprintService.fromPrivateKey(privateKey: Uint8Array): string // public key first, then as above
 KeyFingerprintService.fromMnemonic(mnemonic: string): Promise<string>
+KeyFingerprintService.fromSecret(secret: TFingerprintSecret): Promise<string>
 ```
+
+`fromSecret` is the entry point callers should use: it takes a decrypted secret
+of either shape and dispatches to the right variant (`privateKey` present means
+private-key, otherwise a seed). It exists so the signer fabric and keyfile import
+do not each re-implement the same branch, and so both always produce the same
+fingerprint for the same secret.
 
 `fromMnemonic` derives the BIP-32 master node and hashes
 `publicKey || chainCode`, then zeroizes the seed in a `finally`. Hashing the
