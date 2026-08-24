@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import HttpResponseParser from "@services/HttpResponseParser";
 import { TAxiosClientConfig } from "@domains/BaseHttpClient";
 import { UnknownErrorReason } from "@domains/CustomError";
 import { getErrorMessage } from "@utils/index";
@@ -13,6 +14,9 @@ export default class BaseGraphQLClient {
                 "Content-Type": "application/json",
             },
             ...config.axiosConfig,
+            transformResponse: [
+                HttpResponseParser.parseWithBigIntegersAsStrings,
+            ],
         });
     }
 

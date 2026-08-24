@@ -5,23 +5,27 @@ import Account, {
     TCreateAccountPayload,
     TEditableAccountOptions,
 } from "@domains/Account";
-import { createSigner, restoreSigner } from "@fabrics/signer";
+import {
+    createImportedSigner,
+    createSigner,
+    restoreSigner,
+} from "@fabrics/signer";
 import { generateRandomId } from "@utils/index";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
+    TDecryptedSecret,
 } from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
-import {
-    ITransferDetails,
-    TDeployDetails,
-} from "@services/TransactionService";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import { LastAccountRemovalError } from "@domains/CustomError";
+import ImportKeyfileService from "@services/ImportKeyfileService";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -53,6 +57,12 @@ export interface ICreateHDWalletOptions {
 export interface IRestoreWalletPayload {
     signerRecord: ISignerRecord;
     accountRecords: IAccountRecord[];
+}
+
+export interface IImportKeyfileWalletPayload {
+    walletType: WalletTypes;
+    encryptedSecret: EncryptedData;
+    accounts: TCreateAccountPayload[];
 }
 
 export default class Wallet {
@@ -102,6 +112,12 @@ export default class Wallet {
 
     public lock(): void {
         this.signer.lock();
+    }
+
+    public isPasswordValid(
+        passwordProvider: SecretsProvider,
+    ): Promise<boolean> {
+        return this.signer.isPasswordValid(passwordProvider);
     }
 
     public getAccounts(): Account[] {
@@ -170,7 +186,16 @@ export default class Wallet {
         );
     }
 
+    public addAccounts(accounts: Account[]): void {
+        this.accountManager.addAccounts(accounts);
+    }
+
+    @OnlyHDWallet
     public removeAccount(id: string): Account {
+        if (this.getAccounts().length === 1) {
+            throw new LastAccountRemovalError(this.id, id);
+        }
+
         return this.accountManager.remove(id);
     }
 
@@ -254,6 +279,45 @@ export default class Wallet {
             signer,
             accounts,
             activeAccount: initialAccount,
+        });
+    }
+
+    public static async importKeyfile(
+        { walletType, encryptedSecret, accounts }: IImportKeyfileWalletPayload,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const secret: TDecryptedSecret =
+            await ImportKeyfileService.decryptKeyfileSecret(
+                walletType,
+                encryptedSecret,
+                passwordProvider,
+            );
+
+        const signer: Signer = await createImportedSigner({
+            secret,
+            passwordProvider,
+        });
+
+        const secretProvider: SecretsProvider = new SecretsProvider(
+            () => secret,
+        );
+
+        const accountsMap: Map<string, Account> = new Map();
+
+        for (const accountOptions of accounts) {
+            const account: Account = await Account.create(
+                accountOptions,
+                secretProvider,
+            );
+
+            accountsMap.set(account.getId(), account);
+        }
+
+        return new Wallet({
+            type: walletType,
+            signer,
+            accounts: accountsMap,
+            activeAccount: accountsMap.values().next().value,
         });
     }
 

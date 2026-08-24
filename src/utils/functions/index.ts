@@ -2,6 +2,8 @@ import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { CorruptedDataError } from "@domains/CustomError";
+import { ITableRecord } from "@domains/TableService";
+import { BASELINE_STORAGE_VERSION } from "@config/index";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -244,6 +246,33 @@ export const runProtected = (
     }
 };
 
+export interface IFieldSelection<T, V> {
+    selected: T[];
+    missingValues: V[];
+}
+
+export const selectByField = <T, K extends keyof T>(
+    items: T[],
+    field: K,
+    values: readonly T[K][],
+): IFieldSelection<T, T[K]> => {
+    const requestedValues: Set<T[K]> = new Set(values);
+
+    const selected: T[] = items.filter((item: T) =>
+        requestedValues.has(item[field]),
+    );
+
+    const selectedValues: Set<T[K]> = new Set(
+        selected.map((item: T) => item[field]),
+    );
+
+    const missingValues: T[K][] = Array.from(requestedValues).filter(
+        (value: T[K]) => !selectedValues.has(value),
+    );
+
+    return { selected, missingValues };
+};
+
 export const isNetworkConfigChanged = (
     current: INetworkConfig,
     update?: Partial<INetworkConfig>,
@@ -257,3 +286,8 @@ export const isNetworkConfigChanged = (
             update[field] !== undefined && update[field] !== current[field],
     );
 };
+
+export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({
+    ...record,
+    schemaVersion: record.schemaVersion ?? BASELINE_STORAGE_VERSION,
+});

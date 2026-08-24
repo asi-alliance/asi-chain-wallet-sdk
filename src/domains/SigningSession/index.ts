@@ -1,11 +1,6 @@
 import AutoTimer from "@domains/AutoTimer";
 import { WalletOperationCancelledError } from "@domains/CustomError";
-import type {
-    IHDSecret,
-    IPrivateKeyCredentials,
-} from "@domains/SecretsProvider";
-
-export type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
+import type { TDecryptedSecret } from "@domains/SecretsProvider";
 
 export interface ISigningSessionOptions {
     autoLockMs?: number;

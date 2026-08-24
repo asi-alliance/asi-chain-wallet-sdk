@@ -22,4 +22,14 @@ export default class ClientLifecycleGuard extends LifecycleGuard {
             return new WalletOperationCancelledError(wallet.getSigner().getId());
         });
     }
+
+    public runAccountsUpdate<T>(
+        signerId: string,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        return this.run(
+            operation,
+            () => new WalletOperationCancelledError(signerId),
+        );
+    }
 }

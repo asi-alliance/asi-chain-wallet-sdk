@@ -285,6 +285,11 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
     }
 
     @EnsureDatabaseInitialized
+    public async getTableNames(): Promise<string[]> {
+        return this.getTableNamesList();
+    }
+
+    @EnsureDatabaseInitialized
     @EnsureTableExists
     private async executeTransaction<T>(
         tableName: string,

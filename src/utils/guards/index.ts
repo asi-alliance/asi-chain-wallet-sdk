@@ -3,6 +3,11 @@ import { IHDSecret, IPrivateKeyCredentials } from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { validateNodeApiProfile } from "@utils/validators";
+import type { EncryptedData } from "@services/Crypto";
+import type {
+    IKeyfileAccount,
+    IKeyfileWalletAccount,
+} from "@services/KeyfileSerializer";
 
 export const isCustomCreateHDWalletOptions = (
     options: TCreateHDPathWalletOptions,
@@ -28,6 +33,50 @@ export const isRecordWithMessage = (
         value !== null &&
         "message" in value &&
         typeof value.message === "string"
+    );
+};
+
+export const isEncryptedData = (value: unknown): value is EncryptedData => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    const { data, salt, iv, version } = value as EncryptedData;
+
+    return (
+        typeof data === "string" &&
+        typeof salt === "string" &&
+        typeof iv === "string" &&
+        typeof version === "number"
+    );
+};
+
+export const isKeyfileAccount = (value: unknown): value is IKeyfileAccount => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    const { name, address, index } = value as IKeyfileAccount;
+
+    return (
+        typeof name === "string" &&
+        typeof address === "string" &&
+        (index === null || typeof index === "number")
+    );
+};
+
+export const isKeyfileWalletAccount = (
+    value: unknown,
+): value is IKeyfileWalletAccount => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    const { name, index } = value as IKeyfileWalletAccount;
+
+    return (
+        typeof name === "string" &&
+        (index === null || typeof index === "number")
     );
 };
 
