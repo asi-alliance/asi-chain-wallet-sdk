@@ -2,17 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Client,
     ClientEvent,
+    IAccountKeyfile,
     ICreatedAccountData,
     IDeployRequest,
     IDeployWatchCallbacks,
     IDeployWatchHandle,
     IDeployWatchOptions,
+    IImportWalletKeyfileOptions,
+    IKeyfileAccountsImportResult,
+    IKeyfileImportPreview,
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
     IReservedOperationResult,
     ITransactionReservation,
     ITransferRequest,
+    IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
@@ -40,8 +45,9 @@ const useSdk = () => {
     );
     const [openWallets, setOpenWallets] = useState<Wallet[]>([]);
     const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
-    const [currentNetwork, setCurrentNetwork] =
-        useState<INetworkRecord | null>(null);
+    const [currentNetwork, setCurrentNetwork] = useState<INetworkRecord | null>(
+        null,
+    );
     const [reservationsByWallet, setReservationsByWallet] =
         useState<TReservationsByWallet>({});
     const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
@@ -374,9 +380,59 @@ const useSdk = () => {
     );
 
     const getExportedAccountData = useCallback(
-        (walletId: string, accountId: string): string =>
+        (walletId: string, accountId: string): IAccountKeyfile =>
             requireClient().getExportedAccountData(walletId, accountId),
         [requireClient],
+    );
+
+    const exportWalletKeyfile = useCallback(
+        (walletId: string, password: string): Promise<IWalletKeyfile> =>
+            requireClient().exportWalletKeyfile(walletId, password),
+        [requireClient],
+    );
+
+    const previewWalletKeyfileImport = useCallback(
+        (source: string, password: string): Promise<IKeyfileImportPreview> =>
+            requireClient().previewWalletKeyfileImport(source, password),
+        [requireClient],
+    );
+
+    const importWalletKeyfile = useCallback(
+        async (
+            source: string,
+            password: string,
+            options?: IImportWalletKeyfileOptions,
+        ): Promise<Wallet> => {
+            const wallet = await requireClient().importWalletKeyfile(
+                source,
+                password,
+                options,
+            );
+
+            await refresh();
+
+            return wallet;
+        },
+        [requireClient, refresh],
+    );
+
+    const importKeyfileAccounts = useCallback(
+        async (
+            source: string,
+            password: string,
+            options?: IImportWalletKeyfileOptions,
+        ): Promise<IKeyfileAccountsImportResult> => {
+            const result = await requireClient().importKeyfileAccounts(
+                source,
+                password,
+                options,
+            );
+
+            await refresh();
+
+            return result;
+        },
+        [requireClient, refresh],
     );
 
     const getBalance = useCallback(
@@ -459,6 +515,10 @@ const useSdk = () => {
         exploreDeploy,
         watchDeploy,
         getExportedAccountData,
+        exportWalletKeyfile,
+        previewWalletKeyfileImport,
+        importWalletKeyfile,
+        importKeyfileAccounts,
         getBalance,
         getAvailableBalance,
         getReservations,

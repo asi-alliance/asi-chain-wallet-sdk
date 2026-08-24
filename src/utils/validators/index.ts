@@ -1,6 +1,11 @@
 import type { Address } from "@domains/Wallet";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
+import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
+import { ASI_WALLET_KEYFILE_VERSION, KeyfileTypes } from "@config/index";
+import { isEncryptedData, isKeyfileWalletAccount } from "@utils/guards";
+import type { IWalletKeyfile } from "@services/ExportKeyfileService";
+import type { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
 import { utils as secp256k1Utils } from "@noble/secp256k1";
 import { ASI_CHAIN_PREFIX, PRIVATE_KEY_LENGTH } from "@utils/constants";
 import {
@@ -188,6 +193,74 @@ export const validateUrl = (
 };
 
 export const isValidUrl = (url: string): boolean => validateUrl(url).isValid;
+
+export const validateWalletKeyfile = (
+    source: unknown,
+): { isValid: boolean; error?: string } => {
+    if (typeof source !== "object" || source === null) {
+        return { isValid: false, error: "Keyfile is not an object" };
+    }
+
+    const keyfile = source as IWalletKeyfile;
+
+    if (keyfile.type !== KeyfileTypes.WALLET) {
+        return { isValid: false, error: "Keyfile has an unknown type" };
+    }
+
+    if (keyfile.version !== ASI_WALLET_KEYFILE_VERSION) {
+        return {
+            isValid: false,
+            error: `Keyfile version ${keyfile.version} is not supported`,
+        };
+    }
+
+    if (!Object.values(WalletTypes).includes(keyfile.walletType)) {
+        return { isValid: false, error: "Keyfile has an unknown wallet type" };
+    }
+
+    if (!isEncryptedData(keyfile.encryptedPrivateData)) {
+        return {
+            isValid: false,
+            error: "Keyfile has no encrypted private data",
+        };
+    }
+
+    if (!isEncryptedData(keyfile.encryptedAccounts)) {
+        return { isValid: false, error: "Keyfile has no encrypted accounts" };
+    }
+
+    return { isValid: true };
+};
+
+export const validateWalletKeyfileAccounts = (
+    source: unknown,
+    walletType: WalletTypes,
+): { isValid: boolean; error?: string } => {
+    if (
+        !Array.isArray(source) ||
+        !source.length ||
+        !source.every(isKeyfileWalletAccount)
+    ) {
+        return { isValid: false, error: "Keyfile has no valid accounts" };
+    }
+
+    if (walletType === WalletTypes.PRIVATE_KEY && source.length > 1) {
+        return {
+            isValid: false,
+            error: "Private key keyfile must contain a single account",
+        };
+    }
+
+    const indexes: (number | null)[] = source.map(
+        (account: IKeyfileWalletAccount) => account.index,
+    );
+
+    if (new Set(indexes).size !== indexes.length) {
+        return { isValid: false, error: "Keyfile contains duplicate accounts" };
+    }
+
+    return { isValid: true };
+};
 
 export const validateNodeApiProfile = (
     profile: unknown,

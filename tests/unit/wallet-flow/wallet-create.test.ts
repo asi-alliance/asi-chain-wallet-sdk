@@ -10,6 +10,11 @@ import Bip44Path from "@domains/Bip44Path";
 import { ISignerRecord, WalletTypes } from "@domains/Signer";
 import { IAccountRecord } from "@domains/Account";
 import CryptoService from "@services/Crypto";
+import {
+    CustomErrorCode,
+    HDWalletOnlyOperationError,
+    LastAccountRemovalError,
+} from "@domains/CustomError";
 
 const MNEMONIC =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -99,6 +104,35 @@ test("should create PK wallet", async () => {
     assert.equal(activeAccount?.getIndex(), null);
     assert.ok(activeAccount?.getAddress());
     assert.deepEqual(decrypted.privateKey, privateKey);
+});
+
+test("PK wallet should reject account removal", async () => {
+    const { provider } = createPkProvider(PASSWORD);
+
+    const wallet = await Wallet.createPk(accountOptions, provider);
+
+    const activeAccount = wallet.getActiveAccount();
+
+    assert.ok(activeAccount);
+
+    const accountId = activeAccount.getId();
+
+    assert.throws(
+        () => wallet.removeAccount(accountId),
+        (error: unknown) => {
+            assert.ok(error instanceof HDWalletOnlyOperationError);
+            assert.equal(error.code, CustomErrorCode.HD_WALLET_ONLY_OPERATION);
+            assert.equal(error.operation, "removeAccount");
+
+            console.log("\n[PK Account Removal]");
+            console.log("Rejected with:", error.name, error.message);
+
+            return true;
+        },
+    );
+
+    assert.equal(wallet.getAccounts().length, 1);
+    assert.equal(wallet.getActiveAccount()?.getId(), accountId);
 });
 
 test("should sign payload with PK wallet signer", async () => {
@@ -330,6 +364,32 @@ test("HD wallet should update, remove account and reuse freed derivation index",
         })),
     );
 
+    //
+    // LAST ACCOUNT CANNOT BE REMOVED
+    //
+
+    const initialAccount = wallet.getActiveAccount();
+
+    assert.ok(initialAccount);
+
+    const initialAccountId = initialAccount.getId();
+
+    assert.throws(
+        () => wallet.removeAccount(initialAccountId),
+        (error: unknown) => {
+            assert.ok(error instanceof LastAccountRemovalError);
+            assert.equal(error.code, CustomErrorCode.LAST_ACCOUNT_REMOVAL);
+            assert.equal(error.walletId, wallet.getId());
+            assert.equal(error.accountId, initialAccountId);
+
+            console.log("\nLast account removal rejected:", error.message);
+
+            return true;
+        },
+    );
+
+    assert.equal(wallet.getAccounts().length, 1);
+
     const account1 = await wallet.deriveAccount(
         {
             name: "Account 1",
@@ -423,6 +483,17 @@ test("HD wallet should update, remove account and reuse freed derivation index",
     console.log("Indexes after delete:", indexesAfterDelete);
 
     assert.deepEqual(indexesAfterDelete, [0, 1, 3]);
+
+    const activeAccountAfterDelete = wallet.getActiveAccount();
+
+    console.log("Active account after delete:", {
+        name: activeAccountAfterDelete?.getName(),
+        index: activeAccountAfterDelete?.getIndex(),
+    });
+
+    assert.ok(activeAccountAfterDelete);
+    assert.equal(activeAccountAfterDelete?.getId(), initialAccountId);
+    assert.ok(wallet.getAccountsMap().has(initialAccountId));
 
     //
     // CREATE NEW ACCOUNT

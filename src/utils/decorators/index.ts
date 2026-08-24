@@ -2,7 +2,10 @@ import { ICreateClientFlags } from "@domains/Client";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
-import { DomainClosedError } from "@domains/CustomError";
+import {
+    DomainClosedError,
+    HDWalletOnlyOperationError,
+} from "@domains/CustomError";
 import AccountManager from "@services/AccountManager";
 import LifecycleGuard from "@domains/LifecycleGuard";
 
@@ -99,16 +102,13 @@ export function OnlyHDWallet<
     This extends IWalletContext,
     Args extends any[],
     Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return async function (
-        this: This,
-        ...args: Args
-    ): Promise<Awaited<Return>> {
+>(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
         if (this.getType() !== WalletTypes.HD) {
-            throw new Error("This operation is available only for HD wallets");
+            throw new HDWalletOnlyOperationError(String(context.name));
         }
 
-        return await target.apply(this, args);
+        return target.apply(this, args);
     };
 }
 

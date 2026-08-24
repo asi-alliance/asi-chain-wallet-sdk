@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+import HttpResponseParser from "@services/HttpResponseParser";
 
 export type TAxiosClientConfig = {
     baseUrl: string;
@@ -12,6 +13,9 @@ export default abstract class BaseHttpClient {
         this.client = axios.create({
             baseURL: config.baseUrl,
             ...config.axiosConfig,
+            transformResponse: [
+                HttpResponseParser.parseWithBigIntegersAsStrings,
+            ],
         });
     }
 
