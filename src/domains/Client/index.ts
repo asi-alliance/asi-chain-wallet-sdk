@@ -321,19 +321,21 @@ export default class Client extends ClosableDomain {
             );
         }
 
-        const passwordProvider: SecretsProvider =
-            this.createPasswordProvider(password);
+        const secretProvider: SecretsProvider = new SecretsProvider(() => ({
+            password,
+            secret: { seed: normalizedMnemonic },
+        }));
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
             async () => {
                 const createdWallet: Wallet = await this.walletManager.createHD(
-                    { mnemonic: normalizedMnemonic, accountName, index },
-                    passwordProvider,
+                    { accountName, index },
+                    secretProvider,
                 );
 
                 await this.reservationAdapterManager.create(
                     createdWallet,
-                    passwordProvider,
+                    secretProvider,
                 );
 
                 return createdWallet;

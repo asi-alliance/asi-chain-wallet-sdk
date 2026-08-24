@@ -26,6 +26,11 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/wallet-duplicate-guard" };
 
 const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
 
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
+}));
+
 const createPkProvider = (privateKey: Uint8Array): SecretsProvider =>
     new SecretsProvider(() => ({
         password: PASSWORD,
@@ -102,14 +107,8 @@ test("concurrent HD creation with the same mnemonic keeps a single wallet", asyn
     const walletManager = new WalletManager();
 
     const { fulfilled, errors } = await settleAll([
-        walletManager.createHD(
-            { mnemonic: MNEMONIC, accountName: "First" },
-            passwordProvider,
-        ),
-        walletManager.createHD(
-            { mnemonic: MNEMONIC, accountName: "Second" },
-            passwordProvider,
-        ),
+        walletManager.createHD({ accountName: "First" }, hdSecretProvider),
+        walletManager.createHD({ accountName: "Second" }, hdSecretProvider),
     ]);
 
     const signers = await StorageManager.getSigners();
@@ -138,10 +137,7 @@ test("concurrent HD creation and import of its derived key keep a single wallet"
         await KeyDerivationService.deriveKeyFromMnemonic(MNEMONIC, rootHDPath);
 
     const { fulfilled, errors } = await settleAll<Wallet>([
-        walletManager.createHD(
-            { mnemonic: MNEMONIC, accountName: "Derived" },
-            passwordProvider,
-        ),
+        walletManager.createHD({ accountName: "Derived" }, hdSecretProvider),
         walletManager.createPrivateKey(
             "Imported",
             createPkProvider(privateKey),
@@ -195,8 +191,8 @@ test("concurrent account derivation adds a single account", async () => {
     const walletManager = new WalletManager();
 
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const { fulfilled, errors } = await settleAll([

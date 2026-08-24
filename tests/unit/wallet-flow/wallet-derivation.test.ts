@@ -19,6 +19,11 @@ const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
 }));
 
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
+}));
+
 const accountPayload = {
     name: "Main account",
 };
@@ -101,13 +106,12 @@ test("PK wallet should not derive accounts", async () => {
 test("HD wallet should derive accounts with incremental indexes from zero", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions: accountPayload,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     printWalletState("HD WALLET BEFORE DERIVATION", wallet);
@@ -159,13 +163,12 @@ test("HD wallet should derive accounts with incremental indexes from zero", asyn
 test("HD wallet should derive accounts from custom HD path index", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions: accountPayload,
             pathOptions: {
                 customHDPath: customPath,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     printWalletState("CUSTOM HD WALLET BEFORE DERIVATION", wallet);
