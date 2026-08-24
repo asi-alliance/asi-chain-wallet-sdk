@@ -130,6 +130,28 @@ export const runStorageContract = (
         assert.equal(await storage.tableExists("users"), false);
     });
 
+    test("list table names", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+        await storage.createTable("accounts");
+
+        const tableNames = await storage.getTableNames();
+
+        assert.deepEqual([...tableNames].sort(), ["accounts", "users"]);
+    });
+
+    test("dropped table disappears from the table names", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+        await storage.createTable("accounts");
+
+        await storage.dropTable("users");
+
+        assert.deepEqual(await storage.getTableNames(), ["accounts"]);
+    });
+
     test("missing record returns null", async () => {
         const storage = createStorage();
 

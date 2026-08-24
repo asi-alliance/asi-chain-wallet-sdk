@@ -19,6 +19,11 @@ const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
 }));
 
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
+}));
+
 const accountOptions = {
     name: "Main account",
 };
@@ -205,9 +210,8 @@ test("should save and restore HD wallet from storage", async () => {
             pathOptions: {
                 index: 0,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
     const signerId = wallet.getSigner().getId();
     const account = wallet.getActiveAccount();
@@ -284,9 +288,8 @@ test("should isolate accounts between different signers", async () => {
             pathOptions: {
                 index: 1,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
     const signerId2 = wallet2.getSigner().getId();
     const account2 = wallet2.getActiveAccount();
@@ -375,9 +378,8 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
             pathOptions: {
                 index: 0,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const hdSignerId = hdWallet.getSigner().getId();
@@ -398,9 +400,8 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
                     index: 132,
                 }),
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const customHDSignerId = customHDWallet.getSigner().getId();

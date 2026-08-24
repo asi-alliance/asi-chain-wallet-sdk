@@ -2,8 +2,14 @@ import HDSigner from "@domains/Signer/HD";
 import CryptoService from "@services/Crypto";
 import KeyFingerprintService from "@services/KeyFingerprint";
 import PrivateKeySigner from "@domains/Signer/PK";
-import SecretsProvider from "@domains/SecretsProvider";
+import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
 import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
+import { generateRandomId, isPrivateKeySecretData } from "@utils/index";
+
+export interface ICreateImportedSignerPayload {
+    secret: TDecryptedSecret;
+    passwordProvider: SecretsProvider;
+}
 
 export type TCreateSignerPayload =
     | {
@@ -32,15 +38,15 @@ export const createSigner = async (
         password,
     );
 
+    const fingerprint: string = await KeyFingerprintService.fromSecret(secret);
+
     switch (payload.type) {
         case WalletTypes.PRIVATE_KEY:
             return new PrivateKeySigner({
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
-                fingerprint: KeyFingerprintService.fromPrivateKey(
-                    secret.privateKey,
-                ),
+                fingerprint,
             });
 
         case WalletTypes.HD: {
@@ -48,12 +54,40 @@ export const createSigner = async (
                 id: payload.id,
                 encryptedSecret,
                 encryptedDataKey,
-                fingerprint: await KeyFingerprintService.fromMnemonic(
-                    secret.seed,
-                ),
+                fingerprint,
             });
         }
     }
+};
+
+export const createImportedSigner = ({
+    secret,
+    passwordProvider,
+}: ICreateImportedSignerPayload): Promise<Signer> => {
+    const id: string = generateRandomId();
+
+    if (isPrivateKeySecretData(secret)) {
+        return createSigner({
+            id,
+            type: WalletTypes.PRIVATE_KEY,
+            secretProvider: new SecretsProvider(() => ({
+                password: passwordProvider.getSecret().password,
+                secret,
+            })),
+        });
+    }
+
+    return createSigner({
+        id,
+        type: WalletTypes.HD,
+        secretProvider: new SecretsProvider(() => ({
+            password: passwordProvider.getSecret().password,
+            secret: {
+                seed: secret.seed,
+                rootHDPath: secret.rootHDPath.toString(),
+            },
+        })),
+    });
 };
 
 export const restoreSigner = ({
