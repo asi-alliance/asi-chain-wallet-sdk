@@ -67,6 +67,11 @@ const createClient = (): Promise<Client> =>
 
 const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
 
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
+}));
+
 const createPkProvider = (privateKey: Uint8Array): SecretsProvider =>
     new SecretsProvider(() => ({
         password: PASSWORD,
@@ -150,8 +155,8 @@ const createHDWalletWithMissingAccount = async (
     walletManager: WalletManager,
 ): Promise<{ wallet: Wallet; keyfile: IWalletKeyfile }> => {
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const { accountId } = await walletManager.deriveAccount(
@@ -177,8 +182,8 @@ const createHDWalletWithIndexGap = async (
     walletManager: WalletManager,
 ): Promise<Wallet> => {
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const { accountId } = await walletManager.deriveAccount(
@@ -276,8 +281,8 @@ test("account keyfile exports metadata without any secret", async () => {
     const walletManager = new WalletManager();
 
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const account: Account = wallet.getAccounts()[0];
@@ -425,8 +430,8 @@ test("import rejects a keyfile whose secret does not match its wallet type", asy
     const walletManager = new WalletManager();
 
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
@@ -451,8 +456,8 @@ test("import rejects malformed keyfiles", async () => {
     const walletManager = new WalletManager();
 
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
@@ -506,8 +511,8 @@ test("import rejects malformed keyfile accounts", async () => {
     const walletManager = new WalletManager();
 
     const wallet: Wallet = await walletManager.createHD(
-        { mnemonic: MNEMONIC, accountName: "Main" },
-        passwordProvider,
+        { accountName: "Main" },
+        hdSecretProvider,
     );
 
     const keyfile: IWalletKeyfile = await exportKeyfile(wallet);

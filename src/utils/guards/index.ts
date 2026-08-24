@@ -1,6 +1,12 @@
 import Bip44Path from "@domains/Bip44Path";
-import { IHDSecret, IPrivateKeyCredentials } from "@domains/SecretsProvider";
+import {
+    IHDSecret,
+    IHDSecretRecord,
+    IPrivateKeyCredentials,
+    TStoredSecret,
+} from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
+import type { ISerializedTransactionReservationPrivateData } from "@domains/Transaction";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { validateNodeApiProfile } from "@utils/validators";
 import type { EncryptedData } from "@services/Crypto";
@@ -23,6 +29,43 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return validateNodeApiProfile(value).isValid;
+};
+
+export const isStoredSecret = (value: unknown): value is TStoredSecret => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    if ("privateKey" in value) {
+        return (
+            typeof value.privateKey === "object" && value.privateKey !== null
+        );
+    }
+
+    const { seed, rootHDPath } = value as IHDSecretRecord;
+
+    return typeof seed === "string" && typeof rootHDPath === "string";
+};
+
+export const isSerializedReservationPrivateData = (
+    value: unknown,
+): value is ISerializedTransactionReservationPrivateData => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    const { accountId, pendingAmount, expirationTime, transaction } =
+        value as ISerializedTransactionReservationPrivateData;
+
+    return (
+        typeof accountId === "string" &&
+        typeof pendingAmount === "string" &&
+        typeof expirationTime === "number" &&
+        typeof transaction === "object" &&
+        transaction !== null &&
+        typeof transaction.id === "string" &&
+        typeof transaction.timestamp === "string"
+    );
 };
 
 export const isRecordWithMessage = (

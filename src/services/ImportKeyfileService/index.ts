@@ -1,6 +1,7 @@
 import {
     InvalidKeyfileError,
     InvalidKeyfilePasswordError,
+    InvalidPasswordError,
 } from "@domains/CustomError";
 import SecretsProvider, { TDecryptedSecret } from "@domains/SecretsProvider";
 import { WalletTypes } from "@domains/Signer";
@@ -54,8 +55,12 @@ export default class ImportKeyfileService {
                 keyfile.encryptedAccounts,
                 passwordProvider.getSecret().password,
             );
-        } catch {
-            throw new InvalidKeyfilePasswordError();
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                throw new InvalidKeyfilePasswordError();
+            }
+
+            throw error;
         }
 
         const accounts: unknown =
@@ -143,8 +148,12 @@ export default class ImportKeyfileService {
                 encryptedSecret,
                 passwordProvider,
             );
-        } catch {
-            throw new InvalidKeyfilePasswordError();
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                throw new InvalidKeyfilePasswordError();
+            }
+
+            throw error;
         }
 
         const isPrivateKeyWalletKeyfile: boolean =

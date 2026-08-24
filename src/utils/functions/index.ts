@@ -1,7 +1,7 @@
 import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
-import { CorruptedDataError } from "@domains/CustomError";
+import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
 import { BASELINE_STORAGE_VERSION } from "@config/index";
 
@@ -223,12 +223,24 @@ export const getErrorMessage = (error: unknown, fallback: string): string => {
     return fallback;
 };
 
-export const parseDecryptedJson = <T>(payload: string, source: string): T => {
+export const parseDecryptedJson = <T>(
+    payload: string,
+    source: CorruptedDataSource,
+    isExpectedStructure: (value: unknown) => value is T,
+): T => {
+    let parsed: unknown;
+
     try {
-        return JSON.parse(payload);
+        parsed = JSON.parse(payload);
     } catch {
         throw new CorruptedDataError(source);
     }
+
+    if (!isExpectedStructure(parsed)) {
+        throw new CorruptedDataError(source);
+    }
+
+    return parsed;
 };
 
 export const runProtected = (

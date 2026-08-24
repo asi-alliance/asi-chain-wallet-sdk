@@ -1,7 +1,11 @@
 import axios, { AxiosInstance } from "axios";
 import HttpResponseParser from "@services/HttpResponseParser";
 import { TAxiosClientConfig } from "@domains/BaseHttpClient";
-import { UnknownErrorReason } from "@domains/CustomError";
+import {
+    ApiRequestError,
+    ApiSource,
+    UnknownErrorReason,
+} from "@domains/CustomError";
 import { getErrorMessage } from "@utils/index";
 
 export default class BaseGraphQLClient {
@@ -39,7 +43,11 @@ export default class BaseGraphQLClient {
                 )
                 .join("; ");
 
-            throw new Error(`GraphQL query failed: ${reasons}`);
+            throw new ApiRequestError(
+                ApiSource.GRAPHQL,
+                "BaseGraphQLClient.query",
+                reasons,
+            );
         }
 
         return response.data.data;
