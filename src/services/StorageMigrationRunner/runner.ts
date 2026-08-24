@@ -12,11 +12,13 @@ import {
     StorageMigrationRollbackError,
     StorageSchemaError,
     StorageVersionDowngradeError,
+    UnknownErrorReason,
 } from "@domains/CustomError";
 import {
     BASELINE_STORAGE_VERSION,
     CURRENT_STORAGE_VERSION,
 } from "@config/index";
+import { getErrorMessage } from "@utils/index";
 import { IStorageMigration, STORAGE_MIGRATIONS } from "./migrations";
 
 export interface IStorageMigrationRunnerOptions {
@@ -75,10 +77,10 @@ export default class StorageMigrationRunner {
     }
 
     private describeFailure(scope: string, error: unknown): string {
-        const reason: string =
-            error instanceof Error ? error.message : String(error);
-
-        return `${scope}: ${reason}`;
+        return `${scope}: ${getErrorMessage(
+            error,
+            UnknownErrorReason.STORAGE_MIGRATION,
+        )}`;
     }
 
     private async createBackup(): Promise<IStorageBackup> {

@@ -216,7 +216,7 @@ export const getErrorMessage = (error: unknown, fallback: string): string => {
         return error.message.trim() || error.name || fallback;
     }
 
-    if (isRecordWithMessage(error) && error.message.trim()) {
+    if (isRecordWithMessage(error)) {
         return error.message;
     }
 

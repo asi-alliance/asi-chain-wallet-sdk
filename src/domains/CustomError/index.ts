@@ -49,6 +49,7 @@ export enum StorageMigrationInterruptionReason {
 
 export enum UnknownErrorReason {
     STORAGE = "browser storage did not report a reason",
+    STORAGE_MIGRATION = "the storage migration did not report a reason",
     NODE_API = "node api did not report a reason",
     GRAPHQL_API = "graphql api did not report a reason",
     CRYPTO = "the crypto engine did not report a reason",

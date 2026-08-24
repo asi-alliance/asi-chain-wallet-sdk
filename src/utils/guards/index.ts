@@ -75,8 +75,13 @@ export const isRecordWithMessage = (
         typeof value === "object" &&
         value !== null &&
         "message" in value &&
-        typeof value.message === "string"
+        typeof value.message === "string" &&
+        value.message.trim().length > 0
     );
+};
+
+export const isErrorWithMessage = (value: unknown): value is Error => {
+    return isRecordWithMessage(value) && value instanceof Error;
 };
 
 export const isEncryptedData = (value: unknown): value is EncryptedData => {

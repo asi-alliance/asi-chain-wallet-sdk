@@ -6,7 +6,7 @@ import {
     DeployTimeoutError,
     UnknownErrorReason,
 } from "@domains/CustomError";
-import { getErrorMessage } from "@utils/index";
+import { getErrorMessage, isErrorWithMessage } from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -115,7 +115,7 @@ export default class DeployStatusPoller extends ApiWorker {
                 }
             } catch (error: unknown) {
                 fail(
-                    error instanceof Error
+                    isErrorWithMessage(error)
                         ? error
                         : new ApiRequestError(
                               ApiSource.NODE,
