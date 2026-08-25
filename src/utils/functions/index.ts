@@ -1,4 +1,8 @@
-import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+import {
+    ASI_BASE_UNIT,
+    POWER_BASE,
+    REGEX_ATOMIC_AMOUNT,
+} from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
@@ -16,7 +20,6 @@ export const generateRandomId = (): string => {
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
-const REGEX_ATOMIC_AMOUNT: RegExp = /^\d+$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
@@ -135,33 +138,6 @@ export const parseAtomicAmount = (value: unknown): bigint | null => {
     }
 
     return null;
-};
-
-export const toUint8Array = (value: unknown): Uint8Array => {
-    if (value instanceof Uint8Array) {
-        return value;
-    }
-
-    if (
-        typeof value === "object" &&
-        value !== null &&
-        "type" in value &&
-        value.type === "Buffer" &&
-        "data" in value &&
-        Array.isArray(value.data)
-    ) {
-        return Uint8Array.from(value.data);
-    }
-
-    if (Array.isArray(value)) {
-        return Uint8Array.from(value);
-    }
-
-    if (typeof value === "object" && value !== null) {
-        return Uint8Array.from(Object.values(value));
-    }
-
-    throw new Error("Unsupported data format");
 };
 
 export type IUrlValue = string | number | boolean | undefined;

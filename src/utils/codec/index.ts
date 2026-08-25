@@ -24,6 +24,33 @@ export const encodeBase16 = (bytes: Uint8Array): string => {
     );
 };
 
+export const toUint8Array = (value: unknown): Uint8Array => {
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "type" in value &&
+        value.type === "Buffer" &&
+        "data" in value &&
+        Array.isArray(value.data)
+    ) {
+        return Uint8Array.from(value.data);
+    }
+
+    if (Array.isArray(value)) {
+        return Uint8Array.from(value);
+    }
+
+    if (typeof value === "object" && value !== null) {
+        return Uint8Array.from(Object.values(value));
+    }
+
+    throw new Error("Unsupported data format");
+};
+
 export const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     const bytes = new Uint8Array(buffer);
     let binary: string = "";

@@ -100,6 +100,16 @@ export default class Bip44Path {
         return new Bip44Path({ coinType, account, change, index });
     }
 
+    public static isValid(pathString: string): boolean {
+        try {
+            Bip44Path.parse(pathString);
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     public toString(): string {
         return `m/44'/${this.coinType}'/${this.account}'/${this.change}/${this.index}`;
     }

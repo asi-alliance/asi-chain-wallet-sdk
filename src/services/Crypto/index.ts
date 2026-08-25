@@ -31,6 +31,7 @@ export type CryptoConfig = {
     readonly VERSION: number;
     readonly IV_LENGTH: number;
     readonly SALT_LENGTH: number;
+    readonly AUTH_TAG_LENGTH: number;
     readonly DATA_KEY_LENGTH: number;
     readonly KEY_SIZE_BITS: number;
     readonly KEY_IMPORT_FORMAT: "raw" | "pkcs8" | "spki";
@@ -52,6 +53,7 @@ const CryptoConfig: CryptoConfig = {
     VERSION: 2,
     IV_LENGTH: 12,
     SALT_LENGTH: 16,
+    AUTH_TAG_LENGTH: 16,
     DATA_KEY_LENGTH: 32,
     KEY_SIZE_BITS: 256,
     ALGORITHM: "AES-GCM",
@@ -103,12 +105,21 @@ export default class CryptoService {
     private static decodeEncryptedField(
         value: string,
         source: CorruptedDataSource,
+        minimalLength: number,
     ): Uint8Array<ArrayBuffer> {
+        let field: Uint8Array<ArrayBuffer>;
+
         try {
-            return new Uint8Array(base64ToArrayBuffer(value));
+            field = new Uint8Array(base64ToArrayBuffer(value));
         } catch {
             throw new CorruptedDataError(source);
         }
+
+        if (field.length < minimalLength) {
+            throw new CorruptedDataError(source);
+        }
+
+        return field;
     }
 
     public static async decryptWithPassword(
@@ -125,14 +136,17 @@ export default class CryptoService {
         const salt = this.decodeEncryptedField(
             payload.salt,
             CorruptedDataSource.ENCRYPTED_SALT,
+            CryptoConfig.SALT_LENGTH,
         );
         const iv = this.decodeEncryptedField(
             payload.iv,
             CorruptedDataSource.ENCRYPTED_IV,
+            CryptoConfig.IV_LENGTH,
         );
         const content = this.decodeEncryptedField(
             payload.data,
             CorruptedDataSource.ENCRYPTED_CONTENT,
+            CryptoConfig.AUTH_TAG_LENGTH,
         );
 
         const key: CryptoKey = await this.deriveKey(passphrase, salt);

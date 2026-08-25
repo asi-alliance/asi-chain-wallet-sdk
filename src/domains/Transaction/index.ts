@@ -1,8 +1,16 @@
 import { NetworkId } from "@domains/Network";
 import { ITableRecord } from "@domains/TableService";
 
-export type TransactionStatus = "pending" | "completed" | "failed";
-export type TransactionType = "send" | "receive" | "deploy";
+export const TRANSACTION_STATUSES = [
+    "pending",
+    "completed",
+    "failed",
+] as const;
+
+export const TRANSACTION_TYPES = ["send", "receive", "deploy"] as const;
+
+export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 export interface Transaction {
     id: string;

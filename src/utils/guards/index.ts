@@ -6,9 +6,17 @@ import {
     TStoredSecret,
 } from "@domains/SecretsProvider";
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
-import type { ISerializedTransactionReservationPrivateData } from "@domains/Transaction";
+import {
+    ISerializedTransactionReservationPrivateData,
+    TRANSACTION_STATUSES,
+    TRANSACTION_TYPES,
+    TSerializedTransaction,
+} from "@domains/Transaction";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { validateNodeApiProfile } from "@utils/validators";
+import MnemonicService from "@services/Mnemonic";
+import { REGEX_ATOMIC_AMOUNT } from "@utils/constants";
+import { toUint8Array } from "@utils/codec";
+import { isPrivateKeyValid, validateNodeApiProfile } from "@utils/validators";
 import type { EncryptedData } from "@services/Crypto";
 import type {
     IKeyfileAccount,
@@ -31,20 +39,52 @@ export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return validateNodeApiProfile(value).isValid;
 };
 
+const isStoredPrivateKey = (value: unknown): boolean => {
+    try {
+        return isPrivateKeyValid(toUint8Array(value));
+    } catch {
+        return false;
+    }
+};
+
 export const isStoredSecret = (value: unknown): value is TStoredSecret => {
     if (typeof value !== "object" || value === null) {
         return false;
     }
 
     if ("privateKey" in value) {
-        return (
-            typeof value.privateKey === "object" && value.privateKey !== null
-        );
+        return isStoredPrivateKey(value.privateKey);
     }
 
     const { seed, rootHDPath } = value as IHDSecretRecord;
 
-    return typeof seed === "string" && typeof rootHDPath === "string";
+    return (
+        typeof seed === "string" &&
+        MnemonicService.isMnemonicValid(seed) &&
+        typeof rootHDPath === "string" &&
+        Bip44Path.isValid(rootHDPath)
+    );
+};
+
+const isSerializedTransaction = (
+    value: unknown,
+): value is TSerializedTransaction => {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+
+    const { id, timestamp, type, status, from, networkId } =
+        value as TSerializedTransaction;
+
+    return (
+        typeof id === "string" &&
+        typeof timestamp === "string" &&
+        !Number.isNaN(Date.parse(timestamp)) &&
+        typeof from === "string" &&
+        typeof networkId === "string" &&
+        TRANSACTION_TYPES.includes(type) &&
+        TRANSACTION_STATUSES.includes(status)
+    );
 };
 
 export const isSerializedReservationPrivateData = (
@@ -60,11 +100,10 @@ export const isSerializedReservationPrivateData = (
     return (
         typeof accountId === "string" &&
         typeof pendingAmount === "string" &&
+        REGEX_ATOMIC_AMOUNT.test(pendingAmount) &&
         typeof expirationTime === "number" &&
-        typeof transaction === "object" &&
-        transaction !== null &&
-        typeof transaction.id === "string" &&
-        typeof transaction.timestamp === "string"
+        Number.isFinite(expirationTime) &&
+        isSerializedTransaction(transaction)
     );
 };
 
