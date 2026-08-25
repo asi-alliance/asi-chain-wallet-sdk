@@ -1,5 +1,6 @@
 import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
+import KeyDerivationService from "@services/KeyDerivation";
 import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
@@ -21,7 +22,6 @@ export interface IWalletMetadata {
 }
 
 export interface ICreateHDWalletParams {
-    mnemonic: string;
     accountName: string;
     index?: number;
 }
@@ -36,16 +36,15 @@ export default class WalletManager extends ItemManager<Wallet> {
         WalletOperationGuardService.getInstance();
 
     public async createHD(
-        { mnemonic, accountName, index }: ICreateHDWalletParams,
-        passwordProvider: SecretsProvider,
+        { accountName, index }: ICreateHDWalletParams,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const wallet: Wallet = await Wallet.createHD(
             {
-                mnemonic,
                 pathOptions: { index: index ?? 0 },
                 accountOptions: { name: accountName },
             },
-            passwordProvider,
+            secretProvider,
         );
 
         await this.persist(wallet);
@@ -228,11 +227,18 @@ export default class WalletManager extends ItemManager<Wallet> {
         return walletsData.map(({ signer, accounts }: IWalletStorageData) => ({
             signerId: signer.id,
             type: signer.type,
-            accounts: accounts.map((account) => ({
-                id: account.id,
-                name: account.name,
-                index: account.index,
-            })),
+            accounts: accounts
+                .map((account) => ({
+                    id: account.id,
+                    name: account.name,
+                    index: account.index,
+                }))
+                .sort((first: IAccountMetadata, second: IAccountMetadata) =>
+                    KeyDerivationService.compareIndexes(
+                        first.index,
+                        second.index,
+                    ),
+                ),
         }));
     }
 

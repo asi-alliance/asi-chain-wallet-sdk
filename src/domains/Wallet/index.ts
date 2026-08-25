@@ -49,7 +49,6 @@ export type TCreateHDPathWalletOptions =
       };
 
 export interface ICreateHDWalletOptions {
-    mnemonic: string;
     pathOptions: TCreateHDPathWalletOptions;
     accountOptions: TCreateAccountPayload;
 }
@@ -141,8 +140,7 @@ export default class Wallet {
 
         const indexes = this.getAccounts()
             .map((account: Account) => account.getIndex())
-            .filter((index: number | null): index is number => index !== null)
-            .sort((a, b) => a - b);
+            .filter((index: number | null): index is number => index !== null);
 
         if (!indexes.length) {
             return initialAccountIndex;
@@ -232,7 +230,7 @@ export default class Wallet {
 
     public static async createHD(
         options: ICreateHDWalletOptions,
-        passwordProvider: SecretsProvider,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
             options.pathOptions,
@@ -240,12 +238,14 @@ export default class Wallet {
 
         const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
             () => {
+                const { password, secret } = secretProvider.getSecret();
+
                 return {
                     secret: {
                         rootHDPath: rootHDPath.toString(),
-                        seed: options.mnemonic,
+                        seed: secret.seed,
                     },
-                    password: passwordProvider.getSecret().password,
+                    password,
                 };
             },
         );
@@ -260,7 +260,7 @@ export default class Wallet {
             () => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed: options.mnemonic,
+                    seed: secretProvider.getSecret().secret.seed,
                 };
             },
         );
@@ -317,7 +317,6 @@ export default class Wallet {
             type: walletType,
             signer,
             accounts: accountsMap,
-            activeAccount: accountsMap.values().next().value,
         });
     }
 

@@ -8,7 +8,7 @@ import {
     arrayBufferToBase64,
     base64ToArrayBuffer,
     toUint8Array,
-} from "@utils/index";
+} from "@utils/codec";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",
