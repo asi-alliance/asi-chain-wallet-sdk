@@ -17,11 +17,13 @@ const SENSITIVE_KEYWORDS = [
     "signed deploy",
 ];
 const SENSITIVE_SDK_PATH_PREFIXES = [
+    "src/domains/Client/",
     "src/domains/Deploy/",
     "src/domains/SecretsProvider/",
     "src/domains/Signer/",
     "src/domains/SigningSession/",
     "src/domains/Wallet/",
+    "src/services/Accounts/",
     "src/services/AssetsService/",
     "src/services/Crypto/",
     "src/services/ExportKeyfileService/",
@@ -34,7 +36,11 @@ const SENSITIVE_SDK_PATH_PREFIXES = [
     "src/services/Signer/",
     "src/services/WalletImport/",
     "src/services/WalletPersistence/",
+    "src/services/WalletUniqueness/",
     "src/services/Wallets/",
+    "src/fabrics/signer.ts",
+    "src/utils/guards/",
+    "src/utils/validators/",
 ];
 
 const findings = [];
