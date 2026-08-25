@@ -10,6 +10,7 @@ import {
 } from "@domains/Transaction";
 import Account from "@domains/Account";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
+import { isSameAddress } from "@utils/index";
 
 export interface ICreateReservationAdapterManagerOptions {
     onReservationsChanged?: () => void;
@@ -99,7 +100,8 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         return this.getAllReservations().filter(
             (reservation: ITransactionReservation) =>
                 reservation.kind === "transfer" &&
-                reservation.details.to === targetAddress,
+                isSameAddress(reservation.details.to, targetAddress) &&
+                !isSameAddress(reservation.details.from, reservation.details.to),
         );
     }
 
