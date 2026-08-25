@@ -21,11 +21,13 @@ const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
 const createHdWallet = (mnemonic: string): Promise<Wallet> =>
     Wallet.createHD(
         {
-            mnemonic,
             pathOptions: { index: 0 },
             accountOptions: { name: ACCOUNT_NAME },
         },
-        passwordProvider,
+        new SecretsProvider(() => ({
+            password: PASSWORD,
+            secret: { seed: mnemonic },
+        })),
     );
 
 const createPkWallet = (privateKey: Uint8Array): Promise<Wallet> =>
@@ -61,7 +63,10 @@ test("an exported private key keyfile carries no plaintext key material", async 
     const serialized = ExportKeyfileService.toJSON(await exportKeyfile(wallet));
     const keyAsHex = KeysManager.convertKeyToHex(privateKey);
 
-    assert.equal(serialized.toLowerCase().includes(keyAsHex.toLowerCase()), false);
+    assert.equal(
+        serialized.toLowerCase().includes(keyAsHex.toLowerCase()),
+        false,
+    );
     assert.equal(serialized.includes(Array.from(privateKey).join(",")), false);
     assert.equal(serialized.includes(PASSWORD), false);
     assert.equal(serialized.includes(ACCOUNT_NAME), false);
