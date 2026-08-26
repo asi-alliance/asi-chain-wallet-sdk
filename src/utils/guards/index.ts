@@ -8,13 +8,16 @@ import {
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
 import {
     ISerializedTransactionReservationPrivateData,
+    TRANSACTION_DETECTED_BY_TYPES,
     TRANSACTION_STATUSES,
     TRANSACTION_TYPES,
     TSerializedTransaction,
 } from "@domains/Transaction";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
-import { NUMERIC_COMPONENT_REGEX } from "@utils/constants";
+import {
+    NON_NEGATIVE_DECIMAL_REGEX,
+} from "@utils/constants";
 import { toUint8Array } from "@utils/codec";
 import { isPrivateKeyValid, validateNodeApiProfile } from "@utils/validators";
 import type { EncryptedData } from "@services/Crypto";
@@ -22,6 +25,10 @@ import type {
     IKeyfileAccount,
     IKeyfileWalletAccount,
 } from "@services/KeyfileSerializer";
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+    return typeof value === "object" && value !== null;
+};
 
 export const isCustomCreateHDWalletOptions = (
     options: TCreateHDPathWalletOptions,
@@ -66,25 +73,68 @@ export const isStoredSecret = (value: unknown): value is TStoredSecret => {
     );
 };
 
+export const isSerializedAmount = (value: unknown): value is string => {
+    return typeof value === "string" && NON_NEGATIVE_DECIMAL_REGEX.test(value);
+};
+
+export const isValueInConst = <const T extends readonly string[]>(
+    value: unknown,
+    values: T,
+): value is T[number] => {
+    return typeof value === "string" && values.includes(value);
+};
+
 const isSerializedTransaction = (
     value: unknown,
 ): value is TSerializedTransaction => {
-    if (typeof value !== "object" || value === null) {
+    if (!isRecord(value)) {
         return false;
     }
 
-    const { id, timestamp, type, status, from, networkId } =
-        value as TSerializedTransaction;
+    if (
+        typeof value.id !== "string" ||
+        typeof value.timestamp !== "string" ||
+        Number.isNaN(Date.parse(value.timestamp)) ||
+        !isValueInConst(value.type, TRANSACTION_TYPES) ||
+        !isValueInConst(value.status, TRANSACTION_STATUSES) ||
+        typeof value.from !== "string" ||
+        typeof value.networkId !== "string"
+    ) {
+        return false;
+    }
 
-    return (
-        typeof id === "string" &&
-        typeof timestamp === "string" &&
-        !Number.isNaN(Date.parse(timestamp)) &&
-        typeof from === "string" &&
-        typeof networkId === "string" &&
-        TRANSACTION_TYPES.includes(type) &&
-        TRANSACTION_STATUSES.includes(status)
-    );
+    if ("amount" in value && !isSerializedAmount(value.amount)) {
+        return false;
+    }
+
+    if ("to" in value && typeof value.to !== "string") {
+        return false;
+    }
+
+    if ("deployId" in value && typeof value.deployId !== "string") {
+        return false;
+    }
+
+    if ("blockHash" in value && typeof value.blockHash !== "string") {
+        return false;
+    }
+
+    if ("gasCost" in value && !isSerializedAmount(value.gasCost)) {
+        return false;
+    }
+
+    if ("contractCode" in value && typeof value.contractCode !== "string") {
+        return false;
+    }
+
+    if (
+        "detectedBy" in value &&
+        !isValueInConst(value.detectedBy, TRANSACTION_DETECTED_BY_TYPES)
+    ) {
+        return false;
+    }
+
+    return true;
 };
 
 export const isSerializedReservationPrivateData = (
@@ -100,7 +150,7 @@ export const isSerializedReservationPrivateData = (
     return (
         typeof accountId === "string" &&
         typeof pendingAmount === "string" &&
-        NUMERIC_COMPONENT_REGEX.test(pendingAmount) &&
+        NON_NEGATIVE_DECIMAL_REGEX.test(pendingAmount) &&
         typeof expirationTime === "number" &&
         Number.isFinite(expirationTime) &&
         isSerializedTransaction(transaction)

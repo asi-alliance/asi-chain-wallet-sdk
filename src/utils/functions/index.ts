@@ -1,8 +1,4 @@
-import {
-    ASI_BASE_UNIT,
-    POWER_BASE,
-    NUMERIC_COMPONENT_REGEX,
-} from "@utils/constants";
+import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
@@ -133,7 +129,7 @@ export const parseAtomicAmount = (value: unknown): bigint | null => {
         return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
     }
 
-    if (typeof value === "string" && NUMERIC_COMPONENT_REGEX.test(value)) {
+    if (typeof value === "string" && DIGITS_ONLY_REGEX.test(value)) {
         return BigInt(value);
     }
 

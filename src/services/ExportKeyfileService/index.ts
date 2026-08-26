@@ -106,7 +106,6 @@ export default class ExportKeyfileService {
                 transaction.deployId ?? "",
                 transaction.blockHash ?? "",
                 transaction.networkId,
-                transaction.note ?? "",
             ]
                 .map(ExportKeyfileService.escapeCsvValue)
                 .join(",");

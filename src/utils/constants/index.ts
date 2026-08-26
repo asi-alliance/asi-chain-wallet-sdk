@@ -27,7 +27,11 @@ export const RUST_FAULT_TOLERANCE_THRESHOLD: number = 0.33;
 
 export const INVALID_BLOCK_NUMBER = -1;
 
-export const NUMERIC_COMPONENT_REGEX: RegExp = /^\d+$/;
+export const DIGITS_ONLY_REGEX: RegExp = /^\d+$/;
+export const INTEGER_REGEX: RegExp = /^-?\d+$/;
+export const DECIMAL_REGEX: RegExp = /^-?\d+(?:\.\d+)?$/;
+export const NON_NEGATIVE_INTEGER_REGEX = /^\d+$/;
+export const NON_NEGATIVE_DECIMAL_REGEX = /^\d+(\.\d+)?$/;
 
 export const DEFAULT_BIP_44_PATH_OPTIONS = {
     coinType: ASI_COIN_TYPE,
