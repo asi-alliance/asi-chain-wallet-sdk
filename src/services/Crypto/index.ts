@@ -49,6 +49,11 @@ export type EncryptedData = {
     version: number;
 };
 
+export interface IDecodeEncryptedFieldConfig {
+    minimalLength?: number;
+    length?: number;
+}
+
 const CryptoConfig: CryptoConfig = {
     VERSION: 2,
     IV_LENGTH: 12,
@@ -105,7 +110,7 @@ export default class CryptoService {
     private static decodeEncryptedField(
         value: string,
         source: CorruptedDataSource,
-        minimalLength: number,
+        config: IDecodeEncryptedFieldConfig,
     ): Uint8Array<ArrayBuffer> {
         let field: Uint8Array<ArrayBuffer>;
 
@@ -115,7 +120,11 @@ export default class CryptoService {
             throw new CorruptedDataError(source);
         }
 
-        if (field.length < minimalLength) {
+        if (config.minimalLength && field.length < config.minimalLength) {
+            throw new CorruptedDataError(source);
+        }
+
+        if (config.length && field.length !== config.length) {
             throw new CorruptedDataError(source);
         }
 
@@ -136,17 +145,23 @@ export default class CryptoService {
         const salt = this.decodeEncryptedField(
             payload.salt,
             CorruptedDataSource.ENCRYPTED_SALT,
-            CryptoConfig.SALT_LENGTH,
+            {
+                length: CryptoConfig.SALT_LENGTH,
+            },
         );
         const iv = this.decodeEncryptedField(
             payload.iv,
             CorruptedDataSource.ENCRYPTED_IV,
-            CryptoConfig.IV_LENGTH,
+            {
+                length: CryptoConfig.IV_LENGTH,
+            },
         );
         const content = this.decodeEncryptedField(
             payload.data,
             CorruptedDataSource.ENCRYPTED_CONTENT,
-            CryptoConfig.AUTH_TAG_LENGTH,
+            {
+                minimalLength: CryptoConfig.AUTH_TAG_LENGTH,
+            },
         );
 
         const key: CryptoKey = await this.deriveKey(passphrase, salt);
