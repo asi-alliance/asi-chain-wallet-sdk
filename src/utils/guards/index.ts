@@ -177,3 +177,9 @@ export const isPromiseLike = (
         typeof value.then === "function"
     );
 };
+
+export const isValidByte = (value: unknown): value is number =>
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 255;

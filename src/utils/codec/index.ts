@@ -1,5 +1,6 @@
 import bs58 from "bs58";
 import { HEX_BYTE_PADDING, HEX_RADIX } from "@utils/constants";
+import { isValidByte } from "@utils/guards";
 
 export const encodeBase58 = (hex: string): string => {
     const bytes = decodeBase16(hex);
@@ -37,15 +38,29 @@ export const toUint8Array = (value: unknown): Uint8Array => {
         "data" in value &&
         Array.isArray(value.data)
     ) {
+        if (!value.data.every(isValidByte)) {
+            throw new Error("Invalid byte value");
+        }
+
         return Uint8Array.from(value.data);
     }
 
     if (Array.isArray(value)) {
+        if (!value.every(isValidByte)) {
+            throw new Error("Invalid byte value");
+        }
+
         return Uint8Array.from(value);
     }
 
     if (typeof value === "object" && value !== null) {
-        return Uint8Array.from(Object.values(value));
+        const values = Object.values(value);
+
+        if (!values.every(isValidByte)) {
+            throw new Error("Invalid byte value");
+        }
+
+        return Uint8Array.from(values);
     }
 
     throw new Error("Unsupported data format");
