@@ -14,7 +14,7 @@ import {
 } from "@domains/Transaction";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
-import { REGEX_ATOMIC_AMOUNT } from "@utils/constants";
+import { NUMERIC_COMPONENT_REGEX } from "@utils/constants";
 import { toUint8Array } from "@utils/codec";
 import { isPrivateKeyValid, validateNodeApiProfile } from "@utils/validators";
 import type { EncryptedData } from "@services/Crypto";
@@ -100,7 +100,7 @@ export const isSerializedReservationPrivateData = (
     return (
         typeof accountId === "string" &&
         typeof pendingAmount === "string" &&
-        REGEX_ATOMIC_AMOUNT.test(pendingAmount) &&
+        NUMERIC_COMPONENT_REGEX.test(pendingAmount) &&
         typeof expirationTime === "number" &&
         Number.isFinite(expirationTime) &&
         isSerializedTransaction(transaction)

@@ -1,7 +1,7 @@
 import {
     ASI_BASE_UNIT,
     POWER_BASE,
-    REGEX_ATOMIC_AMOUNT,
+    NUMERIC_COMPONENT_REGEX,
 } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
@@ -133,7 +133,7 @@ export const parseAtomicAmount = (value: unknown): bigint | null => {
         return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
     }
 
-    if (typeof value === "string" && REGEX_ATOMIC_AMOUNT.test(value)) {
+    if (typeof value === "string" && NUMERIC_COMPONENT_REGEX.test(value)) {
         return BigInt(value);
     }
 

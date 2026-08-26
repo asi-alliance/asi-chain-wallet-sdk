@@ -1,3 +1,5 @@
+import { NUMERIC_COMPONENT_REGEX } from "@utils/constants";
+
 export interface IBip44PathOptions {
     coinType: number;
     account?: number;
@@ -73,6 +75,17 @@ export default class Bip44Path {
         );
         const changePart: string = parts[Bip44Path.CHANGE_INDEX];
         const indexPart: string = parts[Bip44Path.INDEX_COMPONENT_INDEX];
+
+        if (
+            !NUMERIC_COMPONENT_REGEX.test(coinTypePart) ||
+            !NUMERIC_COMPONENT_REGEX.test(accountPart) ||
+            !NUMERIC_COMPONENT_REGEX.test(changePart) ||
+            !NUMERIC_COMPONENT_REGEX.test(indexPart)
+        ) {
+            throw new Error(
+                "Invalid BIP-44 path: path components must be numbers",
+            );
+        }
 
         const coinType: number = parseInt(
             coinTypePart,

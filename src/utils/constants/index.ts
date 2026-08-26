@@ -27,7 +27,7 @@ export const RUST_FAULT_TOLERANCE_THRESHOLD: number = 0.33;
 
 export const INVALID_BLOCK_NUMBER = -1;
 
-export const REGEX_ATOMIC_AMOUNT: RegExp = /^\d+$/;
+export const NUMERIC_COMPONENT_REGEX: RegExp = /^\d+$/;
 
 export const DEFAULT_BIP_44_PATH_OPTIONS = {
     coinType: ASI_COIN_TYPE,
