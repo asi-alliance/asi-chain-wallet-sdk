@@ -15,11 +15,10 @@ import SecretsProvider, {
 import {
     arrayBufferToBase64,
     base64ToArrayBuffer,
-    getErrorMessage,
-    isStoredSecret,
-    parseDecryptedJson,
     toUint8Array,
-} from "@utils/index";
+} from "@utils/codec";
+import { isStoredSecret } from "@utils/guards";
+import { getErrorMessage, parseDecryptedJson } from "@utils/functions";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",

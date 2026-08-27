@@ -12,10 +12,10 @@ import {
     TRANSACTION_TYPES,
     TSerializedTransaction,
 } from "@domains/Transaction";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
-import { isPrivateKeyValid, validateNodeApiProfile } from "@utils/validators";
+import { isPrivateKeyValid } from "@utils/validators/primitives";
 import {
     isRecord,
     isSerializedDecimal,
@@ -41,7 +41,7 @@ export const isPrivateKeySecretData = (
 };
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
-    return validateNodeApiProfile(value).isValid;
+    return isValueInConst(value, NODE_API_PROFILES);
 };
 
 const isStoredPrivateKey = (value: unknown): boolean => {
