@@ -39,6 +39,7 @@ async function main() {
     [
       path.join("node_modules", "tsx", "dist", "cli.mjs"),
       "--test",
+      "--test-concurrency=1",
       ...tests,
     ],
     {

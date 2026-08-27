@@ -42,7 +42,7 @@ const initApiClientManager = (defaultNetwork: string): ApiClientManager => {
     return apiClientManager;
 };
 
-console.log("\n[NETWORKS FROM .env]");
+console.log("\n[TEST NETWORKS]");
 console.log("    Scala network:", SCALA_NETWORK);
 console.log("    Rust network:", RUST_NETWORK);
 

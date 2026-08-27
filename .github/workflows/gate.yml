@@ -1,4 +1,4 @@
-name: Security Gates
+name: Gate
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
       - development
 
 jobs:
-  security-gates:
+  gate:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,5 +27,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run security gates
-        run: npm run security:gate
+      - name: Run gate
+        run: npm run gate
