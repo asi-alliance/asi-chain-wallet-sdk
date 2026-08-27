@@ -7,7 +7,6 @@ import {
     ITransactionReservation,
     Transaction,
 } from "@domains/Transaction";
-import { isSerializedTransactionReservationPrivateData } from "@utils/guards";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
@@ -108,7 +107,7 @@ export default class ReservationAdapter {
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
-                !isSerializedTransactionReservationPrivateData(privateData) ||
+                !isSerializedReservationPrivateData(privateData) ||
                 privateData.expirationTime <= Date.now() ||
                 !knownNetworkIds.has(record.networkId)
             ) {
