@@ -1,4 +1,4 @@
-import { DIGITS_ONLY_REGEX } from "@utils/constants";
+import { CANONICAL_INTEGER_REGEX } from "@utils/constants";
 import { isIntegerInRange } from "@utils/validators/primitives";
 
 export interface IBip44PathOptions {
@@ -105,13 +105,13 @@ export default class Bip44Path {
         const accountPart: string = hardenedAccountPart.slice(0, -1);
 
         if (
-            !DIGITS_ONLY_REGEX.test(coinTypePart) ||
-            !DIGITS_ONLY_REGEX.test(accountPart) ||
-            !DIGITS_ONLY_REGEX.test(changePart) ||
-            !DIGITS_ONLY_REGEX.test(indexPart)
+            !CANONICAL_INTEGER_REGEX.test(coinTypePart) ||
+            !CANONICAL_INTEGER_REGEX.test(accountPart) ||
+            !CANONICAL_INTEGER_REGEX.test(changePart) ||
+            !CANONICAL_INTEGER_REGEX.test(indexPart)
         ) {
             throw new Error(
-                "Invalid BIP-44 path: path components must be numbers",
+                "Invalid BIP-44 path: path components must be numbers without leading zeros",
             );
         }
 
