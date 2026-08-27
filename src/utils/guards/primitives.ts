@@ -32,11 +32,11 @@ export const isValueInConst = <const T extends readonly string[]>(
     return typeof value === "string" && values.includes(value);
 };
 
-export const isSerializedAmount = (value: unknown): value is string => {
+export const isSerializedDecimal = (value: unknown): value is string => {
     return typeof value === "string" && NON_NEGATIVE_DECIMAL_REGEX.test(value);
 };
 
-export const isAtomicAmount = (value: unknown): value is string => {
+export const isSerializedInteger = (value: unknown): value is string => {
     return typeof value === "string" && NON_NEGATIVE_INTEGER_REGEX.test(value);
 };
 

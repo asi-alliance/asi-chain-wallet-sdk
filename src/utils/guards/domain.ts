@@ -17,9 +17,9 @@ import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
 import { isPrivateKeyValid, validateNodeApiProfile } from "@utils/validators";
 import {
-    isAtomicAmount,
     isRecord,
-    isSerializedAmount,
+    isSerializedDecimal,
+    isSerializedInteger,
     isValueInConst,
 } from "./primitives";
 import type { EncryptedData } from "@services/Crypto";
@@ -90,7 +90,7 @@ const isSerializedTransaction = (
         return false;
     }
 
-    if ("amount" in value && !isSerializedAmount(value.amount)) {
+    if ("amount" in value && !isSerializedDecimal(value.amount)) {
         return false;
     }
 
@@ -106,7 +106,7 @@ const isSerializedTransaction = (
         return false;
     }
 
-    if ("gasCost" in value && !isSerializedAmount(value.gasCost)) {
+    if ("gasCost" in value && !isSerializedDecimal(value.gasCost)) {
         return false;
     }
 
@@ -135,7 +135,7 @@ export const isSerializedReservationPrivateData = (
 
     return (
         typeof accountId === "string" &&
-        isAtomicAmount(pendingAmount) &&
+        isSerializedInteger(pendingAmount) &&
         typeof expirationTime === "number" &&
         Number.isFinite(expirationTime) &&
         isSerializedTransaction(transaction)
