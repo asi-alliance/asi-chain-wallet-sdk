@@ -1,14 +1,24 @@
 import Bip44Path from "@domains/Bip44Path";
+import {
+    CorruptedDataError,
+    CorruptedDataSource,
+    InvalidPasswordError,
+    KeyDerivationError,
+    UnknownErrorReason,
+    UnsupportedEncryptionVersionError,
+} from "@domains/CustomError";
 import SecretsProvider, {
     IHDSecret,
-    IHDSecretRecord,
     IPrivateKeyCredentials,
+    TStoredSecret,
 } from "@domains/SecretsProvider";
 import {
     arrayBufferToBase64,
     base64ToArrayBuffer,
     toUint8Array,
 } from "@utils/codec";
+import { isStoredSecret } from "@utils/guards";
+import { getErrorMessage, parseDecryptedJson } from "@utils/functions";
 
 const enum KeyUsage {
     ENCRYPT = "encrypt",
@@ -20,6 +30,7 @@ export type CryptoConfig = {
     readonly VERSION: number;
     readonly IV_LENGTH: number;
     readonly SALT_LENGTH: number;
+    readonly AUTH_TAG_LENGTH: number;
     readonly DATA_KEY_LENGTH: number;
     readonly KEY_SIZE_BITS: number;
     readonly KEY_IMPORT_FORMAT: "raw" | "pkcs8" | "spki";
@@ -37,10 +48,16 @@ export type EncryptedData = {
     version: number;
 };
 
+export interface IDecodeEncryptedFieldConfig {
+    minimalLength?: number;
+    length?: number;
+}
+
 const CryptoConfig: CryptoConfig = {
     VERSION: 2,
     IV_LENGTH: 12,
     SALT_LENGTH: 16,
+    AUTH_TAG_LENGTH: 16,
     DATA_KEY_LENGTH: 32,
     KEY_SIZE_BITS: 256,
     ALGORITHM: "AES-GCM",
@@ -89,24 +106,76 @@ export default class CryptoService {
         };
     }
 
+    private static decodeEncryptedField(
+        value: string,
+        source: CorruptedDataSource,
+        config: IDecodeEncryptedFieldConfig,
+    ): Uint8Array<ArrayBuffer> {
+        let field: Uint8Array<ArrayBuffer>;
+
+        try {
+            field = new Uint8Array(base64ToArrayBuffer(value));
+        } catch {
+            throw new CorruptedDataError(source);
+        }
+
+        if (config.minimalLength && field.length < config.minimalLength) {
+            throw new CorruptedDataError(source);
+        }
+
+        if (config.length && field.length !== config.length) {
+            throw new CorruptedDataError(source);
+        }
+
+        return field;
+    }
+
     public static async decryptWithPassword(
         payload: EncryptedData,
         passphrase: string,
     ): Promise<string> {
         if (payload.version !== CryptoConfig.VERSION) {
-            throw new Error(`Unsupported version ${payload.version}`);
+            throw new UnsupportedEncryptionVersionError(
+                payload.version,
+                CryptoConfig.VERSION,
+            );
         }
 
-        const salt = new Uint8Array(base64ToArrayBuffer(payload.salt));
-        const iv = new Uint8Array(base64ToArrayBuffer(payload.iv));
-
-        const key = await this.deriveKey(passphrase, salt);
-
-        const decrypted = await crypto.subtle.decrypt(
-            { name: CryptoConfig.ALGORITHM, iv },
-            key,
-            base64ToArrayBuffer(payload.data),
+        const salt = this.decodeEncryptedField(
+            payload.salt,
+            CorruptedDataSource.ENCRYPTED_SALT,
+            {
+                length: CryptoConfig.SALT_LENGTH,
+            },
         );
+        const iv = this.decodeEncryptedField(
+            payload.iv,
+            CorruptedDataSource.ENCRYPTED_IV,
+            {
+                length: CryptoConfig.IV_LENGTH,
+            },
+        );
+        const content = this.decodeEncryptedField(
+            payload.data,
+            CorruptedDataSource.ENCRYPTED_CONTENT,
+            {
+                minimalLength: CryptoConfig.AUTH_TAG_LENGTH,
+            },
+        );
+
+        const key: CryptoKey = await this.deriveKey(passphrase, salt);
+
+        let decrypted: ArrayBuffer;
+
+        try {
+            decrypted = await crypto.subtle.decrypt(
+                { name: CryptoConfig.ALGORITHM, iv },
+                key,
+                content,
+            );
+        } catch {
+            throw new InvalidPasswordError();
+        }
 
         return new TextDecoder().decode(decrypted);
     }
@@ -121,8 +190,11 @@ export default class CryptoService {
                 passwordProvider.getSecret().password,
             );
 
-        const keyMaterial: IHDSecretRecord | IPrivateKeyCredentials =
-            JSON.parse(stringifiedKeyMaterial);
+        const keyMaterial: TStoredSecret = parseDecryptedJson(
+            stringifiedKeyMaterial,
+            CorruptedDataSource.WALLET_SECRET,
+            isStoredSecret,
+        );
 
         if ("privateKey" in keyMaterial) {
             const privateKey: Uint8Array = toUint8Array(keyMaterial.privateKey);
@@ -144,28 +216,34 @@ export default class CryptoService {
         password: string,
         salt: Uint8Array,
     ): Promise<CryptoKey> {
-        const keyMaterial = await crypto.subtle.importKey(
-            CryptoConfig.KEY_IMPORT_FORMAT,
-            new TextEncoder().encode(password),
-            CryptoConfig.KEY_DERIVATION_FUNCTION,
-            false,
-            [KeyUsage.DERIVATION],
-        );
+        try {
+            const keyMaterial = await crypto.subtle.importKey(
+                CryptoConfig.KEY_IMPORT_FORMAT,
+                new TextEncoder().encode(password),
+                CryptoConfig.KEY_DERIVATION_FUNCTION,
+                false,
+                [KeyUsage.DERIVATION],
+            );
 
-        return crypto.subtle.deriveKey(
-            {
-                name: CryptoConfig.KEY_DERIVATION_FUNCTION,
-                salt: new Uint8Array(salt),
-                iterations: CryptoConfig.KEY_DERIVATION_ITERATIONS,
-                hash: CryptoConfig.HASH_FUNCTION,
-            },
-            keyMaterial,
-            {
-                name: CryptoConfig.ALGORITHM,
-                length: CryptoConfig.KEY_SIZE_BITS,
-            },
-            false,
-            [KeyUsage.ENCRYPT, KeyUsage.DECRYPT],
-        );
+            return await crypto.subtle.deriveKey(
+                {
+                    name: CryptoConfig.KEY_DERIVATION_FUNCTION,
+                    salt: new Uint8Array(salt),
+                    iterations: CryptoConfig.KEY_DERIVATION_ITERATIONS,
+                    hash: CryptoConfig.HASH_FUNCTION,
+                },
+                keyMaterial,
+                {
+                    name: CryptoConfig.ALGORITHM,
+                    length: CryptoConfig.KEY_SIZE_BITS,
+                },
+                false,
+                [KeyUsage.ENCRYPT, KeyUsage.DECRYPT],
+            );
+        } catch (error: unknown) {
+            throw new KeyDerivationError(
+                getErrorMessage(error, UnknownErrorReason.CRYPTO),
+            );
+        }
     }
 }

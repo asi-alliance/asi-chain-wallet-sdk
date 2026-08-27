@@ -33,7 +33,6 @@ export const TRANSACTIONS_CSV_HEADERS: string[] = [
     "Deploy ID",
     "Block Hash",
     "Network ID",
-    "Note",
 ];
 
 export const GasFee = {

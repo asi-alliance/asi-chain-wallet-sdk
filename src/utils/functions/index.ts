@@ -1,6 +1,8 @@
-import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
-import { isPromiseLike } from "@utils/guards";
+import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { TransactionType } from "@domains/Transaction";
+import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
 import { BASELINE_STORAGE_VERSION } from "@config/index";
 
@@ -15,7 +17,6 @@ export const generateRandomId = (): string => {
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
-const REGEX_ATOMIC_AMOUNT: RegExp = /^\d+$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
@@ -129,7 +130,7 @@ export const parseAtomicAmount = (value: unknown): bigint | null => {
         return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
     }
 
-    if (typeof value === "string" && REGEX_ATOMIC_AMOUNT.test(value)) {
+    if (typeof value === "string" && DIGITS_ONLY_REGEX.test(value)) {
         return BigInt(value);
     }
 
@@ -172,12 +173,61 @@ export const buildUrl = (
     return queryString ? `${url}?${queryString}` : url;
 };
 
-/**
- * @returns address in the format accepted within the SDK application
- */
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
 }
+
+export function isSameAddress(
+    address: string | undefined,
+    other: string | undefined,
+): boolean {
+    const normalized: string = normalizeAddress(address);
+
+    return normalized !== "" && normalized === normalizeAddress(other);
+}
+
+export function resolveTransferType(
+    from: string,
+    viewerAddress: string,
+): TransactionType {
+    return isSameAddress(from, viewerAddress) ? "send" : "receive";
+}
+
+export const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    if (error instanceof Error) {
+        return error.message.trim() || error.name || fallback;
+    }
+
+    if (isRecordWithMessage(error)) {
+        return error.message;
+    }
+
+    return fallback;
+};
+
+export const parseDecryptedJson = <T>(
+    payload: string,
+    source: CorruptedDataSource,
+    isExpectedStructure: (value: unknown) => value is T,
+): T => {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(payload);
+    } catch {
+        throw new CorruptedDataError(source);
+    }
+
+    if (!isExpectedStructure(parsed)) {
+        throw new CorruptedDataError(source);
+    }
+
+    return parsed;
+};
 
 export const runProtected = (
     run: () => void | Promise<void>,

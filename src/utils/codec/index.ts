@@ -1,5 +1,6 @@
 import bs58 from "bs58";
 import { HEX_BYTE_PADDING, HEX_RADIX } from "@utils/constants";
+import { isByteIndexedRecord, isValidByte } from "@utils/guards/primitives";
 
 export const encodeBase58 = (hex: string): string => {
     const bytes = decodeBase16(hex);
@@ -22,6 +23,45 @@ export const encodeBase16 = (bytes: Uint8Array): string => {
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
         "",
     );
+};
+
+export const toUint8Array = (value: unknown): Uint8Array => {
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "type" in value &&
+        value.type === "Buffer" &&
+        "data" in value &&
+        Array.isArray(value.data)
+    ) {
+        if (!value.data.every(isValidByte)) {
+            throw new Error("Invalid byte value");
+        }
+
+        return Uint8Array.from(value.data);
+    }
+
+    if (Array.isArray(value)) {
+        if (!value.every(isValidByte)) {
+            throw new Error("Invalid byte value");
+        }
+
+        return Uint8Array.from(value);
+    }
+
+    if (typeof value === "object" && value !== null) {
+        if (!isByteIndexedRecord(value)) {
+            throw new Error("Invalid byte value");
+        }
+
+        return Uint8Array.from(Object.values(value));
+    }
+
+    throw new Error("Unsupported data format");
 };
 
 export const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
@@ -56,30 +96,3 @@ export const bigIntToBuffer = (num: bigint): Uint8Array =>
             "hex",
         ),
     );
-
-export const toUint8Array = (value: unknown): Uint8Array => {
-    if (value instanceof Uint8Array) {
-        return value;
-    }
-
-    if (
-        typeof value === "object" &&
-        value !== null &&
-        "type" in value &&
-        value.type === "Buffer" &&
-        "data" in value &&
-        Array.isArray(value.data)
-    ) {
-        return Uint8Array.from(value.data);
-    }
-
-    if (Array.isArray(value)) {
-        return Uint8Array.from(value);
-    }
-
-    if (typeof value === "object" && value !== null) {
-        return Uint8Array.from(Object.values(value));
-    }
-
-    throw new Error("Unsupported data format");
-};

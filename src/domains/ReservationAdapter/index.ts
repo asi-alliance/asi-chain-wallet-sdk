@@ -19,6 +19,11 @@ import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
+import { CorruptedDataSource } from "@domains/CustomError";
+import {
+    isSerializedReservationPrivateData,
+    parseDecryptedJson,
+} from "@utils/index";
 
 export interface IReservedOperationResult {
     deployId: string;
@@ -65,13 +70,17 @@ export default class ReservationAdapter {
     private static async readPrivateData(
         record: ITransactionReservationsStorageRecord,
         dataKeySecret: string,
-    ): Promise<ISerializedTransactionReservationPrivateData> {
+    ): Promise<unknown> {
         const decrypted: string = await CryptoService.decryptWithPassword(
             record.encryptedData,
             dataKeySecret,
         );
 
-        return JSON.parse(decrypted);
+        return parseDecryptedJson(
+            decrypted,
+            CorruptedDataSource.RESERVATION_DATA,
+            isSerializedReservationPrivateData,
+        );
     }
 
     public static async create(
@@ -94,10 +103,11 @@ export default class ReservationAdapter {
         const reservations: ITransactionReservation[] = [];
 
         for (const record of records) {
-            const privateData: ISerializedTransactionReservationPrivateData =
+            const privateData: unknown =
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
+                !isSerializedReservationPrivateData(privateData) ||
                 privateData.expirationTime <= Date.now() ||
                 !knownNetworkIds.has(record.networkId)
             ) {
@@ -150,16 +160,18 @@ export default class ReservationAdapter {
         );
     }
 
-    public getPendingTransactions(accountId?: string): Transaction[] {
+    public getOutgoingPendingTransactions(account: Account): Transaction[] {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const reservations: ITransactionReservation[] = accountId
-            ? this.reservationsManager.getByAccountId(accountId, networkId)
-            : this.reservationsManager.getByNetworkId(networkId);
+        const reservations: ITransactionReservation[] =
+            this.reservationsManager.getByAccountId(account.getId(), networkId);
 
-        return reservations.map(
-            (reservation: ITransactionReservation) => reservation.transaction,
+        return reservations.map((reservation: ITransactionReservation) =>
+            TransactionReservationFabric.toPendingTransaction(
+                reservation,
+                account.getAddress(),
+            ),
         );
     }
 

@@ -137,11 +137,7 @@ export default class TransactionReservationsManager implements IDisposable {
     }
 
     private watch(reservation: ITransactionReservation): void {
-        const { deployId } = reservation.transaction;
-
-        if (!deployId) {
-            return;
-        }
+        const { deployId } = reservation.details;
 
         const poller: DeployStatusPoller = new DeployStatusPoller(
             ApiClientManager.getInstance().createNetworkContext(
