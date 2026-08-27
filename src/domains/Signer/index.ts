@@ -1,9 +1,9 @@
 import type SecretsProvider from "@domains/SecretsProvider";
+import type { TDecryptedSecret } from "@domains/SecretsProvider";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import { WalletLockedError } from "@domains/CustomError";
+import { InvalidPasswordError, WalletLockedError } from "@domains/CustomError";
 import SigningSession, {
     ISigningSessionOptions,
-    TDecryptedSecret,
 } from "@domains/SigningSession";
 
 export const SIGNER_KEY_PREFIX: string = "SIGNER";
@@ -129,8 +129,7 @@ export default abstract class Signer {
     protected async resolveSecret(
         signingContext: TSigningContext,
     ): Promise<{ secret: TDecryptedSecret; ephemeral: boolean }> {
-        const sessionSecret: TDecryptedSecret | null =
-            this.session.getSecret();
+        const sessionSecret: TDecryptedSecret | null = this.session.getSecret();
 
         if (sessionSecret) {
             return { secret: sessionSecret, ephemeral: false };
@@ -150,6 +149,25 @@ export default abstract class Signer {
 
     public lock(): void {
         this.session.release();
+    }
+
+    public async isPasswordValid(
+        passwordProvider: SecretsProvider,
+    ): Promise<boolean> {
+        try {
+            await CryptoService.decryptSignerData(
+                this.encryptedSecret,
+                passwordProvider,
+            );
+
+            return true;
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                return false;
+            }
+
+            throw error;
+        }
     }
 
     public abstract sign(

@@ -51,6 +51,9 @@ const WalletRow = ({
     }
 
     const walletId = openWallet.getId();
+    const accounts = openWallet.getAccounts();
+    const canRemoveAccount =
+        openWallet.getType() === WalletTypes.HD && accounts.length > 1;
 
     return (
         <div className="wallets-page__card-wrap">
@@ -68,6 +71,13 @@ const WalletRow = ({
                 <button
                     className="wallets-page__action"
                     type="button"
+                    onClick={() => handlers.exportWalletKeyfile(walletId)}
+                >
+                    Export keyfile
+                </button>
+                <button
+                    className="wallets-page__action"
+                    type="button"
                     onClick={() => handlers.closeWallet(walletId)}
                 >
                     Lock wallet
@@ -81,7 +91,7 @@ const WalletRow = ({
                 </button>
             </div>
 
-            {openWallet.getAccounts().map((account) => (
+            {accounts.map((account) => (
                 <AccountCard
                     key={account.getId()}
                     sdk={sdk}
@@ -90,8 +100,14 @@ const WalletRow = ({
                     onRename={() =>
                         handlers.renameAccount(walletId, account.getId())
                     }
-                    onRemove={() =>
-                        handlers.removeAccount(walletId, account.getId())
+                    onRemove={
+                        canRemoveAccount
+                            ? () =>
+                                  handlers.removeAccount(
+                                      walletId,
+                                      account.getId(),
+                                  )
+                            : undefined
                     }
                 />
             ))}
@@ -147,7 +163,16 @@ const WalletsPage = (): ReactElement => {
 
     return (
         <div className="wallets-page">
-            <NetworkSelector />
+            <div className="wallets-page__header">
+                <NetworkSelector />
+                <button
+                    className="wallets-page__action"
+                    type="button"
+                    onClick={handlers.importKeyfile}
+                >
+                    Import keyfile
+                </button>
+            </div>
             <div className="wallets-page__grid">
                 <section className="wallets-page__column">
                     <div className="wallets-page__column-header">

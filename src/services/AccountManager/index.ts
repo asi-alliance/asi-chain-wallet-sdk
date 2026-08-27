@@ -4,6 +4,7 @@ import Account, {
 } from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
 import ItemManager from "@services/ItemManager";
+import KeyDerivationService from "@services/KeyDerivation";
 import { generateRandomId } from "@utils/index";
 
 export interface ICreatedAccountData {
@@ -14,14 +15,42 @@ export interface ICreatedAccountData {
 export default class AccountManager extends ItemManager<Account> {
     private activeAccount: Account | null;
 
+    private static orderAccounts(
+        accounts: Map<string, Account>,
+    ): Map<string, Account> {
+        return new Map(
+            Array.from(accounts).sort(
+                (
+                    [, firstAccount]: [string, Account],
+                    [, secondAccount]: [string, Account],
+                ) =>
+                    KeyDerivationService.compareIndexes(
+                        firstAccount.getIndex(),
+                        secondAccount.getIndex(),
+                    ),
+            ),
+        );
+    }
+
     constructor(
         accounts: Map<string, Account> = new Map(),
         activeAccount: Account | null = null,
     ) {
-        super(accounts);
+        super(AccountManager.orderAccounts(accounts));
 
-        this.activeAccount =
-            activeAccount ?? accounts.values().next().value ?? null;
+        this.activeAccount = activeAccount ?? this.getDefaultActiveAccount();
+    }
+
+    private reorder(): void {
+        const orderedAccounts: Map<string, Account> =
+            AccountManager.orderAccounts(this.items);
+
+        this.clear();
+        this.addMany(orderedAccounts);
+    }
+
+    private getDefaultActiveAccount(): Account | null {
+        return this.items.values().next().value ?? null;
     }
 
     public async create(
@@ -35,6 +64,7 @@ export default class AccountManager extends ItemManager<Account> {
         );
 
         this.add(accountId, account);
+        this.reorder();
 
         if (!this.activeAccount) {
             this.activeAccount = account;
@@ -43,10 +73,25 @@ export default class AccountManager extends ItemManager<Account> {
         return { account, accountId };
     }
 
+    public addAccounts(accounts: Account[]): void {
+        const entries: [string, Account][] = accounts.map(
+            (account: Account) => [account.getId(), account],
+        );
+
+        this.addMany(entries);
+        this.reorder();
+
+        if (!this.activeAccount) {
+            this.activeAccount = this.getDefaultActiveAccount();
+        }
+    }
+
     public remove(id: string): Account {
         const removedAccount: Account = super.remove(id);
 
-        this.activeAccount = this.items.values().next().value ?? null;
+        if (this.activeAccount === removedAccount) {
+            this.activeAccount = this.getDefaultActiveAccount();
+        }
 
         return removedAccount;
     }

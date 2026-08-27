@@ -1,7 +1,10 @@
-import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
-import { isPromiseLike } from "@utils/guards";
+import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { TransactionType } from "@domains/Transaction";
+import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
+import { ITableRecord } from "@domains/TableService";
+import { BASELINE_STORAGE_VERSION } from "@config/index";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -14,7 +17,6 @@ export const generateRandomId = (): string => {
 
 const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
-const REGEX_ATOMIC_AMOUNT: RegExp = /^\d+$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
@@ -128,38 +130,11 @@ export const parseAtomicAmount = (value: unknown): bigint | null => {
         return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
     }
 
-    if (typeof value === "string" && REGEX_ATOMIC_AMOUNT.test(value)) {
+    if (typeof value === "string" && DIGITS_ONLY_REGEX.test(value)) {
         return BigInt(value);
     }
 
     return null;
-};
-
-export const toUint8Array = (value: unknown): Uint8Array => {
-    if (value instanceof Uint8Array) {
-        return value;
-    }
-
-    if (
-        typeof value === "object" &&
-        value !== null &&
-        "type" in value &&
-        value.type === "Buffer" &&
-        "data" in value &&
-        Array.isArray(value.data)
-    ) {
-        return Uint8Array.from(value.data);
-    }
-
-    if (Array.isArray(value)) {
-        return Uint8Array.from(value);
-    }
-
-    if (typeof value === "object" && value !== null) {
-        return Uint8Array.from(Object.values(value));
-    }
-
-    throw new Error("Unsupported data format");
 };
 
 export type IUrlValue = string | number | boolean | undefined;
@@ -218,6 +193,42 @@ export function resolveTransferType(
     return isSameAddress(from, viewerAddress) ? "send" : "receive";
 }
 
+export const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    if (error instanceof Error) {
+        return error.message.trim() || error.name || fallback;
+    }
+
+    if (isRecordWithMessage(error)) {
+        return error.message;
+    }
+
+    return fallback;
+};
+
+export const parseDecryptedJson = <T>(
+    payload: string,
+    source: CorruptedDataSource,
+    isExpectedStructure: (value: unknown) => value is T,
+): T => {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(payload);
+    } catch {
+        throw new CorruptedDataError(source);
+    }
+
+    if (!isExpectedStructure(parsed)) {
+        throw new CorruptedDataError(source);
+    }
+
+    return parsed;
+};
+
 export const runProtected = (
     run: () => void | Promise<void>,
     onFailure: (error: unknown) => void,
@@ -233,6 +244,33 @@ export const runProtected = (
     }
 };
 
+export interface IFieldSelection<T, V> {
+    selected: T[];
+    missingValues: V[];
+}
+
+export const selectByField = <T, K extends keyof T>(
+    items: T[],
+    field: K,
+    values: readonly T[K][],
+): IFieldSelection<T, T[K]> => {
+    const requestedValues: Set<T[K]> = new Set(values);
+
+    const selected: T[] = items.filter((item: T) =>
+        requestedValues.has(item[field]),
+    );
+
+    const selectedValues: Set<T[K]> = new Set(
+        selected.map((item: T) => item[field]),
+    );
+
+    const missingValues: T[K][] = Array.from(requestedValues).filter(
+        (value: T[K]) => !selectedValues.has(value),
+    );
+
+    return { selected, missingValues };
+};
+
 export const isNetworkConfigChanged = (
     current: INetworkConfig,
     update?: Partial<INetworkConfig>,
@@ -246,3 +284,8 @@ export const isNetworkConfigChanged = (
             update[field] !== undefined && update[field] !== current[field],
     );
 };
+
+export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({
+    ...record,
+    schemaVersion: record.schemaVersion ?? BASELINE_STORAGE_VERSION,
+});

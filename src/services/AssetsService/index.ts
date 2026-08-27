@@ -2,8 +2,15 @@ import Asset from "@domains/Asset";
 import { IDeployTermFactory } from "@domains/Deploy/factory";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import { Address } from "@domains/Wallet";
-import { BalanceUnavailableError } from "@domains/CustomError";
-import { parseAtomicAmount, validateAddress } from "@utils/index";
+import {
+    BalanceUnavailableError,
+    UnknownErrorReason,
+} from "@domains/CustomError";
+import {
+    getErrorMessage,
+    parseAtomicAmount,
+    validateAddress,
+} from "@utils/index";
 import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import DeployService from "@services/DeployService";
 
@@ -57,7 +64,7 @@ export default class AssetsService {
         } catch (error) {
             throw new BalanceUnavailableError(
                 address,
-                error instanceof Error ? error.message : String(error),
+                getErrorMessage(error, UnknownErrorReason.NODE_API),
             );
         }
 
