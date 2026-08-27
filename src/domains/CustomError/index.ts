@@ -18,6 +18,13 @@ export enum CustomErrorCode {
     KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
+    INVALID_PASSWORD = "INVALID_PASSWORD",
+    CORRUPTED_DATA = "CORRUPTED_DATA",
+    UNSUPPORTED_ENCRYPTION_VERSION = "UNSUPPORTED_ENCRYPTION_VERSION",
+    KEY_DERIVATION_FAILED = "KEY_DERIVATION_FAILED",
+    STORAGE_OPERATION_FAILED = "STORAGE_OPERATION_FAILED",
+    API_REQUEST_FAILED = "API_REQUEST_FAILED",
+    DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
 }
@@ -38,6 +45,35 @@ export enum StorageMigrationInterruptionReason {
     ROLLBACK_FAILED = "ROLLBACK_FAILED",
     MIGRATION_NOT_RESUMABLE = "MIGRATION_NOT_RESUMABLE",
     MIGRATION_NOT_FOUND = "MIGRATION_NOT_FOUND",
+}
+
+export enum UnknownErrorReason {
+    STORAGE = "browser storage did not report a reason",
+    STORAGE_MIGRATION = "the storage migration did not report a reason",
+    NODE_API = "node api did not report a reason",
+    GRAPHQL_API = "graphql api did not report a reason",
+    CRYPTO = "the crypto engine did not report a reason",
+}
+
+export enum CorruptedDataSource {
+    ENCRYPTED_SALT = "the salt of the encrypted payload",
+    ENCRYPTED_IV = "the initialization vector of the encrypted payload",
+    ENCRYPTED_CONTENT = "the content of the encrypted payload",
+    WALLET_SECRET = "the decrypted wallet secret",
+    RESERVATION_DATA = "the decrypted transaction reservation",
+}
+
+export enum StorageOperation {
+    OPEN_DATABASE = "open the database",
+    CREATE_TABLE = "create the table",
+    DROP_TABLE = "drop the table",
+    RUN_TRANSACTION = "run a transaction on the table",
+    FINISH_TRANSACTION = "finish an aborted transaction on the table",
+}
+
+export enum ApiSource {
+    NODE = "node api",
+    GRAPHQL = "graphql api",
 }
 
 export class CustomError extends Error {
@@ -71,6 +107,115 @@ export class WalletOperationCancelledError extends CustomError {
         super(CustomErrorCode.WALLET_OPERATION_CANCELLED, message, 409);
 
         this.signerId = signerId;
+    }
+}
+
+export class InvalidPasswordError extends CustomError {
+    public readonly details: string | null;
+
+    constructor(details: string | null = null) {
+        super(
+            CustomErrorCode.INVALID_PASSWORD,
+            details ? `Password not valid: ${details}` : "Password not valid",
+            403,
+        );
+
+        this.details = details;
+    }
+}
+
+export class CorruptedDataError extends CustomError {
+    public readonly source: CorruptedDataSource;
+
+    constructor(
+        source: CorruptedDataSource,
+        message: string = `Cannot read ${source}, the data is corrupted`,
+    ) {
+        super(CustomErrorCode.CORRUPTED_DATA, message, 422);
+
+        this.source = source;
+    }
+}
+
+export class UnsupportedEncryptionVersionError extends CustomError {
+    public readonly version: number;
+    public readonly supportedVersion: number;
+
+    constructor(
+        version: number,
+        supportedVersion: number,
+        message: string = `Unsupported version ${version} of the encrypted payload, this SDK build supports version ${supportedVersion}`,
+    ) {
+        super(CustomErrorCode.UNSUPPORTED_ENCRYPTION_VERSION, message, 400);
+
+        this.version = version;
+        this.supportedVersion = supportedVersion;
+    }
+}
+
+export class KeyDerivationError extends CustomError {
+    public readonly reason: string;
+
+    constructor(reason: string) {
+        super(
+            CustomErrorCode.KEY_DERIVATION_FAILED,
+            `Encryption key could not be derived from the password: ${reason}`,
+            500,
+        );
+
+        this.reason = reason;
+    }
+}
+
+export class StorageOperationError extends CustomError {
+    public readonly operation: StorageOperation;
+    public readonly target: string;
+    public readonly reason: string;
+
+    constructor(operation: StorageOperation, target: string, reason: string) {
+        super(
+            CustomErrorCode.STORAGE_OPERATION_FAILED,
+            `Storage failed to ${operation} '${target}': ${reason}`,
+            500,
+        );
+
+        this.operation = operation;
+        this.target = target;
+        this.reason = reason;
+    }
+}
+
+export class ApiRequestError extends CustomError {
+    public readonly source: ApiSource;
+    public readonly operation: string;
+    public readonly reason: string;
+
+    constructor(source: ApiSource, operation: string, reason: string) {
+        super(
+            CustomErrorCode.API_REQUEST_FAILED,
+            `Request to the ${source} failed during ${operation}: ${reason}`,
+            502,
+        );
+
+        this.source = source;
+        this.operation = operation;
+        this.reason = reason;
+    }
+}
+
+export class DeployTimeoutError extends CustomError {
+    public readonly deployId: string;
+    public readonly timeoutMs: number;
+
+    constructor(
+        deployId: string,
+        timeoutMs: number,
+        message: string = `Deploy ${deployId} was not finalized within ${timeoutMs} ms, it may still be processed by the network`,
+    ) {
+        super(CustomErrorCode.DEPLOY_TIMEOUT, message, 408);
+
+        this.deployId = deployId;
+        this.timeoutMs = timeoutMs;
     }
 }
 

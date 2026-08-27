@@ -1,5 +1,12 @@
 import ApiWorker from "@domains/ApiWorker";
 import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
+import {
+    ApiRequestError,
+    ApiSource,
+    DeployTimeoutError,
+    UnknownErrorReason,
+} from "@domains/CustomError";
+import { getErrorMessage, isErrorWithMessage } from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -104,14 +111,21 @@ export default class DeployStatusPoller extends ApiWorker {
                 }
 
                 if (Date.now() > deadline) {
-                    fail(
-                        new Error(
-                            `DeployStatusPoller: timeout for ${deployId}`,
-                        ),
-                    );
+                    fail(new DeployTimeoutError(deployId, timeoutMs));
                 }
             } catch (error: unknown) {
-                fail(error instanceof Error ? error : new Error(String(error)));
+                fail(
+                    isErrorWithMessage(error)
+                        ? error
+                        : new ApiRequestError(
+                              ApiSource.NODE,
+                              `DeployStatusPoller.watch of the deploy ${deployId}`,
+                              getErrorMessage(
+                                  error,
+                                  UnknownErrorReason.NODE_API,
+                              ),
+                          ),
+                );
             } finally {
                 checking = false;
             }

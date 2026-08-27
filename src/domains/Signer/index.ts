@@ -1,7 +1,7 @@
 import type SecretsProvider from "@domains/SecretsProvider";
 import type { TDecryptedSecret } from "@domains/SecretsProvider";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import { WalletLockedError } from "@domains/CustomError";
+import { InvalidPasswordError, WalletLockedError } from "@domains/CustomError";
 import SigningSession, {
     ISigningSessionOptions,
 } from "@domains/SigningSession";
@@ -161,8 +161,12 @@ export default abstract class Signer {
             );
 
             return true;
-        } catch {
-            return false;
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                return false;
+            }
+
+            throw error;
         }
     }
 
