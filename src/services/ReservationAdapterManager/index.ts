@@ -1,9 +1,16 @@
 import ReservationAdapter from "@domains/ReservationAdapter";
-import Wallet from "@domains/Wallet";
+import Wallet, { Address } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import DisposableItemManager from "@services/DisposableItemManager";
 import { NetworkId } from "@domains/Network";
-import { TReservationsByWallet } from "@domains/Transaction";
+import {
+    ITransactionReservation,
+    Transaction,
+    TReservationsByWallet,
+} from "@domains/Transaction";
+import Account from "@domains/Account";
+import TransactionReservationFabric from "@fabrics/transactionReservation";
+import { isSameAddress } from "@utils/index";
 
 export interface ICreateReservationAdapterManagerOptions {
     onReservationsChanged?: () => void;
@@ -81,6 +88,23 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         return reservationsByWallet;
     }
 
+    public getAllReservations(): ITransactionReservation[] {
+        return this.getAll().flatMap((adapter: ReservationAdapter) =>
+            adapter.getReservations(),
+        );
+    }
+
+    public getIncomingReservations(
+        targetAddress: Address,
+    ): ITransactionReservation[] {
+        return this.getAllReservations().filter(
+            (reservation: ITransactionReservation) =>
+                reservation.kind === "transfer" &&
+                isSameAddress(reservation.details.to, targetAddress) &&
+                !isSameAddress(reservation.details.from, reservation.details.to),
+        );
+    }
+
     public hasNetworkReservations(networkId: NetworkId): boolean {
         return this.getAll().some((reservationAdapter: ReservationAdapter) =>
             reservationAdapter.hasNetworkReservations(networkId),
@@ -99,6 +123,28 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         } finally {
             this.notifyReservationsChanged();
         }
+    }
+
+    public getPendingTransactions(
+        walletId: string,
+        account: Account,
+    ): Transaction[] {
+        const reservationAdapter: ReservationAdapter | null =
+            this.get(walletId);
+
+        const outgoingPendingTransactions: Transaction[] = reservationAdapter
+            ? reservationAdapter.getOutgoingPendingTransactions(account)
+            : [];
+        const incomingPendingTransactions: Transaction[] =
+            this.getIncomingReservations(account.getAddress()).map(
+                (reservation: ITransactionReservation) =>
+                    TransactionReservationFabric.toPendingTransaction(
+                        reservation,
+                        account.getAddress(),
+                    ),
+            );
+
+        return [...incomingPendingTransactions, ...outgoingPendingTransactions];
     }
 }
 

@@ -115,13 +115,12 @@ const saveReservationRecord = async (
         accountId: "account-id",
         pendingAmount: "1000",
         expirationTime,
-        transaction: {
-            id,
+        kind: "transfer",
+        details: {
+            deployId: id,
             timestamp: new Date().toISOString(),
-            type: "send",
-            status: "pending",
             from: "sender-address",
-            networkId,
+            to: "recipient-address",
         },
     };
 

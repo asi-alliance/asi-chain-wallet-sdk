@@ -1,11 +1,7 @@
-/**
- * Anti-Corruption Layer (ACL)
- */
-
 import { NetworkId } from "@domains/Network";
 import { RawDeployment, RawTransfer } from ".";
 import { Transaction } from "@domains/Transaction";
-import { normalizeAddress } from "@utils/functions";
+import { resolveTransferType } from "@utils/functions";
 
 type RawTransferMappingContext = {
     accountAddress: string;
@@ -30,7 +26,7 @@ export function mapRawTransferToTransaction(
     return {
         id: transfer.deploy_id,
         timestamp: toDate(transfer.timestamp),
-        type: getTransferType(from, to, context.accountAddress),
+        type: resolveTransferType(from, context.accountAddress),
         from,
         to,
         amount: toOptionalString(transfer.amount_asi),
@@ -63,18 +59,6 @@ export function mapRawDeploymentToTransaction(
         networkId: context.networkId,
         detectedBy: "auto",
     };
-}
-
-function getTransferType(
-    from: string,
-    to: string,
-    accountAddress: string,
-): "send" | "receive" {
-    const normalizedAccountAddress = normalizeAddress(accountAddress);
-
-    return normalizeAddress(from) === normalizedAccountAddress
-        ? "send"
-        : "receive";
 }
 
 function toOptionalString(

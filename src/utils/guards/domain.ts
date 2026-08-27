@@ -7,10 +7,8 @@ import {
 import { TCreateHDPathWalletOptions } from "@domains/Wallet";
 import {
     ISerializedTransactionReservationPrivateData,
-    TRANSACTION_DETECTED_BY_TYPES,
-    TRANSACTION_STATUSES,
-    TRANSACTION_TYPES,
-    TSerializedTransaction,
+    TRANSACTION_RESERVATION_KINDS,
+    TSerializedTransactionReservationDetails,
 } from "@domains/Transaction";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
@@ -71,26 +69,19 @@ export const isStoredSecret = (value: unknown): value is TStoredSecret => {
     );
 };
 
-const isSerializedTransaction = (
+const isSerializedReservationDetails = (
     value: unknown,
-): value is TSerializedTransaction => {
+): value is TSerializedTransactionReservationDetails => {
     if (!isRecord(value)) {
         return false;
     }
 
     if (
-        typeof value.id !== "string" ||
+        typeof value.deployId !== "string" ||
         typeof value.timestamp !== "string" ||
         Number.isNaN(Date.parse(value.timestamp)) ||
-        !isValueInConst(value.type, TRANSACTION_TYPES) ||
-        !isValueInConst(value.status, TRANSACTION_STATUSES) ||
-        typeof value.from !== "string" ||
-        typeof value.networkId !== "string"
+        typeof value.from !== "string"
     ) {
-        return false;
-    }
-
-    if ("amount" in value && !isSerializedDecimal(value.amount)) {
         return false;
     }
 
@@ -98,11 +89,7 @@ const isSerializedTransaction = (
         return false;
     }
 
-    if ("deployId" in value && typeof value.deployId !== "string") {
-        return false;
-    }
-
-    if ("blockHash" in value && typeof value.blockHash !== "string") {
+    if ("amount" in value && !isSerializedDecimal(value.amount)) {
         return false;
     }
 
@@ -111,13 +98,6 @@ const isSerializedTransaction = (
     }
 
     if ("contractCode" in value && typeof value.contractCode !== "string") {
-        return false;
-    }
-
-    if (
-        "detectedBy" in value &&
-        !isValueInConst(value.detectedBy, TRANSACTION_DETECTED_BY_TYPES)
-    ) {
         return false;
     }
 
@@ -131,14 +111,15 @@ export const isSerializedReservationPrivateData = (
         return false;
     }
 
-    const { accountId, pendingAmount, expirationTime, transaction } = value;
+    const { accountId, pendingAmount, expirationTime, kind, details } = value;
 
     return (
         typeof accountId === "string" &&
         isSerializedInteger(pendingAmount) &&
         typeof expirationTime === "number" &&
         Number.isFinite(expirationTime) &&
-        isSerializedTransaction(transaction)
+        isValueInConst(kind, TRANSACTION_RESERVATION_KINDS) &&
+        isSerializedReservationDetails(details)
     );
 };
 

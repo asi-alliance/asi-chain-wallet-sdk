@@ -11,10 +11,14 @@ export const TRANSACTION_DETECTED_BY_TYPES = [
     "auto",
 ] as const;
 
+export const TRANSACTION_RESERVATION_KINDS = ["transfer", "deploy"] as const;
+
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 export type TransactionDetectedBy =
     (typeof TRANSACTION_DETECTED_BY_TYPES)[number];
+export type TransactionReservationKind =
+    (typeof TRANSACTION_RESERVATION_KINDS)[number];
 
 export interface Transaction {
     id: string;
@@ -36,18 +40,34 @@ export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
     timestamp: string;
 };
 
+export interface ITransactionReservationDetails {
+    deployId: string;
+    timestamp: Date;
+    from: string;
+    to?: string;
+    amount?: string;
+    gasCost?: string;
+    contractCode?: string;
+}
+
+export type TSerializedTransactionReservationDetails = Omit<
+    ITransactionReservationDetails,
+    "timestamp"
+> & {
+    timestamp: string;
+};
+
 export interface ITransactionReservationPrivateData {
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
-    transaction: Transaction;
+    kind: TransactionReservationKind;
+    details: ITransactionReservationDetails;
 }
 
-export interface ISerializedTransactionReservationPrivateData extends Omit<
-    ITransactionReservationPrivateData,
-    "transaction"
-> {
-    transaction: TSerializedTransaction;
+export interface ISerializedTransactionReservationPrivateData
+    extends Omit<ITransactionReservationPrivateData, "details"> {
+    details: TSerializedTransactionReservationDetails;
 }
 
 export interface ITransactionReservation

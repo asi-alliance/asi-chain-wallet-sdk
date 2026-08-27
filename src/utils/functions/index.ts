@@ -1,6 +1,7 @@
 import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { TransactionType } from "@domains/Transaction";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
 import { BASELINE_STORAGE_VERSION } from "@config/index";
@@ -172,11 +173,24 @@ export const buildUrl = (
     return queryString ? `${url}?${queryString}` : url;
 };
 
-/**
- * @returns address in the format accepted within the SDK application
- */
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
+}
+
+export function isSameAddress(
+    address: string | undefined,
+    other: string | undefined,
+): boolean {
+    const normalized: string = normalizeAddress(address);
+
+    return normalized !== "" && normalized === normalizeAddress(other);
+}
+
+export function resolveTransferType(
+    from: string,
+    viewerAddress: string,
+): TransactionType {
+    return isSameAddress(from, viewerAddress) ? "send" : "receive";
 }
 
 export const getErrorMessage = (error: unknown, fallback: string): string => {
