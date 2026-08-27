@@ -174,11 +174,7 @@ export default class Bip44Path {
 
     public setChange(value: number): void {
         if (
-            !isIntegerInRange(
-                value,
-                Bip44Path.MIN_CHANGE,
-                Bip44Path.MAX_CHANGE,
-            )
+            !isIntegerInRange(value, Bip44Path.MIN_CHANGE, Bip44Path.MAX_CHANGE)
         ) {
             throw new Error("change must be 0 or 1");
         }

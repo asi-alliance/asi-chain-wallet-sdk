@@ -9,11 +9,12 @@ import SecretsProvider, {
 import CryptoService from "@services/Crypto";
 import KeysManager from "@services/KeysManager";
 import { ASI_COIN_TYPE, PRIVATE_KEY_LENGTH } from "@utils/constants";
+import MnemonicService from "@services/Mnemonic";
 
 const PASSWORD = "key-management-password";
 const WRONG_PASSWORD = "key-management-wrong-password";
 const PAYLOAD = "sensitive-payload";
-const SEED = "test seed value";
+const SEED = MnemonicService.generateMnemonic();
 
 const createPasswordProvider = (password: string): SecretsProvider =>
     new SecretsProvider(() => ({ password }));
@@ -58,7 +59,10 @@ test("public key derivation from a private key is deterministic", () => {
         Array.from(restored.privateKey),
         Array.from(pair.privateKey),
     );
-    assert.deepEqual(Array.from(restored.publicKey), Array.from(pair.publicKey));
+    assert.deepEqual(
+        Array.from(restored.publicKey),
+        Array.from(pair.publicKey),
+    );
     assert.deepEqual(Array.from(publicKey), Array.from(pair.publicKey));
 });
 
@@ -129,7 +133,9 @@ test("decryptSignerData restores hd secrets with a parsed derivation path", asyn
 
 test("decryptSignerData refuses a wrong password", async () => {
     const encrypted = await CryptoService.encryptWithPassword(
-        JSON.stringify({ privateKey: Array.from(KeysManager.generateRandomKey()) }),
+        JSON.stringify({
+            privateKey: Array.from(KeysManager.generateRandomKey()),
+        }),
         PASSWORD,
     );
 

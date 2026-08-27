@@ -37,9 +37,9 @@ import WalletImportService, {
 import WalletManager from "@services/WalletManager";
 import WalletPersistenceService from "@services/WalletPersistence";
 import { encodeBase16 } from "@utils/codec";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 

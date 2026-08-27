@@ -16,6 +16,7 @@ import {
 import { createSigner } from "@fabrics/signer";
 import { ASI_COIN_TYPE } from "@utils/constants";
 
+const SEED = MnemonicService.generateMnemonic();
 const PASSWORD = "signing-session-password";
 const WRONG_PASSWORD = "not-the-password";
 const DATA_KEY = "data-key-secret";
@@ -167,7 +168,7 @@ test("a session without an auto lock delay stays held", async () => {
 test("release accepts hd secrets that carry no wipeable key material", () => {
     const session = new SigningSession("signer-hd");
     const secret: IHDSecret = {
-        seed: "test seed value",
+        seed: SEED,
         rootHDPath: createRootHDPath(),
     };
 
