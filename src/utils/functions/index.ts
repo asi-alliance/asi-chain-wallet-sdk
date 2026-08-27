@@ -1,5 +1,5 @@
 import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
-import { isPromiseLike, isRecordWithMessage } from "@utils/guards";
+import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";

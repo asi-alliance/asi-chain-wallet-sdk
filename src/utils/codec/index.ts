@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import { HEX_BYTE_PADDING, HEX_RADIX } from "@utils/constants";
-import { isValidByte } from "@utils/guards";
+import { isValidByte } from "@utils/guards/primitives";
 
 export const encodeBase58 = (hex: string): string => {
     const bytes = decodeBase16(hex);
