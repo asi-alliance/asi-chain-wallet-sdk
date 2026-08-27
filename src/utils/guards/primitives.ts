@@ -16,6 +16,15 @@ export const isValidByte = (value: unknown): value is number => {
     );
 };
 
+export const isByteIndexedRecord = (
+    value: object,
+): value is Record<string, number> => {
+    return Object.entries(value).every(
+        ([key, byte]: [string, unknown], position: number) =>
+            key === String(position) && isValidByte(byte),
+    );
+};
+
 export const isValueInConst = <const T extends readonly string[]>(
     value: unknown,
     values: T,
