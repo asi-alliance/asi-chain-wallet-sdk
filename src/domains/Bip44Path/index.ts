@@ -9,6 +9,7 @@ export interface IBip44PathOptions {
 
 export default class Bip44Path {
     private static readonly BIP44_PURPOSE: number = 44;
+    private static readonly HARDENED_SUFFIX: string = "'";
     private static readonly MIN_CHANGE: number = 0;
     private static readonly MAX_CHANGE: number = 1;
     private static readonly PATH_COMPONENTS_COUNT: number = 6;
@@ -65,16 +66,29 @@ export default class Bip44Path {
             );
         }
 
-        const coinTypePart: string = parts[Bip44Path.COIN_TYPE_INDEX].replace(
-            "'",
-            "",
-        );
-        const accountPart: string = parts[Bip44Path.ACCOUNT_INDEX].replace(
-            "'",
-            "",
-        );
+        if (
+            parts[Bip44Path.PURPOSE_INDEX] !==
+            `${Bip44Path.BIP44_PURPOSE}${Bip44Path.HARDENED_SUFFIX}`
+        ) {
+            throw new Error("BIP-44 path must use 44' as the purpose");
+        }
+
+        const hardenedCoinTypePart: string = parts[Bip44Path.COIN_TYPE_INDEX];
+        const hardenedAccountPart: string = parts[Bip44Path.ACCOUNT_INDEX];
         const changePart: string = parts[Bip44Path.CHANGE_INDEX];
         const indexPart: string = parts[Bip44Path.INDEX_COMPONENT_INDEX];
+
+        if (
+            !hardenedCoinTypePart.endsWith(Bip44Path.HARDENED_SUFFIX) ||
+            !hardenedAccountPart.endsWith(Bip44Path.HARDENED_SUFFIX)
+        ) {
+            throw new Error(
+                "Invalid BIP-44 path: coinType and account must be hardened",
+            );
+        }
+
+        const coinTypePart: string = hardenedCoinTypePart.slice(0, -1);
+        const accountPart: string = hardenedAccountPart.slice(0, -1);
 
         if (
             !DIGITS_ONLY_REGEX.test(coinTypePart) ||
@@ -87,30 +101,12 @@ export default class Bip44Path {
             );
         }
 
-        const coinType: number = parseInt(
-            coinTypePart,
-            Bip44Path.DECIMAL_RADIX,
-        );
-        const account: number = parseInt(accountPart, Bip44Path.DECIMAL_RADIX);
-        const change: number = parseInt(changePart, Bip44Path.DECIMAL_RADIX);
-        const index: number = parseInt(indexPart, Bip44Path.DECIMAL_RADIX);
-
-        if (
-            isNaN(coinType) ||
-            isNaN(account) ||
-            isNaN(change) ||
-            isNaN(index)
-        ) {
-            throw new Error(
-                "Invalid BIP-44 path: path components must be numbers",
-            );
-        }
-
-        if (parts[Bip44Path.PURPOSE_INDEX] !== `${Bip44Path.BIP44_PURPOSE}'`) {
-            throw new Error("BIP-44 path must use 44' as the purpose");
-        }
-
-        return new Bip44Path({ coinType, account, change, index });
+        return new Bip44Path({
+            coinType: parseInt(coinTypePart, Bip44Path.DECIMAL_RADIX),
+            account: parseInt(accountPart, Bip44Path.DECIMAL_RADIX),
+            change: parseInt(changePart, Bip44Path.DECIMAL_RADIX),
+            index: parseInt(indexPart, Bip44Path.DECIMAL_RADIX),
+        });
     }
 
     public static isValid(pathString: string): boolean {
