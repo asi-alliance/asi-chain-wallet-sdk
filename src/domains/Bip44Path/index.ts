@@ -1,4 +1,5 @@
 import { DIGITS_ONLY_REGEX } from "@utils/constants";
+import { isIntegerInRange } from "@utils/validators/primitives";
 
 export interface IBip44PathOptions {
     coinType: number;
@@ -19,6 +20,7 @@ export default class Bip44Path {
     private static readonly CHANGE_INDEX: number = 4;
     private static readonly INDEX_COMPONENT_INDEX: number = 5;
     private static readonly DECIMAL_RADIX: number = 10;
+    private static readonly MAX_COMPONENT_VALUE: number = 2 ** 31 - 1;
 
     private coinType: number;
     private account: number;
@@ -31,20 +33,32 @@ export default class Bip44Path {
         change = 0,
         index = 0,
     }: IBip44PathOptions) {
-        if (coinType < 0) {
-            throw new Error("coinType must be non-negative");
+        if (!isIntegerInRange(coinType, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `coinType must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
 
-        if (account < 0) {
-            throw new Error("account must be non-negative");
+        if (!isIntegerInRange(account, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `account must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
 
-        if (change < Bip44Path.MIN_CHANGE || change > Bip44Path.MAX_CHANGE) {
+        if (
+            !isIntegerInRange(
+                change,
+                Bip44Path.MIN_CHANGE,
+                Bip44Path.MAX_CHANGE,
+            )
+        ) {
             throw new Error("change must be 0 or 1");
         }
 
-        if (index < 0) {
-            throw new Error("index must be non-negative");
+        if (!isIntegerInRange(index, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `index must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
 
         this.coinType = coinType;
@@ -140,22 +154,32 @@ export default class Bip44Path {
     }
 
     public setCoinType(value: number): void {
-        if (value < 0) {
-            throw new Error("coinType must be non-negative");
+        if (!isIntegerInRange(value, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `coinType must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
         this.coinType = value;
     }
 
     public setAccount(value: number): void {
-        if (value < 0) {
-            throw new Error("account must be non-negative");
+        if (!isIntegerInRange(value, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `account must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
 
         this.account = value;
     }
 
     public setChange(value: number): void {
-        if (value < Bip44Path.MIN_CHANGE || value > Bip44Path.MAX_CHANGE) {
+        if (
+            !isIntegerInRange(
+                value,
+                Bip44Path.MIN_CHANGE,
+                Bip44Path.MAX_CHANGE,
+            )
+        ) {
             throw new Error("change must be 0 or 1");
         }
 
@@ -163,8 +187,10 @@ export default class Bip44Path {
     }
 
     public setIndex(value: number): void {
-        if (value < 0) {
-            throw new Error("index must be non-negative");
+        if (!isIntegerInRange(value, 0, Bip44Path.MAX_COMPONENT_VALUE)) {
+            throw new Error(
+                `index must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+            );
         }
 
         this.index = value;
