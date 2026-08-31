@@ -18,10 +18,13 @@ import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import TransactionReservationFabric from "@fabrics/transactionReservation";
+import TransactionReservationFabric, {
+    TCreateTransactionReservationPayload,
+} from "@fabrics/transactionReservation";
 import { CorruptedDataSource } from "@domains/CustomError";
 import {
     isSerializedReservationPrivateData,
+    isTransferReservationCreatePayload,
     parseDecryptedJson,
 } from "@utils/index";
 
@@ -65,6 +68,54 @@ export default class ReservationAdapter {
                 },
             },
         );
+    }
+
+    public async add(
+        wallet: Wallet,
+        payload: TCreateTransactionReservationPayload,
+        passwordProvider?: SecretsProvider,
+    ): Promise<ITransactionReservation> {
+        const reservation: ITransactionReservation =
+            isTransferReservationCreatePayload(payload)
+                ? TransactionReservationFabric.createTransfer(payload)
+                : TransactionReservationFabric.createDeploy(payload);
+
+        await this.persistReservation(reservation, wallet, passwordProvider);
+
+        this.reservationsManager.add(reservation);
+
+        return reservation;
+    }
+
+    public async update(
+        payload: TCreateTransactionReservationPayload,
+        wallet: Wallet,
+        passwordProvider?: SecretsProvider,
+    ): Promise<ITransactionReservation> {
+        const reservation: ITransactionReservation =
+            isTransferReservationCreatePayload(payload)
+                ? TransactionReservationFabric.createTransfer(payload)
+                : TransactionReservationFabric.createDeploy(payload);
+
+        await this.updatePersistedReservation(
+            reservation,
+            wallet,
+            passwordProvider,
+        );
+
+        const { id, ...update } = reservation;
+
+        this.reservationsManager.updateMeta(id, update);
+
+        return reservation;
+    }
+
+    public async remove(
+        id: ITransactionReservation["id"],
+    ): Promise<ITransactionReservation> {
+        await StorageManager.deleteTransactionReservation(id);
+
+        return this.reservationsManager.remove(id);
     }
 
     private static async readPrivateData(
@@ -200,28 +251,55 @@ export default class ReservationAdapter {
         this.reservationsManager.dispose();
     }
 
+    private async encryptReservationData(
+        reservation: ITransactionReservation,
+        wallet: Wallet,
+        passwordProvider?: SecretsProvider,
+    ): Promise<EncryptedData> {
+        const privateData =
+            TransactionReservationFabric.toPrivateData(reservation);
+
+        const dataKeySecret = await wallet
+            .getSigner()
+            .resolveDataKey(passwordProvider);
+
+        return CryptoService.encryptWithPassword(
+            JSON.stringify(privateData),
+            dataKeySecret,
+        );
+    }
+
     private async persistReservation(
         reservation: ITransactionReservation,
         wallet: Wallet,
         passwordProvider?: SecretsProvider,
     ): Promise<void> {
-        const privateData: ISerializedTransactionReservationPrivateData =
-            TransactionReservationFabric.toPrivateData(reservation);
-
-        const dataKeySecret: string = await wallet
-            .getSigner()
-            .resolveDataKey(passwordProvider);
-
-        const encryptedData: EncryptedData =
-            await CryptoService.encryptWithPassword(
-                JSON.stringify(privateData),
-                dataKeySecret,
-            );
+        const encryptedData: EncryptedData = await this.encryptReservationData(
+            reservation,
+            wallet,
+            passwordProvider,
+        );
 
         await StorageManager.saveTransactionReservation({
             id: reservation.id,
             networkId: reservation.networkId,
             signerId: wallet.getSigner().getId(),
+            encryptedData,
+        });
+    }
+
+    private async updatePersistedReservation(
+        reservation: ITransactionReservation,
+        wallet: Wallet,
+        passwordProvider?: SecretsProvider,
+    ): Promise<void> {
+        const encryptedData: EncryptedData = await this.encryptReservationData(
+            reservation,
+            wallet,
+            passwordProvider,
+        );
+
+        await StorageManager.updateTransactionReservation(reservation.id, {
             encryptedData,
         });
     }

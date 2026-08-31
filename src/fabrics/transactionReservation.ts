@@ -38,6 +38,10 @@ export interface ICreateDeployReservationPayload extends IReservationPayload {
     term: string;
 }
 
+export type TCreateTransactionReservationPayload =
+    | ICreateTransferReservationPayload
+    | ICreateDeployReservationPayload;
+
 export default class TransactionReservationFabric {
     private static build(
         { networkId, account, pendingAmount }: IReservationPayload,

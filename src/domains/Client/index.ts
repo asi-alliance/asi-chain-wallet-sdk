@@ -78,6 +78,7 @@ import ClientEventBus, {
 import TransactionsHistoryAggregator, {
     ITransactionsHistoryWindow,
 } from "@services/TransactionsHistoryAggregator";
+import { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 
 export interface ICreateHDWalletPayload {
     mnemonic: string;
@@ -632,7 +633,7 @@ export default class Client extends ClosableDomain {
             ...preview,
             isExistingWalletOpen: Boolean(
                 preview.existingSignerId &&
-                    this.walletManager.getBySignerId(preview.existingSignerId),
+                this.walletManager.getBySignerId(preview.existingSignerId),
             ),
         };
     }
@@ -815,6 +816,88 @@ export default class Client extends ClosableDomain {
         }
 
         return reservationAdapter.getReservations();
+    }
+
+    @EnsureActive
+    public async addTransactionReservation(
+        walletId: string,
+        payload: TCreateTransactionReservationPayload,
+        password?: string,
+    ): Promise<ITransactionReservation> {
+        const wallet: Wallet = this.getOpenWallet(walletId);
+
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.addTransactionReservation: Not found reservation adapter",
+            );
+        }
+
+        const passwordProvider: SecretsProvider | undefined =
+            password !== undefined
+                ? this.createPasswordProvider(password)
+                : undefined;
+
+        const reservation: ITransactionReservation =
+            await reservationAdapter.add(wallet, payload, passwordProvider);
+
+        this.emitReservationsChanged();
+
+        return reservation;
+    }
+
+    @EnsureActive
+    public async updateTransactionReservation(
+        walletId: string,
+        payload: TCreateTransactionReservationPayload,
+        password?: string,
+    ): Promise<ITransactionReservation> {
+        const wallet: Wallet = this.getOpenWallet(walletId);
+
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.updateTransactionReservation: Not found reservation adapter",
+            );
+        }
+
+        const passwordProvider: SecretsProvider | undefined =
+            password !== undefined
+                ? this.createPasswordProvider(password)
+                : undefined;
+
+        const reservation: ITransactionReservation =
+            await reservationAdapter.update(payload, wallet, passwordProvider);
+
+        this.emitReservationsChanged();
+
+        return reservation;
+    }
+
+    @EnsureActive
+    public async removeTransactionReservation(
+        walletId: string,
+        reservationId: ITransactionReservation["id"],
+    ): Promise<ITransactionReservation> {
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.removeTransactionReservation: Not found reservation adapter",
+            );
+        }
+
+        const reservation: ITransactionReservation =
+            await reservationAdapter.remove(reservationId);
+
+        this.emitReservationsChanged();
+
+        return reservation;
     }
 
     @EnsureActive

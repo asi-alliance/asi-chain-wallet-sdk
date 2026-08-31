@@ -70,6 +70,38 @@ export default class TransactionReservationsManager implements IDisposable {
         this.onAdded?.(reservation);
     }
 
+    public updateMeta(
+        id: string,
+        update: Partial<Omit<ITransactionReservation, "id">>,
+    ): void {
+        let targetReservation: ITransactionReservation | undefined =
+            this.reservations.get(id);
+
+        if (!targetReservation) {
+            throw new Error(
+                "TransactionReservationsManager.updateMeta: incorrect reservation id",
+            );
+        }
+
+        targetReservation = {
+            ...targetReservation,
+            ...update,
+        };
+    }
+
+    public restartWatch(id: string): void {
+        const reservation = this.reservations.get(id);
+
+        if (!reservation) {
+            throw new Error(
+                "TransactionReservationsManager.restartWatch: incorrect reservation id",
+            );
+        }
+
+        this.stopWatch(id);
+        this.watch(reservation);
+    }
+
     public subscribe(
         reservationId: string,
         callbacks: IDeployWatchCallbacks,
@@ -85,11 +117,22 @@ export default class TransactionReservationsManager implements IDisposable {
         };
     }
 
-    public remove(id: string): boolean {
+    public remove(id: string): ITransactionReservation {
         this.stopWatch(id);
         this.clearExpiration(id);
 
-        return this.reservations.delete(id);
+        if (!this.reservations.has(id)) {
+            throw new Error(
+                "TransactionReservationsManager.remove: invalid reservation id",
+            );
+        }
+
+        const targetReservation: ITransactionReservation =
+            this.reservations.get(id)!;
+
+        this.reservations.delete(id);
+
+        return targetReservation;
     }
 
     public get(id: string): ITransactionReservation | null {
