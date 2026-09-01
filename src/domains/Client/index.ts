@@ -78,7 +78,16 @@ import ClientEventBus, {
 import TransactionsHistoryAggregator, {
     ITransactionsHistoryWindow,
 } from "@services/TransactionsHistoryAggregator";
-import { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
+import TransactionReservationFabric, {
+    TCreateTransactionReservationPayload,
+    TTransactionReservationMeta,
+} from "@fabrics/transactionReservation";
+
+export type {
+    IDeployReservationMeta,
+    ITransferReservationMeta,
+    TTransactionReservationMeta,
+} from "@fabrics/transactionReservation";
 
 export interface ICreateHDWalletPayload {
     mnemonic: string;
@@ -104,6 +113,11 @@ export interface IDeployRequest {
     term: string;
     phloLimit?: number;
 }
+
+export type TTransactionReservationRequest = {
+    walletId: string;
+    accountId: string;
+} & TTransactionReservationMeta;
 
 export type THistorySource = "pending" | "executed";
 
@@ -633,7 +647,7 @@ export default class Client extends ClosableDomain {
             ...preview,
             isExistingWalletOpen: Boolean(
                 preview.existingSignerId &&
-                this.walletManager.getBySignerId(preview.existingSignerId),
+                    this.walletManager.getBySignerId(preview.existingSignerId),
             ),
         };
     }
@@ -819,15 +833,16 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
     public async addTransactionReservation(
-        walletId: string,
-        payload: TCreateTransactionReservationPayload,
+        request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
+        const wallet: Wallet = this.getOpenWallet(request.walletId);
+        const account: Account = this.getAccount(wallet, request.accountId);
 
         const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
+            this.reservationAdapterManager.get(request.walletId);
 
         if (!reservationAdapter) {
             throw new Error(
@@ -840,6 +855,15 @@ export default class Client extends ClosableDomain {
                 ? this.createPasswordProvider(password)
                 : undefined;
 
+        await this.ensureSession(wallet, passwordProvider);
+
+        const payload: TCreateTransactionReservationPayload =
+            TransactionReservationFabric.toCreatePayload(
+                request,
+                account,
+                ApiClientManager.getInstance().getCurrentNetworkId(),
+            );
+
         const reservation: ITransactionReservation =
             await reservationAdapter.add(wallet, payload, passwordProvider);
 
@@ -849,15 +873,17 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
     public async updateTransactionReservation(
-        walletId: string,
-        payload: TCreateTransactionReservationPayload,
+        reservationId: ITransactionReservation["id"],
+        request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
+        const wallet: Wallet = this.getOpenWallet(request.walletId);
+        const account: Account = this.getAccount(wallet, request.accountId);
 
         const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
+            this.reservationAdapterManager.get(request.walletId);
 
         if (!reservationAdapter) {
             throw new Error(
@@ -870,8 +896,22 @@ export default class Client extends ClosableDomain {
                 ? this.createPasswordProvider(password)
                 : undefined;
 
+        await this.ensureSession(wallet, passwordProvider);
+
+        const payload: TCreateTransactionReservationPayload =
+            TransactionReservationFabric.toCreatePayload(
+                request,
+                account,
+                ApiClientManager.getInstance().getCurrentNetworkId(),
+            );
+
         const reservation: ITransactionReservation =
-            await reservationAdapter.update(payload, wallet, passwordProvider);
+            await reservationAdapter.update(
+                wallet,
+                reservationId,
+                payload,
+                passwordProvider,
+            );
 
         this.emitReservationsChanged();
 
@@ -879,6 +919,7 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
     public async removeTransactionReservation(
         walletId: string,
         reservationId: ITransactionReservation["id"],

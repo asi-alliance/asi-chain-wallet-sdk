@@ -1,3 +1,4 @@
+import ItemManager from "@services/ItemManager";
 import { IDisposable } from "./../DisposableItemManager/index";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -20,9 +21,10 @@ export interface ITransactionReservationsManagerOptions {
     watchOptions?: IDeployWatchOptions;
 }
 
-export default class TransactionReservationsManager implements IDisposable {
-    private readonly reservations: Map<string, ITransactionReservation> =
-        new Map();
+export default class TransactionReservationsManager
+    extends ItemManager<ITransactionReservation>
+    implements IDisposable
+{
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
     private readonly subscribers: Map<string, Set<IDeployWatchCallbacks>> =
         new Map();
@@ -47,6 +49,8 @@ export default class TransactionReservationsManager implements IDisposable {
         reservations: ITransactionReservation[],
         options: ITransactionReservationsManagerOptions = {},
     ) {
+        super();
+
         this.onAdded = options.onAdded;
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
@@ -60,46 +64,63 @@ export default class TransactionReservationsManager implements IDisposable {
         };
 
         for (const reservation of reservations) {
-            this.track(reservation);
+            this.track(reservation.id, reservation);
         }
     }
 
-    public add(reservation: ITransactionReservation): void {
-        this.track(reservation);
+    public add(id: string, reservation: ITransactionReservation): void {
+        this.track(id, reservation);
 
         this.onAdded?.(reservation);
     }
 
-    public updateMeta(
-        id: string,
-        update: Partial<Omit<ITransactionReservation, "id">>,
-    ): void {
-        let targetReservation: ITransactionReservation | undefined =
-            this.reservations.get(id);
+    public getKnown(id: string): ITransactionReservation {
+        const targetReservation: ITransactionReservation | null = this.get(id);
 
         if (!targetReservation) {
             throw new Error(
-                "TransactionReservationsManager.updateMeta: incorrect reservation id",
+                `TransactionReservationsManager.getKnown: not found reservation ${id}`,
             );
         }
 
-        targetReservation = {
-            ...targetReservation,
-            ...update,
-        };
+        return targetReservation;
     }
 
-    public restartWatch(id: string): void {
-        const reservation = this.reservations.get(id);
+    public replace(reservation: ITransactionReservation): void {
+        this.getKnown(reservation.id);
 
-        if (!reservation) {
-            throw new Error(
-                "TransactionReservationsManager.restartWatch: incorrect reservation id",
-            );
-        }
+        super.add(reservation.id, reservation);
+
+        this.restartWatch(reservation);
+
+        this.clearExpiration(reservation.id);
+        this.scheduleExpiration(reservation);
+    }
+
+    public remove(id: string): ITransactionReservation {
+        const targetReservation: ITransactionReservation = super.remove(id);
 
         this.stopWatch(id);
-        this.watch(reservation);
+        this.clearExpiration(id);
+
+        return targetReservation;
+    }
+
+    public ensureUniqueDeployId(
+        deployId: string,
+        excludedReservationId?: string,
+    ): void {
+        const hasDuplicate: boolean = this.hasByFilter(
+            (reservation: ITransactionReservation) =>
+                reservation.details.deployId === deployId &&
+                reservation.id !== excludedReservationId,
+        );
+
+        if (hasDuplicate) {
+            throw new Error(
+                `TransactionReservationsManager.ensureUniqueDeployId: reservation for deploy ${deployId} already exists`,
+            );
+        }
     }
 
     public subscribe(
@@ -117,34 +138,8 @@ export default class TransactionReservationsManager implements IDisposable {
         };
     }
 
-    public remove(id: string): ITransactionReservation {
-        this.stopWatch(id);
-        this.clearExpiration(id);
-
-        if (!this.reservations.has(id)) {
-            throw new Error(
-                "TransactionReservationsManager.remove: invalid reservation id",
-            );
-        }
-
-        const targetReservation: ITransactionReservation =
-            this.reservations.get(id)!;
-
-        this.reservations.delete(id);
-
-        return targetReservation;
-    }
-
-    public get(id: string): ITransactionReservation | null {
-        return this.reservations.get(id) ?? null;
-    }
-
-    public getAll(): ITransactionReservation[] {
-        return Array.from(this.reservations.values());
-    }
-
     public getByNetworkId(networkId: NetworkId): ITransactionReservation[] {
-        return this.getAll().filter(
+        return this.getByFilter(
             (reservation: ITransactionReservation) =>
                 reservation.networkId === networkId,
         );
@@ -154,8 +149,9 @@ export default class TransactionReservationsManager implements IDisposable {
         accountId: string,
         networkId: NetworkId,
     ): ITransactionReservation[] {
-        return this.getByNetworkId(networkId).filter(
+        return this.getByFilter(
             (reservation: ITransactionReservation) =>
+                reservation.networkId === networkId &&
                 reservation.accountId === accountId,
         );
     }
@@ -170,11 +166,12 @@ export default class TransactionReservationsManager implements IDisposable {
         }
 
         this.subscribers.clear();
-        this.reservations.clear();
+        this.clear();
     }
 
-    private track(reservation: ITransactionReservation): void {
-        this.reservations.set(reservation.id, reservation);
+    private track(id: string, reservation: ITransactionReservation): void {
+        super.add(id, reservation);
+
         this.watch(reservation);
         this.scheduleExpiration(reservation);
     }
@@ -244,6 +241,13 @@ export default class TransactionReservationsManager implements IDisposable {
         this.expirationTimers.set(reservation.id, timer);
     }
 
+    private restartWatch(reservation: ITransactionReservation): void {
+        this.watchers.get(reservation.id)?.cancel();
+        this.watchers.delete(reservation.id);
+
+        this.watch(reservation);
+    }
+
     private stopWatch(id: string): void {
         this.watchers.get(id)?.cancel();
         this.watchers.delete(id);
@@ -263,7 +267,7 @@ export default class TransactionReservationsManager implements IDisposable {
     private handleConfirmed(reservation: ITransactionReservation): void {
         this.stopWatch(reservation.id);
         this.clearExpiration(reservation.id);
-        this.reservations.delete(reservation.id);
+        this.items.delete(reservation.id);
 
         this.onConfirmed?.(reservation);
     }
@@ -271,7 +275,7 @@ export default class TransactionReservationsManager implements IDisposable {
     private handleExpired(reservation: ITransactionReservation): void {
         this.stopWatch(reservation.id);
         this.clearExpiration(reservation.id);
-        this.reservations.delete(reservation.id);
+        this.items.delete(reservation.id);
 
         this.onExpired?.(reservation);
     }

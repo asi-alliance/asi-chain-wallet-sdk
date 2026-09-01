@@ -25,9 +25,12 @@ interface IReservationPayload {
     networkId: NetworkId;
     account: Account;
     pendingAmount: bigint;
+    kind: TransactionReservationKind;
+    gasCost?: bigint;
 }
 
 export interface ICreateTransferReservationPayload extends IReservationPayload {
+    kind: "transfer";
     details: {
         to: Address;
         amount: bigint;
@@ -35,6 +38,7 @@ export interface ICreateTransferReservationPayload extends IReservationPayload {
 }
 
 export interface ICreateDeployReservationPayload extends IReservationPayload {
+    kind: "deploy";
     term: string;
 }
 
@@ -42,14 +46,35 @@ export type TCreateTransactionReservationPayload =
     | ICreateTransferReservationPayload
     | ICreateDeployReservationPayload;
 
+interface IReservationMeta {
+    deployId: string;
+    pendingAmount: bigint;
+    gasCost: bigint;
+}
+
+export interface ITransferReservationMeta extends IReservationMeta {
+    kind: "transfer";
+    to: Address;
+    amount: bigint;
+}
+
+export interface IDeployReservationMeta extends IReservationMeta {
+    kind: "deploy";
+    term: string;
+}
+
+export type TTransactionReservationMeta =
+    | ITransferReservationMeta
+    | IDeployReservationMeta;
+
 export default class TransactionReservationFabric {
     private static build(
-        { networkId, account, pendingAmount }: IReservationPayload,
-        kind: TransactionReservationKind,
+        { networkId, account, pendingAmount, kind }: IReservationPayload,
         details: ITransactionReservationDetails,
+        id: string,
     ): ITransactionReservation {
         return {
-            id: generateRandomId(),
+            id,
             networkId,
             accountId: account.getId(),
             pendingAmount: pendingAmount.toString(),
@@ -59,39 +84,94 @@ export default class TransactionReservationFabric {
         };
     }
 
+    public static toCreatePayload(
+        meta: TTransactionReservationMeta,
+        account: Account,
+        networkId: NetworkId,
+    ): TCreateTransactionReservationPayload {
+        const { deployId, pendingAmount, gasCost } = meta;
+
+        if (meta.kind === "deploy") {
+            return {
+                kind: "deploy",
+                deployId,
+                networkId,
+                account,
+                pendingAmount,
+                gasCost,
+                term: meta.term,
+            };
+        }
+
+        return {
+            kind: "transfer",
+            deployId,
+            networkId,
+            account,
+            pendingAmount,
+            gasCost,
+            details: {
+                to: meta.to,
+                amount: meta.amount,
+            },
+        };
+    }
+
     public static createTransfer(
         payload: ICreateTransferReservationPayload,
+        id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, account, details } = payload;
+        const { deployId, account, details, gasCost } = payload;
 
-        return TransactionReservationFabric.build(payload, "transfer", {
-            deployId,
-            timestamp: new Date(),
-            from: account.getAddress(),
-            to: details.to,
-            amount: fromAtomicAmount(
-                details.amount,
-                NATIVE_TOKEN_DECIMALS_AMOUNT,
-            ),
-            gasCost: fromAtomicAmount(GasFee.MAX, NATIVE_TOKEN_DECIMALS_AMOUNT),
-        });
+        return TransactionReservationFabric.build(
+            payload,
+            {
+                deployId,
+                timestamp: new Date(),
+                from: account.getAddress(),
+                to: details.to,
+                amount: fromAtomicAmount(
+                    details.amount,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+                gasCost: fromAtomicAmount(
+                    gasCost ?? GasFee.MAX,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+            },
+            id,
+        );
     }
 
     public static createDeploy(
         payload: ICreateDeployReservationPayload,
+        id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, account, pendingAmount, term } = payload;
+        const { deployId, account, pendingAmount, term, gasCost } = payload;
 
-        return TransactionReservationFabric.build(payload, "deploy", {
-            deployId,
-            timestamp: new Date(),
-            from: account.getAddress(),
-            gasCost: fromAtomicAmount(
-                pendingAmount,
-                NATIVE_TOKEN_DECIMALS_AMOUNT,
-            ),
-            contractCode: term,
-        });
+        return TransactionReservationFabric.build(
+            payload,
+            {
+                deployId,
+                timestamp: new Date(),
+                from: account.getAddress(),
+                gasCost: fromAtomicAmount(
+                    gasCost ?? pendingAmount,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+                contractCode: term,
+            },
+            id,
+        );
+    }
+
+    public static create(
+        payload: TCreateTransactionReservationPayload,
+        id: string = generateRandomId(),
+    ): ITransactionReservation {
+        return payload.kind === "transfer"
+            ? TransactionReservationFabric.createTransfer(payload, id)
+            : TransactionReservationFabric.createDeploy(payload, id);
     }
 
     public static toPendingTransaction(

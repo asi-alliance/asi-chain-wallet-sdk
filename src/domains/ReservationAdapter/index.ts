@@ -21,10 +21,9 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
 } from "@fabrics/transactionReservation";
-import { CorruptedDataSource } from "@domains/CustomError";
+import { CorruptedDataSource, IErrorContext } from "@domains/CustomError";
 import {
     isSerializedReservationPrivateData,
-    isTransferReservationCreatePayload,
     parseDecryptedJson,
 } from "@utils/index";
 
@@ -70,32 +69,87 @@ export default class ReservationAdapter {
         );
     }
 
+    private async ensureSufficientBalance(
+        account: Account,
+        amount: bigint,
+        { context }: IErrorContext,
+    ): Promise<void> {
+        const isSufficientBalance: boolean =
+            await this.validateSufficientBalance(account, amount);
+
+        if (!isSufficientBalance) {
+            throw new Error(`${context}: Insufficient balance`);
+        }
+    }
+
+    public async validateSufficientBalance(
+        account: Account,
+        amount: bigint,
+    ): Promise<boolean> {
+        const networkId: NetworkId =
+            ApiClientManager.getInstance().getCurrentNetworkId();
+
+        const totalReservedAmount: bigint =
+            this.getReservedAmount(account.getId(), networkId) + amount;
+        const remoteBalance: bigint = (await account.getBalance()).amount;
+
+        return remoteBalance - totalReservedAmount > 0n;
+    }
+
     public async add(
         wallet: Wallet,
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
+        this.reservationsManager.ensureUniqueDeployId(payload.deployId);
+
+        await this.ensureSufficientBalance(
+            payload.account,
+            payload.pendingAmount,
+            { context: "ReservationAdapter.add" },
+        );
+
         const reservation: ITransactionReservation =
-            isTransferReservationCreatePayload(payload)
-                ? TransactionReservationFabric.createTransfer(payload)
-                : TransactionReservationFabric.createDeploy(payload);
+            TransactionReservationFabric.create(payload);
 
         await this.persistReservation(reservation, wallet, passwordProvider);
 
-        this.reservationsManager.add(reservation);
+        this.reservationsManager.add(reservation.id, reservation);
 
         return reservation;
     }
 
     public async update(
-        payload: TCreateTransactionReservationPayload,
         wallet: Wallet,
+        reservationId: ITransactionReservation["id"],
+        payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
+        const currentReservation: ITransactionReservation =
+            this.reservationsManager.getKnown(reservationId);
+
+        if (currentReservation.accountId !== payload.account.getId()) {
+            throw new Error(
+                "ReservationAdapter.update: Reservation cannot be moved to another account",
+            );
+        }
+
+        this.reservationsManager.ensureUniqueDeployId(
+            payload.deployId,
+            reservationId,
+        );
+
+        const pendingAmountDelta: bigint =
+            payload.pendingAmount - BigInt(currentReservation.pendingAmount);
+
+        await this.ensureSufficientBalance(
+            payload.account,
+            pendingAmountDelta,
+            { context: "ReservationAdapter.update" },
+        );
+
         const reservation: ITransactionReservation =
-            isTransferReservationCreatePayload(payload)
-                ? TransactionReservationFabric.createTransfer(payload)
-                : TransactionReservationFabric.createDeploy(payload);
+            TransactionReservationFabric.create(payload, reservationId);
 
         await this.updatePersistedReservation(
             reservation,
@@ -103,9 +157,7 @@ export default class ReservationAdapter {
             passwordProvider,
         );
 
-        const { id, ...update } = reservation;
-
-        this.reservationsManager.updateMeta(id, update);
+        this.reservationsManager.replace(reservation);
 
         return reservation;
     }
@@ -113,6 +165,8 @@ export default class ReservationAdapter {
     public async remove(
         id: ITransactionReservation["id"],
     ): Promise<ITransactionReservation> {
+        this.reservationsManager.getKnown(id);
+
         await StorageManager.deleteTransactionReservation(id);
 
         return this.reservationsManager.remove(id);
@@ -256,10 +310,10 @@ export default class ReservationAdapter {
         wallet: Wallet,
         passwordProvider?: SecretsProvider,
     ): Promise<EncryptedData> {
-        const privateData =
+        const privateData: ISerializedTransactionReservationPrivateData =
             TransactionReservationFabric.toPrivateData(reservation);
 
-        const dataKeySecret = await wallet
+        const dataKeySecret: string = await wallet
             .getSigner()
             .resolveDataKey(passwordProvider);
 
@@ -312,27 +366,13 @@ export default class ReservationAdapter {
     ): Promise<IReservedOperationResult> {
         await this.persistReservation(reservation, wallet, passwordProvider);
 
-        this.reservationsManager.add(reservation);
+        this.reservationsManager.add(reservation.id, reservation);
 
         return {
             deployId,
             subscribe: (callbacks: IDeployWatchCallbacks) =>
                 this.reservationsManager.subscribe(reservation.id, callbacks),
         };
-    }
-
-    public async validateSufficientBalance(
-        account: Account,
-        amount: bigint,
-    ): Promise<boolean> {
-        const networkId: NetworkId =
-            ApiClientManager.getInstance().getCurrentNetworkId();
-
-        const totalReservedAmount: bigint =
-            this.getReservedAmount(account.getId(), networkId) + amount;
-        const remoteBalance: bigint = (await account.getBalance()).amount;
-
-        return remoteBalance - totalReservedAmount > 0n;
     }
 
     public async transfer(
@@ -346,14 +386,9 @@ export default class ReservationAdapter {
 
         const pendingAmount: bigint = details.amount + GasFee.MAX;
 
-        const isSufficientBalance: boolean =
-            await this.validateSufficientBalance(account, pendingAmount);
-
-        if (!isSufficientBalance) {
-            throw new Error(
-                "ReservationAdapter.transfer: Insufficient balance",
-            );
-        }
+        await this.ensureSufficientBalance(account, pendingAmount, {
+            context: "ReservationAdapter.transfer",
+        });
 
         const deployId: string = await wallet.transfer(
             details,
@@ -362,6 +397,7 @@ export default class ReservationAdapter {
 
         const reservation: ITransactionReservation =
             TransactionReservationFabric.createTransfer({
+                kind: "transfer",
                 deployId,
                 networkId,
                 account,
@@ -385,17 +421,15 @@ export default class ReservationAdapter {
             BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
             BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
 
-        const isSufficientBalance: boolean =
-            await this.validateSufficientBalance(account, pendingAmount);
-
-        if (!isSufficientBalance) {
-            throw new Error("ReservationAdapter.deploy: Insufficient balance");
-        }
+        await this.ensureSufficientBalance(account, pendingAmount, {
+            context: "ReservationAdapter.deploy",
+        });
 
         const deployId: string = await wallet.deploy(details, passwordProvider);
 
         const reservation: ITransactionReservation =
             TransactionReservationFabric.createDeploy({
+                kind: "deploy",
                 deployId,
                 networkId,
                 account,

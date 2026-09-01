@@ -25,10 +25,6 @@ import type {
     IKeyfileAccount,
     IKeyfileWalletAccount,
 } from "@services/KeyfileSerializer";
-import {
-    ICreateTransferReservationPayload,
-    TCreateTransactionReservationPayload,
-} from "@fabrics/transactionReservation";
 
 export const isCustomCreateHDWalletOptions = (
     options: TCreateHDPathWalletOptions,
@@ -125,12 +121,6 @@ export const isSerializedReservationPrivateData = (
         isValueInConst(kind, TRANSACTION_RESERVATION_KINDS) &&
         isSerializedReservationDetails(details)
     );
-};
-
-export const isTransferReservationCreatePayload = (
-    payload: TCreateTransactionReservationPayload,
-): payload is ICreateTransferReservationPayload => {
-    return "details" in payload;
 };
 
 export const isEncryptedData = (value: unknown): value is EncryptedData => {

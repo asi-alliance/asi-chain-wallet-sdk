@@ -76,6 +76,10 @@ export enum ApiSource {
     GRAPHQL = "graphql api",
 }
 
+export interface IErrorContext {
+    context: string;
+}
+
 export class CustomError extends Error {
     public readonly code: CustomErrorCode;
     public readonly status: number;
