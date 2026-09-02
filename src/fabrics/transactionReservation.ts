@@ -39,7 +39,7 @@ export interface ICreateTransferReservationPayload extends IReservationPayload {
 
 export interface ICreateDeployReservationPayload extends IReservationPayload {
     kind: "deploy";
-    term: string;
+    term?: string;
 }
 
 export type TCreateTransactionReservationPayload =
@@ -60,7 +60,7 @@ export interface ITransferReservationMeta extends IReservationMeta {
 
 export interface IDeployReservationMeta extends IReservationMeta {
     kind: "deploy";
-    term: string;
+    term?: string;
 }
 
 export type TTransactionReservationMeta =

@@ -647,7 +647,7 @@ export default class Client extends ClosableDomain {
             ...preview,
             isExistingWalletOpen: Boolean(
                 preview.existingSignerId &&
-                    this.walletManager.getBySignerId(preview.existingSignerId),
+                this.walletManager.getBySignerId(preview.existingSignerId),
             ),
         };
     }
@@ -799,8 +799,7 @@ export default class Client extends ClosableDomain {
         walletId: string,
         accountId: string,
     ): Promise<bigint> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
-        const account: Account = this.getAccount(wallet, accountId);
+        const account: Account = this.getAccount(walletId, accountId);
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
@@ -839,7 +838,10 @@ export default class Client extends ClosableDomain {
         password?: string,
     ): Promise<ITransactionReservation> {
         const wallet: Wallet = this.getOpenWallet(request.walletId);
-        const account: Account = this.getAccount(wallet, request.accountId);
+        const account: Account = this.getAccount(
+            request.walletId,
+            request.accountId,
+        );
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(request.walletId);
@@ -880,7 +882,10 @@ export default class Client extends ClosableDomain {
         password?: string,
     ): Promise<ITransactionReservation> {
         const wallet: Wallet = this.getOpenWallet(request.walletId);
-        const account: Account = this.getAccount(wallet, request.accountId);
+        const account: Account = this.getAccount(
+            request.walletId,
+            request.accountId,
+        );
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(request.walletId);
@@ -947,8 +952,7 @@ export default class Client extends ClosableDomain {
         accountId: string,
         options?: ITransactionsHistoryOptions,
     ): Promise<Transaction[]> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
-        const account: Account = this.getAccount(wallet, accountId);
+        const account: Account = this.getAccount(walletId, accountId);
 
         const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
 
@@ -1099,7 +1103,12 @@ export default class Client extends ClosableDomain {
         return wallet;
     }
 
-    private getAccount(wallet: Wallet, accountId: string): Account {
+    public getAccount(
+        walletId: Wallet["id"],
+        accountId: Account["id"],
+    ): Account {
+        const wallet: Wallet = this.getOpenWallet(walletId);
+
         const account: Account | undefined = wallet
             .getAccountsMap()
             .get(accountId);
