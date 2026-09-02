@@ -110,7 +110,7 @@ export default class ReservationAdapter {
             this.getReservedAmount(account.getId(), networkId) + amount;
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
-        return remoteBalance - totalReservedAmount > 0n;
+        return remoteBalance - totalReservedAmount >= 0n;
     }
 
     public async add(
