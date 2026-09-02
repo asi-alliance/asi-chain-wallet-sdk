@@ -833,117 +833,123 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     @TrackOperation
-    public async addTransactionReservation(
+    public addTransactionReservation(
         request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        const wallet: Wallet = this.getOpenWallet(request.walletId);
-        const account: Account = this.getAccount(
-            request.walletId,
-            request.accountId,
-        );
-
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(request.walletId);
-
-        if (!reservationAdapter) {
-            throw new Error(
-                "Client.addTransactionReservation: Not found reservation adapter",
-            );
-        }
-
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
-
-        await this.ensureSession(wallet, passwordProvider);
-
-        const payload: TCreateTransactionReservationPayload =
-            TransactionReservationFabric.toCreatePayload(
-                request,
-                account,
-                ApiClientManager.getInstance().getCurrentNetworkId(),
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getOpenWallet(request.walletId);
+            const account: Account = this.getAccount(
+                request.walletId,
+                request.accountId,
             );
 
-        const reservation: ITransactionReservation =
-            await reservationAdapter.add(wallet, payload, passwordProvider);
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(request.walletId);
 
-        this.emitReservationsChanged();
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.addTransactionReservation: Not found reservation adapter",
+                );
+            }
 
-        return reservation;
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
+
+            await this.ensureSession(wallet, passwordProvider);
+
+            const payload: TCreateTransactionReservationPayload =
+                TransactionReservationFabric.toCreatePayload(
+                    request,
+                    account,
+                    ApiClientManager.getInstance().getCurrentNetworkId(),
+                );
+
+            const reservation: ITransactionReservation =
+                await reservationAdapter.add(wallet, payload, passwordProvider);
+
+            this.emitReservationsChanged();
+
+            return reservation;
+        });
     }
 
     @EnsureActive
     @TrackOperation
-    public async updateTransactionReservation(
+    public updateTransactionReservation(
         reservationId: ITransactionReservation["id"],
         request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        const wallet: Wallet = this.getOpenWallet(request.walletId);
-        const account: Account = this.getAccount(
-            request.walletId,
-            request.accountId,
-        );
-
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(request.walletId);
-
-        if (!reservationAdapter) {
-            throw new Error(
-                "Client.updateTransactionReservation: Not found reservation adapter",
-            );
-        }
-
-        const passwordProvider: SecretsProvider | undefined =
-            password !== undefined
-                ? this.createPasswordProvider(password)
-                : undefined;
-
-        await this.ensureSession(wallet, passwordProvider);
-
-        const payload: TCreateTransactionReservationPayload =
-            TransactionReservationFabric.toCreatePayload(
-                request,
-                account,
-                ApiClientManager.getInstance().getCurrentNetworkId(),
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getOpenWallet(request.walletId);
+            const account: Account = this.getAccount(
+                request.walletId,
+                request.accountId,
             );
 
-        const reservation: ITransactionReservation =
-            await reservationAdapter.update(
-                wallet,
-                reservationId,
-                payload,
-                passwordProvider,
-            );
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(request.walletId);
 
-        this.emitReservationsChanged();
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.updateTransactionReservation: Not found reservation adapter",
+                );
+            }
 
-        return reservation;
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
+
+            await this.ensureSession(wallet, passwordProvider);
+
+            const payload: TCreateTransactionReservationPayload =
+                TransactionReservationFabric.toCreatePayload(
+                    request,
+                    account,
+                    ApiClientManager.getInstance().getCurrentNetworkId(),
+                );
+
+            const reservation: ITransactionReservation =
+                await reservationAdapter.update(
+                    wallet,
+                    reservationId,
+                    payload,
+                    passwordProvider,
+                );
+
+            this.emitReservationsChanged();
+
+            return reservation;
+        });
     }
 
     @EnsureActive
     @TrackOperation
-    public async removeTransactionReservation(
+    public removeTransactionReservation(
         walletId: string,
         reservationId: ITransactionReservation["id"],
     ): Promise<ITransactionReservation> {
-        const reservationAdapter: ReservationAdapter | null =
-            this.reservationAdapterManager.get(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(walletId);
 
-        if (!reservationAdapter) {
-            throw new Error(
-                "Client.removeTransactionReservation: Not found reservation adapter",
-            );
-        }
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.removeTransactionReservation: Not found reservation adapter",
+                );
+            }
 
-        const reservation: ITransactionReservation =
-            await reservationAdapter.remove(reservationId);
+            const reservation: ITransactionReservation =
+                await reservationAdapter.remove(reservationId);
 
-        this.emitReservationsChanged();
+            this.emitReservationsChanged();
 
-        return reservation;
+            return reservation;
+        });
     }
 
     @EnsureActive
