@@ -108,11 +108,13 @@ export default class TransactionReservationsManager
 
     public ensureUniqueDeployId(
         deployId: string,
+        networkId: NetworkId,
         excludedReservationId?: string,
     ): void {
         const hasDuplicate: boolean = this.hasByFilter(
             (reservation: ITransactionReservation) =>
                 reservation.details.deployId === deployId &&
+                reservation.networkId === networkId &&
                 reservation.id !== excludedReservationId,
         );
 

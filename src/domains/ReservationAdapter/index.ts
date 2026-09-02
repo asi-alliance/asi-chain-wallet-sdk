@@ -74,6 +74,10 @@ export default class ReservationAdapter {
         amount: bigint,
         { context }: IErrorContext,
     ): Promise<void> {
+        if (amount < 0n) {
+            throw new Error(`${context}: Amount should be greater than zero`);
+        }
+
         const isSufficientBalance: boolean =
             await this.validateSufficientBalance(account, amount);
 
@@ -101,7 +105,10 @@ export default class ReservationAdapter {
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
-        this.reservationsManager.ensureUniqueDeployId(payload.deployId);
+        this.reservationsManager.ensureUniqueDeployId(
+            payload.deployId,
+            payload.networkId,
+        );
 
         await this.ensureSufficientBalance(
             payload.account,
@@ -134,8 +141,15 @@ export default class ReservationAdapter {
             );
         }
 
+        if (currentReservation.networkId !== payload.networkId) {
+            throw new Error(
+                "ReservationAdapter.update: Reservation cannot be moved to another network",
+            );
+        }
+
         this.reservationsManager.ensureUniqueDeployId(
             payload.deployId,
+            payload.networkId,
             reservationId,
         );
 
