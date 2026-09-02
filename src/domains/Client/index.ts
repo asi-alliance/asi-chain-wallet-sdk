@@ -839,8 +839,8 @@ export default class Client extends ClosableDomain {
     ): Promise<ITransactionReservation> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = this.getAccount(
-                request.walletId,
+            const account: Account = this.getWalletAccount(
+                wallet,
                 request.accountId,
             );
 
@@ -871,7 +871,7 @@ export default class Client extends ClosableDomain {
                 await reservationAdapter.add(wallet, payload, passwordProvider);
 
             return reservation;
-        });
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
     @EnsureActive
@@ -883,8 +883,8 @@ export default class Client extends ClosableDomain {
     ): Promise<ITransactionReservation> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = this.getAccount(
-                request.walletId,
+            const account: Account = this.getWalletAccount(
+                wallet,
                 request.accountId,
             );
 
@@ -920,7 +920,7 @@ export default class Client extends ClosableDomain {
                 );
 
             return reservation;
-        });
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
     @EnsureActive
@@ -943,7 +943,7 @@ export default class Client extends ClosableDomain {
                 await reservationAdapter.remove(reservationId);
 
             return reservation;
-        });
+        }, this.emitNetworkBusyChanged.bind(this));
     }
 
     @EnsureActive
@@ -1107,8 +1107,13 @@ export default class Client extends ClosableDomain {
         walletId: Wallet["id"],
         accountId: Account["id"],
     ): Account {
-        const wallet: Wallet = this.getOpenWallet(walletId);
+        return this.getWalletAccount(this.getOpenWallet(walletId), accountId);
+    }
 
+    private getWalletAccount(
+        wallet: Wallet,
+        accountId: Account["id"],
+    ): Account {
         const account: Account | undefined = wallet
             .getAccountsMap()
             .get(accountId);

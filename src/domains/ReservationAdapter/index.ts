@@ -77,15 +77,20 @@ export default class ReservationAdapter {
         );
     }
 
+    private ensurePositiveAmount(
+        amount: bigint,
+        { context }: IErrorContext,
+    ): void {
+        if (amount <= 0n) {
+            throw new Error(`${context}: Amount should be greater than zero`);
+        }
+    }
+
     private async ensureSufficientBalance(
         account: Account,
         amount: bigint,
         { context }: IErrorContext,
     ): Promise<void> {
-        if (amount < 0n) {
-            throw new Error(`${context}: Amount should be greater than zero`);
-        }
-
         const isSufficientBalance: boolean =
             await this.validateSufficientBalance(account, amount);
 
@@ -113,6 +118,10 @@ export default class ReservationAdapter {
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
+        this.ensurePositiveAmount(payload.pendingAmount, {
+            context: "ReservationAdapter.add",
+        });
+
         return ReservationAdapter.operationsGuard.runReservationAction(
             ReservationAction.ADD,
             {
@@ -154,6 +163,10 @@ export default class ReservationAdapter {
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
+        this.ensurePositiveAmount(payload.pendingAmount, {
+            context: "ReservationAdapter.update",
+        });
+
         return ReservationAdapter.operationsGuard.runReservationAction(
             ReservationAction.UPDATE,
             {
@@ -441,6 +454,10 @@ export default class ReservationAdapter {
 
         const pendingAmount: bigint = details.amount + GasFee.MAX;
 
+        this.ensurePositiveAmount(pendingAmount, {
+            context: "ReservationAdapter.transfer",
+        });
+
         await this.ensureSufficientBalance(account, pendingAmount, {
             context: "ReservationAdapter.transfer",
         });
@@ -475,6 +492,10 @@ export default class ReservationAdapter {
         const pendingAmount: bigint =
             BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
             BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+
+        this.ensurePositiveAmount(pendingAmount, {
+            context: "ReservationAdapter.deploy",
+        });
 
         await this.ensureSufficientBalance(account, pendingAmount, {
             context: "ReservationAdapter.deploy",
