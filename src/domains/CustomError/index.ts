@@ -13,6 +13,7 @@ export enum CustomErrorCode {
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+    RESERVATION_ACTION_IN_PROGRESS = "RESERVATION_ACTION_IN_PROGRESS",
     INVALID_KEYFILE = "INVALID_KEYFILE",
     INVALID_KEYFILE_PASSWORD = "INVALID_KEYFILE_PASSWORD",
     KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
@@ -33,6 +34,12 @@ export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+}
+
+export enum ReservationAction {
+    ADD = "ADD",
+    UPDATE = "UPDATE",
+    REMOVE = "REMOVE",
 }
 
 export enum StorageMigrationChainViolation {
@@ -278,6 +285,25 @@ export class WalletActionInProgressError extends CustomError {
 
         this.action = action;
         this.signerId = signerId;
+    }
+}
+
+export class ReservationActionInProgressError extends CustomError {
+    public readonly action: ReservationAction;
+    public readonly accountId: string;
+    public readonly networkId: NetworkId;
+
+    constructor(
+        action: ReservationAction,
+        accountId: string,
+        networkId: NetworkId,
+        message: string = `Account ${accountId} already has the ${action} reservation action in progress on the network ${networkId}`,
+    ) {
+        super(CustomErrorCode.RESERVATION_ACTION_IN_PROGRESS, message, 409);
+
+        this.action = action;
+        this.accountId = accountId;
+        this.networkId = networkId;
     }
 }
 
