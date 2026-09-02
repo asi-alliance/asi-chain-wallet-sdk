@@ -870,8 +870,6 @@ export default class Client extends ClosableDomain {
             const reservation: ITransactionReservation =
                 await reservationAdapter.add(wallet, payload, passwordProvider);
 
-            this.emitReservationsChanged();
-
             return reservation;
         });
     }
@@ -921,8 +919,6 @@ export default class Client extends ClosableDomain {
                     passwordProvider,
                 );
 
-            this.emitReservationsChanged();
-
             return reservation;
         });
     }
@@ -945,8 +941,6 @@ export default class Client extends ClosableDomain {
 
             const reservation: ITransactionReservation =
                 await reservationAdapter.remove(reservationId);
-
-            this.emitReservationsChanged();
 
             return reservation;
         });

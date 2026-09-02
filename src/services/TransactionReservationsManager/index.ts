@@ -14,6 +14,8 @@ import DeployStatusPoller, {
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
+    onReplaced?: (reservation: ITransactionReservation) => void;
+    onRemoved?: (reservation: ITransactionReservation) => void;
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
     onFailed?: (reservation: ITransactionReservation, error: Error) => void;
@@ -34,6 +36,10 @@ export default class TransactionReservationsManager
     > = new Map();
 
     private readonly onAdded?: (reservation: ITransactionReservation) => void;
+    private readonly onReplaced?: (
+        reservation: ITransactionReservation,
+    ) => void;
+    private readonly onRemoved?: (reservation: ITransactionReservation) => void;
     private readonly onConfirmed?: (
         reservation: ITransactionReservation,
     ) => void;
@@ -52,6 +58,8 @@ export default class TransactionReservationsManager
         super();
 
         this.onAdded = options.onAdded;
+        this.onReplaced = options.onReplaced;
+        this.onRemoved = options.onRemoved;
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
         this.onFailed = options.onFailed;
@@ -95,6 +103,8 @@ export default class TransactionReservationsManager
 
         this.clearExpiration(reservation.id);
         this.scheduleExpiration(reservation);
+
+        this.onReplaced?.(reservation);
     }
 
     public remove(id: string): ITransactionReservation {
@@ -102,6 +112,8 @@ export default class TransactionReservationsManager
 
         this.stopWatch(id);
         this.clearExpiration(id);
+
+        this.onRemoved?.(targetReservation);
 
         return targetReservation;
     }

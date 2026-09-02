@@ -40,6 +40,8 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         const reservationAdapter: ReservationAdapter =
             await ReservationAdapter.create(wallet, passwordProvider, {
                 onAdded: this.notifyReservationsChanged,
+                onReplaced: this.notifyReservationsChanged,
+                onRemoved: this.notifyReservationsChanged,
                 onConfirmed: this.notifyReservationsChanged,
                 onExpired: this.notifyReservationsChanged,
             });
@@ -101,7 +103,10 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
             (reservation: ITransactionReservation) =>
                 reservation.kind === "transfer" &&
                 isSameAddress(reservation.details.to, targetAddress) &&
-                !isSameAddress(reservation.details.from, reservation.details.to),
+                !isSameAddress(
+                    reservation.details.from,
+                    reservation.details.to,
+                ),
         );
     }
 
