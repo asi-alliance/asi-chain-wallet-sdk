@@ -40,6 +40,8 @@ export enum ReservationAction {
     ADD = "ADD",
     UPDATE = "UPDATE",
     REMOVE = "REMOVE",
+    TRANSFER = "TRANSFER",
+    DEPLOY = "DEPLOY",
 }
 
 export enum StorageMigrationChainViolation {

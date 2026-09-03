@@ -1,4 +1,6 @@
 import type { Address } from "@domains/Wallet";
+import type { IErrorContext } from "@domains/CustomError";
+import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
@@ -177,6 +179,75 @@ export const validateNodeApiProfile = (
         return {
             isValid: false,
             error: `Node API profile must be one of: ${NODE_API_PROFILES.join(", ")}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const ensureValid = (
+    { isValid, error }: { isValid: boolean; error?: string },
+    { context }: IErrorContext,
+): void => {
+    if (!isValid) {
+        throw new Error(`${context}: ${error}`);
+    }
+};
+
+export const validatePositiveAmount = (
+    amount: bigint,
+): { isValid: boolean; error?: string } => {
+    if (amount <= 0n) {
+        return { isValid: false, error: "Amount must be greater than zero" };
+    }
+
+    return { isValid: true };
+};
+
+export const validateReservationPayload = (
+    payload: TCreateTransactionReservationPayload,
+): { isValid: boolean; error?: string } => {
+    if (!payload.deployId.trim()) {
+        return { isValid: false, error: "Deploy id is required" };
+    }
+
+    if (!validatePositiveAmount(payload.pendingAmount).isValid) {
+        return {
+            isValid: false,
+            error: "Reserved amount must be greater than zero",
+        };
+    }
+
+    if (payload.gasCost !== undefined && payload.gasCost < 0n) {
+        return { isValid: false, error: "Gas cost must not be negative" };
+    }
+
+    if (payload.kind === "deploy") {
+        return { isValid: true };
+    }
+
+    const recipient: AddressValidationResult = validateAddress(
+        payload.details.to,
+    );
+
+    if (!recipient.isValid) {
+        return {
+            isValid: false,
+            error: `Recipient address is invalid: ${recipient.errorCode}`,
+        };
+    }
+
+    if (!validatePositiveAmount(payload.details.amount).isValid) {
+        return {
+            isValid: false,
+            error: "Transfer amount must be greater than zero",
+        };
+    }
+
+    if (payload.details.amount > payload.pendingAmount) {
+        return {
+            isValid: false,
+            error: "Transfer amount must not exceed the reserved amount",
         };
     }
 

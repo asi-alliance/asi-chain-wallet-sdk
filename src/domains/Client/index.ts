@@ -871,7 +871,9 @@ export default class Client extends ClosableDomain {
                 await reservationAdapter.add(wallet, payload, passwordProvider);
 
             return reservation;
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive
@@ -920,7 +922,9 @@ export default class Client extends ClosableDomain {
                 );
 
             return reservation;
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive
@@ -929,21 +933,25 @@ export default class Client extends ClosableDomain {
         walletId: string,
         reservationId: ITransactionReservation["id"],
     ): Promise<ITransactionReservation> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const reservationAdapter: ReservationAdapter | null =
-                this.reservationAdapterManager.get(walletId);
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
 
-            if (!reservationAdapter) {
-                throw new Error(
-                    "Client.removeTransactionReservation: Not found reservation adapter",
-                );
-            }
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.removeTransactionReservation: Not found reservation adapter",
+            );
+        }
 
-            const reservation: ITransactionReservation =
-                await reservationAdapter.remove(reservationId);
+        const { networkId }: ITransactionReservation =
+            reservationAdapter.getReservation(reservationId);
 
-            return reservation;
-        }, this.emitNetworkBusyChanged.bind(this));
+        return ApiClientManager.getInstance().runNetworkOperation(
+            () => reservationAdapter.remove(reservationId),
+            {
+                onBusyChanged: this.emitNetworkBusyChanged.bind(this),
+                networkId,
+            },
+        );
     }
 
     @EnsureActive
@@ -1029,7 +1037,9 @@ export default class Client extends ClosableDomain {
                 { to, amount, asset: DEFAULT_ASSET },
                 passwordProvider,
             );
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive
@@ -1062,7 +1072,9 @@ export default class Client extends ClosableDomain {
                 { term, phloLimit },
                 passwordProvider,
             );
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive

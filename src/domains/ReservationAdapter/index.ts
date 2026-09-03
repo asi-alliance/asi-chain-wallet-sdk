@@ -28,8 +28,11 @@ import {
 } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
 import {
+    ensureValid,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
+    validatePositiveAmount,
+    validateReservationPayload,
 } from "@utils/index";
 
 export interface IReservedOperationResult {
@@ -77,15 +80,6 @@ export default class ReservationAdapter {
         );
     }
 
-    private ensurePositiveAmount(
-        amount: bigint,
-        { context }: IErrorContext,
-    ): void {
-        if (amount <= 0n) {
-            throw new Error(`${context}: Amount should be greater than zero`);
-        }
-    }
-
     private async ensureSufficientBalance(
         account: Account,
         amount: bigint,
@@ -118,7 +112,7 @@ export default class ReservationAdapter {
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
-        this.ensurePositiveAmount(payload.pendingAmount, {
+        ensureValid(validateReservationPayload(payload), {
             context: "ReservationAdapter.add",
         });
 
@@ -163,7 +157,7 @@ export default class ReservationAdapter {
         payload: TCreateTransactionReservationPayload,
         passwordProvider?: SecretsProvider,
     ): Promise<ITransactionReservation> {
-        this.ensurePositiveAmount(payload.pendingAmount, {
+        ensureValid(validateReservationPayload(payload), {
             context: "ReservationAdapter.update",
         });
 
@@ -175,69 +169,92 @@ export default class ReservationAdapter {
                 deployId: payload.deployId,
                 reservationId,
             },
-            async () => {
-                const currentReservation: ITransactionReservation =
-                    this.reservationsManager.getKnown(reservationId);
-
-                if (currentReservation.accountId !== payload.account.getId()) {
-                    throw new Error(
-                        "ReservationAdapter.update: Reservation cannot be moved to another account",
-                    );
-                }
-
-                if (currentReservation.networkId !== payload.networkId) {
-                    throw new Error(
-                        "ReservationAdapter.update: Reservation cannot be moved to another network",
-                    );
-                }
-
-                this.reservationsManager.ensureUniqueDeployId(
-                    payload.deployId,
-                    payload.networkId,
+            () =>
+                this.reservationsManager.runExclusive(
                     reservationId,
-                );
+                    async () => {
+                        const currentReservation: ITransactionReservation =
+                            this.reservationsManager.getKnown(reservationId);
 
-                const pendingAmountDelta: bigint =
-                    payload.pendingAmount -
-                    BigInt(currentReservation.pendingAmount);
+                        if (
+                            currentReservation.accountId !==
+                            payload.account.getId()
+                        ) {
+                            throw new Error(
+                                "ReservationAdapter.update: Reservation cannot be moved to another account",
+                            );
+                        }
 
-                await this.ensureSufficientBalance(
-                    payload.account,
-                    pendingAmountDelta,
-                    { context: "ReservationAdapter.update" },
-                );
+                        if (
+                            currentReservation.networkId !== payload.networkId
+                        ) {
+                            throw new Error(
+                                "ReservationAdapter.update: Reservation cannot be moved to another network",
+                            );
+                        }
 
-                const reservation: ITransactionReservation =
-                    TransactionReservationFabric.create(payload, reservationId);
+                        this.reservationsManager.ensureUniqueDeployId(
+                            payload.deployId,
+                            payload.networkId,
+                            reservationId,
+                        );
 
-                await this.updatePersistedReservation(
-                    reservation,
-                    wallet,
-                    passwordProvider,
-                );
+                        const pendingAmountDelta: bigint =
+                            payload.pendingAmount -
+                            BigInt(currentReservation.pendingAmount);
 
-                this.reservationsManager.replace(reservation);
+                        await this.ensureSufficientBalance(
+                            payload.account,
+                            pendingAmountDelta,
+                            { context: "ReservationAdapter.update" },
+                        );
 
-                return reservation;
-            },
+                        const reservation: ITransactionReservation =
+                            TransactionReservationFabric.create(
+                                payload,
+                                reservationId,
+                            );
+
+                        await this.updatePersistedReservation(
+                            reservation,
+                            wallet,
+                            passwordProvider,
+                        );
+
+                        this.reservationsManager.replace(reservation);
+
+                        return reservation;
+                    },
+                ),
         );
     }
 
     public async remove(
         id: ITransactionReservation["id"],
     ): Promise<ITransactionReservation> {
-        const { accountId, networkId }: ITransactionReservation =
+        const targetReservation: ITransactionReservation =
             this.reservationsManager.getKnown(id);
 
         return ReservationAdapter.operationsGuard.runReservationAction(
             ReservationAction.REMOVE,
-            { accountId, networkId, reservationId: id },
-            async () => {
-                await StorageManager.deleteTransactionReservation(id);
-
-                return this.reservationsManager.remove(id);
+            {
+                accountId: targetReservation.accountId,
+                networkId: targetReservation.networkId,
+                reservationId: id,
             },
+            () =>
+                this.reservationsManager.runExclusive(id, async () => {
+                    await StorageManager.deleteTransactionReservation(id);
+
+                    return this.reservationsManager.remove(id);
+                }),
         );
+    }
+
+    public getReservation(
+        id: ITransactionReservation["id"],
+    ): ITransactionReservation {
+        return this.reservationsManager.getKnown(id);
     }
 
     private static async readPrivateData(
@@ -356,11 +373,7 @@ export default class ReservationAdapter {
         networkId: NetworkId,
     ): Promise<void> {
         const reservations: ITransactionReservation[] =
-            this.reservationsManager.getByNetworkId(networkId);
-
-        reservations.forEach((reservation: ITransactionReservation) =>
-            this.reservationsManager.remove(reservation.id),
-        );
+            this.reservationsManager.removeByNetworkId(networkId);
 
         await StorageManager.deleteMultipleTransactionReservations(
             reservations.map(
@@ -454,30 +467,41 @@ export default class ReservationAdapter {
 
         const pendingAmount: bigint = details.amount + GasFee.MAX;
 
-        this.ensurePositiveAmount(pendingAmount, {
+        ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.transfer",
         });
 
-        await this.ensureSufficientBalance(account, pendingAmount, {
-            context: "ReservationAdapter.transfer",
-        });
+        return ReservationAdapter.operationsGuard.runReservationAction(
+            ReservationAction.TRANSFER,
+            { accountId: account.getId(), networkId },
+            async () => {
+                await this.ensureSufficientBalance(account, pendingAmount, {
+                    context: "ReservationAdapter.transfer",
+                });
 
-        const deployId: string = await wallet.transfer(
-            details,
-            passwordProvider,
+                const deployId: string = await wallet.transfer(
+                    details,
+                    passwordProvider,
+                );
+
+                const reservation: ITransactionReservation =
+                    TransactionReservationFabric.createTransfer({
+                        kind: "transfer",
+                        deployId,
+                        networkId,
+                        account,
+                        pendingAmount,
+                        details,
+                    });
+
+                return this.reserve(
+                    wallet,
+                    deployId,
+                    reservation,
+                    passwordProvider,
+                );
+            },
         );
-
-        const reservation: ITransactionReservation =
-            TransactionReservationFabric.createTransfer({
-                kind: "transfer",
-                deployId,
-                networkId,
-                account,
-                pendingAmount,
-                details,
-            });
-
-        return this.reserve(wallet, deployId, reservation, passwordProvider);
     }
 
     public async deploy(
@@ -493,26 +517,40 @@ export default class ReservationAdapter {
             BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
             BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
 
-        this.ensurePositiveAmount(pendingAmount, {
+        ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",
         });
 
-        await this.ensureSufficientBalance(account, pendingAmount, {
-            context: "ReservationAdapter.deploy",
-        });
+        return ReservationAdapter.operationsGuard.runReservationAction(
+            ReservationAction.DEPLOY,
+            { accountId: account.getId(), networkId },
+            async () => {
+                await this.ensureSufficientBalance(account, pendingAmount, {
+                    context: "ReservationAdapter.deploy",
+                });
 
-        const deployId: string = await wallet.deploy(details, passwordProvider);
+                const deployId: string = await wallet.deploy(
+                    details,
+                    passwordProvider,
+                );
 
-        const reservation: ITransactionReservation =
-            TransactionReservationFabric.createDeploy({
-                kind: "deploy",
-                deployId,
-                networkId,
-                account,
-                pendingAmount,
-                term: details.term,
-            });
+                const reservation: ITransactionReservation =
+                    TransactionReservationFabric.createDeploy({
+                        kind: "deploy",
+                        deployId,
+                        networkId,
+                        account,
+                        pendingAmount,
+                        term: details.term,
+                    });
 
-        return this.reserve(wallet, deployId, reservation, passwordProvider);
+                return this.reserve(
+                    wallet,
+                    deployId,
+                    reservation,
+                    passwordProvider,
+                );
+            },
+        );
     }
 }

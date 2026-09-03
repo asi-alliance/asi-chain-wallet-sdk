@@ -11,6 +11,7 @@ import DeployStatusPoller, {
     IDeployWatchHandle,
     IDeployWatchOptions,
 } from "@services/DeployStatusPoller";
+import { EnsureExclusiveReservation } from "@utils/decorators/transactionReservationsManager";
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
@@ -34,6 +35,7 @@ export default class TransactionReservationsManager
         string,
         ReturnType<typeof setTimeout>
     > = new Map();
+    private readonly exclusiveIds: Set<string> = new Set();
 
     private readonly onAdded?: (reservation: ITransactionReservation) => void;
     private readonly onReplaced?: (
@@ -94,28 +96,66 @@ export default class TransactionReservationsManager
         return targetReservation;
     }
 
+    @EnsureExclusiveReservation
     public replace(reservation: ITransactionReservation): void {
         this.getKnown(reservation.id);
 
         super.add(reservation.id, reservation);
 
-        this.restartWatch(reservation);
-
-        this.clearExpiration(reservation.id);
-        this.scheduleExpiration(reservation);
-
         this.onReplaced?.(reservation);
     }
 
-    public remove(id: string): ITransactionReservation {
+    public isExclusiveReservation(id: string): boolean {
+        return this.exclusiveIds.has(id);
+    }
+
+    public async runExclusive<T>(
+        id: string,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        this.getKnown(id);
+
+        this.exclusiveIds.add(id);
+        this.cancelWatch(id);
+        this.clearExpiration(id);
+
+        try {
+            return await operation();
+        } finally {
+            this.exclusiveIds.delete(id);
+            this.rearm(id);
+        }
+    }
+
+    private untrack(id: string): ITransactionReservation {
         const targetReservation: ITransactionReservation = super.remove(id);
 
         this.stopWatch(id);
         this.clearExpiration(id);
 
+        return targetReservation;
+    }
+
+    public remove(id: string): ITransactionReservation {
+        const targetReservation: ITransactionReservation = this.untrack(id);
+
         this.onRemoved?.(targetReservation);
 
         return targetReservation;
+    }
+
+    public getByNetworkId(networkId: NetworkId): ITransactionReservation[] {
+        return this.getByFilter(
+            (reservation: ITransactionReservation) =>
+                reservation.networkId === networkId,
+        );
+    }
+
+    public removeByNetworkId(networkId: NetworkId): ITransactionReservation[] {
+        return this.getByNetworkId(networkId).map(
+            (reservation: ITransactionReservation) =>
+                this.untrack(reservation.id),
+        );
     }
 
     public ensureUniqueDeployId(
@@ -150,13 +190,6 @@ export default class TransactionReservationsManager
         return () => {
             reservationSubscribers.delete(callbacks);
         };
-    }
-
-    public getByNetworkId(networkId: NetworkId): ITransactionReservation[] {
-        return this.getByFilter(
-            (reservation: ITransactionReservation) =>
-                reservation.networkId === networkId,
-        );
     }
 
     public getByAccountId(
@@ -255,16 +288,24 @@ export default class TransactionReservationsManager
         this.expirationTimers.set(reservation.id, timer);
     }
 
-    private restartWatch(reservation: ITransactionReservation): void {
-        this.watchers.get(reservation.id)?.cancel();
-        this.watchers.delete(reservation.id);
+    private rearm(id: string): void {
+        const targetReservation: ITransactionReservation | null = this.get(id);
 
-        this.watch(reservation);
+        if (!targetReservation) {
+            return;
+        }
+
+        this.watch(targetReservation);
+        this.scheduleExpiration(targetReservation);
+    }
+
+    private cancelWatch(id: string): void {
+        this.watchers.get(id)?.cancel();
+        this.watchers.delete(id);
     }
 
     private stopWatch(id: string): void {
-        this.watchers.get(id)?.cancel();
-        this.watchers.delete(id);
+        this.cancelWatch(id);
         this.subscribers.delete(id);
     }
 

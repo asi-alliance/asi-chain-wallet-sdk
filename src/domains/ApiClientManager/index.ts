@@ -29,6 +29,11 @@ export interface IApiClients {
     indexer: IndexerClient;
 }
 
+export interface INetworkOperationOptions {
+    onBusyChanged?: TNetworkBusyListener;
+    networkId?: NetworkId;
+}
+
 export default class ApiClientManager {
     private static instance: ApiClientManager;
 
@@ -151,19 +156,23 @@ export default class ApiClientManager {
     @EnsureApiClientManagerInitialized
     public async runNetworkOperation<TResult>(
         operation: () => Promise<TResult>,
-        onBusyChanged?: TNetworkBusyListener,
+        { onBusyChanged, networkId }: INetworkOperationOptions = {},
     ): Promise<TResult> {
-        const networkId: NetworkId = this.getCurrentNetworkId();
+        const targetNetworkId: NetworkId =
+            networkId ?? this.getCurrentNetworkId();
 
-        this.networkBusyRegistry.acquire(networkId);
+        this.networkBusyRegistry.acquire(targetNetworkId);
 
         try {
-            onBusyChanged?.(networkId, true);
+            onBusyChanged?.(targetNetworkId, true);
 
             return await operation();
         } finally {
-            this.networkBusyRegistry.release(networkId);
-            onBusyChanged?.(networkId, this.isNetworkBusy(networkId));
+            this.networkBusyRegistry.release(targetNetworkId);
+            onBusyChanged?.(
+                targetNetworkId,
+                this.isNetworkBusy(targetNetworkId),
+            );
         }
     }
 
