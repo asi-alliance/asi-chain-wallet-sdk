@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
+import ReservationAdapterManager from "@services/ReservationAdapterManager";
 import {
     CustomErrorCode,
     ReservationAction,
@@ -242,6 +243,87 @@ test("network cleanup blocks only its own network", async () => {
 
     assert.equal(await foreignAdd.done, "done");
     assert.equal(await cleanup.done, "done");
+});
+
+test("the network scope is reported only while it is held", async () => {
+    console.log("\n=== NETWORK SCOPE IS OBSERVABLE ===");
+
+    const guard: ReservationOperationGuardService =
+        new ReservationOperationGuardService();
+
+    console.log("    Held before cleanup:", guard.hasNetworkScope(SCALA_NETWORK));
+
+    assert.equal(guard.hasNetworkScope(SCALA_NETWORK), false);
+
+    const cleanup: IPendingAction = startNetworkCleanup(guard, SCALA_NETWORK);
+
+    console.log("    Held during cleanup:", guard.hasNetworkScope(SCALA_NETWORK));
+
+    assert.equal(guard.hasNetworkScope(SCALA_NETWORK), true);
+    assert.equal(guard.hasNetworkScope(RUST_NETWORK), false);
+
+    cleanup.release();
+
+    await cleanup.done;
+
+    console.log("    Held after cleanup:", guard.hasNetworkScope(SCALA_NETWORK));
+
+    assert.equal(guard.hasNetworkScope(SCALA_NETWORK), false);
+});
+
+test("a shared holder is not reported as the network scope holder", async () => {
+    console.log("\n=== SHARED HOLDER IS NOT AN EXCLUSIVE ONE ===");
+
+    const guard: ReservationOperationGuardService =
+        new ReservationOperationGuardService();
+
+    const add: IPendingAction = startReservationAction(
+        guard,
+        ReservationAction.ADD,
+        FIRST_ACCOUNT,
+        SCALA_NETWORK,
+    );
+
+    console.log(
+        "    Held during a shared action:",
+        guard.hasNetworkScope(SCALA_NETWORK),
+    );
+
+    assert.equal(guard.hasNetworkScope(SCALA_NETWORK), false);
+
+    add.release();
+
+    await add.done;
+});
+
+test("removing network reservations outside the exclusive scope is refused", async () => {
+    console.log("\n=== CLEANUP REQUIRES THE EXCLUSIVE SCOPE ===");
+
+    const reservationAdapterManager: ReservationAdapterManager =
+        new ReservationAdapterManager({});
+
+    await assert.rejects(
+        reservationAdapterManager.removeNetworkReservations(SCALA_NETWORK),
+        /can be changed only inside runExclusiveNetworkAction/,
+    );
+
+    console.log("    Direct call rejected");
+
+    const isCleaned: boolean =
+        await reservationAdapterManager.runExclusiveNetworkAction(
+            SCALA_NETWORK,
+            async () => {
+                await reservationAdapterManager.removeNetworkReservations(
+                    SCALA_NETWORK,
+                );
+
+                return true;
+            },
+        );
+
+    console.log("    Call inside the scope accepted:", isCleaned);
+
+    assert.equal(isCleaned, true);
 });
 
 test("scopes are released after a failed operation", async () => {

@@ -1173,25 +1173,39 @@ export default class Client extends ClosableDomain {
         id: NetworkId,
         update: INetworkUpdate,
     ): Promise<void> {
-        const isConfigChanged: boolean = isNetworkConfigChanged(
-            ApiClientManager.getInstance().getNetwork(id).config,
-            update.config,
+        return this.reservationAdapterManager.runExclusiveNetworkAction(
+            id,
+            async () => {
+                const isConfigChanged: boolean = isNetworkConfigChanged(
+                    ApiClientManager.getInstance().getNetwork(id).config,
+                    update.config,
+                );
+
+                await NetworkManager.updateNetwork(id, update);
+
+                if (!isConfigChanged) {
+                    return;
+                }
+
+                await this.reservationAdapterManager.removeNetworkReservations(
+                    id,
+                );
+            },
         );
-
-        await NetworkManager.updateNetwork(id, update);
-
-        if (!isConfigChanged) {
-            return;
-        }
-
-        await this.reservationAdapterManager.removeNetworkReservations(id);
     }
 
     @EnsureActive
     public async removeNetwork(id: NetworkId): Promise<void> {
-        await NetworkManager.removeNetwork(id);
+        return this.reservationAdapterManager.runExclusiveNetworkAction(
+            id,
+            async () => {
+                await NetworkManager.removeNetwork(id);
 
-        await this.reservationAdapterManager.removeNetworkReservations(id);
+                await this.reservationAdapterManager.removeNetworkReservations(
+                    id,
+                );
+            },
+        );
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

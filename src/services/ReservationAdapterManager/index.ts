@@ -13,6 +13,7 @@ import TransactionReservationFabric from "@fabrics/transactionReservation";
 import { isSameAddress } from "@utils/index";
 import { ReservationAction } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
+import { EnsureExclusiveNetwork } from "@utils/decorators/reservationAdapterManager";
 
 export interface ICreateReservationAdapterManagerOptions {
     onReservationsChanged?: () => void;
@@ -121,27 +122,36 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         );
     }
 
-    public async removeNetworkReservations(
+    public isExclusiveNetwork(networkId: NetworkId): boolean {
+        return ReservationAdapterManager.operationsGuard.hasNetworkScope(
+            networkId,
+        );
+    }
+
+    public async runExclusiveNetworkAction<T>(
         networkId: NetworkId,
-    ): Promise<void> {
+        operation: () => Promise<T>,
+    ): Promise<T> {
         return ReservationAdapterManager.operationsGuard.runNetworkReservationAction(
             ReservationAction.NETWORK_CLEANUP,
             networkId,
-            async () => {
-                try {
-                    await Promise.all(
-                        this.getAll().map(
-                            (reservationAdapter: ReservationAdapter) =>
-                                reservationAdapter.removeNetworkReservations(
-                                    networkId,
-                                ),
-                        ),
-                    );
-                } finally {
-                    this.notifyReservationsChanged();
-                }
-            },
+            operation,
         );
+    }
+
+    @EnsureExclusiveNetwork
+    public async removeNetworkReservations(
+        networkId: NetworkId,
+    ): Promise<void> {
+        try {
+            await Promise.all(
+                this.getAll().map((reservationAdapter: ReservationAdapter) =>
+                    reservationAdapter.removeNetworkReservations(networkId),
+                ),
+            );
+        } finally {
+            this.notifyReservationsChanged();
+        }
     }
 
     public getPendingTransactions(

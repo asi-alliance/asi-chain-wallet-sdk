@@ -54,6 +54,10 @@ export default class ReservationOperationGuardService extends ConcurrentOperatio
         return `${RESERVATION_KEY_PREFIX}:${NETWORK_KEY_PREFIX}:${networkId}`;
     }
 
+    public hasNetworkScope(networkId: NetworkId): boolean {
+        return this.hasExclusiveScope(this.getNetworkKey(networkId));
+    }
+
     private getGuardedKeys(
         owner: IReservationOperationOwner,
         {
