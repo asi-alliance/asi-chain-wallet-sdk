@@ -1,6 +1,7 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
+import { GasFee } from "@config/index";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
@@ -222,6 +223,16 @@ export const validateReservationPayload = (
         return { isValid: false, error: "Gas cost must not be negative" };
     }
 
+    if (
+        payload.gasCost !== undefined &&
+        payload.gasCost > payload.pendingAmount
+    ) {
+        return {
+            isValid: false,
+            error: "Gas cost must not exceed the reserved amount",
+        };
+    }
+
     if (payload.kind === "deploy") {
         return { isValid: true };
     }
@@ -244,10 +255,12 @@ export const validateReservationPayload = (
         };
     }
 
-    if (payload.details.amount > payload.pendingAmount) {
+    const transferGasCost: bigint = payload.gasCost ?? GasFee.MAX;
+
+    if (payload.details.amount + transferGasCost > payload.pendingAmount) {
         return {
             isValid: false,
-            error: "Transfer amount must not exceed the reserved amount",
+            error: "Reserved amount must cover the transfer amount and gas cost",
         };
     }
 
