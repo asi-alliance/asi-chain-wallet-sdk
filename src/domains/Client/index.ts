@@ -78,6 +78,16 @@ import ClientEventBus, {
 import TransactionsHistoryAggregator, {
     ITransactionsHistoryWindow,
 } from "@services/TransactionsHistoryAggregator";
+import TransactionReservationFabric, {
+    TCreateTransactionReservationPayload,
+    TTransactionReservationMeta,
+} from "@fabrics/transactionReservation";
+
+export type {
+    IDeployReservationMeta,
+    ITransferReservationMeta,
+    TTransactionReservationMeta,
+} from "@fabrics/transactionReservation";
 
 export interface ICreateHDWalletPayload {
     mnemonic: string;
@@ -103,6 +113,11 @@ export interface IDeployRequest {
     term: string;
     phloLimit?: number;
 }
+
+export type TTransactionReservationRequest = {
+    walletId: string;
+    accountId: string;
+} & TTransactionReservationMeta;
 
 export type THistorySource = "pending" | "executed";
 
@@ -632,7 +647,7 @@ export default class Client extends ClosableDomain {
             ...preview,
             isExistingWalletOpen: Boolean(
                 preview.existingSignerId &&
-                    this.walletManager.getBySignerId(preview.existingSignerId),
+                this.walletManager.getBySignerId(preview.existingSignerId),
             ),
         };
     }
@@ -784,8 +799,7 @@ export default class Client extends ClosableDomain {
         walletId: string,
         accountId: string,
     ): Promise<bigint> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
-        const account: Account = this.getAccount(wallet, accountId);
+        const account: Account = this.getAccount(walletId, accountId);
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
@@ -818,13 +832,135 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
+    @TrackOperation
+    public addTransactionReservation(
+        request: TTransactionReservationRequest,
+        password?: string,
+    ): Promise<ITransactionReservation> {
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getOpenWallet(request.walletId);
+            const account: Account = this.getWalletAccount(
+                wallet,
+                request.accountId,
+            );
+
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(request.walletId);
+
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.addTransactionReservation: Not found reservation adapter",
+                );
+            }
+
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
+
+            await this.ensureSession(wallet, passwordProvider);
+
+            const payload: TCreateTransactionReservationPayload =
+                TransactionReservationFabric.toCreatePayload(
+                    request,
+                    account,
+                    ApiClientManager.getInstance().getCurrentNetworkId(),
+                );
+
+            const reservation: ITransactionReservation =
+                await reservationAdapter.add(wallet, payload, passwordProvider);
+
+            return reservation;
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
+    }
+
+    @EnsureActive
+    @TrackOperation
+    public updateTransactionReservation(
+        reservationId: ITransactionReservation["id"],
+        request: TTransactionReservationRequest,
+        password?: string,
+    ): Promise<ITransactionReservation> {
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getOpenWallet(request.walletId);
+            const account: Account = this.getWalletAccount(
+                wallet,
+                request.accountId,
+            );
+
+            const reservationAdapter: ReservationAdapter | null =
+                this.reservationAdapterManager.get(request.walletId);
+
+            if (!reservationAdapter) {
+                throw new Error(
+                    "Client.updateTransactionReservation: Not found reservation adapter",
+                );
+            }
+
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
+
+            await this.ensureSession(wallet, passwordProvider);
+
+            const payload: TCreateTransactionReservationPayload =
+                TransactionReservationFabric.toCreatePayload(
+                    request,
+                    account,
+                    ApiClientManager.getInstance().getCurrentNetworkId(),
+                );
+
+            const reservation: ITransactionReservation =
+                await reservationAdapter.update(
+                    wallet,
+                    reservationId,
+                    payload,
+                    passwordProvider,
+                );
+
+            return reservation;
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
+    }
+
+    @EnsureActive
+    @TrackOperation
+    public removeTransactionReservation(
+        walletId: string,
+        reservationId: ITransactionReservation["id"],
+    ): Promise<ITransactionReservation> {
+        const reservationAdapter: ReservationAdapter | null =
+            this.reservationAdapterManager.get(walletId);
+
+        if (!reservationAdapter) {
+            throw new Error(
+                "Client.removeTransactionReservation: Not found reservation adapter",
+            );
+        }
+
+        const { networkId }: ITransactionReservation =
+            reservationAdapter.getReservation(reservationId);
+
+        return ApiClientManager.getInstance().runNetworkOperation(
+            () => reservationAdapter.remove(reservationId),
+            {
+                onBusyChanged: this.emitNetworkBusyChanged.bind(this),
+                networkId,
+            },
+        );
+    }
+
+    @EnsureActive
     public async getTransactionsHistory(
         walletId: string,
         accountId: string,
         options?: ITransactionsHistoryOptions,
     ): Promise<Transaction[]> {
-        const wallet: Wallet = this.getOpenWallet(walletId);
-        const account: Account = this.getAccount(wallet, accountId);
+        const account: Account = this.getAccount(walletId, accountId);
 
         const { sources = DEFAULT_HISTORY_SOURCES, pagination } = options ?? {};
 
@@ -901,7 +1037,9 @@ export default class Client extends ClosableDomain {
                 { to, amount, asset: DEFAULT_ASSET },
                 passwordProvider,
             );
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive
@@ -934,7 +1072,9 @@ export default class Client extends ClosableDomain {
                 { term, phloLimit },
                 passwordProvider,
             );
-        }, this.emitNetworkBusyChanged.bind(this));
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
     }
 
     @EnsureActive
@@ -975,7 +1115,17 @@ export default class Client extends ClosableDomain {
         return wallet;
     }
 
-    private getAccount(wallet: Wallet, accountId: string): Account {
+    public getAccount(
+        walletId: Wallet["id"],
+        accountId: Account["id"],
+    ): Account {
+        return this.getWalletAccount(this.getOpenWallet(walletId), accountId);
+    }
+
+    private getWalletAccount(
+        wallet: Wallet,
+        accountId: Account["id"],
+    ): Account {
         const account: Account | undefined = wallet
             .getAccountsMap()
             .get(accountId);
@@ -1023,25 +1173,39 @@ export default class Client extends ClosableDomain {
         id: NetworkId,
         update: INetworkUpdate,
     ): Promise<void> {
-        const isConfigChanged: boolean = isNetworkConfigChanged(
-            ApiClientManager.getInstance().getNetwork(id).config,
-            update.config,
+        return this.reservationAdapterManager.runExclusiveNetworkAction(
+            id,
+            async () => {
+                const isConfigChanged: boolean = isNetworkConfigChanged(
+                    ApiClientManager.getInstance().getNetwork(id).config,
+                    update.config,
+                );
+
+                await NetworkManager.updateNetwork(id, update);
+
+                if (!isConfigChanged) {
+                    return;
+                }
+
+                await this.reservationAdapterManager.removeNetworkReservations(
+                    id,
+                );
+            },
         );
-
-        await NetworkManager.updateNetwork(id, update);
-
-        if (!isConfigChanged) {
-            return;
-        }
-
-        await this.reservationAdapterManager.removeNetworkReservations(id);
     }
 
     @EnsureActive
     public async removeNetwork(id: NetworkId): Promise<void> {
-        await NetworkManager.removeNetwork(id);
+        return this.reservationAdapterManager.runExclusiveNetworkAction(
+            id,
+            async () => {
+                await NetworkManager.removeNetwork(id);
 
-        await this.reservationAdapterManager.removeNetworkReservations(id);
+                await this.reservationAdapterManager.removeNetworkReservations(
+                    id,
+                );
+            },
+        );
     }
 
     private createPasswordProvider(password: string): SecretsProvider {

@@ -11,6 +11,9 @@ import {
 import Account from "@domains/Account";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
 import { isSameAddress } from "@utils/index";
+import { ReservationAction } from "@domains/CustomError";
+import ReservationOperationGuardService from "@services/ReservationOperationGuard";
+import { EnsureExclusiveNetwork } from "@utils/decorators/reservationAdapterManager";
 
 export interface ICreateReservationAdapterManagerOptions {
     onReservationsChanged?: () => void;
@@ -18,6 +21,9 @@ export interface ICreateReservationAdapterManagerOptions {
 }
 
 class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter> {
+    private static readonly operationsGuard: ReservationOperationGuardService =
+        ReservationOperationGuardService.getInstance();
+
     private readonly onReservationsChanged: (() => void) | null;
 
     constructor({
@@ -40,6 +46,8 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         const reservationAdapter: ReservationAdapter =
             await ReservationAdapter.create(wallet, passwordProvider, {
                 onAdded: this.notifyReservationsChanged,
+                onReplaced: this.notifyReservationsChanged,
+                onRemoved: this.notifyReservationsChanged,
                 onConfirmed: this.notifyReservationsChanged,
                 onExpired: this.notifyReservationsChanged,
             });
@@ -101,7 +109,10 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
             (reservation: ITransactionReservation) =>
                 reservation.kind === "transfer" &&
                 isSameAddress(reservation.details.to, targetAddress) &&
-                !isSameAddress(reservation.details.from, reservation.details.to),
+                !isSameAddress(
+                    reservation.details.from,
+                    reservation.details.to,
+                ),
         );
     }
 
@@ -111,6 +122,24 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
         );
     }
 
+    public isExclusiveNetwork(networkId: NetworkId): boolean {
+        return ReservationAdapterManager.operationsGuard.hasNetworkScope(
+            networkId,
+        );
+    }
+
+    public async runExclusiveNetworkAction<T>(
+        networkId: NetworkId,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        return ReservationAdapterManager.operationsGuard.runNetworkReservationAction(
+            ReservationAction.NETWORK_CLEANUP,
+            networkId,
+            operation,
+        );
+    }
+
+    @EnsureExclusiveNetwork
     public async removeNetworkReservations(
         networkId: NetworkId,
     ): Promise<void> {
