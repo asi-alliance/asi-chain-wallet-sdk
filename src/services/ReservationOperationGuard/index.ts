@@ -4,10 +4,14 @@ import {
     ReservationAction,
     ReservationActionInProgressError,
 } from "@domains/CustomError";
-import ConcurrentOperationGuardService from "@services/ConcurrentOperationGuard";
+import ConcurrentOperationGuardService, {
+    IOperationScope,
+    OperationScopeMode,
+} from "@services/ConcurrentOperationGuard";
 
 export const RESERVATION_KEY_PREFIX: string = "RESERVATION";
 export const DEPLOY_KEY_PREFIX: string = "DEPLOY";
+export const NETWORK_KEY_PREFIX: string = "NETWORK";
 
 export interface IReservationOperationTarget {
     accountId: string;
@@ -18,8 +22,8 @@ export interface IReservationOperationTarget {
 
 export interface IReservationOperationOwner {
     action: ReservationAction;
-    accountId: string;
     networkId: NetworkId;
+    accountId?: string;
 }
 
 export default class ReservationOperationGuardService extends ConcurrentOperationGuardService<IReservationOperationOwner> {
@@ -46,8 +50,12 @@ export default class ReservationOperationGuardService extends ConcurrentOperatio
         return `${RESERVATION_KEY_PREFIX}:${reservationId}`;
     }
 
+    private getNetworkKey(networkId: NetworkId): string {
+        return `${RESERVATION_KEY_PREFIX}:${NETWORK_KEY_PREFIX}:${networkId}`;
+    }
+
     private getGuardedKeys(
-        action: ReservationAction,
+        owner: IReservationOperationOwner,
         {
             accountId,
             networkId,
@@ -55,12 +63,6 @@ export default class ReservationOperationGuardService extends ConcurrentOperatio
             reservationId,
         }: IReservationOperationTarget,
     ): Map<string, IReservationOperationOwner> {
-        const owner: IReservationOperationOwner = {
-            action,
-            accountId,
-            networkId,
-        };
-
         const guardedKeys: Map<string, IReservationOperationOwner> = new Map([
             [this.getAccountKey(networkId, accountId), owner],
         ]);
@@ -76,20 +78,52 @@ export default class ReservationOperationGuardService extends ConcurrentOperatio
         return guardedKeys;
     }
 
+    private createConflictError(
+        conflictOwner: IReservationOperationOwner,
+    ): Error {
+        return new ReservationActionInProgressError(
+            conflictOwner.action,
+            conflictOwner.networkId,
+            conflictOwner.accountId,
+        );
+    }
+
     public async runReservationAction<T>(
         action: ReservationAction,
         target: IReservationOperationTarget,
         operation: () => Promise<T>,
     ): Promise<T> {
+        const owner: IReservationOperationOwner = {
+            action,
+            networkId: target.networkId,
+            accountId: target.accountId,
+        };
+
+        const scope: IOperationScope<IReservationOperationOwner> = {
+            key: this.getNetworkKey(target.networkId),
+            mode: OperationScopeMode.SHARED,
+            owner,
+        };
+
         return this.run(
-            this.getGuardedKeys(action, target),
-            (conflictOwner: IReservationOperationOwner) =>
-                new ReservationActionInProgressError(
-                    conflictOwner.action,
-                    conflictOwner.accountId,
-                    conflictOwner.networkId,
-                ),
+            this.getGuardedKeys(owner, target),
+            this.createConflictError,
             operation,
+            scope,
         );
+    }
+
+    public async runNetworkReservationAction<T>(
+        action: ReservationAction,
+        networkId: NetworkId,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        const scope: IOperationScope<IReservationOperationOwner> = {
+            key: this.getNetworkKey(networkId),
+            mode: OperationScopeMode.EXCLUSIVE,
+            owner: { action, networkId },
+        };
+
+        return this.run(new Map(), this.createConflictError, operation, scope);
     }
 }

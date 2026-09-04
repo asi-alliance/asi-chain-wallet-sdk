@@ -42,6 +42,7 @@ export enum ReservationAction {
     REMOVE = "REMOVE",
     TRANSFER = "TRANSFER",
     DEPLOY = "DEPLOY",
+    NETWORK_CLEANUP = "NETWORK_CLEANUP",
 }
 
 export enum StorageMigrationChainViolation {
@@ -292,20 +293,22 @@ export class WalletActionInProgressError extends CustomError {
 
 export class ReservationActionInProgressError extends CustomError {
     public readonly action: ReservationAction;
-    public readonly accountId: string;
     public readonly networkId: NetworkId;
+    public readonly accountId?: string;
 
     constructor(
         action: ReservationAction,
-        accountId: string,
         networkId: NetworkId,
-        message: string = `Account ${accountId} already has the ${action} reservation action in progress on the network ${networkId}`,
+        accountId?: string,
+        message: string = accountId
+            ? `Account ${accountId} already has the ${action} reservation action in progress on the network ${networkId}`
+            : `The ${action} reservation action is already in progress on the network ${networkId}`,
     ) {
         super(CustomErrorCode.RESERVATION_ACTION_IN_PROGRESS, message, 409);
 
         this.action = action;
-        this.accountId = accountId;
         this.networkId = networkId;
+        this.accountId = accountId;
     }
 }
 

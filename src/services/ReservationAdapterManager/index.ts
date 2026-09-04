@@ -11,6 +11,8 @@ import {
 import Account from "@domains/Account";
 import TransactionReservationFabric from "@fabrics/transactionReservation";
 import { isSameAddress } from "@utils/index";
+import { ReservationAction } from "@domains/CustomError";
+import ReservationOperationGuardService from "@services/ReservationOperationGuard";
 
 export interface ICreateReservationAdapterManagerOptions {
     onReservationsChanged?: () => void;
@@ -18,6 +20,9 @@ export interface ICreateReservationAdapterManagerOptions {
 }
 
 class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter> {
+    private static readonly operationsGuard: ReservationOperationGuardService =
+        ReservationOperationGuardService.getInstance();
+
     private readonly onReservationsChanged: (() => void) | null;
 
     constructor({
@@ -119,15 +124,24 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
     public async removeNetworkReservations(
         networkId: NetworkId,
     ): Promise<void> {
-        try {
-            await Promise.all(
-                this.getAll().map((reservationAdapter: ReservationAdapter) =>
-                    reservationAdapter.removeNetworkReservations(networkId),
-                ),
-            );
-        } finally {
-            this.notifyReservationsChanged();
-        }
+        return ReservationAdapterManager.operationsGuard.runNetworkReservationAction(
+            ReservationAction.NETWORK_CLEANUP,
+            networkId,
+            async () => {
+                try {
+                    await Promise.all(
+                        this.getAll().map(
+                            (reservationAdapter: ReservationAdapter) =>
+                                reservationAdapter.removeNetworkReservations(
+                                    networkId,
+                                ),
+                        ),
+                    );
+                } finally {
+                    this.notifyReservationsChanged();
+                }
+            },
+        );
     }
 
     public getPendingTransactions(
