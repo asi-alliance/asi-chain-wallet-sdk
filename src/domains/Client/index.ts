@@ -37,6 +37,7 @@ import {
     Transaction,
 } from "@domains/Transaction";
 import MnemonicService, { MnemonicStrength } from "@services/Mnemonic";
+import { SignedResult } from "@services/Signer";
 import KeysManager from "@services/KeysManager";
 import WalletManager from "@services/WalletManager";
 import WalletPersistenceService from "@services/WalletPersistence";
@@ -112,6 +113,15 @@ export interface IDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
+}
+
+export interface ISignDeployRequest {
+    walletId: string;
+    accountId: string;
+    term: string;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
 }
 
 export type TTransactionReservationRequest = {
@@ -1070,6 +1080,41 @@ export default class Client extends ClosableDomain {
             return reservationAdapter.deploy(
                 wallet,
                 { term, phloLimit },
+                passwordProvider,
+            );
+        },
+            { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
+        );
+    }
+
+    @EnsureActive
+    @TrackOperation
+    public signDeploy(
+        {
+            walletId,
+            accountId,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: ISignDeployRequest,
+        password?: string,
+    ): Promise<SignedResult> {
+        return ApiClientManager.getInstance().runNetworkOperation(async () => {
+            const wallet: Wallet = this.getOpenWallet(walletId);
+            const account: Account = this.getWalletAccount(wallet, accountId);
+
+            wallet.setActiveAccount(account.getId());
+
+            const passwordProvider: SecretsProvider | undefined =
+                password !== undefined
+                    ? this.createPasswordProvider(password)
+                    : undefined;
+
+            await this.ensureSession(wallet, passwordProvider);
+
+            return wallet.signDeploy(
+                { term, phloLimit, phloPrice, shardId },
                 passwordProvider,
             );
         },
