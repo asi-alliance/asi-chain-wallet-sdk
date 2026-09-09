@@ -13,6 +13,7 @@ export enum CustomErrorCode {
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
+    RESERVATION_ACTION_IN_PROGRESS = "RESERVATION_ACTION_IN_PROGRESS",
     INVALID_KEYFILE = "INVALID_KEYFILE",
     INVALID_KEYFILE_PASSWORD = "INVALID_KEYFILE_PASSWORD",
     KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
@@ -33,6 +34,15 @@ export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+}
+
+export enum ReservationAction {
+    ADD = "ADD",
+    UPDATE = "UPDATE",
+    REMOVE = "REMOVE",
+    TRANSFER = "TRANSFER",
+    DEPLOY = "DEPLOY",
+    NETWORK_CLEANUP = "NETWORK_CLEANUP",
 }
 
 export enum StorageMigrationChainViolation {
@@ -74,6 +84,10 @@ export enum StorageOperation {
 export enum ApiSource {
     NODE = "node api",
     GRAPHQL = "graphql api",
+}
+
+export interface IErrorContext {
+    context: string;
 }
 
 export class CustomError extends Error {
@@ -274,6 +288,27 @@ export class WalletActionInProgressError extends CustomError {
 
         this.action = action;
         this.signerId = signerId;
+    }
+}
+
+export class ReservationActionInProgressError extends CustomError {
+    public readonly action: ReservationAction;
+    public readonly networkId: NetworkId;
+    public readonly accountId?: string;
+
+    constructor(
+        action: ReservationAction,
+        networkId: NetworkId,
+        accountId?: string,
+        message: string = accountId
+            ? `Account ${accountId} already has the ${action} reservation action in progress on the network ${networkId}`
+            : `The ${action} reservation action is already in progress on the network ${networkId}`,
+    ) {
+        super(CustomErrorCode.RESERVATION_ACTION_IN_PROGRESS, message, 409);
+
+        this.action = action;
+        this.networkId = networkId;
+        this.accountId = accountId;
     }
 }
 

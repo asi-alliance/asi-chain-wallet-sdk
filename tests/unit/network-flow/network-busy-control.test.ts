@@ -46,8 +46,10 @@ const startOperation = (
 
     const done: Promise<string> = apiClientManager.runNetworkOperation(
         () => gate,
-        (networkId: NetworkId, isBusy: boolean) =>
-            events.push({ networkId, isBusy }),
+        {
+            onBusyChanged: (networkId: NetworkId, isBusy: boolean) =>
+                events.push({ networkId, isBusy }),
+        },
     );
 
     return { done, release, fail };
