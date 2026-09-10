@@ -9,8 +9,10 @@ import { Address } from "@domains/Wallet";
 import {
     AddressValidationResult,
     encodeBase16,
+    ensureValid,
     INVALID_BLOCK_NUMBER,
     validateAddress,
+    validateDeployPayload,
 } from "@utils/index";
 import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import SignerService, { SignedResult } from "@services/Signer";
@@ -85,9 +87,10 @@ export default class TransactionService {
         shardId,
         passwordProvider,
     }: IDeployPayload): Promise<SignedResult> {
-        if (!term.trim()) {
-            throw new Error("Deploy term must not be empty");
-        }
+        ensureValid(
+            validateDeployPayload({ term, phloLimit, phloPrice, shardId }),
+            { context: "TransactionService.signDeploy" },
+        );
 
         const latestBlockNumber: number =
             await this.blockService.getLatestBlockNumber();
@@ -170,14 +173,6 @@ export default class TransactionService {
 
         if (details.amount <= 0n) {
             throw new Error("Amount must be greater than zero");
-        }
-
-        if (details.phloLimit && details.phloLimit <= 0n) {
-            throw new Error("Phlo limit must be greater than zero");
-        }
-
-        if (details.phloPrice && details.phloPrice <= 0n) {
-            throw new Error("Phlo price must be greater than zero");
         }
 
         const term: string = this.terms.createTransferDeploy(
