@@ -12,7 +12,48 @@ This document defines the current cryptographic profile used by `asi-chain-walle
 - PBKDF2 iterations: `100_000`
 - Salt length: `16` bytes
 - IV length: `12` bytes
+- Authentication tag length: `16` bytes (AES-GCM default)
 - Source of truth: `src/services/Crypto/index.ts`
+
+### 1-1. Decryption Preconditions
+
+Checked before the key is derived, so a malformed payload is never attributed to
+a wrong password:
+
+- the payload `version` must equal the profile version, otherwise
+  `UnsupportedEncryptionVersionError` carrying both versions;
+- `salt` must base64-decode to exactly the salt length;
+- `iv` must base64-decode to exactly the IV length;
+- `data` must base64-decode to at least the authentication tag length, since a
+  shorter AES-GCM payload cannot contain its own tag.
+
+Each failure raises `CorruptedDataError` naming the field. Only after all of them
+pass is `deriveKey` called, and a failing `crypto.subtle.decrypt` at that point
+has exactly one meaning: the password is wrong (`InvalidPasswordError`). A
+WebCrypto failure inside `deriveKey` itself raises `KeyDerivationError`.
+
+### 1-2. Post-Decryption Validation
+
+Decryption authenticates the ciphertext against the derived key; it says nothing
+about the plaintext being what the caller expects. Every decrypted payload is
+parsed and structurally validated before use:
+
+- a stored signer secret must be either a private key that decodes to exactly
+  `PRIVATE_KEY_LENGTH` valid bytes inside the secp256k1 scalar range, or a valid
+  BIP-39 mnemonic together with a `rootHDPath` that parses as a canonical BIP-44
+  path;
+- byte arrays reconstructed from persisted JSON are checked element by element
+  (integers `0 … 255`), and an index-keyed object must carry contiguous ordered
+  keys, so the decoded bytes cannot differ from what the record declares;
+- a stored reservation must match its serialized structure, including
+  digits-only amounts and a parseable timestamp.
+
+A failure raises `CorruptedDataError`, never `InvalidPasswordError`.
+
+- Source of truth:
+  - `src/services/Crypto/index.ts`
+  - `src/utils/guards/domain.ts`
+  - `src/utils/codec/index.ts`
 
 ## 1a. Data Key Profile
 
@@ -81,7 +122,26 @@ This document defines the current cryptographic profile used by `asi-chain-walle
 - Encoding: base58
 - Source of truth:
   - `src/services/Wallets/index.ts`
-  - `src/utils/validators/index.ts`
+  - `src/utils/validators/domain.ts`
+
+## 2a. Key Derivation Path Profile
+
+- Standard: BIP-32 / BIP-39 / BIP-44
+- Path shape: `m/44'/coinType'/account'/change/index`
+- Purpose: fixed at `44'`
+- Hardening: `coinType` and `account` must be hardened; `change` and `index` must
+  not be
+- Component range: integers in `0 … 2^31 - 1`, with `change` restricted to `0`
+  or `1`
+- Canonical form: each component is decimal with no leading zeros, no sign, and
+  no surrounding whitespace, so one key has exactly one path string
+- Source of truth:
+  - `src/domains/Bip44Path/index.ts`
+  - `src/services/KeyDerivation/index.ts`
+
+The range bound is a security property, not a formatting preference: a component
+above `2^31 - 1` overflows into the hardened index space, and the derived key
+would not be the one the path string names.
 
 ## 3. Signing Profile
 
@@ -105,7 +165,7 @@ This document defines the current cryptographic profile used by `asi-chain-walle
   - `src/domains/SigningSession/index.ts`
   - `src/domains/AutoTimer/index.ts`
   - `src/domains/Wallet/index.ts`
-  - `src/utils/validators/index.ts`
+  - `src/utils/validators/primitives.ts`
 
 ## 4. Versioning and Migration Notes
 

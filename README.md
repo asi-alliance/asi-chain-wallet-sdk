@@ -51,6 +51,8 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
+- **External Reservation Management** - Deploys submitted outside the SDK can lock funds too: reservations can be added, updated, and removed directly, with validation and concurrency guards, via [Client](docs/DOMAINS.md#external-reservations)
+- **Typed Failures** - Decryption, storage, and node errors carry a machine-readable code and structured fields instead of an assembled message string, via [CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
 - **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
@@ -294,6 +296,51 @@ falsy balance as "empty".
 
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
 
+### Reserve Funds for a Deploy You Submit Yourself
+
+`transfer` and `deploy` reserve funds on their own. When the deploy is submitted
+outside the SDK — a hardware signer, a relayer, another app on the same vault —
+the reservation can be created directly so the available balance and the pending
+history stay correct.
+
+```typescript
+const request = {
+    walletId: hdWallet.getId(),
+    accountId: active.getId(),
+    kind: "transfer" as const,
+    deployId, // the deploy you submitted yourself
+    to: recipientAddress,
+    amount: client.toAtomicAmount("10"),
+    gasCost: client.toAtomicAmount("0.1"),
+    pendingAmount: client.toAtomicAmount("10.1"), // must cover amount + gasCost
+};
+
+const reservation = await client.addTransactionReservation(
+    request,
+    "wallet-password",
+);
+
+// Correct it while it is still pending, keeping the same reservation id
+await client.updateTransactionReservation(reservation.id, {
+    ...request,
+    amount: client.toAtomicAmount("12"),
+    pendingAmount: client.toAtomicAmount("12.1"),
+});
+
+// Or release the funds early
+await client.removeTransactionReservation(hdWallet.getId(), reservation.id);
+```
+
+`pendingAmount` is the total to lock and must cover `amount + gasCost`; a
+reservation that does not is rejected rather than under-locking the balance. The
+whole available balance may be reserved. A reservation still expires on its own
+after `RESERVATION_EXPIRATION_TIME` and is released when the deploy is confirmed,
+so these calls are a correction channel, not a lifecycle to manage by hand.
+
+Concurrent actions on the same account, deploy, or reservation are refused with
+`ReservationActionInProgressError` (status `409`) rather than interleaved. See
+[External reservations](docs/DOMAINS.md#external-reservations).
+
 ---
 
 ## Architecture
@@ -333,6 +380,7 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │  • StorageManager      - Persistence orchestration            │  │
 │  │  • ClientEventBus      - Typed client event subscriptions     │  │
 │  │  • WalletOperationGuard- Duplicate & concurrency guards       │  │
+│  │  • ReservationOperationGuard - Per-network reservation locks  │  │
 │  │  • StorageBootstrap / StorageMigrationRunner (schema)         │  │
 │  │  • ExportKeyfileService / ImportKeyfileService                │  │
 │  │  • DeployService / BlockService / AccountDataService          │  │
@@ -462,9 +510,14 @@ npm run build
 # Watch mode for development
 npm run dev
 
-# Run security release gates locally
-npm run security:gate
+# Run the release gate locally: build, unit tests, security tests,
+# secret-log scan, and a production-dependency audit
+npm run gate
 ```
+
+The gate was `npm run security:gate` and covered security checks only; it now
+also runs `npm run test:unit`, so the same command CI runs is the one that has to
+pass locally. The GitHub workflow is `.github/workflows/gate.yml`.
 
 ### Playground
 

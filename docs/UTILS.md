@@ -65,6 +65,17 @@ Data export:
 - `INVALID_BLOCK_NUMBER: number` — sentinel for a failed block-number read (-1).
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
 
+Numeric-format patterns, shared so the same rule is not re-typed per call site:
+
+- `DIGITS_ONLY_REGEX` — `/^\d+$/`, the atomic-amount parser's accepted form.
+- `CANONICAL_INTEGER_REGEX` — `/^(0|[1-9]\d*)$/`, an integer with no leading
+  zeros. Used by `Bip44Path.parse`, where `044'` and `44'` must not be the same
+  path.
+- `INTEGER_REGEX` / `DECIMAL_REGEX` — signed integer and decimal forms.
+- `NON_NEGATIVE_INTEGER_REGEX` / `NON_NEGATIVE_DECIMAL_REGEX` — the unsigned
+  forms, behind the `isSerializedInteger` and `isSerializedDecimal` guards that
+  validate amounts coming back out of the vault.
+
 ---
 
 ## Codec (`src/utils/codec/index.ts`)
@@ -80,9 +91,25 @@ arrayBufferToBase64(buffer: ArrayBuffer): string
 base64ToArrayBuffer(base64: string): ArrayBuffer
 bufferToBigInt(buffer: Uint8Array): bigint
 bigIntToBuffer(num: bigint): Uint8Array // padded to HEX_BYTE_PADDING
+
+toUint8Array(value: unknown): Uint8Array
 ```
 
----
+`toUint8Array` moved here from `@utils/functions`. It is a decoder, which is what
+this module is for, and the move also broke the cycle between the codec and the
+guards: the guards need `toUint8Array` to check a stored private key, and
+`toUint8Array` needs the byte guards, so the two could not both live in
+`functions`.
+
+It accepts the four shapes a byte array can take once it has been through JSON:
+a `Uint8Array`, a Node `Buffer` envelope (`{ type: "Buffer", data: [...] }`), a
+plain array, and an index-keyed object. **Every element is now checked**: each
+entry must be an integer in `0 … 255`, and for an index-keyed object the keys
+must be `"0"`, `"1"`, … in order, with no gaps and nothing extra. Without those
+checks, `Uint8Array.from` coerced whatever it found — `null` and a fractional
+value became `0`, `Object.values` on `{ 1: 2, 0: 1 }` produced bytes in an
+arbitrary order — and a tampered record silently decoded into a different, valid
+looking key. An unsupported shape or a bad byte throws.
 
 ## Functions (`src/utils/functions/index.ts`)
 
@@ -123,9 +150,7 @@ integer part exceeds `Number.MAX_SAFE_INTEGER`.
 
 ### Byte helpers
 
-```ts
-toUint8Array(value: unknown): Uint8Array // accepts Uint8Array, Buffer JSON, arrays, plain objects
-```
+`toUint8Array` now lives in [Codec](#codec-srcutilscodecindexts).
 
 Secret decryption is not a util: `decryptSignerData` lives on `CryptoService`
 (see `SERVICES.md`).
@@ -135,7 +160,51 @@ Secret decryption is not a util: `decryptSignerData` lives on `CryptoService`
 ```ts
 buildUrl(pathPrefix: string, params?: IUrlParams): string // fills :path params + query string
 normalizeAddress(address: string | undefined): string     // trim + lowercase
+isSameAddress(address: string | undefined, other: string | undefined): boolean
+resolveTransferType(from: string, viewerAddress: string): TransactionType // "send" | "receive"
 ```
+
+`isSameAddress` compares two addresses after normalization and is **false for two
+blanks**: an empty or missing address is not equal to another missing one, which
+matters because a reservation's optional `to` is absent for a deploy and must not
+be read as matching every account without an address.
+
+`resolveTransferType` is the single definition of transfer direction: a transfer
+is `send` when its `from` is the address of whoever is reading it, and `receive`
+otherwise. Both the indexer mapper and the reservation fabric call it, which is
+what lets one stored reservation be rendered correctly for the sender and for the
+recipient.
+
+### Error messages
+
+```ts
+getErrorMessage(error: unknown, fallback: string): string
+```
+
+Extracts a readable message from anything a `catch` can produce, in order: a
+non-blank string, an `Error` (its `message`, or its `name` when the message is
+empty), any object with a non-blank string `message`, and finally the `fallback`.
+The fallback is normally an `UnknownErrorReason` member naming the subsystem that
+failed silently, so a caught `undefined` from browser storage still produces a
+sentence. It is the reason no SDK error can now surface with an empty message or
+as `[object Object]`.
+
+### Decrypted payload parsing
+
+```ts
+parseDecryptedJson<T>(
+    payload: string,
+    source: CorruptedDataSource,
+    isExpectedStructure: (value: unknown) => value is T,
+): T
+```
+
+The one way plaintext coming out of the vault becomes a typed value. It parses
+and then validates, raising `CorruptedDataError` with the given `source` for
+either failure. Decryption succeeding only proves the password was right; it says
+nothing about the record being the shape the caller expects, which is why both
+the signer secret and the reservation payload go through this instead of a bare
+`JSON.parse`.
 
 ### Selection
 
@@ -180,9 +249,21 @@ itself.
 
 ## Validators (`src/utils/validators/index.ts`)
 
-Account-name, address, private-key, URL, and node-profile validation.
+Account-name, address, private-key, URL, node-profile, and reservation-payload
+validation. The module is split into two files behind one barrel:
+
+- `primitives.ts` — checks that depend on nothing but a value and a range
+  (`isIntegerInRange`, the private-key checks). It imports no domain module.
+- `domain.ts` — checks that need SDK types (addresses, node profiles, reservation
+  payloads).
+
+The split exists to break import cycles. `Bip44Path` needs `isIntegerInRange`
+and the guards need `isPrivateKeyValid`, and both used to pull in the whole
+validators barrel, which pulled the domain layer back in. Internal callers import
+`@utils/validators/primitives` directly; the barrel stays the public surface.
 
 ```ts
+isIntegerInRange(value: number, min: number, max: number): boolean
 validateAccountName(name: string, maxLength?: number): { isValid: boolean; error?: string }
 validateAddress(address: string): AddressValidationResult
 isAddress(address: string): address is Address // type-guard over validateAddress
@@ -200,26 +281,36 @@ curve order are rejected. `Client.createPrivateKeyWallet` runs `isPrivateKeyVali
 before touching storage, so an imported key that could never sign is refused up
 front instead of failing later at signing time.
 
-Keyfile validation:
+Keyfile validation used to live here as `validateWalletKeyfile` and
+`validateWalletKeyfileAccounts`. Both are now private to
+[ImportKeyfileService](SERVICES.md#importkeyfileservice-srcservicesimportkeyfileserviceindexts):
+they knew about keyfile envelopes and wallet types, which made a leaf utils
+module depend on the domain layer. The shape guards they call
+(`isEncryptedData`, `isKeyfileWalletAccount`) stayed in `@utils/guards`.
+
+Amount and reservation validation:
 
 ```ts
-validateWalletKeyfile(source: unknown): { isValid: boolean; error?: string }
-validateWalletKeyfileAccounts(source: unknown, walletType: WalletTypes): { isValid: boolean; error?: string }
+ensureValid(result: { isValid: boolean; error?: string }, context: IErrorContext): void
+validatePositiveAmount(amount: bigint): { isValid: boolean; error?: string }
+validateReservationPayload(payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
 ```
 
-`validateWalletKeyfile` runs on the untrusted outer envelope: it must be an
-object, its `type` must be `KeyfileTypes.WALLET` (an account keyfile is rejected
-here, since it cannot restore anything), its `version` must match
-`ASI_WALLET_KEYFILE_VERSION`, its `walletType` must be a known `WalletTypes`, and
-both `encryptedPrivateData` and `encryptedAccounts` must look like
-`EncryptedData` (via the `isEncryptedData` guard).
+`ensureValid` turns any `{ isValid, error }` result into a throw prefixed with
+the caller's `context`, so a validator can be written once and used both as a
+predicate and as an assertion without every call site repeating the same three
+lines.
 
-`validateWalletKeyfileAccounts` runs on the account list **after** decryption,
-because until then it is ciphertext. It requires a non-empty array of well-shaped
-entries, rejects duplicate indexes (two accounts at one derivation index is a
-corrupted or hand-edited file), and enforces that a private-key keyfile declares
-exactly one account. Both return the specific reason as `error`, which
-`ImportKeyfileService` turns into the `InvalidKeyfileError` message.
+`validateReservationPayload` is the boundary check for an externally managed
+reservation, run before anything is persisted. In order: a non-empty `deployId`;
+a `pendingAmount` above zero; a `gasCost` that is neither negative nor larger
+than the amount being reserved. For a `transfer` it then requires a valid
+recipient address (full `validateAddress`, so checksum and canonical form
+included), a positive `amount`, and — the invariant that makes the reservation
+mean anything — `amount + gasCost <= pendingAmount`. A reservation that does not
+cover its own transfer plus gas would under-lock the balance and let the account
+overspend, so it is refused rather than clamped. `gasCost` defaults to
+`GasFee.MAX` for that comparison when the caller omits it.
 
 `validateUrl` powers custom-network endpoint validation in
 `NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
@@ -245,19 +336,57 @@ names, and forbidden characters `<>:"/\|?*`.
 
 ## Guards (`src/utils/guards/index.ts`)
 
-Type guards for wallet/secret discriminated unions, the node API profile, and
-thenables.
+Type guards for untrusted values: parsed JSON, decrypted payloads, caught errors,
+and discriminated unions. Split the same way as the validators, behind one
+barrel:
+
+- `primitives.ts` — structural checks over `unknown` with no SDK types involved.
+- `domain.ts` — checks that narrow to an SDK type.
+
+Primitives:
+
+```ts
+isRecord(value: unknown): value is Record<string, unknown>
+isValidByte(value: unknown): value is number            // integer 0…255
+isByteIndexedRecord(value: object): value is Record<string, number> // keys "0","1",… in order
+isValueInConst<T extends readonly string[]>(value: unknown, values: T): value is T[number]
+isSerializedInteger(value: unknown): value is string    // digits only
+isSerializedDecimal(value: unknown): value is string    // digits with an optional fraction
+isRecordWithMessage(value: unknown): value is { message: string }
+isErrorWithMessage(value: unknown): value is Error
+isPromiseLike(value: unknown): value is PromiseLike<unknown>
+```
+
+Domain:
 
 ```ts
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
-isNodeApiProfile(value: unknown): value is NodeApiProfile // delegates to validateNodeApiProfile
-isPromiseLike(value: unknown): value is PromiseLike<unknown>
+isNodeApiProfile(value: unknown): value is NodeApiProfile
+isStoredSecret(value: unknown): value is TStoredSecret
+isSerializedReservationPrivateData(value: unknown): value is ISerializedTransactionReservationPrivateData
 
 isEncryptedData(value: unknown): value is EncryptedData
 isKeyfileAccount(value: unknown): value is IKeyfileAccount
 isKeyfileWalletAccount(value: unknown): value is IKeyfileWalletAccount
 ```
+
+`isValueInConst` is what lets a union derived from an `as const` tuple be checked
+at runtime against that same tuple — `TRANSACTION_RESERVATION_KINDS` and
+`NODE_API_PROFILES` are both used this way, so the type and the check can never
+drift apart.
+
+`isStoredSecret` and `isSerializedReservationPrivateData` guard the **decrypt
+boundary**. A record that decrypts is not thereby trustworthy: it may have been
+written by a different build, or tampered with before encryption, or simply be
+the wrong record. `isStoredSecret` requires either a private key that survives
+`toUint8Array` and lies inside the secp256k1 range, or a valid BIP-39 mnemonic
+with a parseable BIP-44 root path. `isSerializedReservationPrivateData` checks
+the account id, the serialized amount, a finite expiration, a known `kind`, and
+the details block, where the amounts must match the serialized-decimal form and
+the timestamp must parse. Both are called through `parseDecryptedJson`, so a
+failure becomes `CorruptedDataError` rather than a malformed object entering the
+domain.
 
 The three keyfile guards narrow untrusted parsed JSON at the import boundary,
 where nothing about the shape can be assumed. `isEncryptedData` checks the four
@@ -266,14 +395,24 @@ fields a ciphertext envelope must carry (`data`, `salt`, `iv`, `version`);
 richer `{ name, address, index }` of a standalone account keyfile. Both treat a
 `null` index as valid, since private-key accounts have no derivation index.
 
+`isRecordWithMessage` and `isErrorWithMessage` back `getErrorMessage`: the first
+accepts any object carrying a non-blank string `message` (a rejected plain object
+from a foreign library), the second additionally requires a real `Error`, which
+is what `DeployStatusPoller` uses to decide whether a caught value can be
+rethrown as-is or has to be wrapped.
+
 `isPromiseLike` is a structural check (`then` is callable) rather than an
 `instanceof Promise`, so `runProtected` also catches rejections from async
 listeners returning a foreign thenable.
 
 `isNodeApiProfile` narrows untyped values at the storage boundary
 (`restoreCustomNetworks`), mirroring how `isValidUrl` sits on top of
-`validateUrl`. `src/utils/index.ts` does not re-export `./guards`, so these stay
-internal to the SDK.
+`validateUrl`. It reads `NODE_API_PROFILES` through `isValueInConst` rather than
+delegating to `validateNodeApiProfile`, which is what keeps the guards free of a
+dependency on the validators.
+
+`src/utils/index.ts` re-exports `./guards`, so these are part of the package's
+public surface alongside the validators.
 
 ---
 
@@ -344,6 +483,25 @@ Both read `ApiClientManager`'s `NetworkBusyRegistry` and protect
 `switchNetwork` / `updateNetwork` / `removeNetwork`.
 `EnsureCurrentNetworkNotBusy` passes through untouched while the manager is not
 ready yet, because there is no active network to protect at that point.
+
+Reservation-scope guards
+(`src/utils/decorators/reservationAdapterManager`,
+`src/utils/decorators/transactionReservationsManager`):
+
+```ts
+EnsureExclusiveNetwork;     // the first argument's network must be under an exclusive scope
+EnsureExclusiveReservation; // the first argument's reservation must be under runExclusive
+```
+
+These are structural assertions, not access control. Both guard a method that is
+only safe inside a lock its caller is supposed to be holding:
+`ReservationAdapterManager.removeNetworkReservations` must run inside
+`runExclusiveNetworkAction`, and `TransactionReservationsManager.replace` inside
+`runExclusive`. Each reads a predicate off its own context
+(`isExclusiveNetwork`, `isExclusiveReservation`) and throws a message naming the
+method and the scope it should have been called from. A future call site that
+forgets the wrapper fails loudly at the first call instead of corrupting state
+under a race that only shows up in production.
 
 ---
 
@@ -449,13 +607,20 @@ never assembles the record inline. It also owns both directions of the storage
 serialization boundary.
 
 ```ts
-TransactionReservationFabric.createTransfer(
-    payload: ICreateTransferReservationPayload, // { deployId, networkId, account, pendingAmount, details }
-): ITransactionReservation
+TransactionReservationFabric.create(payload: TCreateTransactionReservationPayload, id?: string): ITransactionReservation
+TransactionReservationFabric.createTransfer(payload: ICreateTransferReservationPayload, id?: string): ITransactionReservation
+TransactionReservationFabric.createDeploy(payload: ICreateDeployReservationPayload, id?: string): ITransactionReservation
 
-TransactionReservationFabric.createDeploy(
-    payload: ICreateDeployReservationPayload, // { deployId, networkId, account, pendingAmount, term }
-): ITransactionReservation
+TransactionReservationFabric.toCreatePayload(
+    meta: TTransactionReservationMeta,
+    account: Account,
+    networkId: NetworkId,
+): TCreateTransactionReservationPayload
+
+TransactionReservationFabric.toPendingTransaction(
+    reservation: ITransactionReservation,
+    viewerAddress: Address,
+): Transaction
 
 TransactionReservationFabric.toPrivateData(
     reservation: ITransactionReservation,
@@ -467,16 +632,63 @@ TransactionReservationFabric.fromStorage(
 ): ITransactionReservation
 ```
 
-`create` builds the pending `Transaction` (`status: "pending"`,
-`detectedBy: "manual"`, `amount` and `gasCost` in display units), generates the
-reservation id, and stamps `expirationTime` as now plus
-`RESERVATION_EXPIRATION_TIME`.
+The create payloads are a discriminated union on `kind`, so one entry point
+covers both:
+
+```ts
+interface IReservationPayload {
+    deployId: string;
+    networkId: NetworkId;
+    account: Account;
+    pendingAmount: bigint;
+    kind: TransactionReservationKind;
+    gasCost?: bigint;
+}
+
+interface ICreateTransferReservationPayload extends IReservationPayload {
+    kind: "transfer";
+    details: { to: Address; amount: bigint };
+}
+
+interface ICreateDeployReservationPayload extends IReservationPayload {
+    kind: "deploy";
+    term?: string;
+}
+
+type TCreateTransactionReservationPayload =
+    | ICreateTransferReservationPayload
+    | ICreateDeployReservationPayload;
+```
+
+`create` dispatches on `kind`; the two specific builders remain for the internal
+`transfer` and `deploy` paths, which already know which one they are making. All
+three take an optional `id`, defaulting to a fresh `generateRandomId()`. Passing
+one is what makes an update **id-preserving**: the record is rebuilt from the new
+payload without becoming a different reservation, so subscribers, storage keys,
+and the caller's handle all stay valid.
+
+`gasCost` is explicit rather than assumed. A transfer previously always reserved
+`GasFee.MAX` and a deploy reported its entire `pendingAmount` as gas; a caller
+that knows its real cost can now state it, and the defaults only apply when it is
+omitted.
+
+`toCreatePayload` is the adapter between the public request shape
+(`TTransactionReservationMeta`, which carries plain values) and the internal
+payload (which carries a resolved `Account` and network id). `Client` uses it so
+the request coming from an integrator never has to contain SDK objects.
+
+`toPendingTransaction` renders a stored reservation as a `Transaction` for one
+reader: `status` is always `"pending"` and `detectedBy` always `"manual"`, while
+`type` is `"deploy"` for a deploy reservation and otherwise comes from
+`resolveTransferType(details.from, viewerAddress)`. This is the function that
+replaced the embedded `transaction` field — the reservation stores facts, the
+fabric renders a point of view.
 
 `toPrivateData` drops the storage-owned fields (`id`, `networkId` — they live on
-the record itself) and serializes `transaction.timestamp` into an ISO string, so
+the record itself) and serializes `details.timestamp` into an ISO string, so
 the payload survives `JSON.stringify` and an `IndexedDB` round trip.
 `fromStorage` is its inverse: it recombines a stored record with its decrypted
-private data and revives `transaction.timestamp` into a `Date`.
+private data and revives `details.timestamp` into a `Date`.
 
 ### Client fabrics (`src/fabrics/client/`)
 

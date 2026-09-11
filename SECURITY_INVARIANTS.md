@@ -105,6 +105,26 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 8. The schema metadata table must be excluded from migration backups and rollback
    cleanup, so the bookkeeping survives the operation it describes.
 
+### 2a-1. Decrypted Payload Invariants
+
+1. A successful decryption proves the password, not the content. Every decrypted
+   payload must be validated against its expected structure before it is used.
+2. A stored secret must be validated as usable key material — a private key
+   inside the secp256k1 range, or a valid mnemonic with a parseable BIP-44 root
+   path — before it reaches the signer.
+3. Byte arrays reconstructed from persisted JSON must have every element checked
+   as an integer in `0 … 255`, and an index-keyed object must carry contiguous
+   ordered keys, so a tampered record cannot decode into different bytes than it
+   declares.
+4. A ciphertext envelope must be structurally checked before decryption: the
+   version must match the profile, and the salt, IV, and ciphertext must decode
+   and have admissible lengths.
+5. A payload that decrypts but fails any of the above must surface as corrupted
+   data, never as an invalid password. The two have different remedies and must
+   stay distinguishable.
+6. A vault whose stored records cannot all be read must fail loudly rather than
+   loading the subset that happens to parse.
+
 ### 2b. Account Removal Invariants
 
 1. A wallet must never be left with zero accounts. Removing the last account of
@@ -127,13 +147,59 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    unreachable node is never mistaken for an empty account.
 6. Integer values in node and indexer responses must survive JSON parsing without
    precision loss, so an amount is never silently rounded before it is used.
+7. A derivation path must be canonical and in range before it is used to derive a
+   key: the BIP-44 purpose fixed, `coinType` and `account` hardened, `change` and
+   `index` not hardened, every component an integer within the BIP-32 range and
+   written without leading zeros. Two different strings must never derive the
+   same key.
+
+### 3a. Reservation Invariants
+
+Reservations gate the available balance, so a defect here overspends an account
+rather than merely displaying the wrong number.
+
+1. A reservation must lock at least what the operation it stands for will spend:
+   the reserved amount must cover the transfer amount plus its gas cost.
+2. Reserved and requested amounts must be positive, and gas cost must be
+   non-negative and never exceed the amount reserved.
+3. A recipient address must pass full checksum-aware validation before a
+   reservation is written, not only before a transfer is signed.
+4. One deploy may hold at most one reservation per network.
+5. Concurrent actions touching the same account's funds, the same deploy, or the
+   same reservation must be serialized or refused, never interleaved — two
+   balance checks must not both pass against the same funds.
+6. Clearing a network's reservations and writing a reservation on that network
+   are mutually exclusive. Network cleanup must hold an exclusive scope, and the
+   methods that perform it must refuse to run outside one.
+7. A reservation may be rewritten or removed only while its confirmation watcher
+   and expiration timer are suspended, so an asynchronous release cannot race a
+   write.
+8. A reservation must not be moved to another account or another network by an
+   update; identity is fixed at creation.
+9. Reserving the entire available balance must be permitted; reserving beyond it
+   must not.
 
 ## 4. Recovery Invariants
 
 1. Methods that generate mnemonics must return recovery material to callers.
 2. SDK changes must not silently break deterministic wallet recovery flows.
 
-## 5. Documentation Invariants
+## 5. Error Reporting Invariants
+
+1. No SDK error may surface without a readable message. A caught non-`Error`
+   value, or an upstream failure that reports nothing, must still name the
+   subsystem that failed.
+2. Distinct failure causes must be distinct types. A wrong password, corrupted
+   data, an unsupported encryption version, a storage failure, and an upstream
+   API failure must not collapse into one error a caller has to disambiguate by
+   matching message strings.
+3. A boolean password check may return `false` only for an actual password
+   failure. Any other error must propagate, so a damaged vault is never reported
+   as a typo.
+4. Error messages must not carry secret material, including in the `reason` and
+   `details` fields that wrap an upstream cause.
+
+## 6. Documentation Invariants
 
 1. Security-relevant documentation must match runtime implementation.
 2. Crypto settings in docs and code must remain consistent.

@@ -212,9 +212,20 @@ A network with an operation in flight cannot be switched, updated, or removed:
 event let a UI disable those controls instead of catching the error. Removing a
 network also drops that network's reservations from memory and storage.
 
+`updateNetwork` and `removeNetwork` take that one step further: both run inside
+`ReservationAdapterManager.runExclusiveNetworkAction`, which takes an **exclusive
+scope** over the network for the whole operation. A per-account reservation
+action holds a _shared_ scope over the same network, so the two cannot interleave:
+a network wipe cannot start while a reservation is being written, and a
+reservation cannot be added to a network whose reservations are being cleared.
+The loser gets `ReservationActionInProgressError`. `removeNetworkReservations` is
+itself decorated with `@EnsureExclusiveNetwork` and throws if it is ever reached
+outside that scope, so the invariant cannot be bypassed by a new call site.
+
 Balances, reservations & transfers:
 
 ```ts
+getAccount(walletId: string, accountId: string): Account // open wallet + known account, or it throws
 getBalance(address: Address): Promise<bigint>
 getAvailableBalance(walletId: string, accountId: string): Promise<bigint> // total minus reserved
 getReservations(walletId: string): Promise<ITransactionReservation[]>
@@ -228,11 +239,24 @@ session before signing.
 
 `getTransactionsHistory` is the only history entry point that knows about
 pending transactions: it merges the indexed history of the account with the
-pending transactions held by this wallet's reservation adapter for the current
-network, dedupes by deploy id (the indexed row wins once confirmed), and sorts
-newest first. The lower-level bricks stay unaware of reservations —
-`Account.getTransactionsHistory` and `AccountDataService.getTransactionHistory`
-return indexed transactions only.
+pending transactions for the current network, dedupes by deploy id (the indexed
+row wins once confirmed), and sorts newest first. The lower-level bricks stay
+unaware of reservations — `Account.getTransactionsHistory` and
+`AccountDataService.getTransactionHistory` return indexed transactions only.
+
+The pending side has two halves, and they do not come from the same adapter.
+**Outgoing** rows come from this wallet's own reservation adapter. **Incoming**
+rows come from the reservation adapters of _every_ open wallet: a reservation
+whose recipient is this account's address is a transfer that another local wallet
+has already submitted and this account is about to receive, so it is surfaced
+here as a pending `receive` before the indexer knows about it.
+`ReservationAdapterManager.getPendingTransactions` assembles both halves.
+
+A reservation is stored once, from the sender's side, and the `type` of the
+pending row is decided per reader: `TransactionReservationFabric.toPendingTransaction`
+compares the reservation's `from` with the address of the account reading it and
+yields `send` or `receive` accordingly. A self-transfer (`from` equal to `to`) is
+filtered out of the incoming half so it does not appear twice in one list.
 
 ```ts
 type THistorySource = "pending" | "executed";
@@ -290,6 +314,87 @@ lock funds (`phloLimit * phloPrice` for a deploy) and both return an
 deploy-watch callbacks to that reservation. Both also run inside
 `ApiClientManager.runNetworkOperation`, which marks the network busy for the
 duration and reports it through `onNetworkBusyChanged`.
+
+### External reservations
+
+`transfer` and `deploy` create a reservation as a side effect of submitting their
+own deploy. Some integrations submit the deploy themselves — a hardware signer, a
+relayer, a second application sharing the same vault — and still need the funds
+locked locally so the available balance and the pending history stay correct. For
+those, reservations are a first-class, writable resource:
+
+```ts
+addTransactionReservation(request: TTransactionReservationRequest, password?: string): Promise<ITransactionReservation>
+updateTransactionReservation(reservationId: string, request: TTransactionReservationRequest, password?: string): Promise<ITransactionReservation>
+removeTransactionReservation(walletId: string, reservationId: string): Promise<ITransactionReservation>
+```
+
+```ts
+type TTransactionReservationRequest = {
+    walletId: string;
+    accountId: string;
+} & TTransactionReservationMeta;
+
+interface IReservationMeta {
+    deployId: string;   // the deploy this reservation stands for
+    pendingAmount: bigint; // total funds to lock, atomic units
+    gasCost: bigint;
+}
+
+interface ITransferReservationMeta extends IReservationMeta {
+    kind: "transfer";
+    to: Address;
+    amount: bigint;
+}
+
+interface IDeployReservationMeta extends IReservationMeta {
+    kind: "deploy";
+    term?: string;
+}
+
+type TTransactionReservationMeta =
+    | ITransferReservationMeta
+    | IDeployReservationMeta;
+```
+
+`TTransactionReservationMeta` and its two members are re-exported through
+`Client`, so a caller builds the request from the package root without importing
+a fabric path. `IReservationMeta` is shown here only as the shared base; it is
+not exported on its own.
+
+These are not raw writes. Every call validates the payload at the boundary
+(`validateReservationPayload`) before anything is persisted:
+
+- `deployId` must be non-empty, and unique among the live reservations of the
+  same network — one deploy cannot be reserved twice;
+- `pendingAmount` must be greater than zero, and must still fit the account's
+  remote balance minus everything already reserved on that network;
+- `gasCost` must be non-negative and must not exceed `pendingAmount`;
+- for a `transfer`, `to` must be a valid, canonical, checksummed address,
+  `amount` must be positive, and `amount + gasCost` must fit inside
+  `pendingAmount` — a reservation that does not cover its own transfer plus gas
+  is rejected rather than silently under-locking the balance.
+
+A reservation that consumes the entire available balance is allowed: the balance
+check is `remote - reserved >= 0`, not `> 0`, so an account can reserve down to
+exactly zero.
+
+`updateTransactionReservation` keeps the reservation's `id` and re-checks the
+balance against the **delta** between the new and the old `pendingAmount`, so
+shrinking a reservation never fails on funds. It refuses to move a reservation to
+another account or another network; those are a remove plus an add. While an
+update or a remove runs, the reservation's deploy watcher and expiration timer
+are suspended and re-armed afterwards, so a confirmation arriving mid-update
+cannot delete a record that is being rewritten.
+
+`removeTransactionReservation` resolves the reservation's own `networkId` first
+and marks _that_ network busy, not the currently selected one — a reservation can
+be dropped while the UI is looking at a different network.
+
+All three, plus `transfer` and `deploy`, run under
+[ReservationOperationGuardService](SERVICES.md#reservationoperationguardservice-srcservicesreservationoperationguardindexts),
+which rejects a concurrent second action on the same account, deploy, or
+reservation with `ReservationActionInProgressError` (`409`).
 
 ### Keyfile export & import
 
@@ -628,7 +733,9 @@ Behavior notes:
 - `isPasswordValid` attempts a decrypt of the stored secret and reports the
   outcome as a boolean instead of throwing. It exists so an export can reject a
   wrong password up front with a precise error rather than failing halfway
-  through serialization.
+  through serialization. Only `InvalidPasswordError` becomes `false`; a storage
+  failure, a corrupted record, or an unsupported encryption version is rethrown,
+  so a broken vault is never reported to the user as a typo.
 - `transfer` and `deploy` are guarded by `@EnsureActiveAccountExist` and delegate
   to `ApiServiceRegistry.transactions`. `passwordProvider` is optional
   — when a session is active the signer uses the in-memory secret; otherwise the
@@ -964,6 +1071,7 @@ Wallet and account errors:
 | `WalletActionInProgressError` | `WALLET_ACTION_IN_PROGRESS` | `409` | `action`, `signerId` |
 | `WalletOperationCancelledError` | `WALLET_OPERATION_CANCELLED` | `409` | `signerId` |
 | `LastAccountRemovalError` | `LAST_ACCOUNT_REMOVAL` | `409` | `walletId`, `accountId` |
+| `ReservationActionInProgressError` | `RESERVATION_ACTION_IN_PROGRESS` | `409` | `action`, `networkId`, `accountId?` |
 
 Keyfile errors:
 
@@ -983,12 +1091,24 @@ Storage schema errors (all extend `StorageSchemaError` except the chain one):
 | `StorageMigrationRollbackError` | `STORAGE_MIGRATION_ROLLBACK_FAILED` | `500` | `false` | `failedVersion`, `failures`, `migrationError` |
 | `StorageMigrationChainError` | `STORAGE_MIGRATION_CHAIN_INVALID` | `500` | n/a | `violation`, `versions` |
 
+Crypto and decryption errors:
+
+| Class | Code | Status | Extra fields |
+| --- | --- | --- | --- |
+| `InvalidPasswordError` | `INVALID_PASSWORD` | `403` | `details` |
+| `CorruptedDataError` | `CORRUPTED_DATA` | `422` | `source` |
+| `UnsupportedEncryptionVersionError` | `UNSUPPORTED_ENCRYPTION_VERSION` | `400` | `version`, `supportedVersion` |
+| `KeyDerivationError` | `KEY_DERIVATION_FAILED` | `500` | `reason` |
+
 Runtime and network errors:
 
 | Class | Code | Status | Extra fields |
 | --- | --- | --- | --- |
 | `DomainClosedError` | `DOMAIN_CLOSED` | `410` | `domainName` |
 | `NetworkBusyError` | `NETWORK_BUSY` | `409` | `networkId` |
+| `StorageOperationError` | `STORAGE_OPERATION_FAILED` | `500` | `operation`, `target`, `reason` |
+| `DeployTimeoutError` | `DEPLOY_TIMEOUT` | `408` | `deployId`, `timeoutMs` |
+| `ApiRequestError` | `API_REQUEST_FAILED` | `502` | `source`, `operation`, `reason` |
 | `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
 
 Supporting enums:
@@ -998,6 +1118,44 @@ enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+}
+
+enum ReservationAction {
+    ADD = "ADD",
+    UPDATE = "UPDATE",
+    REMOVE = "REMOVE",
+    TRANSFER = "TRANSFER",
+    DEPLOY = "DEPLOY",
+    NETWORK_CLEANUP = "NETWORK_CLEANUP",
+}
+
+enum CorruptedDataSource {
+    ENCRYPTED_SALT = "the salt of the encrypted payload",
+    ENCRYPTED_IV = "the initialization vector of the encrypted payload",
+    ENCRYPTED_CONTENT = "the content of the encrypted payload",
+    WALLET_SECRET = "the decrypted wallet secret",
+    RESERVATION_DATA = "the decrypted transaction reservation",
+}
+
+enum StorageOperation {
+    OPEN_DATABASE = "open the database",
+    CREATE_TABLE = "create the table",
+    DROP_TABLE = "drop the table",
+    RUN_TRANSACTION = "run a transaction on the table",
+    FINISH_TRANSACTION = "finish an aborted transaction on the table",
+}
+
+enum ApiSource {
+    NODE = "node api",
+    GRAPHQL = "graphql api",
+}
+
+enum UnknownErrorReason {
+    STORAGE = "browser storage did not report a reason",
+    STORAGE_MIGRATION = "the storage migration did not report a reason",
+    NODE_API = "node api did not report a reason",
+    GRAPHQL_API = "graphql api did not report a reason",
+    CRYPTO = "the crypto engine did not report a reason",
 }
 
 enum StorageMigrationChainViolation {
@@ -1035,6 +1193,14 @@ guarded action on the same signer — opening the same wallet twice, or deriving
 two accounts at once. `action` says which one. See
 [WalletOperationGuardService](SERVICES.md#walletoperationguardservice-srcserviceswalletoperationguardindexts).
 
+`ReservationActionInProgressError` is its equivalent for reservations, keyed by
+network instead of by signer. It carries the `action` that is already running
+(`ReservationAction`), the `networkId` it holds, and the `accountId` when the
+conflict is per-account rather than network-wide. Two transfers from one account,
+an update racing a removal of the same reservation, or a reservation write racing
+a network wipe all surface as this error. See
+[ReservationOperationGuardService](SERVICES.md#reservationoperationguardservice-srcservicesreservationoperationguardindexts).
+
 `WalletOperationCancelledError` means the operation completed but its result was
 thrown away because the wallet was locked, closed, or logged out while it was
 running: a cancelled unlock (see
@@ -1063,6 +1229,67 @@ failure, a vault error string, an unparsable amount, or a missing expression),
 and its `502` status marks it as an upstream problem rather than an empty
 account. Callers must now handle it explicitly: a caught error is no longer the
 same thing as `0`.
+
+### Typed failures instead of anonymous errors
+
+Decryption, storage, and node access used to fail with a bare `Error` carrying a
+string assembled at the throw site. Anything a caller wanted to branch on had to
+be matched against that string. Those paths now throw typed errors, and every one
+of them keeps its cause in a structured field rather than only in the message.
+
+`InvalidPasswordError` (`403`) is thrown by `CryptoService.decryptWithPassword`
+when AES-GCM authentication fails. That is the only meaning of a failed
+`crypto.subtle.decrypt` on well-formed input: the key derived from the password
+is wrong. It carries optional `details` for callers that need to say _which_
+password failed. The keyfile path catches it and re-throws
+`InvalidKeyfilePasswordError`, so the keyfile taxonomy stays intact, and
+`Signer.isPasswordValid` now returns `false` only for this error and rethrows
+anything else — a storage or crypto-engine failure is no longer reported to the
+user as a wrong password.
+
+`CorruptedDataError` (`422`) separates "the ciphertext is damaged" from "the
+password is wrong". `source` (a `CorruptedDataSource`) names the part that failed
+to read: the salt, the IV, or the content of the encrypted payload when it is not
+valid base64 or has an impossible length, or the decrypted wallet secret or
+reservation when it decrypts successfully but does not match its expected shape.
+The two cases need different UI: one is retryable with another password, the
+other is not.
+
+`UnsupportedEncryptionVersionError` (`400`) replaces the old
+`Unsupported version N` string thrown for an encrypted payload from a build with
+a different crypto profile. It carries both `version` and `supportedVersion`.
+
+`KeyDerivationError` (`500`) covers a PBKDF2 failure inside WebCrypto itself,
+which is an environment problem (a missing or restricted `crypto.subtle`), not a
+user error.
+
+`StorageOperationError` (`500`) is what `BrowserStorage` throws instead of the
+four different `Failed to ...` strings: `operation` says what IndexedDB was asked
+to do, `target` names the database or table, and `reason` carries whatever the
+underlying request reported. An aborted transaction reports
+`FINISH_TRANSACTION`, which previously had no reason at all.
+
+`ApiRequestError` (`502`) wraps a failed node or indexer call. `source` is
+`ApiSource.NODE` or `ApiSource.GRAPHQL`, `operation` names the SDK call site, and
+`reason` carries the upstream message. A GraphQL response with a non-empty
+`errors` array is joined into one `reason` rather than being stringified as raw
+JSON.
+
+`DeployTimeoutError` (`408`) is raised by `DeployStatusPoller` when a deploy is
+not finalized within the watch timeout. Its message says explicitly that the
+deploy may still be processed by the network, because a timeout here is not proof
+of failure — and its `408` status keeps it distinct from an `ApiRequestError`
+caused by an unreachable node.
+
+Every one of these reads its upstream cause through `getErrorMessage`, which
+falls back to an `UnknownErrorReason` constant naming the subsystem that stayed
+silent. The practical effect is that no SDK error can surface with an empty
+message, and a thrown non-`Error` value (a string, a DOM exception, a rejected
+object) no longer degrades into `[object Object]`.
+
+`IErrorContext` (`{ context: string }`) is the small shape passed to
+`ensureValid` and to the internal balance checks so a validation failure names
+the method it came from. See [Validators](UTILS.md#validators-srcutilsvalidatorsindexts).
 
 ### Keyfile errors
 
@@ -1152,6 +1379,11 @@ interface IHDSecretRecord extends ISeedCredentials {
     rootHDPath: string;
 } // serialized form
 
+interface IStoredPrivateKeySecret {
+    privateKey: unknown;
+} // as it comes back out of the vault, before validation
+
+type TStoredSecret = IHDSecretRecord | IStoredPrivateKeySecret;
 type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
 ```
 
@@ -1159,6 +1391,16 @@ type TDecryptedSecret = IPrivateKeyCredentials | IHDSecret;
 It lives here rather than on `Signer` or `SigningSession` because this module
 owns the secret shapes; the session, the signer, the fabric, and the keyfile
 import path all consume the same type from one place.
+
+`TStoredSecret` is the same material one step earlier: what `JSON.parse` returns
+from a decrypted vault record, before anything has checked it. Its `privateKey`
+is `unknown` on purpose — the serialized form may be a `Uint8Array`, a Node
+`Buffer` JSON envelope, or an index-keyed object, and which one it is decides
+nothing about whether the bytes are a usable key. `isStoredSecret` is the guard
+that turns one into the other: it requires either a private key that survives
+`toUint8Array` and lies inside the secp256k1 range, or a valid BIP-39 mnemonic
+with a parseable BIP-44 root path. A record that decrypts but fails this check
+raises `CorruptedDataError` instead of being fed to the signer.
 
 Every secret now travels through a provider, including the HD recovery phrase.
 `Wallet.createHD` used to receive the mnemonic as a plain option field alongside
@@ -1176,6 +1418,7 @@ Value object for a `m/44'/coinType'/account'/change/index` path with validation.
 ```ts
 new Bip44Path(options: IBip44PathOptions) // { coinType, account?, change?, index? }
 Bip44Path.parse(pathString: string): Bip44Path
+Bip44Path.isValid(pathString: string): boolean // parse without throwing
 Bip44Path.fromOptions(options: IBip44PathOptions): Bip44Path
 ```
 
@@ -1191,6 +1434,27 @@ toOptions(): IBip44PathOptions
 clone(): Bip44Path
 nextIndex(): Bip44Path // clone with index + 1
 ```
+
+Every component is an integer in `0 … 2^31 - 1`, the BIP-32 non-hardened range;
+`change` is further restricted to `0` or `1`. The upper bound matters because a
+value above it silently overflows into the hardened space when the path is
+converted to indexes, which would derive a different key than the string says.
+Both the constructor and the mutators enforce it, so an existing path cannot be
+mutated out of range after construction.
+
+`parse` is strict about the string form as well:
+
+- the purpose must be exactly `44'`;
+- `coinType` and `account` must be hardened (BIP-44 requires it), and the
+  apostrophe is stripped only after that has been checked — a non-hardened
+  `m/44'/60/0/0/0` is rejected rather than quietly parsed as hardened;
+- `change` and `index` must not be hardened;
+- every component must be a canonical decimal number: no leading zeros, no sign,
+  no whitespace, nothing `parseInt` would accept by reading a numeric prefix and
+  discarding the rest. `044'`, `+1`, and `0x10` are all rejected.
+
+`isValid` is the non-throwing form, used by the stored-secret guard to check a
+persisted `rootHDPath` before deriving anything from it.
 
 ---
 
@@ -1339,7 +1603,7 @@ removeNetwork(id: NetworkId): void                          // falls back to the
 
 // busy state & per-network context
 isNetworkBusy(networkId: NetworkId): boolean
-runNetworkOperation<TResult>(operation: () => Promise<TResult>, onBusyChanged?: TNetworkBusyListener): Promise<TResult>
+runNetworkOperation<TResult>(operation: () => Promise<TResult>, options?: INetworkOperationOptions): Promise<TResult>
 createNetworkContext(networkId?: NetworkId): INetworkContext // defaults to the active network
 
 isReady(): boolean
@@ -1352,12 +1616,27 @@ Accessors are guarded by `@EnsureApiClientManagerInitialized` /
 Persistence of custom networks is orchestrated by `NetworkManager`, not here —
 this manager only holds the live registry.
 
-`runNetworkOperation` wraps one network-bound operation: it marks the current
-network busy in the `NetworkBusyRegistry`, reports the change through the
-optional listener, runs the operation, and releases the mark in a `finally` — so
-a rejected operation never leaves the network stuck. `Client.transfer` and
-`Client.deploy` are the two callers, which is why both report busy transitions
-through `onNetworkBusyChanged`. While a network is busy, `switchNetwork`
+`runNetworkOperation` wraps one network-bound operation: it marks a network busy
+in the `NetworkBusyRegistry`, reports the change through the optional listener,
+runs the operation, and releases the mark in a `finally` — so a rejected
+operation never leaves the network stuck.
+
+```ts
+interface INetworkOperationOptions {
+    onBusyChanged?: TNetworkBusyListener;
+    networkId?: NetworkId; // defaults to the active network
+}
+```
+
+The listener used to be a positional argument; it is now one field of an options
+object, alongside `networkId`. That second field is what lets an operation mark a
+network other than the selected one: `Client.removeTransactionReservation` reads
+the reservation's own `networkId` and marks _that_ network busy, so dropping a
+reservation on an inactive network still blocks a concurrent switch or removal of
+it. Callers that operate on the current network (`Client.transfer`,
+`Client.deploy`, the reservation writes) omit the field.
+
+While a network is busy, `switchNetwork`
 (`@EnsureCurrentNetworkNotBusy`), `updateNetwork` and `removeNetwork`
 (`@EnsureTargetNetworkNotBusy`) throw `NetworkBusyError` instead of rebuilding
 clients under an in-flight deploy.
@@ -1591,6 +1870,11 @@ new BaseGraphQLClient(config: TAxiosClientConfig)
 query<T>(query: string, variables?: Record<string, unknown>): Promise<T>
 ```
 
+A GraphQL error array is no longer stringified into the message. Each entry is
+read through `getErrorMessage`, the readable reasons are joined, and the result
+is thrown as `ApiRequestError` with `source: ApiSource.GRAPHQL`, so a caller
+branches on `code` and reads `reason` instead of parsing JSON out of a message.
+
 ### ValidatorClient (`src/domains/ValidatorClient/index.ts`)
 
 ```ts
@@ -1632,18 +1916,57 @@ Read model for indexed transactions and the reservation record shape.
 interface Transaction {
     id: string;
     timestamp: Date;
-    type: "send" | "receive" | "deploy";
+    type: TransactionType;      // "send" | "receive" | "deploy"
     from: string;
     to?: string;
     amount?: string;
     deployId?: string;
     blockHash?: string;
     gasCost?: string;
-    status: "pending" | "completed" | "failed";
+    status: TransactionStatus;  // "pending" | "completed" | "failed"
     contractCode?: string;
-    note?: string;
     networkId: NetworkId;
-    detectedBy?: "balance_change" | "manual" | "auto";
+    detectedBy?: TransactionDetectedBy; // "balance_change" | "manual" | "auto"
+}
+```
+
+The four unions are derived from exported `as const` tuples rather than written
+out twice, so a runtime guard can check a value against the same source the type
+comes from:
+
+```ts
+const TRANSACTION_STATUSES = ["pending", "completed", "failed"] as const;
+const TRANSACTION_TYPES = ["send", "receive", "deploy"] as const;
+const TRANSACTION_DETECTED_BY_TYPES = ["balance_change", "manual", "auto"] as const;
+const TRANSACTION_RESERVATION_KINDS = ["transfer", "deploy"] as const;
+
+type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+type TransactionType = (typeof TRANSACTION_TYPES)[number];
+type TransactionDetectedBy = (typeof TRANSACTION_DETECTED_BY_TYPES)[number];
+type TransactionReservationKind = (typeof TRANSACTION_RESERVATION_KINDS)[number];
+```
+
+`Transaction.note` is gone. It was never filled by any code path and it was
+carried into the transactions CSV export, so the column is gone from
+`TRANSACTIONS_CSV_HEADERS` too.
+
+```ts
+interface ITransactionReservationDetails {
+    deployId: string;
+    timestamp: Date;
+    from: string;
+    to?: string;
+    amount?: string;
+    gasCost?: string;
+    contractCode?: string;
+}
+
+interface ITransactionReservationPrivateData {
+    accountId: string;
+    pendingAmount: string;
+    expirationTime: number;
+    kind: TransactionReservationKind;
+    details: ITransactionReservationDetails;
 }
 
 interface ITransactionReservation
@@ -1652,20 +1975,35 @@ interface ITransactionReservation
 }
 ```
 
-`ITransactionReservationPrivateData` holds `accountId`, `pendingAmount`
-(atomic units — the balance-lock semantics), `expirationTime`, and the full
-pending `transaction` (`status: "pending"`, `detectedBy: "manual"`, `amount` and
-`gasCost` in display units so they match indexed rows). The whole payload is
-stored **encrypted at rest** with the signer's data key, so reading it requires
-an active session or an explicit password.
+A reservation no longer embeds a whole `Transaction`. It used to, and that baked
+the **sender's perspective** into stored data: `type: "send"` and
+`status: "pending"` were frozen at write time, which made the same record
+unusable for the recipient account. What is stored now is the perspective-free
+part — who sent it, to whom, how much, and what it cost — under `details`, plus a
+`kind` saying whether it stands for a transfer or a deploy.
+`TransactionReservationFabric.toPendingTransaction(reservation, viewerAddress)`
+renders a `Transaction` from it for one specific reader, deciding `send` versus
+`receive` from that reader's address. `status` and `detectedBy` are constants of
+the rendering, not stored fields.
+
+`pendingAmount` stays in atomic units (it is the balance-lock semantics), while
+`details.amount` and `details.gasCost` stay in display units so a rendered
+pending row matches the indexed rows next to it. The whole payload is stored
+**encrypted at rest** with the signer's data key, so reading it requires an
+active session or an explicit password.
 
 Storage needs a serializable payload, so what is actually written is
-`ISerializedTransactionReservationPrivateData`, whose `transaction` is a
-`TSerializedTransaction` — `Transaction` with `timestamp` as an ISO string
-instead of a `Date`. `TransactionReservationFabric.toPrivateData` produces it and
-`fromStorage` parses the timestamp back into a `Date`, so the in-memory
-`Transaction` contract stays unchanged and no consumer ever meets a string
-`timestamp`.
+`ISerializedTransactionReservationPrivateData`, whose `details` is a
+`TSerializedTransactionReservationDetails` — the same shape with `timestamp` as
+an ISO string instead of a `Date`. `TransactionReservationFabric.toPrivateData`
+produces it and `fromStorage` parses the timestamp back into a `Date`, so no
+consumer ever meets a string `timestamp`.
+
+Decrypting is not trusting: what comes back out of the vault is validated against
+`isSerializedReservationPrivateData` before it is used, so a record that decrypts
+into the wrong shape is rejected (`CorruptedDataError`) rather than rebuilt into
+a malformed reservation. See
+[Guards](UTILS.md#guards-srcutilsguardsindexts).
 
 ---
 
@@ -1681,9 +2019,17 @@ ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?
 
 getBalance(account: Account): Promise<IBalanceData> // total minus the current network's reservations
 getReservations(): ITransactionReservation[]
-getPendingTransactions(accountId?: string): Transaction[]
+getReservation(id: string): ITransactionReservation   // throws when unknown
+getOutgoingPendingTransactions(account: Account): Transaction[]
 removeNetworkReservations(networkId: NetworkId): Promise<void>
 validateSufficientBalance(account: Account, amount: bigint): Promise<boolean>
+
+// externally submitted deploys
+add(wallet: Wallet, payload: TCreateTransactionReservationPayload, passwordProvider?): Promise<ITransactionReservation>
+update(wallet: Wallet, reservationId: string, payload: TCreateTransactionReservationPayload, passwordProvider?): Promise<ITransactionReservation>
+remove(id: string): Promise<ITransactionReservation>
+
+// deploys submitted by the SDK
 transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 deploy(wallet: Wallet, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 dispose(): void
@@ -1693,13 +2039,34 @@ dispose(): void
 a transfer, `phloLimit * phloPrice` for a deploy — so the reserved balance is a
 plain sum with nothing added on top of it.
 
+`getPendingTransactions(accountId?)` is gone. It rendered stored reservations as
+transactions directly, which only worked for the sender; it is replaced by
+`getOutgoingPendingTransactions(account)`, which takes the whole account because
+the account's address is what decides the rendered row. The incoming half is
+assembled one level up, in `ReservationAdapterManager`, which can see every open
+wallet's adapter.
+
+`validateSufficientBalance` returns `true` when `remote - reserved >= 0`. It used
+to require a strictly positive remainder, which made a reservation for the full
+available balance fail for no reason.
+
+Every mutation — `add`, `update`, `remove`, `transfer`, `deploy` — runs inside
+`ReservationOperationGuardService.runReservationAction`, keyed by account and
+network (plus deploy id or reservation id where one applies). A second concurrent
+action on the same key is rejected with `ReservationActionInProgressError`, so
+two parallel transfers cannot both pass the balance check against the same funds.
+`add` and `update` additionally validate their payload before taking the guard
+and reject a duplicate `deployId` on the same network.
+
 Both reading and writing reservations need the signer's data key, resolved
 through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
 otherwise the optional `passwordProvider` does. `create` loads every stored
 reservation of this wallet regardless of network, deleting the expired ones and
-the ones pointing at a network the client no longer knows (a record that fails to
-decrypt rejects the whole `create` call) and rebuilding the rest through
-`TransactionReservationFabric.fromStorage`.
+the ones pointing at a network the client no longer knows, and rebuilding the
+rest through `TransactionReservationFabric.fromStorage`. A record that fails to
+decrypt, or that decrypts into something that is not a reservation, rejects the
+whole `create` call with `CorruptedDataError` rather than being skipped — a vault
+that cannot be read in full is not a vault with fewer reservations in it.
 Reserved amounts are keyed by `accountId` and network id. `transfer` and `deploy`
 validate the balance, perform the on-chain operation (forwarding the optional
 `passwordProvider` to the signer), build the reservation through
@@ -1713,9 +2080,9 @@ disagree. Implements `IDisposable`, so it is owned by `ReservationAdapterManager
 (a `DisposableItemManager`).
 
 One adapter holds the reservations of every network at once, so the reads narrow
-to the current network id: `getReservations`, `getPendingTransactions`, and the
-reserved amount behind `getBalance`. `removeNetworkReservations` drops the
-reservations of a removed network from memory and storage in one pass.
+to the current network id: `getReservations`, `getOutgoingPendingTransactions`,
+and the reserved amount behind `getBalance`. `removeNetworkReservations` drops
+the reservations of a removed network from memory and storage in one pass.
 `Client.getTransactionsHistory` narrows once more through
 `TransactionsHistoryAggregator`, which drops pending rows belonging to another
 network before merging or paginating them.
@@ -1830,6 +2197,11 @@ names, `NodeStorage` reads its table index key.
 `IndexedDB`-backed `ITableService` singleton (`getInstance(name?)`). Records are
 stamped with `createdAt` / `updatedAt`. Table create/drop bump the DB version.
 Guarded by `@EnsureDatabaseInitialized` / `@EnsureTableExists` decorators.
+
+Every `IndexedDB` failure surfaces as `StorageOperationError` with the
+`StorageOperation` that failed, the database or table it was aimed at, and the
+reason the request reported. This includes an aborted transaction, which used to
+throw a bare `Transaction aborted` with no indication of which table or why.
 
 ### NodeStorage (`src/domains/NodeStorage/index.ts`)
 

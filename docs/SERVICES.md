@@ -87,7 +87,11 @@ keyfiles and stored records identify a wallet by its `signerId`. Keyfile account
 import uses it to find the open wallet a set of accounts belongs to.
 
 `IWalletMetadata = { signerId, type, accounts: IAccountMetadata[] }` is the
-lightweight, non-secret listing used by UIs to render closed wallets.
+lightweight, non-secret listing used by UIs to render closed wallets. Its
+`accounts` are sorted by derivation index through
+`KeyDerivationService.compareIndexes`, the same rule `AccountManager` applies, so
+a closed wallet lists its accounts in the order they will appear once it is
+opened rather than in storage insertion order.
 
 `open` replaces the former `unlock`: loading a stored wallet into memory and
 holding a signing session are separate steps now, and only the first belongs
@@ -128,9 +132,22 @@ getAccount(id: string): Account | null
 
 `ICreatedAccountData = { accountId: string; account: Account }`.
 
+Accounts are kept **ordered by derivation index**, not by insertion order. The
+manager sorts on construction and re-sorts after `create` and `addAccounts`, so
+a wallet restored from storage, a wallet whose accounts arrived from a keyfile,
+and a wallet that has just derived a new account all enumerate their accounts in
+the same order. Ordering uses `KeyDerivationService.compareIndexes`, which sorts
+indexed accounts ascending and pushes index-less ones (an imported private key
+has no derivation index) to the end.
+
+That ordering is also what defines the **default active account**: it is the
+first entry of the ordered map, not whichever account happened to be inserted
+first. Previously `Wallet.fromKeyfile` chose the first entry of an unordered map
+and an imported wallet could open on `m/44'/.../3` instead of `m/44'/.../0`.
+
 `addAccounts` registers several already-created accounts at once and promotes the
-first of them to active **only when there was no active account**, so a bulk
-keyfile import never steals the selection the user is currently on.
+default to active **only when there was no active account**, so a bulk keyfile
+import never steals the selection the user is currently on.
 
 `remove` reassigns the active account only when the removed one was active.
 It previously reset the active account on every removal, which moved the
@@ -162,8 +179,13 @@ remove(id: string): ReservationAdapter
 removeByFilter(filter: (adapter: ReservationAdapter) => boolean): ReservationAdapter[]
 clear(): void
 getReservationsByWallet(): TReservationsByWallet
+getAllReservations(): ITransactionReservation[]
+getIncomingReservations(targetAddress: Address): ITransactionReservation[]
+getPendingTransactions(walletId: string, account: Account): Transaction[]
 hasNetworkReservations(networkId: NetworkId): boolean
-removeNetworkReservations(networkId: NetworkId): Promise<void>
+isExclusiveNetwork(networkId: NetworkId): boolean
+runExclusiveNetworkAction<T>(networkId: NetworkId, operation: () => Promise<T>): Promise<T>
+removeNetworkReservations(networkId: NetworkId): Promise<void> // @EnsureExclusiveNetwork
 ```
 
 Reservations are encrypted with the signer's data key, so building the adapter
@@ -174,15 +196,38 @@ This manager owns the reservation change notification. `Client` passes a single
 `onReservationsChanged` callback at construction, and every path that can alter
 the picture re-fires it: `create`, `remove`, `removeByFilter`, `clear`,
 `removeNetworkReservations` (in a `finally`, so a partial failure still notifies),
-plus the `onAdded` / `onConfirmed` / `onExpired` callbacks it subscribes on each
-adapter. `Client` turns that one callback into the `reservationsChanged` event
-with `getReservationsByWallet()` as the payload, so no caller has to wire adapter
-callbacks itself.
+plus the `onAdded` / `onReplaced` / `onRemoved` / `onConfirmed` / `onExpired`
+callbacks it subscribes on each adapter. `Client` turns that one callback into
+the `reservationsChanged` event with `getReservationsByWallet()` as the payload,
+so no caller has to wire adapter callbacks itself. `onReplaced` and `onRemoved`
+are new: an externally managed reservation can be rewritten or dropped without
+ever being confirmed, and a UI showing available balance has to hear about it.
 
 `hasNetworkReservations` answers whether any open wallet still holds funds on a
 network, which is what `Client.hasNetworkReservations` exposes to UIs before a
 network is removed. `removeNetworkReservations` fans a removed or reconfigured
 network out to every adapter.
+
+**Cross-wallet reads.** A reservation is stored by the wallet that created it,
+but its recipient may be an account of a different local wallet. This manager is
+the only place that can see every adapter at once, so the cross-wallet reads live
+here: `getAllReservations` flattens all adapters, and `getIncomingReservations`
+filters them down to transfers addressed to one account, excluding self-transfers
+so the sender does not see its own row twice. `getPendingTransactions(walletId,
+account)` is what `Client.getTransactionsHistory` calls: it concatenates the
+incoming rows drawn from every wallet with the outgoing rows of this wallet's own
+adapter, each rendered from the reading account's point of view.
+
+**Network exclusivity.** `runExclusiveNetworkAction` takes an exclusive scope on
+a network through the shared
+[ReservationOperationGuardService](#reservationoperationguardservice-srcservicesreservationoperationguardindexts)
+and runs the operation inside it. `Client.updateNetwork` and `Client.removeNetwork`
+wrap their whole body in it, so the config change and the reservation cleanup are
+one atomic step with respect to reservation writes. `removeNetworkReservations`
+is decorated with `@EnsureExclusiveNetwork` and refuses to run outside that
+scope, which makes the requirement structural instead of a convention a future
+call site could forget. `isExclusiveNetwork` is the predicate the decorator
+reads.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
@@ -195,15 +240,25 @@ the reservation and its expiration timer stay, so the deploy status being unknow
 keeps the funds locked until the reservation genuinely expires. Implements
 `IDisposable`.
 
+It extends `ItemManager<ITransactionReservation>`, so the map, the filtered
+reads, and `clear` come from there instead of being reimplemented over a private
+`Map`.
+
 ```ts
 new TransactionReservationsManager(reservations, options?: ITransactionReservationsManagerOptions)
-add(reservation): void
-subscribe(reservationId: string, callbacks: IDeployWatchCallbacks): () => void
-remove(id: string): boolean
+add(id: string, reservation): void
+replace(reservation): void      // @EnsureExclusiveReservation
+remove(id: string): ITransactionReservation
 get(id: string): ITransactionReservation | null
+getKnown(id: string): ITransactionReservation   // throws when unknown
 getAll(): ITransactionReservation[]
 getByNetworkId(networkId: NetworkId): ITransactionReservation[]
 getByAccountId(accountId: string, networkId: NetworkId): ITransactionReservation[]
+removeByNetworkId(networkId: NetworkId): ITransactionReservation[]
+ensureUniqueDeployId(deployId: string, networkId: NetworkId, excludedReservationId?: string): void
+isExclusiveReservation(id: string): boolean
+runExclusive<T>(id: string, operation: () => Promise<T>): Promise<T>
+subscribe(reservationId: string, callbacks: IDeployWatchCallbacks): () => void
 dispose(): void
 ```
 
@@ -212,9 +267,32 @@ network id. `subscribe` attaches per-reservation deploy-watch callbacks on top o
 the shared `watchCallbacks` and returns its own unsubscribe; it is what
 `ReservationAdapter` hands back inside `IReservedOperationResult`.
 
+`get` returns `null` for an unknown id, `getKnown` throws. The distinction
+matters because most call sites here are acting on a reservation the caller has
+just named, where a silent `null` would turn into a confusing failure further
+down.
+
+`ensureUniqueDeployId` enforces one reservation per deploy per network.
+`excludedReservationId` lets an update keep its own deploy id without colliding
+with itself.
+
+**`runExclusive` and the rearm cycle.** An in-flight reservation owns two timers:
+a `DeployStatusPoller` watching for confirmation and an expiration timeout. Both
+can fire at any moment and both delete the reservation. Rewriting or removing a
+reservation while they are armed is a race: a confirmation landing halfway
+through an update would delete the record the update is about to persist.
+`runExclusive` closes it — it marks the reservation exclusive, cancels its
+watcher, clears its expiration timer, runs the operation, and then rearms both in
+a `finally` (only if the reservation still exists, so a removal does not resurrect
+its own timers). `replace` is decorated with `@EnsureExclusiveReservation` and
+throws unless it is called inside that window, so the ordering cannot be
+bypassed.
+
 ```ts
 interface ITransactionReservationsManagerOptions {
     onAdded?(reservation): void;
+    onReplaced?(reservation): void;
+    onRemoved?(reservation): void;
     onConfirmed?(reservation): void;
     onExpired?(reservation): void;
     onFailed?(reservation, error: Error): void;
@@ -224,7 +302,10 @@ interface ITransactionReservationsManagerOptions {
 ```
 
 `onAdded` fires from `add` only, so reservations restored through the
-constructor stay silent — the caller already knows about them.
+constructor stay silent — the caller already knows about them. `onReplaced` and
+`onRemoved` cover the externally driven edits. `removeByNetworkId` deliberately
+does not fire `onRemoved` per reservation: it is the bulk path behind a network
+wipe, which notifies once at the manager level instead of once per record.
 
 `onFailed` is a notification, not a release signal: the reservation survives it
 and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
@@ -307,7 +388,10 @@ class ConcurrentOperationGuardService<TOwner = string> extends ItemManager<TOwne
         reservations: Map<string, TOwner>,
         createConflictError: (conflictOwner: TOwner) => Error,
         operation: () => Promise<T>,
+        scope?: IOperationScope<TOwner>,
     ): Promise<T>;
+
+    hasExclusiveScope(key: string): boolean;
 }
 ```
 
@@ -316,6 +400,34 @@ throws the caller's error when one is found, and otherwise registers every key,
 runs the operation, and releases the keys in a `finally`. The owner value stored
 under each key is what the error factory receives, so the rejection can name what
 already holds the key rather than just reporting a generic clash.
+
+**Scopes.** Plain keys are all-or-nothing: any two operations naming the same key
+conflict. That is wrong for a whole class of cases where many operations may
+proceed together but one must run alone — several accounts writing reservations
+on one network are fine side by side, while wiping that network's reservations is
+not. The optional `scope` adds a second, coarser layer of exclusion on top of the
+keys:
+
+```ts
+enum OperationScopeMode {
+    SHARED = "SHARED",
+    EXCLUSIVE = "EXCLUSIVE",
+}
+
+interface IOperationScope<TOwner> {
+    key: string;
+    mode: OperationScopeMode;
+    owner: TOwner;
+}
+```
+
+This is a reader/writer lock. An exclusive holder blocks everything on that scope
+key, shared or exclusive. A shared holder blocks only an exclusive claim, never
+another shared one. Shared holders are tracked per acquisition under a unique
+`Symbol`, so releases never collide between concurrent holders of the same scope
+and the scope is only freed when the last of them is done. A scope conflict is
+reported through the same `createConflictError` factory as a key conflict and is
+checked first, so the coarser reason wins when both would apply.
 
 ### WalletOperationGuardService (`src/services/WalletOperationGuard/index.ts`)
 
@@ -342,6 +454,60 @@ Two key namespaces keep the two concerns apart:
   and `SAVE_ACCOUNTS`, so opening a wallet twice, deriving two accounts at once,
   or importing two overlapping keyfile selections into the same signer all
   serialize instead of racing.
+
+### ReservationOperationGuardService (`src/services/ReservationOperationGuard/index.ts`)
+
+The reservation-specific guard, also built on the generic one and also a
+process-wide **singleton**, so `ReservationAdapter` (one per wallet) and
+`ReservationAdapterManager` share one lock table. Without a shared table, two
+wallets could not be kept from wiping and writing the same network at once.
+
+```ts
+ReservationOperationGuardService.getInstance(): ReservationOperationGuardService
+
+runReservationAction<T>(action: ReservationAction, target: IReservationOperationTarget, operation: () => Promise<T>): Promise<T>
+runNetworkReservationAction<T>(action: ReservationAction, networkId: NetworkId, operation: () => Promise<T>): Promise<T>
+hasNetworkScope(networkId: NetworkId): boolean
+```
+
+```ts
+interface IReservationOperationTarget {
+    accountId: string;
+    networkId: NetworkId;
+    deployId?: string;
+    reservationId?: string;
+}
+
+interface IReservationOperationOwner {
+    action: ReservationAction;
+    networkId: NetworkId;
+    accountId?: string;
+}
+```
+
+`runReservationAction` is the per-account path, used by `add`, `update`,
+`remove`, `transfer`, and `deploy`. It claims up to three keys at once, all
+prefixed `RESERVATION:`:
+
+| Key | Always claimed | What it prevents |
+| --- | --- | --- |
+| `RESERVATION:ACCOUNT:<networkId>:<accountId>` | yes | two actions on one account's funds on one network, so two balance checks cannot both pass against the same money |
+| `RESERVATION:DEPLOY:<networkId>:<deployId>` | when a deploy id is known | two reservations racing to claim the same deploy |
+| `RESERVATION:<reservationId>` | when an existing reservation is targeted | an update racing a removal of the same record |
+
+On top of those it takes a **shared** scope on
+`RESERVATION:NETWORK:<networkId>`, which is what makes per-account work parallel
+across accounts but still mutually exclusive with a network-wide operation.
+
+`runNetworkReservationAction` is the network-wide path, used through
+`ReservationAdapterManager.runExclusiveNetworkAction` by `Client.updateNetwork`
+and `Client.removeNetwork`. It claims **no** per-account keys and instead takes
+an **exclusive** scope on the same network key, so it waits for nothing in
+particular but excludes every per-account action for its duration.
+
+Conflicts surface as `ReservationActionInProgressError`, carrying the action that
+already holds the key, its network, and its account when the conflict is
+per-account.
 
 ---
 
@@ -692,13 +858,16 @@ import refuses anything else.
 `exportWalletKeyfile` checks the password through `Wallet.isPasswordValid`
 **before** serializing and throws `InvalidKeyfilePasswordError` on a mismatch, so
 a wrong password produces a precise error rather than a half-built file. Any
-other serialization failure is normalized to `InvalidKeyfileError`, so the export
-path never leaks a crypto-layer message.
+other serialization failure is normalized to `InvalidKeyfileError`, whose message
+now names the underlying reason through `getErrorMessage` instead of the flat
+`Wallet keyfile cannot be created` — the error class stays the same, so the
+taxonomy is unchanged, but a failed export is diagnosable.
 
 The keyfile builders return objects; only `exportTransactions` returns a string
 (pretty-printed JSON by default, or CSV built from `TRANSACTIONS_CSV_HEADERS`
 with RFC-4180 quoting). `toJSON` is exposed so a caller that wants a downloadable
-file gets the same 2-space formatting the SDK uses.
+file gets the same 2-space formatting the SDK uses. The CSV no longer has a
+`Note` column: `Transaction.note` was removed, and the column was always empty.
 
 ### ImportKeyfileService (`src/services/ImportKeyfileService/index.ts`)
 
@@ -713,11 +882,19 @@ ImportKeyfileService.toImportPayload(keyfile, passwordProvider, options?): Promi
 ImportKeyfileService.decryptKeyfileSecret(walletType, encryptedSecret, passwordProvider): Promise<TDecryptedSecret>
 ```
 
-`parseWalletKeyfile` accepts either a parsed object or a raw JSON string and runs
-`validateWalletKeyfile`: envelope type, version, wallet type, and both encrypted
-sections. `decryptKeyfileAccounts` then validates the decrypted list with
-`validateWalletKeyfileAccounts` — non-empty, well-shaped, no duplicate indexes,
-and at most one account for a private-key keyfile.
+`parseWalletKeyfile` accepts either a parsed object or a raw JSON string and
+validates the envelope type, the version, the wallet type, and both encrypted
+sections. `decryptKeyfileAccounts` then validates the decrypted list — non-empty,
+well-shaped, no duplicate indexes, and at most one account for a private-key
+keyfile.
+
+Both checks are **private static methods of this service**. They used to live in
+`@utils/validators` as `validateWalletKeyfile` and `validateWalletKeyfileAccounts`
+and are no longer exported from there: a utils module that knows about keyfile
+envelopes and wallet types imports half the domain layer back into the leaves of
+the dependency graph, which is what produced the import cycles this split
+removed. What stays in utils are the shape guards these methods call
+(`isEncryptedData`, `isKeyfileWalletAccount`), which depend on types only.
 
 `toImportPayload` narrows the accounts to `options.accountIndexes` when given.
 An empty array and an index the keyfile does not declare are both rejected with
@@ -730,7 +907,11 @@ private key. A mismatch is a tampered or corrupted file, not a usable wallet.
 
 Throughout, a failed decrypt becomes `InvalidKeyfilePasswordError` and a failed
 structural check becomes `InvalidKeyfileError` — the split a UI needs to decide
-between re-prompting for the password and rejecting the file.
+between re-prompting for the password and rejecting the file. The translation is
+now narrow: only `InvalidPasswordError` from the crypto layer becomes
+`InvalidKeyfilePasswordError`, while a `CorruptedDataError` or a storage failure
+propagates as itself. Catching everything as a bad password would have told the
+user to retype a correct password against a damaged file forever.
 
 ### WalletImportService (`src/services/WalletImport/index.ts`)
 
@@ -864,6 +1045,12 @@ type IDeployStatusResult =
     | { status: CHECK_ERROR; errorMessage: string };
 ```
 
+`submitSignedDeploy` and `exploreDeployData` throw `ApiRequestError`
+(`source: ApiSource.NODE`) instead of a `DeployService.*: <message>` string, so a
+caller can tell a node failure from a validation failure without parsing text.
+`NodeApiAdapter.getDeployStatus` fills `errorMessage` through `getErrorMessage`,
+so a `CHECK_ERROR` never carries `[object Object]` or an empty string.
+
 ### BlockService (`src/services/BlockService/index.ts`)
 
 ```ts
@@ -900,7 +1087,8 @@ follows the active network's profile.
 raise it:
 
 - the exploratory deploy itself fails (transport, node error) — the reason is the
-  underlying message;
+  underlying message, read through `getErrorMessage` so a silent failure still
+  names the node api rather than producing an empty string;
 - the node answers with `ExprString`, which is how the vault reports its own
   error;
 - `ExprInt` carries something that is not a non-negative integer — validated
@@ -979,6 +1167,14 @@ Deploy status comes from the node, which runs ahead of the indexer that serves
 transaction history: a deploy is confirmed here before the transaction shows up
 in `Client.getTransactionsHistory`.
 
+The two ways a watch ends badly are now distinct types. Exhausting the timeout
+raises `DeployTimeoutError` (`408`) carrying the `deployId` and `timeoutMs`, and
+its message says the deploy may still be processed — a timeout here means the
+poller stopped looking, not that the deploy failed. A poll that throws propagates
+the original error when it already carries a readable message, and is otherwise
+wrapped in `ApiRequestError` naming the deploy it was watching. Either way a
+reservation is not released on failure; see `onFailed` above.
+
 ### GraphqlParser (`src/services/GraphqlParser/`)
 
 Anti-corruption layer between the indexer's GraphQL shape and the domain
@@ -997,9 +1193,12 @@ transfer wins over its matching deployment, but inherits the deployment's block
 hash) and sorting by timestamp descending. Deployment-only rows map to
 `type: "deploy"`.
 
-`mapper.ts` maps a `RawTransfer` to `Transaction` (`send`/`receive` decided by
-comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`
-defines `Pagination` (`{ offset?, limit? }`), `Order`, and `QueryOptions`.
+`mapper.ts` maps a `RawTransfer` to `Transaction` (robust timestamp parsing).
+`send` versus `receive` is decided by `resolveTransferType(from, viewerAddress)`
+from `@utils/functions`, the same helper the reservation fabric uses to render a
+pending row, so an indexed transfer and its pending twin cannot disagree about
+direction. `queryOptions.ts` defines `Pagination` (`{ offset?, limit? }`),
+`Order`, and `QueryOptions`.
 
 ### HttpResponseParser (`src/services/HttpResponseParser/index.ts`)
 
@@ -1047,13 +1246,30 @@ CryptoService.deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 - Version `2`
 - KDF `PBKDF2`, `100_000` iterations, `SHA-256`
 - Cipher `AES-GCM`, 256-bit key
-- Salt `16` bytes, IV `12` bytes, data key `32` bytes
+- Salt `16` bytes, IV `12` bytes, auth tag `16` bytes, data key `32` bytes
 
-Decryption throws on an unsupported version or invalid credentials.
+`decryptWithPassword` checks the envelope before spending any work on it. The
+version must match the profile exactly (`UnsupportedEncryptionVersionError`), and
+each base64 field is decoded and length-checked (`CorruptedDataError` naming the
+field through `CorruptedDataSource`): the salt must be exactly
+`SALT_LENGTH`, the IV exactly `IV_LENGTH`, and the ciphertext at least
+`AUTH_TAG_LENGTH`, since an AES-GCM payload shorter than its own authentication
+tag cannot be a valid one. Only then is the key derived and the payload decrypted.
+
+Without those checks, a truncated or corrupted record reached
+`crypto.subtle.decrypt` and failed there, which is indistinguishable from a wrong
+password — so damaged storage was reported to the user as a typo. Now a failed
+`crypto.subtle.decrypt` on a well-formed envelope has exactly one meaning and
+raises `InvalidPasswordError`. A WebCrypto failure during key derivation itself
+raises `KeyDerivationError`, which is an environment problem rather than either.
 
 `decryptSignerData` decrypts the stored signer secret and returns either
 private-key credentials or an HD secret (with the `rootHDPath` re-parsed into a
-`Bip44Path`).
+`Bip44Path`). The decrypted JSON is validated with `isStoredSecret` before it is
+used: a private key must survive `toUint8Array` and fall inside the secp256k1
+range, and a seed must be a valid mnemonic with a parseable BIP-44 root path.
+Anything else raises `CorruptedDataError`. Previously the parsed object was
+trusted on the strength of a `"privateKey" in keyMaterial` check alone.
 
 `generateDataKeySecret` returns 32 random bytes as base64. It is a
 high-entropy secret used in place of a password in the same
@@ -1138,9 +1354,17 @@ KeyDerivationService.derivePrivateKey(masterNode: BIP32Interface, path: Bip44Pat
 KeyDerivationService.mnemonicToSeed(mnemonicWords: string[] | string, passphrase?): Promise<Uint8Array>
 KeyDerivationService.seedToMasterNode(seed): BIP32Interface
 KeyDerivationService.deriveNextKeyFromMnemonic(mnemonicWords, currentIndex, options?): Promise<Uint8Array>
+KeyDerivationService.compareIndexes(first: number | null, second: number | null): number
 ```
 
 Derived seeds are zeroized after use.
+
+`compareIndexes` is the ordering rule for derivation indexes, kept here because
+this is the module that defines what an index means. It sorts present indexes
+ascending and places `null` ones last — an imported private-key account has no
+index and belongs at the end rather than at position zero. `AccountManager` and
+`WalletManager.getPublicWalletsMetadata` both use it, so the in-memory account
+order and the metadata a UI lists before opening a wallet agree.
 
 ### KeysManager (`src/services/KeysManager/index.ts`)
 

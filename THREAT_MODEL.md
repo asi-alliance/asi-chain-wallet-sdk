@@ -60,6 +60,17 @@ Date: 2026-03-19
 10. Storage schema confusion: data written by a different SDK build being read or
     rewritten under the wrong assumptions, or a migration interrupted mid-way
     leaving partially converted data.
+11. Tampered ciphertext at rest: a stored record edited so that it still decrypts
+    under the user's password but decodes into different key material, a
+    different derivation path, or a reservation for a different amount.
+12. Reservation manipulation: an under-covering or duplicated reservation letting
+    an account spend past its balance, or two concurrent reservation actions both
+    passing a balance check against the same funds.
+13. Non-canonical derivation paths: two different path strings resolving to the
+    same key, or a component overflowing into the hardened range, so a wallet
+    derives keys the user did not intend.
+14. Failure-mode confusion: a damaged vault being reported as a wrong password,
+    which sends the user into an endless retry instead of a restore.
 
 ## 6. Out-of-Scope / Assumptions
 
@@ -101,6 +112,26 @@ Current controls:
     reported with `isStorageIntact: false` rather than being migrated on a guess.
 12. Precision-preserving response parsing: unsafe integer literals are quoted
     before `JSON.parse`, so chain amounts are never silently rounded in transit.
+13. Validation after decryption: a decrypted secret must be usable key material
+    (secp256k1 range, or a valid mnemonic with a canonical BIP-44 root path) and
+    a decrypted reservation must match its declared structure, or the record is
+    rejected as corrupted. Byte arrays rebuilt from stored JSON are checked
+    element by element, and index-keyed objects must carry contiguous ordered
+    keys, so tampering cannot change the decoded bytes.
+14. Envelope checks before decryption: version, salt length, IV length, and a
+    ciphertext at least as long as its authentication tag are verified first, so
+    a corrupted payload is reported as corrupted rather than as a wrong password.
+15. Canonical derivation paths: the BIP-44 purpose is fixed, `coinType` and
+    `account` must be hardened, `change` and `index` must not be, and every
+    component must be an in-range integer with no leading zeros.
+16. Reservation invariants enforced at the boundary: the reserved amount must
+    cover the transfer plus gas, recipients are checksum-validated, one deploy
+    holds at most one reservation per network, and a per-network reader/writer
+    lock serializes reservation writes against each other and against network
+    cleanup.
+17. Typed failures: decryption, storage, and API errors carry machine-readable
+    codes and structured fields, and a password check reports `false` only for an
+    actual password failure.
 
 Planned/required controls:
 
