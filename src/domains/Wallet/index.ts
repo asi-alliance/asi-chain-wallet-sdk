@@ -21,6 +21,7 @@ import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
 import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
@@ -380,6 +381,22 @@ export default class Wallet {
     ): Promise<string> {
         return ApiClientManager.getInstance().runNetworkOperation(() =>
             ApiServiceRegistry.getInstance().transactions.deploy({
+                walletType: this.type,
+                account: this.getActiveAccount()!,
+                signer: this.signer,
+                ...payload,
+                passwordProvider,
+            }),
+        );
+    }
+
+    @EnsureActiveAccountExist
+    public async signDeploy(
+        payload: TDeployDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<SignedResult> {
+        return ApiClientManager.getInstance().runNetworkOperation(() =>
+            ApiServiceRegistry.getInstance().transactions.signDeploy({
                 walletType: this.type,
                 account: this.getActiveAccount()!,
                 signer: this.signer,
