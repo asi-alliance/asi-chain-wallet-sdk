@@ -11,11 +11,13 @@ import SecretsProvider from "@domains/SecretsProvider";
 import {
     InvalidKeyfileError,
     InvalidKeyfilePasswordError,
+    UnknownErrorReason,
 } from "@domains/CustomError";
 import KeyfileSerializer, {
     IKeyfileAccount,
     IKeyfileWallet,
 } from "@services/KeyfileSerializer";
+import { getErrorMessage } from "@utils/index";
 
 export interface IKeyfileEnvelope {
     version: number;
@@ -69,8 +71,13 @@ export default class ExportKeyfileService {
                 wallet,
                 passwordProvider,
             );
-        } catch {
-            throw new InvalidKeyfileError("Wallet keyfile cannot be created");
+        } catch (error: unknown) {
+            throw new InvalidKeyfileError(
+                `Wallet keyfile cannot be created: ${getErrorMessage(
+                    error,
+                    UnknownErrorReason.CRYPTO,
+                )}`,
+            );
         }
 
         return {
@@ -99,7 +106,6 @@ export default class ExportKeyfileService {
                 transaction.deployId ?? "",
                 transaction.blockHash ?? "",
                 transaction.networkId,
-                transaction.note ?? "",
             ]
                 .map(ExportKeyfileService.escapeCsvValue)
                 .join(",");

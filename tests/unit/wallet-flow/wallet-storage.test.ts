@@ -9,9 +9,9 @@ import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import Bip44Path from "@domains/Bip44Path";
 import { WalletTypes } from "@domains/Signer";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 

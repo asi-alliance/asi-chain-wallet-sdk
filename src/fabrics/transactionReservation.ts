@@ -1,6 +1,10 @@
 import Account from "@domains/Account";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { fromAtomicAmount, generateRandomId } from "@utils/index";
+import {
+    fromAtomicAmount,
+    generateRandomId,
+    resolveTransferType,
+} from "@utils/index";
 import { NetworkId } from "@domains/Network";
 import { Address } from "@domains/Wallet";
 import {
@@ -11,7 +15,9 @@ import {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationDetails,
     Transaction,
+    TransactionReservationKind,
 } from "@domains/Transaction";
 
 interface IReservationPayload {
@@ -19,9 +25,12 @@ interface IReservationPayload {
     networkId: NetworkId;
     account: Account;
     pendingAmount: bigint;
+    kind: TransactionReservationKind;
+    gasCost?: bigint;
 }
 
 export interface ICreateTransferReservationPayload extends IReservationPayload {
+    kind: "transfer";
     details: {
         to: Address;
         amount: bigint;
@@ -29,82 +38,180 @@ export interface ICreateTransferReservationPayload extends IReservationPayload {
 }
 
 export interface ICreateDeployReservationPayload extends IReservationPayload {
-    term: string;
+    kind: "deploy";
+    term?: string;
 }
+
+export type TCreateTransactionReservationPayload =
+    | ICreateTransferReservationPayload
+    | ICreateDeployReservationPayload;
+
+interface IReservationMeta {
+    deployId: string;
+    pendingAmount: bigint;
+    gasCost: bigint;
+}
+
+export interface ITransferReservationMeta extends IReservationMeta {
+    kind: "transfer";
+    to: Address;
+    amount: bigint;
+}
+
+export interface IDeployReservationMeta extends IReservationMeta {
+    kind: "deploy";
+    term?: string;
+}
+
+export type TTransactionReservationMeta =
+    | ITransferReservationMeta
+    | IDeployReservationMeta;
 
 export default class TransactionReservationFabric {
     private static build(
-        { networkId, account, pendingAmount }: IReservationPayload,
-        transaction: Transaction,
+        { networkId, account, pendingAmount, kind }: IReservationPayload,
+        details: ITransactionReservationDetails,
+        id: string,
     ): ITransactionReservation {
         return {
-            id: generateRandomId(),
+            id,
             networkId,
             accountId: account.getId(),
             pendingAmount: pendingAmount.toString(),
             expirationTime: Date.now() + RESERVATION_EXPIRATION_TIME,
-            transaction,
+            kind,
+            details,
+        };
+    }
+
+    public static toCreatePayload(
+        meta: TTransactionReservationMeta,
+        account: Account,
+        networkId: NetworkId,
+    ): TCreateTransactionReservationPayload {
+        const { deployId, pendingAmount, gasCost } = meta;
+
+        if (meta.kind === "deploy") {
+            return {
+                kind: "deploy",
+                deployId,
+                networkId,
+                account,
+                pendingAmount,
+                gasCost,
+                term: meta.term,
+            };
+        }
+
+        return {
+            kind: "transfer",
+            deployId,
+            networkId,
+            account,
+            pendingAmount,
+            gasCost,
+            details: {
+                to: meta.to,
+                amount: meta.amount,
+            },
         };
     }
 
     public static createTransfer(
         payload: ICreateTransferReservationPayload,
+        id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, networkId, account, details } = payload;
+        const { deployId, account, details, gasCost } = payload;
 
-        return TransactionReservationFabric.build(payload, {
-            id: deployId,
-            deployId,
-            timestamp: new Date(),
-            type: "send",
-            status: "pending",
-            from: account.getAddress(),
-            to: details.to,
-            amount: fromAtomicAmount(
-                details.amount,
-                NATIVE_TOKEN_DECIMALS_AMOUNT,
-            ),
-            gasCost: fromAtomicAmount(GasFee.MAX, NATIVE_TOKEN_DECIMALS_AMOUNT),
-            networkId,
-            detectedBy: "manual",
-        });
+        return TransactionReservationFabric.build(
+            payload,
+            {
+                deployId,
+                timestamp: new Date(),
+                from: account.getAddress(),
+                to: details.to,
+                amount: fromAtomicAmount(
+                    details.amount,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+                gasCost: fromAtomicAmount(
+                    gasCost ?? GasFee.MAX,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+            },
+            id,
+        );
     }
 
     public static createDeploy(
         payload: ICreateDeployReservationPayload,
+        id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, networkId, account, pendingAmount, term } = payload;
+        const { deployId, account, pendingAmount, term, gasCost } = payload;
 
-        return TransactionReservationFabric.build(payload, {
-            id: deployId,
-            deployId,
-            timestamp: new Date(),
-            type: "deploy",
+        return TransactionReservationFabric.build(
+            payload,
+            {
+                deployId,
+                timestamp: new Date(),
+                from: account.getAddress(),
+                gasCost: fromAtomicAmount(
+                    gasCost ?? pendingAmount,
+                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                ),
+                contractCode: term,
+            },
+            id,
+        );
+    }
+
+    public static create(
+        payload: TCreateTransactionReservationPayload,
+        id: string = generateRandomId(),
+    ): ITransactionReservation {
+        return payload.kind === "transfer"
+            ? TransactionReservationFabric.createTransfer(payload, id)
+            : TransactionReservationFabric.createDeploy(payload, id);
+    }
+
+    public static toPendingTransaction(
+        { networkId, kind, details }: ITransactionReservation,
+        viewerAddress: Address,
+    ): Transaction {
+        return {
+            id: details.deployId,
+            deployId: details.deployId,
+            timestamp: details.timestamp,
+            type:
+                kind === "deploy"
+                    ? "deploy"
+                    : resolveTransferType(details.from, viewerAddress),
             status: "pending",
-            from: account.getAddress(),
-            contractCode: term,
-            gasCost: fromAtomicAmount(
-                pendingAmount,
-                NATIVE_TOKEN_DECIMALS_AMOUNT,
-            ),
+            from: details.from,
+            to: details.to,
+            amount: details.amount,
+            gasCost: details.gasCost,
+            contractCode: details.contractCode,
             networkId,
             detectedBy: "manual",
-        });
+        };
     }
 
     public static toPrivateData({
         accountId,
         pendingAmount,
         expirationTime,
-        transaction,
+        kind,
+        details,
     }: ITransactionReservation): ISerializedTransactionReservationPrivateData {
         return {
             accountId,
             pendingAmount,
             expirationTime,
-            transaction: {
-                ...transaction,
-                timestamp: transaction.timestamp.toISOString(),
+            kind,
+            details: {
+                ...details,
+                timestamp: details.timestamp.toISOString(),
             },
         };
     }
@@ -119,9 +226,10 @@ export default class TransactionReservationFabric {
             accountId: privateData.accountId,
             pendingAmount: privateData.pendingAmount,
             expirationTime: privateData.expirationTime,
-            transaction: {
-                ...privateData.transaction,
-                timestamp: new Date(privateData.transaction.timestamp),
+            kind: privateData.kind,
+            details: {
+                ...privateData.details,
+                timestamp: new Date(privateData.details.timestamp),
             },
         };
     }

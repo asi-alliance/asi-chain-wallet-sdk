@@ -1,8 +1,24 @@
 import { NetworkId } from "@domains/Network";
 import { ITableRecord } from "@domains/TableService";
 
-export type TransactionStatus = "pending" | "completed" | "failed";
-export type TransactionType = "send" | "receive" | "deploy";
+export const TRANSACTION_STATUSES = ["pending", "completed", "failed"] as const;
+
+export const TRANSACTION_TYPES = ["send", "receive", "deploy"] as const;
+
+export const TRANSACTION_DETECTED_BY_TYPES = [
+    "balance_change",
+    "manual",
+    "auto",
+] as const;
+
+export const TRANSACTION_RESERVATION_KINDS = ["transfer", "deploy"] as const;
+
+export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+export type TransactionDetectedBy =
+    (typeof TRANSACTION_DETECTED_BY_TYPES)[number];
+export type TransactionReservationKind =
+    (typeof TRANSACTION_RESERVATION_KINDS)[number];
 
 export interface Transaction {
     id: string;
@@ -16,12 +32,28 @@ export interface Transaction {
     gasCost?: string;
     status: TransactionStatus;
     contractCode?: string;
-    note?: string;
     networkId: NetworkId;
-    detectedBy?: "balance_change" | "manual" | "auto";
+    detectedBy?: TransactionDetectedBy;
 }
 
 export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
+    timestamp: string;
+};
+
+export interface ITransactionReservationDetails {
+    deployId: string;
+    timestamp: Date;
+    from: string;
+    to?: string;
+    amount?: string;
+    gasCost?: string;
+    contractCode?: string;
+}
+
+export type TSerializedTransactionReservationDetails = Omit<
+    ITransactionReservationDetails,
+    "timestamp"
+> & {
     timestamp: string;
 };
 
@@ -29,12 +61,13 @@ export interface ITransactionReservationPrivateData {
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
-    transaction: Transaction;
+    kind: TransactionReservationKind;
+    details: ITransactionReservationDetails;
 }
 
 export interface ISerializedTransactionReservationPrivateData
-    extends Omit<ITransactionReservationPrivateData, "transaction"> {
-    transaction: TSerializedTransaction;
+    extends Omit<ITransactionReservationPrivateData, "details"> {
+    details: TSerializedTransactionReservationDetails;
 }
 
 export interface ITransactionReservation

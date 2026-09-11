@@ -9,9 +9,9 @@ import SecretsProvider from "@domains/SecretsProvider";
 import Bip44Path from "@domains/Bip44Path";
 import KeysManager from "@services/KeysManager";
 import { WalletTypes } from "@domains/Signer";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 

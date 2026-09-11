@@ -1,68 +1,31 @@
-import "dotenv/config";
-
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
 
-const hasFilledEndpoints = (config: INetworkConfig): boolean =>
-    Boolean(config.ValidatorURL && config.ReadOnlyURL && config.IndexerURL);
+export const SCALA_NETWORK: NetworkName = "ScalaTestNet";
+export const RUST_NETWORK: NetworkName = "RustTestNet";
 
-const parseNetworksFromEnv = (): TNetworksConfig => {
-    const rawNetworks: string | undefined = process.env.VITE_NETWORKS;
-
-    if (!rawNetworks) {
-        throw new Error(
-            "VITE_NETWORKS is not defined. Network flow tests read their networks from the root .env file.",
-        );
-    }
-
-    return JSON.parse(rawNetworks) as TNetworksConfig;
+const SCALA_NETWORK_CONFIG: INetworkConfig = {
+    ValidatorURL: "http://scala-validator.test:40403",
+    ReadOnlyURL: "http://scala-observer.test:40403",
+    IndexerURL: "http://scala-indexer.test:8080/v1/graphql",
+    nodeApiProfile: NodeApiProfile.SCALA,
 };
 
-const findNetworkByProfile = (
-    networks: TNetworksConfig,
-    profile: NodeApiProfile,
-): [NetworkName, INetworkConfig] => {
-    const entry: [NetworkName, INetworkConfig] | undefined = Object.entries(
-        networks,
-    ).find(
-        ([, config]: [NetworkName, INetworkConfig]) =>
-            config.nodeApiProfile === profile && hasFilledEndpoints(config),
-    );
-
-    if (!entry) {
-        throw new Error(
-            `VITE_NETWORKS has no network with the "${profile}" profile and filled endpoints.`,
-        );
-    }
-
-    return entry;
+const RUST_NETWORK_CONFIG: INetworkConfig = {
+    ValidatorURL: "http://rust-validator.test:40413",
+    ReadOnlyURL: "http://rust-observer.test:40453",
+    IndexerURL: "http://rust-indexer.test:8080/v1/graphql",
+    nodeApiProfile: NodeApiProfile.RUST,
 };
-
-const ENV_NETWORKS: TNetworksConfig = parseNetworksFromEnv();
-
-const [scalaName, scalaConfig] = findNetworkByProfile(
-    ENV_NETWORKS,
-    NodeApiProfile.SCALA,
-);
-
-console.log("SCALA: ", scalaConfig);
-
-const [rustName, rustConfig] = findNetworkByProfile(
-    ENV_NETWORKS,
-    NodeApiProfile.RUST,
-);
-
-console.log("RUST: ", rustConfig);
-
-export const SCALA_NETWORK: NetworkName = scalaName;
-export const RUST_NETWORK: NetworkName = rustName;
 
 export const NETWORKS_CONFIG: TNetworksConfig = {
-    [scalaName]: scalaConfig,
-    [rustName]: rustConfig,
+    [SCALA_NETWORK]: SCALA_NETWORK_CONFIG,
+    [RUST_NETWORK]: RUST_NETWORK_CONFIG,
 };
 
 export const CUSTOM_NETWORK_CONFIG: INetworkConfig = {
-    ...rustConfig,
+    ValidatorURL: "http://custom-validator.test:40413",
+    ReadOnlyURL: "http://custom-observer.test:40453",
+    IndexerURL: "http://custom-indexer.test:8080/v1/graphql",
     nodeApiProfile: NodeApiProfile.RUST,
 };

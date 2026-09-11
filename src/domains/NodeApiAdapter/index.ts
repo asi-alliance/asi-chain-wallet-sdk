@@ -5,7 +5,11 @@ import {
     IDeployInfo,
     IDeployStatusResult,
 } from "@domains/Deploy";
-import { SCALA_FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
+import {
+    getErrorMessage,
+    SCALA_FAULT_TOLERANCE_THRESHOLD,
+} from "@utils/index";
+import { UnknownErrorReason } from "@domains/CustomError";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -70,8 +74,10 @@ export default abstract class NodeApiAdapter {
         } catch (error) {
             return {
                 status: DeployStatus.CHECK_ERROR,
-                errorMessage:
-                    error instanceof Error ? error.message : String(error),
+                errorMessage: getErrorMessage(
+                    error,
+                    UnknownErrorReason.NODE_API,
+                ),
             };
         }
     }

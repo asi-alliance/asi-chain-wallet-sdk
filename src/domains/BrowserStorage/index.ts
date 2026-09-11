@@ -3,6 +3,12 @@ import {
     EnsureTableExists,
 } from "@utils/decorators";
 import { ITableRecord, ITableService } from "@domains/TableService";
+import {
+    StorageOperation,
+    StorageOperationError,
+    UnknownErrorReason,
+} from "@domains/CustomError";
+import { getErrorMessage } from "@utils/index";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private static instance: BrowserStorage | null = null;
@@ -49,8 +55,13 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
             openDatabaseRequest.onerror = () => {
                 reject(
-                    new Error(
-                        `Failed to open database: ${openDatabaseRequest.error?.message}`,
+                    new StorageOperationError(
+                        StorageOperation.OPEN_DATABASE,
+                        this.name,
+                        getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        ),
                     ),
                 );
             };
@@ -96,8 +107,13 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
             openDatabaseRequest.onerror = () => {
                 reject(
-                    new Error(
-                        `Failed to create table: ${openDatabaseRequest.error?.message}`,
+                    new StorageOperationError(
+                        StorageOperation.CREATE_TABLE,
+                        tableName,
+                        getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        ),
                     ),
                 );
             };
@@ -242,8 +258,13 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
             openDatabaseRequest.onerror = () => {
                 reject(
-                    new Error(
-                        `Failed to drop table: ${openDatabaseRequest.error?.message}`,
+                    new StorageOperationError(
+                        StorageOperation.DROP_TABLE,
+                        tableName,
+                        getErrorMessage(
+                            openDatabaseRequest.error,
+                            UnknownErrorReason.STORAGE,
+                        ),
                     ),
                 );
             };
@@ -307,14 +328,28 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
             transaction.onerror = () => {
                 reject(
-                    new Error(
-                        `Transaction failed: ${transaction.error?.message}`,
+                    new StorageOperationError(
+                        StorageOperation.RUN_TRANSACTION,
+                        tableName,
+                        getErrorMessage(
+                            transaction.error,
+                            UnknownErrorReason.STORAGE,
+                        ),
                     ),
                 );
             };
 
             transaction.onabort = () => {
-                reject(new Error("Transaction aborted"));
+                reject(
+                    new StorageOperationError(
+                        StorageOperation.FINISH_TRANSACTION,
+                        tableName,
+                        getErrorMessage(
+                            transaction.error,
+                            UnknownErrorReason.STORAGE,
+                        ),
+                    ),
+                );
             };
         });
     }
