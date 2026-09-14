@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import { formatAmount } from "../../sdk-react-kit";
+import { formatAssetAmount } from "../../sdk-react-kit";
 import "./style.css";
 
 export interface ITransferCompletedModalProps {
@@ -79,7 +79,7 @@ const TransferCompletedModal = ({
                         name="amount"
                         type="text"
                         readOnly
-                        value={formatAmount(amount)}
+                        value={formatAssetAmount(amount)}
                     />
                 </div>
 

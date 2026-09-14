@@ -1,9 +1,4 @@
 import {
-    fromAtomicAmount,
-    toAtomicAmount,
-    NATIVE_TOKEN_DECIMALS_AMOUNT,
-} from "asi-wallet-sdk";
-import {
     ChangeEvent,
     useCallback,
     useMemo,
@@ -16,8 +11,7 @@ import {
     HighlightedRows,
     type IHighlightedRowsProps,
 } from "@components/common/HighlightedRows";
-
-const COIN_NAME = "ASI";
+import { formatAssetAmount, parseAmount } from "../../sdk-react-kit";
 
 export interface ITransferModalProps {
     fromAddress: string;
@@ -43,10 +37,7 @@ const TransferModal = ({
         }
 
         try {
-            const parsed = toAtomicAmount(
-                amountInput,
-                NATIVE_TOKEN_DECIMALS_AMOUNT,
-            );
+            const parsed = parseAmount(amountInput);
 
             if (parsed <= 0n) {
                 return { amount: null, amountError: "Amount must be positive" };
@@ -78,20 +69,11 @@ const TransferModal = ({
         () => [
             {
                 label: "Available:",
-                value: `${fromAtomicAmount(
-                    availableBalance,
-                    NATIVE_TOKEN_DECIMALS_AMOUNT,
-                )} ${COIN_NAME}`,
+                value: formatAssetAmount(availableBalance),
             },
             {
                 label: "Amount to send:",
-                value:
-                    amount === null
-                        ? "N/A"
-                        : `${fromAtomicAmount(
-                              amount,
-                              NATIVE_TOKEN_DECIMALS_AMOUNT,
-                          )} ${COIN_NAME}`,
+                value: formatAssetAmount(amount),
                 accented: true,
             },
         ],

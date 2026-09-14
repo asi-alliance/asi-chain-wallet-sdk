@@ -1,6 +1,6 @@
 import { type ReactElement } from "react";
 import "./style.css";
-import { formatAmount } from "../../sdk-react-kit";
+import { formatAssetAmount } from "../../sdk-react-kit";
 import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IReservationStatusProps {
@@ -17,7 +17,7 @@ const getAmountLabel = (
         return "unavailable";
     }
 
-    return `${formatAmount(amount)} ASI`;
+    return formatAssetAmount(amount);
 };
 
 const ReservationStatus = ({
@@ -56,7 +56,7 @@ const ReservationStatus = ({
                             Reserved:
                         </span>
                         <span className="reservation-status__value reserved">
-                            {formatAmount(totalReserved)} ASI
+                            {formatAssetAmount(totalReserved)}
                         </span>
                     </div>
                 )}

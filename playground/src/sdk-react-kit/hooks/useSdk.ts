@@ -464,18 +464,6 @@ const useSdk = () => {
         await refresh();
     }, [requireClient, refresh]);
 
-    const toDisplayAmount = useCallback(
-        (atomicAmount: bigint): string =>
-            requireClient().toDisplayAmount(atomicAmount),
-        [requireClient],
-    );
-
-    const toAtomicAmount = useCallback(
-        (amount: string | number): bigint =>
-            requireClient().toAtomicAmount(amount),
-        [requireClient],
-    );
-
     return {
         client,
         isReady: client !== null,
@@ -516,8 +504,6 @@ const useSdk = () => {
         isNetworkBusy,
         isCurrentNetworkBusy,
         clearPersistence,
-        toDisplayAmount,
-        toAtomicAmount,
     };
 };
 
