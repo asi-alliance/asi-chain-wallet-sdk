@@ -6,7 +6,6 @@ import {
     DomainClosedError,
     HDWalletOnlyOperationError,
 } from "@domains/CustomError";
-import AccountManager from "@services/AccountManager";
 import LifecycleGuard from "@domains/LifecycleGuard";
 
 export function EnsureDatabaseInitialized<
@@ -94,7 +93,6 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
-    accountManager: AccountManager;
     getType(): WalletTypes;
 }
 
@@ -106,20 +104,6 @@ export function OnlyHDWallet<
     return function (this: This, ...args: Args): Return {
         if (this.getType() !== WalletTypes.HD) {
             throw new HDWalletOnlyOperationError(String(context.name));
-        }
-
-        return target.apply(this, args);
-    };
-}
-
-export function EnsureActiveAccountExist<
-    This extends IWalletContext,
-    Args extends any[],
-    Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return function (this: This, ...args: Args): Return {
-        if (!this.accountManager.getActiveAccount()) {
-            throw new Error("Wallet hasn't active account for transfer!");
         }
 
         return target.apply(this, args);

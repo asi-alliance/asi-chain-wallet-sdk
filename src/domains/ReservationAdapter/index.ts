@@ -458,10 +458,11 @@ export default class ReservationAdapter {
 
     public async transfer(
         wallet: Wallet,
+        accountId: string,
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
-        const account: Account = wallet.getActiveAccount()!;
+        const account: Account = wallet.getAccount(accountId);
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
@@ -473,13 +474,14 @@ export default class ReservationAdapter {
 
         return ReservationAdapter.operationsGuard.runReservationAction(
             ReservationAction.TRANSFER,
-            { accountId: account.getId(), networkId },
+            { accountId, networkId },
             async () => {
                 await this.ensureSufficientBalance(account, pendingAmount, {
                     context: "ReservationAdapter.transfer",
                 });
 
                 const deployId: string = await wallet.transfer(
+                    accountId,
                     details,
                     passwordProvider,
                 );
@@ -506,10 +508,11 @@ export default class ReservationAdapter {
 
     public async deploy(
         wallet: Wallet,
+        accountId: string,
         details: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
-        const account: Account = wallet.getActiveAccount()!;
+        const account: Account = wallet.getAccount(accountId);
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
@@ -523,13 +526,14 @@ export default class ReservationAdapter {
 
         return ReservationAdapter.operationsGuard.runReservationAction(
             ReservationAction.DEPLOY,
-            { accountId: account.getId(), networkId },
+            { accountId, networkId },
             async () => {
                 await this.ensureSufficientBalance(account, pendingAmount, {
                     context: "ReservationAdapter.deploy",
                 });
 
                 const deployId: string = await wallet.deploy(
+                    accountId,
                     details,
                     passwordProvider,
                 );

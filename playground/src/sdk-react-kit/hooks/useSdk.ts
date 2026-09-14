@@ -281,15 +281,6 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const setActiveAccount = useCallback(
-        (walletId: string, accountId: string): void => {
-            requireClient().setActiveAccount(walletId, accountId);
-
-            void refresh();
-        },
-        [requireClient, refresh],
-    );
-
     const setNetwork = useCallback(
         (networkId: NetworkId): void => {
             const currentClient = requireClient();
@@ -508,7 +499,6 @@ const useSdk = () => {
         deriveAccount,
         renameAccount,
         removeAccount,
-        setActiveAccount,
         transfer,
         deploy,
         isWalletUnlocked,

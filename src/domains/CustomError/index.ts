@@ -28,6 +28,7 @@ export enum CustomErrorCode {
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
+    UNKNOWN_ACCOUNT = "UNKNOWN_ACCOUNT",
 }
 
 export enum WalletAction {
@@ -335,6 +336,22 @@ export class LastAccountRemovalError extends CustomError {
         message: string = `Account ${accountId} is the last account of the wallet ${walletId} and cannot be removed`,
     ) {
         super(CustomErrorCode.LAST_ACCOUNT_REMOVAL, message, 409);
+
+        this.walletId = walletId;
+        this.accountId = accountId;
+    }
+}
+
+export class UnknownAccountError extends CustomError {
+    public readonly walletId: string;
+    public readonly accountId: string;
+
+    constructor(
+        walletId: string,
+        accountId: string,
+        message: string = `Account ${accountId} does not belong to the wallet ${walletId}`,
+    ) {
+        super(CustomErrorCode.UNKNOWN_ACCOUNT, message, 404);
 
         this.walletId = walletId;
         this.accountId = accountId;

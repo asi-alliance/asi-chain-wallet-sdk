@@ -19,13 +19,16 @@ import SecretsProvider, {
 import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
-import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
+import { OnlyHDWallet } from "@utils/decorators";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
-import { LastAccountRemovalError } from "@domains/CustomError";
+import {
+    LastAccountRemovalError,
+    UnknownAccountError,
+} from "@domains/CustomError";
 import ImportKeyfileService from "@services/ImportKeyfileService";
 
 type AddressBrand = { readonly __brand: unique symbol };
@@ -38,7 +41,6 @@ export interface IWalletOptions {
     type: WalletTypes;
     signer: Signer;
     accounts: Map<string, Account>;
-    activeAccount?: Account;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -71,20 +73,11 @@ export default class Wallet {
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
 
-    private constructor({
-        id,
-        type,
-        signer,
-        accounts,
-        activeAccount,
-    }: IWalletOptions) {
+    private constructor({ id, type, signer, accounts }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;
         this.signer = signer;
-        this.accountManager = new AccountManager(
-            accounts,
-            activeAccount ?? null,
-        );
+        this.accountManager = new AccountManager(accounts);
     }
 
     public getId(): string {
@@ -128,12 +121,14 @@ export default class Wallet {
         return this.accountManager.getAccountsMap();
     }
 
-    public getActiveAccount(): Account | null {
-        return this.accountManager.getActiveAccount();
-    }
+    public getAccount(id: string): Account {
+        const account: Account | null = this.accountManager.getAccount(id);
 
-    public setActiveAccount(id: string): void {
-        this.accountManager.setActiveAccount(id);
+        if (!account) {
+            throw new UnknownAccountError(this.id, id);
+        }
+
+        return account;
     }
 
     private getDerivationIndex(initialHDPath: Bip44Path): number | null {
@@ -225,7 +220,6 @@ export default class Wallet {
             type: WalletTypes.PRIVATE_KEY,
             signer,
             accounts,
-            activeAccount: initialAccount,
         });
     }
 
@@ -279,7 +273,6 @@ export default class Wallet {
             type: WalletTypes.HD,
             signer,
             accounts,
-            activeAccount: initialAccount,
         });
     }
 
@@ -358,15 +351,17 @@ export default class Wallet {
         });
     }
 
-    @EnsureActiveAccountExist
     public async transfer(
+        accountId: string,
         payload: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
+        const account: Account = this.getAccount(accountId);
+
         return ApiClientManager.getInstance().runNetworkOperation(() =>
             ApiServiceRegistry.getInstance().transactions.transfer({
                 walletType: this.type,
-                account: this.getActiveAccount()!,
+                account,
                 signer: this.signer,
                 details: payload,
                 passwordProvider,
@@ -374,15 +369,17 @@ export default class Wallet {
         );
     }
 
-    @EnsureActiveAccountExist
     public async deploy(
+        accountId: string,
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
+        const account: Account = this.getAccount(accountId);
+
         return ApiClientManager.getInstance().runNetworkOperation(() =>
             ApiServiceRegistry.getInstance().transactions.deploy({
                 walletType: this.type,
-                account: this.getActiveAccount()!,
+                account,
                 signer: this.signer,
                 ...payload,
                 passwordProvider,
@@ -390,15 +387,17 @@ export default class Wallet {
         );
     }
 
-    @EnsureActiveAccountExist
     public async signDeploy(
+        accountId: string,
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<SignedResult> {
+        const account: Account = this.getAccount(accountId);
+
         return ApiClientManager.getInstance().runNetworkOperation(() =>
             ApiServiceRegistry.getInstance().transactions.signDeploy({
                 walletType: this.type,
-                account: this.getActiveAccount()!,
+                account,
                 signer: this.signer,
                 ...payload,
                 passwordProvider,

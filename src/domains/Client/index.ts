@@ -766,11 +766,6 @@ export default class Client extends ClosableDomain {
         return ExportKeyfileService.exportTransactions(transactions, format);
     }
 
-    @EnsureActive
-    public setActiveAccount(walletId: string, accountId: string): void {
-        this.walletManager.setActiveAccount(walletId, accountId);
-    }
-
     public getCurrentNetworkId(): NetworkId {
         return ApiClientManager.getInstance().getCurrentNetworkId();
     }
@@ -849,10 +844,7 @@ export default class Client extends ClosableDomain {
     ): Promise<ITransactionReservation> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = this.getWalletAccount(
-                wallet,
-                request.accountId,
-            );
+            const account: Account = wallet.getAccount(request.accountId);
 
             const reservationAdapter: ReservationAdapter | null =
                 this.reservationAdapterManager.get(request.walletId);
@@ -895,10 +887,7 @@ export default class Client extends ClosableDomain {
     ): Promise<ITransactionReservation> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = this.getWalletAccount(
-                wallet,
-                request.accountId,
-            );
+            const account: Account = wallet.getAccount(request.accountId);
 
             const reservationAdapter: ReservationAdapter | null =
                 this.reservationAdapterManager.get(request.walletId);
@@ -1024,8 +1013,6 @@ export default class Client extends ClosableDomain {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(walletId);
 
-            wallet.setActiveAccount(accountId);
-
             const passwordProvider: SecretsProvider | undefined =
                 password !== undefined
                     ? this.createPasswordProvider(password)
@@ -1044,6 +1031,7 @@ export default class Client extends ClosableDomain {
 
             return reservationAdapter.transfer(
                 wallet,
+                accountId,
                 { to, amount, asset: DEFAULT_ASSET },
                 passwordProvider,
             );
@@ -1061,8 +1049,6 @@ export default class Client extends ClosableDomain {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(walletId);
 
-            wallet.setActiveAccount(accountId);
-
             const passwordProvider: SecretsProvider | undefined =
                 password !== undefined
                     ? this.createPasswordProvider(password)
@@ -1079,6 +1065,7 @@ export default class Client extends ClosableDomain {
 
             return reservationAdapter.deploy(
                 wallet,
+                accountId,
                 { term, phloLimit },
                 passwordProvider,
             );
@@ -1102,9 +1089,6 @@ export default class Client extends ClosableDomain {
     ): Promise<SignedResult> {
         return ApiClientManager.getInstance().runNetworkOperation(async () => {
             const wallet: Wallet = this.getOpenWallet(walletId);
-            const account: Account = this.getWalletAccount(wallet, accountId);
-
-            wallet.setActiveAccount(account.getId());
 
             const passwordProvider: SecretsProvider | undefined =
                 password !== undefined
@@ -1114,6 +1098,7 @@ export default class Client extends ClosableDomain {
             await this.ensureSession(wallet, passwordProvider);
 
             return wallet.signDeploy(
+                accountId,
                 { term, phloLimit, phloPrice, shardId },
                 passwordProvider,
             );
@@ -1164,22 +1149,7 @@ export default class Client extends ClosableDomain {
         walletId: Wallet["id"],
         accountId: Account["id"],
     ): Account {
-        return this.getWalletAccount(this.getOpenWallet(walletId), accountId);
-    }
-
-    private getWalletAccount(
-        wallet: Wallet,
-        accountId: Account["id"],
-    ): Account {
-        const account: Account | undefined = wallet
-            .getAccountsMap()
-            .get(accountId);
-
-        if (!account) {
-            throw new Error(`Account ${accountId} not found`);
-        }
-
-        return account;
+        return this.getOpenWallet(walletId).getAccount(accountId);
     }
 
     public getNetworks(): INetworkRecord[] {
