@@ -29,6 +29,7 @@ export enum CustomErrorCode {
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
     UNKNOWN_ACCOUNT = "UNKNOWN_ACCOUNT",
+    ACCOUNT_BUSY = "ACCOUNT_BUSY",
 }
 
 export enum WalletAction {
@@ -336,6 +337,22 @@ export class LastAccountRemovalError extends CustomError {
         message: string = `Account ${accountId} is the last account of the wallet ${walletId} and cannot be removed`,
     ) {
         super(CustomErrorCode.LAST_ACCOUNT_REMOVAL, message, 409);
+
+        this.walletId = walletId;
+        this.accountId = accountId;
+    }
+}
+
+export class AccountBusyError extends CustomError {
+    public readonly walletId: string;
+    public readonly accountId: string;
+
+    constructor(
+        walletId: string,
+        accountId: string,
+        message: string = `Account ${accountId} of the wallet ${walletId} has an operation in progress and cannot be removed`,
+    ) {
+        super(CustomErrorCode.ACCOUNT_BUSY, message, 409);
 
         this.walletId = walletId;
         this.accountId = accountId;

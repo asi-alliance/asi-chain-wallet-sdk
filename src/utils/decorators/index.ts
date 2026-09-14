@@ -1,12 +1,13 @@
 import { ICreateClientFlags } from "@domains/Client";
-import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import {
+    AccountBusyError,
     DomainClosedError,
     HDWalletOnlyOperationError,
 } from "@domains/CustomError";
 import LifecycleGuard from "@domains/LifecycleGuard";
+import ConcurrentOperationGuardService from "@services/ConcurrentOperationGuard";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -104,6 +105,27 @@ export function OnlyHDWallet<
     return function (this: This, ...args: Args): Return {
         if (this.getType() !== WalletTypes.HD) {
             throw new HDWalletOnlyOperationError(String(context.name));
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+interface IAccountOperationsContext {
+    getId(): string;
+    accountOperationsGuard: ConcurrentOperationGuardService<string>;
+}
+
+export function EnsureAccountIsIdle<
+    This extends IAccountOperationsContext,
+    Args extends [string, ...any[]],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        const [accountId] = args;
+
+        if (this.accountOperationsGuard.hasScopeHolders(accountId)) {
+            throw new AccountBusyError(this.getId(), accountId);
         }
 
         return target.apply(this, args);

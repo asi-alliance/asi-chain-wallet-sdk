@@ -19,13 +19,17 @@ import SecretsProvider, {
 import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
-import { OnlyHDWallet } from "@utils/decorators";
+import ConcurrentOperationGuardService, {
+    OperationScopeMode,
+} from "@services/ConcurrentOperationGuard";
+import { EnsureAccountIsIdle, OnlyHDWallet } from "@utils/decorators";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import {
+    AccountBusyError,
     LastAccountRemovalError,
     UnknownAccountError,
 } from "@domains/CustomError";
@@ -72,6 +76,8 @@ export default class Wallet {
     private readonly type: WalletTypes;
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
+    private readonly accountOperationsGuard: ConcurrentOperationGuardService<string> =
+        new ConcurrentOperationGuardService();
 
     private constructor({ id, type, signer, accounts }: IWalletOptions) {
         this.id = id ?? generateRandomId();
@@ -131,6 +137,24 @@ export default class Wallet {
         return account;
     }
 
+    public async runAccountOperation<TResult>(
+        accountId: string,
+        operation: (account: Account) => Promise<TResult>,
+    ): Promise<TResult> {
+        const account: Account = this.getAccount(accountId);
+
+        return this.accountOperationsGuard.run(
+            new Map(),
+            () => new AccountBusyError(this.id, accountId),
+            () => operation(account),
+            {
+                key: accountId,
+                mode: OperationScopeMode.SHARED,
+                owner: accountId,
+            },
+        );
+    }
+
     private getDerivationIndex(initialHDPath: Bip44Path): number | null {
         const initialAccountIndex = initialHDPath.getIndex();
 
@@ -185,6 +209,7 @@ export default class Wallet {
     }
 
     @OnlyHDWallet
+    @EnsureAccountIsIdle
     public removeAccount(id: string): Account {
         if (this.getAccounts().length === 1) {
             throw new LastAccountRemovalError(this.id, id);
@@ -356,16 +381,16 @@ export default class Wallet {
         payload: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        const account: Account = this.getAccount(accountId);
-
-        return ApiClientManager.getInstance().runNetworkOperation(() =>
-            ApiServiceRegistry.getInstance().transactions.transfer({
-                walletType: this.type,
-                account,
-                signer: this.signer,
-                details: payload,
-                passwordProvider,
-            }),
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.transfer({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    details: payload,
+                    passwordProvider,
+                }),
+            ),
         );
     }
 
@@ -374,16 +399,16 @@ export default class Wallet {
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        const account: Account = this.getAccount(accountId);
-
-        return ApiClientManager.getInstance().runNetworkOperation(() =>
-            ApiServiceRegistry.getInstance().transactions.deploy({
-                walletType: this.type,
-                account,
-                signer: this.signer,
-                ...payload,
-                passwordProvider,
-            }),
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.deploy({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    ...payload,
+                    passwordProvider,
+                }),
+            ),
         );
     }
 
@@ -392,16 +417,16 @@ export default class Wallet {
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<SignedResult> {
-        const account: Account = this.getAccount(accountId);
-
-        return ApiClientManager.getInstance().runNetworkOperation(() =>
-            ApiServiceRegistry.getInstance().transactions.signDeploy({
-                walletType: this.type,
-                account,
-                signer: this.signer,
-                ...payload,
-                passwordProvider,
-            }),
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.signDeploy({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    ...payload,
+                    passwordProvider,
+                }),
+            ),
         );
     }
 }
