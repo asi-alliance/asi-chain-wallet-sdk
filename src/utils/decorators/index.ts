@@ -1,13 +1,13 @@
 import { ICreateClientFlags } from "@domains/Client";
-import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import {
+    AccountBusyError,
     DomainClosedError,
     HDWalletOnlyOperationError,
 } from "@domains/CustomError";
-import AccountManager from "@services/AccountManager";
 import LifecycleGuard from "@domains/LifecycleGuard";
+import ConcurrentOperationGuardService from "@services/ConcurrentOperationGuard";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -94,7 +94,6 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
-    accountManager: AccountManager;
     getType(): WalletTypes;
 }
 
@@ -112,14 +111,21 @@ export function OnlyHDWallet<
     };
 }
 
-export function EnsureActiveAccountExist<
-    This extends IWalletContext,
-    Args extends any[],
+interface IAccountOperationsContext {
+    getId(): string;
+    accountOperationsGuard: ConcurrentOperationGuardService<string>;
+}
+
+export function EnsureAccountIsIdle<
+    This extends IAccountOperationsContext,
+    Args extends [string, ...any[]],
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        if (!this.accountManager.getActiveAccount()) {
-            throw new Error("Wallet hasn't active account for transfer!");
+        const [accountId] = args;
+
+        if (this.accountOperationsGuard.hasScopeHolders(accountId)) {
+            throw new AccountBusyError(this.getId(), accountId);
         }
 
         return target.apply(this, args);

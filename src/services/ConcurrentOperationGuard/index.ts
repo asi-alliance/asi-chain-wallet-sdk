@@ -36,6 +36,13 @@ export default class ConcurrentOperationGuardService<
         return this.exclusiveScopeHolders.has(key);
     }
 
+    public hasScopeHolders(key: string): boolean {
+        return (
+            this.exclusiveScopeHolders.has(key) ||
+            !!this.sharedScopeHolders.get(key)?.size
+        );
+    }
+
     private findScopeConflictOwner({
         key,
         mode,

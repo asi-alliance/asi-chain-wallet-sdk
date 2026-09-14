@@ -239,7 +239,7 @@ test("private key keyfile carries the encrypted secret and a single account", as
     assert.equal(serialized.includes(encodeBase16(privateKey)), false);
     assert.equal(serialized.includes("Main"), false);
     assert.equal(
-        serialized.includes(wallet.getActiveAccount()?.getAddress() as string),
+        serialized.includes(wallet.getAccounts()[0].getAddress()),
         false,
     );
 });
@@ -335,7 +335,7 @@ test("private key keyfile round trip restores the same address", async () => {
     assert.equal(imported.getSigner().getFingerprint(), originalFingerprint);
     assert.notEqual(imported.getSigner().getId(), originalSignerId);
     assert.equal(
-        imported.getActiveAccount()?.getAddress(),
+        imported.getAccounts()[0].getAddress(),
         originalAccounts[0].address,
     );
     assert.equal((await StorageManager.getSigners()).length, 1);

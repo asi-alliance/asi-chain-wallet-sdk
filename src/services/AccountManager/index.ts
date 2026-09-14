@@ -13,8 +13,6 @@ export interface ICreatedAccountData {
 }
 
 export default class AccountManager extends ItemManager<Account> {
-    private activeAccount: Account | null;
-
     private static orderAccounts(
         accounts: Map<string, Account>,
     ): Map<string, Account> {
@@ -32,13 +30,8 @@ export default class AccountManager extends ItemManager<Account> {
         );
     }
 
-    constructor(
-        accounts: Map<string, Account> = new Map(),
-        activeAccount: Account | null = null,
-    ) {
+    constructor(accounts: Map<string, Account> = new Map()) {
         super(AccountManager.orderAccounts(accounts));
-
-        this.activeAccount = activeAccount ?? this.getDefaultActiveAccount();
     }
 
     private reorder(): void {
@@ -47,10 +40,6 @@ export default class AccountManager extends ItemManager<Account> {
 
         this.clear();
         this.addMany(orderedAccounts);
-    }
-
-    private getDefaultActiveAccount(): Account | null {
-        return this.items.values().next().value ?? null;
     }
 
     public async create(
@@ -66,10 +55,6 @@ export default class AccountManager extends ItemManager<Account> {
         this.add(accountId, account);
         this.reorder();
 
-        if (!this.activeAccount) {
-            this.activeAccount = account;
-        }
-
         return { account, accountId };
     }
 
@@ -80,20 +65,6 @@ export default class AccountManager extends ItemManager<Account> {
 
         this.addMany(entries);
         this.reorder();
-
-        if (!this.activeAccount) {
-            this.activeAccount = this.getDefaultActiveAccount();
-        }
-    }
-
-    public remove(id: string): Account {
-        const removedAccount: Account = super.remove(id);
-
-        if (this.activeAccount === removedAccount) {
-            this.activeAccount = this.getDefaultActiveAccount();
-        }
-
-        return removedAccount;
     }
 
     public update(id: string, payload: TEditableAccountOptions): void {
@@ -106,22 +77,6 @@ export default class AccountManager extends ItemManager<Account> {
         }
 
         account.update(payload);
-    }
-
-    public setActiveAccount(id: string): void {
-        const account: Account | null = this.get(id);
-
-        if (!account) {
-            console.error("Cannot set active account");
-
-            return;
-        }
-
-        this.activeAccount = account;
-    }
-
-    public getActiveAccount(): Account | null {
-        return this.activeAccount;
     }
 
     public getAccounts(): Account[] {
