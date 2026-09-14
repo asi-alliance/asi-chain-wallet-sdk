@@ -278,6 +278,18 @@ by the number of pending rows, and `mergeHistoryPage` cuts the requested page
 out of the merged result. Without a reservation adapter, or with no pending rows
 for the current network, the pagination goes to the indexer untouched.
 
+**Known limitation**
+([#178](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/178)): only
+the first page is trustworthy. The indexer query behind the executed side applies
+the caller's `offset` and `limit` to its `transfers` and `deployments` root
+fields separately, so from the second page on rows are dropped between pages
+while others repeat, and with no pending rows for the network the returned page
+can also be larger than `limit` (up to twice it, since nothing slices that path).
+This is independent of the node API profile, and the fix is expected on the
+indexer side, together with the new Rust indexer API. Details, the migration
+note, and the recommended workaround:
+[GraphqlParser](SERVICES.md#known-limitation-offset-and-limit-are-applied-twice).
+
 ### Pending → executed is eventually consistent
 
 The two sides of the merge come from different backends. A reservation is
@@ -786,7 +798,10 @@ getTransactionsHistory(networkId?: NetworkId, pagination?: Pagination): Promise<
 address and the account's public key (`encodeBase16(getPublicKey())`) to
 `AccountDataService`, so the result combines the account's **transfers** (matched
 by address) and its **deployments** (matched by deployer public key),
-de-duplicated by deploy id and sorted newest-first. Associated record shape:
+de-duplicated by deploy id and sorted newest-first. `pagination` is forwarded to
+the indexer as is, so it carries the paging limitation described under
+[GraphqlParser](SERVICES.md#known-limitation-offset-and-limit-are-applied-twice).
+Associated record shape:
 `IAccountRecord = { id, signerId, name, index }`.
 
 `getFingerprint` returns `sha256(publicKey)` in hex, computed once in the
@@ -1903,8 +1918,13 @@ clients do not know that one profile sends a raw term string and another sends
 GraphQL client for transaction history.
 
 ```ts
-getTransactionHistory(address: string, pagination?: Pagination): Promise<TransactionHistoryQueryData>
+getTransactionHistory(address: string, publicKey: string, pagination?: Pagination): Promise<TransactionHistoryQueryData>
 ```
+
+`publicKey` matches the account's **deployments** while `address` matches its
+**transfers**; the query and the mapping of both collections belong to
+[GraphqlParser](SERVICES.md#graphqlparser-srcservicesgraphqlparser), which is
+also where the paging limitation of that query is documented.
 
 ---
 

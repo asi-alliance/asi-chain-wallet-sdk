@@ -282,6 +282,11 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
   query param, so a page survives a reload and is shareable. Changing the
   account or the mode resets it (`replace: true`, no history entry). "Next" is
   offered while the page came back full — the SDK returns no total count.
+- Pages past the first are best effort while
+  [#178](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/178) is
+  open: the indexer pages transfers and deployments separately, so a row can be
+  missing from one page and repeated on another. The **Pending only** mode is
+  paginated locally and is not affected.
 - Reloads on account, mode, page, network change, and on this wallet's entry in
   `reservationsByWallet`, so a fresh transfer shows up as pending without a
   manual refresh.

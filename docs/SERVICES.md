@@ -580,6 +580,12 @@ slices the caller's page out. Past the first page the slice offset is corrected
 by `aheadCount` — the pending rows that sit newer than the indexer window that
 came back, i.e. the ones earlier pages already consumed.
 
+Both corrections cover the **pending** side only. The executed window this
+service asks for is still subject to the indexer paging defect described under
+[GraphqlParser](#known-limitation-offset-and-limit-are-applied-twice): past the
+first page `transfers` and `deployments` are sliced independently, and no
+widening or re-slicing here can rebuild rows the indexer never returned.
+
 #### Eventual consistency of the pending → executed transition
 
 The two sources are not updated by the same actor: a reservation is released
@@ -1199,6 +1205,48 @@ from `@utils/functions`, the same helper the reservation fabric uses to render a
 pending row, so an indexed transfer and its pending twin cannot disagree about
 direction. `queryOptions.ts` defines `Pagination` (`{ offset?, limit? }`),
 `Order`, and `QueryOptions`.
+
+#### Known limitation: offset and limit are applied twice
+
+`createTransactionHistoryRequest` builds a single query, but `$offset` and
+`$limit` land on **two independent root fields** — `transfers` and `deployments`
+— each ordered by `block_number` descending. A page of the merged timeline
+cannot be expressed that way, so paging over the mapped result is skewed:
+
+- `{ offset: 0, limit: 20 }` returns up to 20 transfers **plus** up to 20
+  deployments, i.e. up to 40 rows before de-duplication. Every row of the true
+  first page is in there — a row that belongs to the newest 20 of the merged
+  timeline is necessarily among the newest 20 of its own list — so the first
+  page is recoverable by slicing, which is what `mergeHistoryPage` does. The
+  no-pending path of `Client.getTransactionsHistory` does **not** slice and
+  returns the over-sized list as it came back.
+- `{ offset: 20, limit: 20 }` skips the first 20 transfers and, separately, the
+  first 20 deployments. That is not the same as skipping positions 20-39 of the
+  merged timeline: rows are dropped between pages while others repeat across
+  pages. The skew grows with every page and with any imbalance between the two
+  collections — an account with many transfers and few deployments loses
+  transfers permanently.
+
+The query also orders by `block_number` while `mapTransactionHistory` sorts by
+`timestamp`; the two orderings are assumed to agree.
+
+Both node API profiles are affected: `NodeApiAdapter.getTransactionHistory` is
+not overridden, so `scala` and `rust` issue the same query through the same
+`IndexerClient`.
+
+The intended fix is on the indexer side — one root field returning the merged,
+ordered timeline under a single `offset` and `limit` — which is the direction the
+new Rust indexer API is taking. Until DevNet serves that API and this query is
+rewritten against it, the behaviour above holds for both profiles: `RUST` is
+still `EXPERIMENTAL` (see
+[NodeApiProfile](DOMAINS.md#nodeapiprofile-srcdomainsnodeapiprofileindexts)) and
+shares the query with `SCALA`.
+
+Tracked in
+[#178](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/178). Until it
+is fixed, treat anything past the first page as best effort: read the first page
+only, or overfetch with a deliberately large `limit` and slice on the caller
+side.
 
 ### HttpResponseParser (`src/services/HttpResponseParser/index.ts`)
 
