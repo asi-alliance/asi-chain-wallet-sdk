@@ -95,18 +95,11 @@
     min-height: 1.2em;
 }
 
-.reservations-page__input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
 .reservations-page__field--wide {
     flex: 1 1 100%;
 }
 
-.reservations-page__field select,
-.reservations-page__field input {
+.reservations-page__field select {
     padding: 0.5rem 0.75rem;
     border: 1px solid #d1d5db;
     border-radius: 0.5rem;
@@ -115,26 +108,9 @@
     min-width: 11rem;
 }
 
-.reservations-page__input--wide {
-    min-width: 24rem;
-}
-
 .reservations-page__field-hint {
     font-size: 0.72rem;
     color: #6b7280;
-}
-
-.reservations-page__field-error {
-    font-size: 0.72rem;
-    color: #c62828;
-    max-width: 18rem;
-}
-
-.reservations-page__field input[readonly] {
-    background: #f3f4f6;
-    color: #4338ca;
-    font-weight: 600;
-    cursor: default;
 }
 
 .reservations-page__editor {

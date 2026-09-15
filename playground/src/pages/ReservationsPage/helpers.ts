@@ -5,15 +5,19 @@ import {
     GasFee,
     genRandomHex,
     isAddress,
+    validateAddress,
+    type AddressValidationResult,
     type ITransactionReservation,
     type TTransactionReservationMeta,
     type TransactionReservationKind,
 } from "asi-wallet-sdk";
 import { formatAmount, parseAmount } from "../../sdk-react-kit";
 
-const DEPLOY_ID_LENGTH: number = 64;
+const SIGNATURE_HEX_LENGTH: number = 142;
 
 const AMOUNT_INPUT_REGEX: RegExp = /^\d*(?:\.\d*)?$/;
+
+const HEX_REGEX: RegExp = /^[0-9a-fA-F]+$/;
 
 export const MIN_GAS_COST: string = formatAmount(GasFee.MIN);
 export const MAX_GAS_COST: string = formatAmount(GasFee.MAX);
@@ -122,7 +126,51 @@ export const toGasCostError = (
     return null;
 };
 
-export const generateDeployId = (): string => genRandomHex(DEPLOY_ID_LENGTH);
+export const generateDeployId = (): string =>
+    genRandomHex(SIGNATURE_HEX_LENGTH);
+
+export const isDeployIdInputAllowed = (value: string): boolean =>
+    value === "" || HEX_REGEX.test(value);
+
+export const toDeployIdError = (value: string): string | null => {
+    const deployId: string = value.trim();
+
+    if (!deployId) {
+        return "Deploy id is required";
+    }
+
+    if (!HEX_REGEX.test(deployId)) {
+        return "Deploy id must be a hex string";
+    }
+
+    if (deployId.length % 2 !== 0) {
+        return "Deploy id must hold whole bytes, so its length must be even";
+    }
+
+    return null;
+};
+
+export const toRecipientError = (
+    form: IReservationFormState,
+): string | null => {
+    if (form.kind === "deploy") {
+        return null;
+    }
+
+    const to: string = form.to.trim();
+
+    if (!to) {
+        return "Recipient is required";
+    }
+
+    const { isValid, errorCode }: AddressValidationResult = validateAddress(to);
+
+    if (isValid) {
+        return null;
+    }
+
+    return `Recipient address is invalid: ${errorCode}`;
+};
 
 export const toFormState = (
     reservation: ITransactionReservation,

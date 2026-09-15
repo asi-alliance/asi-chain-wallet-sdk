@@ -27,18 +27,22 @@ import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
+import ConstrainedInput from "@components/common/ConstrainedInput";
 import {
     DEFAULT_DEPLOY_GAS_COST,
     EMPTY_FORM_STATE,
     generateDeployId,
     isAmountInputAllowed,
+    isDeployIdInputAllowed,
     isGasCostAllowed,
     MAX_GAS_COST,
     MIN_GAS_COST,
     toDefaultGasCost,
+    toDeployIdError,
     toExpirationLabel,
     toFormState,
     toGasCostError,
+    toRecipientError,
     toReservationMeta,
     toReservedAmount,
     type IReservationFormState,
@@ -197,6 +201,10 @@ const ReservationsPage = (): ReactElement => {
         [form],
     );
 
+    const deployIdError: string | null = toDeployIdError(form.deployId);
+
+    const recipientError: string | null = toRecipientError(form);
+
     const gasCostError: string | null = toGasCostError(form);
 
     const editedReservation: ITransactionReservation | null =
@@ -242,25 +250,8 @@ const ReservationsPage = (): ReactElement => {
         updateForm({ kind, gasCost: toDefaultGasCost(kind) });
     };
 
-    const handleAmountChange = (value: string): void => {
-        if (!isAmountInputAllowed(value)) {
-            return;
-        }
-
-        updateForm({ amount: value });
-    };
-
-    const handleGasCostChange = (value: string): void => {
-        if (!isAmountInputAllowed(value)) {
-            return;
-        }
-
-        if (!isGasCostAllowed(form.kind, value)) {
-            return;
-        }
-
-        updateForm({ gasCost: value });
-    };
+    const isGasCostInputAllowed = (value: string): boolean =>
+        isAmountInputAllowed(value) && isGasCostAllowed(form.kind, value);
 
     const startEditing = (reservation: ITransactionReservation): void => {
         setNotice(null);
@@ -403,6 +394,8 @@ const ReservationsPage = (): ReactElement => {
         isAccountSelected &&
         reservedAmount !== null &&
         reservedAmount > 0n &&
+        deployIdError === null &&
+        recipientError === null &&
         gasCostError === null &&
         balanceLimitError === null;
     const isEditing = editedReservationId !== null;
@@ -520,23 +513,18 @@ const ReservationsPage = (): ReactElement => {
                             />
                         </div>
 
-                        <div className="reservations-page__field">
-                            <label htmlFor="reservation-deploy-id">
-                                Deploy id:
-                            </label>
-                            <div className="reservations-page__input-row">
-                                <input
-                                    id="reservation-deploy-id"
-                                    className="reservations-page__input--wide"
-                                    type="text"
-                                    autoComplete="off"
-                                    value={form.deployId}
-                                    onChange={(event) =>
-                                        updateForm({
-                                            deployId: event.target.value,
-                                        })
-                                    }
-                                />
+                        <ConstrainedInput
+                            id="reservation-deploy-id"
+                            label="Deploy id:"
+                            value={form.deployId}
+                            onChange={(value: string) =>
+                                updateForm({ deployId: value })
+                            }
+                            isAllowed={isDeployIdInputAllowed}
+                            hint="hex of the deploy signature"
+                            error={deployIdError}
+                            wide
+                            action={
                                 <button
                                     type="button"
                                     className="reservations-page__action reservations-page__action--ghost"
@@ -548,90 +536,58 @@ const ReservationsPage = (): ReactElement => {
                                 >
                                     Generate
                                 </button>
-                            </div>
-                        </div>
+                            }
+                        />
 
                         {form.kind === "transfer" && (
                             <>
-                                <div className="reservations-page__field">
-                                    <label htmlFor="reservation-to">
-                                        Recipient:
-                                    </label>
-                                    <input
-                                        id="reservation-to"
-                                        className="reservations-page__input--wide"
-                                        type="text"
-                                        autoComplete="off"
-                                        value={form.to}
-                                        onChange={(event) =>
-                                            updateForm({
-                                                to: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </div>
-                                <div className="reservations-page__field">
-                                    <label htmlFor="reservation-amount">
-                                        Transfer amount, {assetName}:
-                                    </label>
-                                    <input
-                                        id="reservation-amount"
-                                        type="text"
-                                        inputMode="decimal"
-                                        autoComplete="off"
-                                        value={form.amount}
-                                        onChange={(event) =>
-                                            handleAmountChange(
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
+                                <ConstrainedInput
+                                    id="reservation-to"
+                                    label="Recipient:"
+                                    value={form.to}
+                                    onChange={(value: string) =>
+                                        updateForm({ to: value.trim() })
+                                    }
+                                    error={recipientError}
+                                    wide
+                                />
+                                <ConstrainedInput
+                                    id="reservation-amount"
+                                    label={`Transfer amount, ${assetName}:`}
+                                    value={form.amount}
+                                    onChange={(value: string) =>
+                                        updateForm({ amount: value })
+                                    }
+                                    isAllowed={isAmountInputAllowed}
+                                    inputMode="decimal"
+                                />
                             </>
                         )}
 
-                        <div className="reservations-page__field">
-                            <label htmlFor="reservation-gas-cost">
-                                Gas cost, {assetName}:
-                            </label>
-                            <input
-                                id="reservation-gas-cost"
-                                type="text"
-                                inputMode="decimal"
-                                autoComplete="off"
-                                value={form.gasCost}
-                                onChange={(event) =>
-                                    handleGasCostChange(event.target.value)
-                                }
-                            />
-                            <span className="reservations-page__field-hint">
-                                {form.kind === "transfer"
+                        <ConstrainedInput
+                            id="reservation-gas-cost"
+                            label={`Gas cost, ${assetName}:`}
+                            value={form.gasCost}
+                            onChange={(value: string) =>
+                                updateForm({ gasCost: value })
+                            }
+                            isAllowed={isGasCostInputAllowed}
+                            inputMode="decimal"
+                            hint={
+                                form.kind === "transfer"
                                     ? `network charges ${MIN_GAS_COST} to ${MAX_GAS_COST}`
-                                    : `default deploy budget is ${DEFAULT_DEPLOY_GAS_COST}`}
-                            </span>
-                            {gasCostError && (
-                                <span className="reservations-page__field-error">
-                                    {gasCostError}
-                                </span>
-                            )}
-                        </div>
+                                    : `default deploy budget is ${DEFAULT_DEPLOY_GAS_COST}`
+                            }
+                            error={gasCostError}
+                        />
 
-                        <div className="reservations-page__field">
-                            <label htmlFor="reservation-reserved">
-                                Reserved amount, {assetName}:
-                            </label>
-                            <input
-                                id="reservation-reserved"
-                                type="text"
-                                value={formatAmount(reservedAmount)}
-                                readOnly
-                            />
-                            {balanceLimitError && (
-                                <span className="reservations-page__field-error">
-                                    {balanceLimitError}
-                                </span>
-                            )}
-                        </div>
+                        <ConstrainedInput
+                            id="reservation-reserved"
+                            label={`Reserved amount, ${assetName}:`}
+                            value={formatAmount(reservedAmount)}
+                            error={balanceLimitError}
+                            readOnly
+                        />
 
                         <p className="reservations-page__hint reservations-page__field--wide">
                             {form.kind === "transfer"
