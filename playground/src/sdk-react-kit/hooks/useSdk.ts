@@ -16,12 +16,14 @@ import {
     INetworkUpdate,
     IReservedOperationResult,
     ITransactionReservation,
+    ISignDeployRequest,
     ITransferRequest,
     IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
     NetworkName,
+    SignedResult,
     TReservationsByWallet,
     TTransactionReservationRequest,
     TUnsubscribe,
@@ -349,6 +351,15 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const signDeploy = useCallback(
+        (
+            request: ISignDeployRequest,
+            password?: string,
+        ): Promise<SignedResult> =>
+            requireClient().signDeploy(request, password),
+        [requireClient],
+    );
+
     const isWalletUnlocked = useCallback(
         (walletId: string): boolean =>
             requireClient().isWalletUnlocked(walletId),
@@ -525,6 +536,7 @@ const useSdk = () => {
         removeAccount,
         transfer,
         deploy,
+        signDeploy,
         isWalletUnlocked,
         exploreDeploy,
         watchDeploy,

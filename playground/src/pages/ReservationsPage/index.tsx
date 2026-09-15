@@ -20,6 +20,10 @@ import {
     formatAddress,
     formatAmount,
     formatAssetAmount,
+    generateDeployId,
+    isAmountInputAllowed,
+    isDeployIdInputAllowed,
+    toDeployIdError,
     useSdkContext,
 } from "../../sdk-react-kit";
 import useSecureAction from "@hooks/useSecureAction";
@@ -31,14 +35,10 @@ import ConstrainedInput from "@components/common/ConstrainedInput";
 import {
     DEFAULT_DEPLOY_GAS_COST,
     EMPTY_FORM_STATE,
-    generateDeployId,
-    isAmountInputAllowed,
-    isDeployIdInputAllowed,
     isGasCostAllowed,
     MAX_GAS_COST,
     MIN_GAS_COST,
     toDefaultGasCost,
-    toDeployIdError,
     toExpirationLabel,
     toFormState,
     toGasCostError,
