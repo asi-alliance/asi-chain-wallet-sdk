@@ -25,6 +25,8 @@ export type WalletPageHandlers = {
     importKeyfile: () => void;
     openWallet: (signerId: string) => void;
     closeWallet: (walletId: string) => void;
+    lockWallet: (walletId: string) => void;
+    unlockWallet: (walletId: string) => void;
     deriveAccount: (walletId: string) => void;
     exportWalletKeyfile: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
@@ -182,6 +184,30 @@ export const createWalletPageHandlers = ({
             }),
 
         closeWallet: (walletId: string) => sdk.closeWallet(walletId),
+
+        lockWallet: (walletId: string) => sdk.lockWallet(walletId),
+
+        unlockWallet: (walletId: string) =>
+            setModalState({
+                type: Modals.PASSWORD_MODAL,
+                props: {
+                    title: "Enter wallet password to unlock the session",
+                    onSubmit: (password: string) =>
+                        withLoader(async () => {
+                            try {
+                                await sdk.unlockWallet(walletId, password);
+                                closeModal();
+                            } catch (error) {
+                                console.error(error);
+                                alert(
+                                    (error as Error)?.message ??
+                                        "Failed to unlock wallet",
+                                );
+                            }
+                        }),
+                    onClose: closeModal,
+                },
+            }),
 
         deriveAccount: (walletId: string) =>
             setModalState({

@@ -31,7 +31,7 @@ const WalletRow = ({
                         </div>
                         <div className="wallet-card-address">
                             {meta.type} · {meta.accounts.length} account(s) ·
-                            locked
+                            closed
                         </div>
                         <div className="buttons">
                             <button
@@ -41,7 +41,7 @@ const WalletRow = ({
                                     handlers.openWallet(meta.signerId)
                                 }
                             >
-                                Unlock
+                                Open wallet
                             </button>
                         </div>
                     </div>
@@ -54,11 +54,19 @@ const WalletRow = ({
     const accounts = openWallet.getAccounts();
     const canRemoveAccount =
         openWallet.getType() === WalletTypes.HD && accounts.length > 1;
+    const isLocked = sdk.isWalletLocked(walletId);
 
     return (
         <div className="wallets-page__card-wrap">
             <div className="wallets-page__column-header">
                 <div className="wallet-card-name">{"Wallet"}</div>
+                <span
+                    className={`wallets-page__session ${
+                        isLocked ? "wallets-page__session--locked" : ""
+                    }`}
+                >
+                    {isLocked ? "session locked" : "session unlocked"}
+                </span>
                 {meta.type === WalletTypes.HD && (
                     <button
                         className="wallets-page__action"
@@ -75,12 +83,29 @@ const WalletRow = ({
                 >
                     Export keyfile
                 </button>
+                {isLocked ? (
+                    <button
+                        className="wallets-page__action"
+                        type="button"
+                        onClick={() => handlers.unlockWallet(walletId)}
+                    >
+                        Unlock session
+                    </button>
+                ) : (
+                    <button
+                        className="wallets-page__action"
+                        type="button"
+                        onClick={() => handlers.lockWallet(walletId)}
+                    >
+                        Lock session
+                    </button>
+                )}
                 <button
                     className="wallets-page__action"
                     type="button"
                     onClick={() => handlers.closeWallet(walletId)}
                 >
-                    Lock wallet
+                    Close wallet
                 </button>
                 <button
                     className="wallets-page__action"
