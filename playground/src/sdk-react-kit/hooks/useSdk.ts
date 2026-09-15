@@ -23,6 +23,7 @@ import {
     NetworkId,
     NetworkName,
     TReservationsByWallet,
+    TTransactionReservationRequest,
     TUnsubscribe,
     Wallet,
 } from "asi-wallet-sdk";
@@ -444,6 +445,41 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const addTransactionReservation = useCallback(
+        (
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().addTransactionReservation(request, password),
+        [requireClient],
+    );
+
+    const updateTransactionReservation = useCallback(
+        (
+            reservationId: string,
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().updateTransactionReservation(
+                reservationId,
+                request,
+                password,
+            ),
+        [requireClient],
+    );
+
+    const removeTransactionReservation = useCallback(
+        (
+            walletId: string,
+            reservationId: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().removeTransactionReservation(
+                walletId,
+                reservationId,
+            ),
+        [requireClient],
+    );
+
     const hasNetworkReservations = useCallback(
         (networkId?: NetworkId): boolean =>
             requireClient().hasNetworkReservations(networkId),
@@ -500,6 +536,9 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getReservations,
+        addTransactionReservation,
+        updateTransactionReservation,
+        removeTransactionReservation,
         hasNetworkReservations,
         isNetworkBusy,
         isCurrentNetworkBusy,

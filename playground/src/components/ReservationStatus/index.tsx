@@ -5,6 +5,7 @@ import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IReservationStatusProps {
     balance: WalletBalance;
+    reservationCount: number;
     isFetching?: boolean;
     error?: string | null;
 }
@@ -22,6 +23,7 @@ const getAmountLabel = (
 
 const ReservationStatus = ({
     balance,
+    reservationCount,
     isFetching = false,
     error = null,
 }: IReservationStatusProps): ReactElement => {
@@ -30,7 +32,7 @@ const ReservationStatus = ({
             ? balance.total - balance.available
             : null;
 
-    const hasReservations = Boolean(balance.reservationCount);
+    const hasReservations = reservationCount > 0;
 
     return (
         <div
@@ -73,10 +75,10 @@ const ReservationStatus = ({
                 {hasReservations && (
                     <div className="reservation-status__item">
                         <span className="reservation-status__label">
-                            Active Transfers:
+                            Active reservations:
                         </span>
                         <span className="reservation-status__value">
-                            {balance.reservationCount}
+                            {reservationCount}
                         </span>
                     </div>
                 )}
@@ -91,9 +93,10 @@ const ReservationStatus = ({
             {hasReservations && (
                 <div className="reservation-status__info">
                     <p>
-                        {balance.reservationCount} active transfer
-                        {balance.reservationCount !== 1 ? "s" : ""} in progress.
-                        Reserved funds will be freed once confirmed.
+                        {reservationCount} reservation
+                        {reservationCount !== 1 ? "s" : ""} in progress, both
+                        transfers and deploys. Reserved funds will be freed once
+                        confirmed or expired.
                     </p>
                 </div>
             )}

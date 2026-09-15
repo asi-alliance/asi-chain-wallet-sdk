@@ -3,6 +3,7 @@ import {PATHS} from "./paths";
 import TxHistoryPage from "@pages/TxHistoryPage";
 import NetworksPage from "@pages/NetworksPage";
 import DeployPage from "@pages/DeployPage";
+import ReservationsPage from "@pages/ReservationsPage";
 export const PAGE_ROUTES = [
     {
         path: PATHS.WALLETS_PATH,
@@ -23,5 +24,10 @@ export const PAGE_ROUTES = [
         path: PATHS.DEPLOY_PATH,
         label: "Deploy",
         Page: DeployPage,
+    },
+    {
+        path: PATHS.RESERVATIONS_PATH,
+        label: "Reservations",
+        Page: ReservationsPage,
     },
 ] as const;

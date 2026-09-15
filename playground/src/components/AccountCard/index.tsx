@@ -48,12 +48,8 @@ const AccountCard = ({
     const accountId = account.getId();
     const index = account.getIndex();
 
-    const { balance, isFetching, error, reload } = useWalletBalance(
-        sdk,
-        walletId,
-        accountId,
-        address,
-    );
+    const { balance, reservationCount, isFetching, error, reload } =
+        useWalletBalance(sdk, walletId, accountId, address);
 
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
@@ -189,6 +185,7 @@ const AccountCard = ({
                 </div>
                 <ReservationStatus
                     balance={balance}
+                    reservationCount={reservationCount}
                     isFetching={isFetching}
                     error={error}
                 />
