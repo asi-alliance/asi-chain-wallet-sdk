@@ -5,7 +5,7 @@ import { Account, ExportKeyfileService } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
-import { formatAmount } from "../../sdk-react-kit";
+import { formatAssetAmount } from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 import { downloadTextFile } from "@utils/functions";
 import useSecureAction from "@hooks/useSecureAction";
@@ -31,7 +31,7 @@ const getBalanceLabel = (
         return "balance unavailable";
     }
 
-    return `${formatAmount(available)} ASI`;
+    return formatAssetAmount(available);
 };
 
 const AccountCard = ({
@@ -48,12 +48,8 @@ const AccountCard = ({
     const accountId = account.getId();
     const index = account.getIndex();
 
-    const { balance, isFetching, error, reload } = useWalletBalance(
-        sdk,
-        walletId,
-        accountId,
-        address,
-    );
+    const { balance, reservationCount, isFetching, error, reload } =
+        useWalletBalance(sdk, walletId, accountId, address);
 
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
@@ -69,7 +65,7 @@ const AccountCard = ({
             const reserved = await runSecureAction({
                 walletId,
                 passwordTitle: "Enter wallet password to send",
-                confirmMessage: `Send ${formatAmount(amount)} ASI to ${toAddress}?`,
+                confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
                 action: (password?: string) =>
                     sdk.transfer(
                         { walletId, accountId, to: toAddress as never, amount },
@@ -189,6 +185,7 @@ const AccountCard = ({
                 </div>
                 <ReservationStatus
                     balance={balance}
+                    reservationCount={reservationCount}
                     isFetching={isFetching}
                     error={error}
                 />

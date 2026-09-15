@@ -16,13 +16,16 @@ import {
     INetworkUpdate,
     IReservedOperationResult,
     ITransactionReservation,
+    ISignDeployRequest,
     ITransferRequest,
     IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
     NetworkName,
+    SignedResult,
     TReservationsByWallet,
+    TTransactionReservationRequest,
     TUnsubscribe,
     Wallet,
 } from "asi-wallet-sdk";
@@ -51,6 +54,7 @@ const useSdk = () => {
     const [reservationsByWallet, setReservationsByWallet] =
         useState<TReservationsByWallet>({});
     const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
+    const [lockedWalletIds, setLockedWalletIds] = useState<string[]>([]);
 
     const clientRef = useRef<Client | null>(null);
 
@@ -147,6 +151,13 @@ const useSdk = () => {
                     });
                 },
             ),
+            eventBus.on(ClientEvent.WALLET_LOCKED, (walletId: string) => {
+                setLockedWalletIds((currentIds: string[]) =>
+                    currentIds.includes(walletId)
+                        ? currentIds
+                        : [...currentIds, walletId],
+                );
+            }),
         ];
 
         return () => {
@@ -209,35 +220,70 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
+    const forgetLockedWallet = useCallback((walletId: string): void => {
+        setLockedWalletIds((currentIds: string[]) =>
+            currentIds.filter((id: string) => id !== walletId),
+        );
+    }, []);
+
     const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
             const wallet = await requireClient().openWallet(signerId, password);
+
+            forgetLockedWallet(wallet.getId());
 
             await refresh();
 
             return wallet;
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
     );
 
     const closeWallet = useCallback(
         (walletId: string): void => {
             requireClient().closeWallet(walletId);
+
+            forgetLockedWallet(walletId);
         },
-        [requireClient],
+        [requireClient, forgetLockedWallet],
     );
 
     const closeAllWallets = useCallback((): void => {
         requireClient().closeAllWallets();
+
+        setLockedWalletIds([]);
     }, [requireClient]);
+
+    const lockWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().lockWallet(walletId);
+        },
+        [requireClient],
+    );
+
+    const unlockWallet = useCallback(
+        async (walletId: string, password: string): Promise<void> => {
+            await requireClient().unlockWallet(walletId, password);
+
+            forgetLockedWallet(walletId);
+        },
+        [requireClient, forgetLockedWallet],
+    );
+
+    const isWalletLocked = useCallback(
+        (walletId: string): boolean => lockedWalletIds.includes(walletId),
+        [lockedWalletIds],
+    );
 
     const removeWallet = useCallback(
         async (walletId: string): Promise<void> => {
             await requireClient().removeWallet(walletId);
 
+            forgetLockedWallet(walletId);
+
             await refresh();
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
     );
 
     const deriveAccount = useCallback(
@@ -348,6 +394,15 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const signDeploy = useCallback(
+        (
+            request: ISignDeployRequest,
+            password?: string,
+        ): Promise<SignedResult> =>
+            requireClient().signDeploy(request, password),
+        [requireClient],
+    );
+
     const isWalletUnlocked = useCallback(
         (walletId: string): boolean =>
             requireClient().isWalletUnlocked(walletId),
@@ -444,6 +499,41 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const addTransactionReservation = useCallback(
+        (
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().addTransactionReservation(request, password),
+        [requireClient],
+    );
+
+    const updateTransactionReservation = useCallback(
+        (
+            reservationId: string,
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().updateTransactionReservation(
+                reservationId,
+                request,
+                password,
+            ),
+        [requireClient],
+    );
+
+    const removeTransactionReservation = useCallback(
+        (
+            walletId: string,
+            reservationId: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().removeTransactionReservation(
+                walletId,
+                reservationId,
+            ),
+        [requireClient],
+    );
+
     const hasNetworkReservations = useCallback(
         (networkId?: NetworkId): boolean =>
             requireClient().hasNetworkReservations(networkId),
@@ -461,20 +551,10 @@ const useSdk = () => {
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
+        setLockedWalletIds([]);
+
         await refresh();
     }, [requireClient, refresh]);
-
-    const toDisplayAmount = useCallback(
-        (atomicAmount: bigint): string =>
-            requireClient().toDisplayAmount(atomicAmount),
-        [requireClient],
-    );
-
-    const toAtomicAmount = useCallback(
-        (amount: string | number): bigint =>
-            requireClient().toAtomicAmount(amount),
-        [requireClient],
-    );
 
     return {
         client,
@@ -495,12 +575,16 @@ const useSdk = () => {
         openWallet,
         closeWallet,
         closeAllWallets,
+        lockWallet,
+        unlockWallet,
+        isWalletLocked,
         removeWallet,
         deriveAccount,
         renameAccount,
         removeAccount,
         transfer,
         deploy,
+        signDeploy,
         isWalletUnlocked,
         exploreDeploy,
         watchDeploy,
@@ -512,12 +596,13 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getReservations,
+        addTransactionReservation,
+        updateTransactionReservation,
+        removeTransactionReservation,
         hasNetworkReservations,
         isNetworkBusy,
         isCurrentNetworkBusy,
         clearPersistence,
-        toDisplayAmount,
-        toAtomicAmount,
     };
 };
 

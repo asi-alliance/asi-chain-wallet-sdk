@@ -58,8 +58,7 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { client, openWallets, currentNetwork, reservationsByWallet } =
-        useSdkContext();
+    const { client, openWallets, currentNetwork } = useSdkContext();
 
     const [searchParams, setSearchParams] = useSearchParams();
 

@@ -7,6 +7,18 @@ interface TxListItemProps {
     transaction: Transaction;
 }
 
+const CONTRACT_PREVIEW_LENGTH: number = 40;
+
+const toContractPreview = (contractCode: string): string => {
+    const singleLine: string = contractCode.replace(/\s+/g, " ").trim();
+
+    if (singleLine.length <= CONTRACT_PREVIEW_LENGTH) {
+        return singleLine;
+    }
+
+    return `${singleLine.substring(0, CONTRACT_PREVIEW_LENGTH)}...`;
+};
+
 const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
     const handleCopyDeployId = async (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -44,7 +56,9 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
             <td>{transaction.amount ?? "-"}</td>
             <td>
                 <div className="tx-table__details">
-                    {transaction.note && <div>{transaction.note}</div>}
+                    {transaction.gasCost && (
+                        <div>Gas: {transaction.gasCost}</div>
+                    )}
 
                     {transaction.deployId && (
                         <div>
@@ -63,6 +77,14 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
                     {transaction.blockHash && (
                         <div>
                             Block: {transaction.blockHash.substring(0, 16)}...
+                        </div>
+                    )}
+
+                    {transaction.contractCode && (
+                        <div title={transaction.contractCode}>
+                            Contract: {toContractPreview(
+                                transaction.contractCode,
+                            )}
                         </div>
                     )}
                 </div>

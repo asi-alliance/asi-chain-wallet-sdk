@@ -1,0 +1,50 @@
+.constrained-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #444;
+}
+
+.constrained-input__label {
+    white-space: nowrap;
+    line-height: 1.2;
+    min-height: 1.2em;
+}
+
+.constrained-input__row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.constrained-input__control {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    background: #fff;
+    min-width: 11rem;
+}
+
+.constrained-input__control--wide {
+    min-width: 24rem;
+}
+
+.constrained-input__control[readonly] {
+    background: #f3f4f6;
+    color: #4338ca;
+    font-weight: 600;
+    cursor: default;
+}
+
+.constrained-input__hint {
+    font-size: 0.72rem;
+    color: #6b7280;
+}
+
+.constrained-input__error {
+    font-size: 0.72rem;
+    color: #c62828;
+    max-width: 18rem;
+}
