@@ -41,7 +41,7 @@ const AccountCard = ({
     onRename,
     onRemove,
 }: IAccountCardProps): ReactElement => {
-    const { setModalState } = useAppContext();
+    const { setModalState, withLoader } = useAppContext();
     const runSecureAction = useSecureAction();
 
     const address = account.getAddress();
@@ -67,10 +67,16 @@ const AccountCard = ({
                 passwordTitle: "Enter wallet password to send",
                 confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
                 action: (password?: string) =>
-                    sdk.transfer(
-                        { walletId, accountId, to: toAddress, amount },
-                        password,
-                    ),
+                    withLoader(async () => {
+                        const result = await sdk.transfer(
+                            { walletId, accountId, to: toAddress, amount },
+                            password,
+                        );
+
+                        await reload();
+
+                        return result;
+                    }),
             });
 
             if (!reserved) {
@@ -81,8 +87,6 @@ const AccountCard = ({
                 onConfirmed: reload,
                 onError: reload,
             });
-
-            await reload();
 
             setModalState({
                 type: Modals.TRANSFER_COMPLETED_MODAL,

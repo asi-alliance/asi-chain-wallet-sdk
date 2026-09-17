@@ -130,27 +130,6 @@
 	.wallets-page__column {
 		flex: 1 1 auto;
 	}
-}
-
-@media (max-width: 37.5rem) {
-	.wallets-page__header {
-		padding-top: var(--space-4);
-	}
-
-	.wallets-page__column-title {
-		flex: 1 1 100%;
-		margin-right: 0;
-	}
-
-	.wallets-page__session {
-		margin-right: 0;
-	}
-
-	.wallets-page__column-header .wallets-page__action,
-	.wallets-page__header .wallets-page__action {
-		flex: 1 1 auto;
-		min-height: var(--tap-target);
-	}
 
 	.wallets-page__tabs {
 		display: flex;
@@ -178,6 +157,11 @@
 			border-color var(--duration) var(--ease-out);
 	}
 
+	.wallets-page__tab:hover:not(.wallets-page__tab--active) {
+		border-color: var(--border-strong);
+		color: var(--text-strong);
+	}
+
 	.wallets-page__tab--active {
 		background: var(--accent);
 		border-color: var(--accent);
@@ -190,6 +174,28 @@
 		.wallets-page__column[data-column="privateKey"] {
 		display: none;
 	}
+}
+
+@media (max-width: 37.5rem) {
+	.wallets-page__header {
+		padding-top: var(--space-4);
+	}
+
+	.wallets-page__column-title {
+		flex: 1 1 100%;
+		margin-right: 0;
+	}
+
+	.wallets-page__session {
+		margin-right: 0;
+	}
+
+	.wallets-page__column-header .wallets-page__action,
+	.wallets-page__header .wallets-page__action {
+		flex: 1 1 auto;
+		min-height: var(--tap-target);
+	}
+
 }
 
 @media (max-width: 26.25rem) {
