@@ -2,7 +2,10 @@ import App from "@components/Application";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
+import "./theme/tokens.css";
 import "./theme/commonStyles.css";
+import "./theme/pageLayout.css";
+import "./theme/dataTable.css";
 
 const rootElement: HTMLElement | null = document.getElementById("root");
 

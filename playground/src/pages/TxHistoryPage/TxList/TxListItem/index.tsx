@@ -34,27 +34,27 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
 
     return (
         <tr id={`history-transaction-row-${transaction.id}`}>
-            <td>{formatDate(transaction.timestamp)}</td>
-            <td>
+            <td data-label="Date">{formatDate(transaction.timestamp)}</td>
+            <td data-label="Type">
                 <span className="tx-table__type">{transaction.type}</span>
             </td>
-            <td>
+            <td data-label="Status">
                 <span
                     className={`tx-table__status tx-table__status--${transaction.status}`}
                 >
                     {transaction.status}
                 </span>
             </td>
-            <td className="tx-table__mono">
+            <td className="tx-table__mono" data-label="From">
                 {transaction.from === "Unknown"
                     ? "Unknown"
                     : formatAddress(transaction.from)}
             </td>
-            <td className="tx-table__mono">
+            <td className="tx-table__mono" data-label="To">
                 {transaction.to ? formatAddress(transaction.to) : "-"}
             </td>
-            <td>{transaction.amount ?? "-"}</td>
-            <td>
+            <td data-label="Amount">{transaction.amount ?? "-"}</td>
+            <td data-label="Details">
                 <div className="tx-table__details">
                     {transaction.gasCost && (
                         <div>Gas: {transaction.gasCost}</div>
