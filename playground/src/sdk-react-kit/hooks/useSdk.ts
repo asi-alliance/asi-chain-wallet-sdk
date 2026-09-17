@@ -227,6 +227,39 @@ const useSdk = () => {
         );
     }, []);
 
+    const syncWalletLock = useCallback((walletId: string): void => {
+        const currentClient = clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        const isUnlocked: boolean = currentClient.isWalletUnlocked(walletId);
+
+        setLockedWalletIds((currentIds: string[]) => {
+            const isTracked: boolean = currentIds.includes(walletId);
+
+            if (isUnlocked) {
+                return isTracked
+                    ? currentIds.filter((id: string) => id !== walletId)
+                    : currentIds;
+            }
+
+            return isTracked ? currentIds : [...currentIds, walletId];
+        });
+    }, []);
+
+    const withSessionSync = useCallback(
+        async <T>(walletId: string, action: () => Promise<T>): Promise<T> => {
+            try {
+                return await action();
+            } finally {
+                syncWalletLock(walletId);
+            }
+        },
+        [syncWalletLock],
+    );
+
     const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
             const wallet = await requireClient().openWallet(signerId, password);
@@ -382,8 +415,10 @@ const useSdk = () => {
             request: ITransferRequest,
             password?: string,
         ): Promise<IReservedOperationResult> =>
-            requireClient().transfer(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().transfer(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const deploy = useCallback(
@@ -391,8 +426,10 @@ const useSdk = () => {
             request: IDeployRequest,
             password?: string,
         ): Promise<IReservedOperationResult> =>
-            requireClient().deploy(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().deploy(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const signDeploy = useCallback(
@@ -400,8 +437,10 @@ const useSdk = () => {
             request: ISignDeployRequest,
             password?: string,
         ): Promise<SignedResult> =>
-            requireClient().signDeploy(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().signDeploy(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const isWalletUnlocked = useCallback(
@@ -505,8 +544,10 @@ const useSdk = () => {
             request: TTransactionReservationRequest,
             password?: string,
         ): Promise<ITransactionReservation> =>
-            requireClient().addTransactionReservation(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().addTransactionReservation(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const updateTransactionReservation = useCallback(
@@ -515,12 +556,14 @@ const useSdk = () => {
             request: TTransactionReservationRequest,
             password?: string,
         ): Promise<ITransactionReservation> =>
-            requireClient().updateTransactionReservation(
-                reservationId,
-                request,
-                password,
+            withSessionSync(request.walletId, () =>
+                requireClient().updateTransactionReservation(
+                    reservationId,
+                    request,
+                    password,
+                ),
             ),
-        [requireClient],
+        [requireClient, withSessionSync],
     );
 
     const removeTransactionReservation = useCallback(
