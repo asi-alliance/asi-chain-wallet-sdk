@@ -1,6 +1,5 @@
 import { useState, type ReactElement } from "react";
 import { formatAssetAmount } from "../../sdk-react-kit";
-import "./style.css";
 
 export interface ITransferCompletedModalProps {
     fromAddress: string;

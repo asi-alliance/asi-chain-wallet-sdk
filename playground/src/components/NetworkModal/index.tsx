@@ -6,7 +6,6 @@ import {
     NetworkName,
     validateUrl,
 } from "asi-wallet-sdk";
-import "./style.css";
 import { toNodeApiProfile } from "../../sdk-react-kit";
 
 export interface INetworkModalPayload {

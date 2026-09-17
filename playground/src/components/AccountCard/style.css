@@ -21,33 +21,6 @@
 	font-family: inherit;
 }
 
-.remove-block {
-	flex-shrink: 0;
-	margin-top: var(--space-1);
-	transition: transform var(--duration) var(--ease-out);
-}
-
-.remove-block button {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: var(--tap-target);
-	height: var(--tap-target);
-	background: none;
-	border: none;
-	border-radius: var(--radius-sm);
-	color: var(--danger);
-	cursor: pointer;
-}
-
-.remove-block button:hover {
-	background: var(--danger-surface);
-}
-
-.remove-block:hover {
-	transform: scale(1.05);
-}
-
 .wallet-card-index,
 .account-card-index {
 	position: absolute;
@@ -191,6 +164,20 @@
 	cursor: not-allowed;
 }
 
+.account-card-button--danger {
+	margin-left: auto;
+	background: var(--danger-surface);
+	border-color: var(--danger-border);
+	color: var(--danger);
+}
+
+.account-card-button--danger:hover:not(:disabled),
+.account-card-button--danger:active:not(:disabled) {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: var(--text-on-accent);
+}
+
 @media (max-width: 37.5rem) {
 	.wallet-card,
 	.account-card {
@@ -224,8 +211,7 @@
 		gap: var(--space-1);
 	}
 
-	.remove-block button {
-		width: var(--control-height);
-		height: var(--tap-target);
+	.account-card-button--danger {
+		margin-left: 0;
 	}
 }

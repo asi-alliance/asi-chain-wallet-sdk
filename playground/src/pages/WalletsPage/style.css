@@ -117,12 +117,8 @@
 	min-width: 0;
 }
 
-.mnemonics .wallets-page__card-wrap .remove-block {
-	width: 24px;
-}
-
-.mnemonics .wallets-page__card-wrap:last-child .remove-block button {
-	display: block;
+.wallets-page__tabs {
+	display: none;
 }
 
 @media (max-width: 56.25rem) {
@@ -154,6 +150,45 @@
 	.wallets-page__header .wallets-page__action {
 		flex: 1 1 auto;
 		min-height: var(--tap-target);
+	}
+
+	.wallets-page__tabs {
+		display: flex;
+		gap: var(--space-2);
+		padding: 0 var(--page-gutter);
+		margin-top: var(--space-4);
+	}
+
+	.wallets-page__tab {
+		flex: 1 1 0;
+		min-width: 0;
+		min-height: var(--tap-target);
+		padding: var(--space-2) var(--space-3);
+		background: var(--surface-card);
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-md);
+		color: var(--text-muted);
+		font-family: inherit;
+		font-size: var(--text-md);
+		font-weight: 500;
+		cursor: pointer;
+		transition:
+			background var(--duration) var(--ease-out),
+			color var(--duration) var(--ease-out),
+			border-color var(--duration) var(--ease-out);
+	}
+
+	.wallets-page__tab--active {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--text-on-accent);
+	}
+
+	.wallets-page__grid[data-active-column="privateKey"]
+		.wallets-page__column[data-column="mnemonic"],
+	.wallets-page__grid[data-active-column="mnemonic"]
+		.wallets-page__column[data-column="privateKey"] {
+		display: none;
 	}
 }
 

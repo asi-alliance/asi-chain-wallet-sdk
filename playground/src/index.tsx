@@ -6,6 +6,8 @@ import "./theme/tokens.css";
 import "./theme/commonStyles.css";
 import "./theme/pageLayout.css";
 import "./theme/dataTable.css";
+import "./theme/modal.css";
+import "./theme/statusPanel.css";
 
 const rootElement: HTMLElement | null = document.getElementById("root");
 
