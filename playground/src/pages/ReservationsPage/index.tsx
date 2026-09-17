@@ -45,6 +45,7 @@ import {
     toRecipientError,
     toReservationMeta,
     toReservedAmount,
+    toReservedTotal,
     type IReservationFormState,
 } from "./helpers";
 
@@ -149,7 +150,10 @@ const ReservationsPage = (): ReactElement => {
     const reservations: ITransactionReservation[] =
         reservationsByWallet[selectedWalletId] ?? [];
 
-    const reservationsCount: number = reservations.length;
+    const reservedTotal: string = toReservedTotal(
+        reservations,
+        selectedAccountId,
+    ).toString();
 
     useEffect(() => {
         if (!selectedWalletId || !selectedAccountId) {
@@ -193,7 +197,7 @@ const ReservationsPage = (): ReactElement => {
         selectedWalletId,
         selectedAccountId,
         currentNetwork,
-        reservationsCount,
+        reservedTotal,
     ]);
 
     const reservedAmount: bigint | null = useMemo(

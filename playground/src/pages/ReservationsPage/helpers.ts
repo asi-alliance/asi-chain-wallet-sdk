@@ -164,6 +164,18 @@ export const toReservationMeta = (
     };
 };
 
+export const toReservedTotal = (
+    reservations: ITransactionReservation[],
+    accountId: string,
+): bigint =>
+    reservations.reduce(
+        (total: bigint, reservation: ITransactionReservation) =>
+            reservation.accountId === accountId
+                ? total + BigInt(reservation.pendingAmount)
+                : total,
+        0n,
+    );
+
 export const toExpirationLabel = (
     expirationTime: number,
     now: number,
