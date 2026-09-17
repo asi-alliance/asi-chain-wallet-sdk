@@ -4,10 +4,10 @@ import {
     INetworkConfig,
     NODE_API_PROFILE_DESCRIPTORS,
     NetworkName,
-    NodeApiProfile,
     validateUrl,
 } from "asi-wallet-sdk";
 import "./style.css";
+import { toNodeApiProfile } from "../../sdk-react-kit";
 
 export interface INetworkModalPayload {
     name: NetworkName;
@@ -52,7 +52,7 @@ const NetworkModal = ({
             ValidatorURL: ((formData.get("validatorUrl") as string) ?? "").trim(),
             ReadOnlyURL: ((formData.get("readOnlyUrl") as string) ?? "").trim(),
             IndexerURL: ((formData.get("indexerUrl") as string) ?? "").trim(),
-            nodeApiProfile: formData.get("nodeApiProfile") as NodeApiProfile,
+            nodeApiProfile: toNodeApiProfile(formData.get("nodeApiProfile")),
         };
 
         const urlFields: { label: string; value: string }[] = [

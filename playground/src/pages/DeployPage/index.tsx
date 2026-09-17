@@ -2,11 +2,18 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import "./style.css";
 import {
     Account,
+    DEFAULT_PHLO_LIMIT,
     DEFAULT_PHLO_PRICE,
+    DeployStatus,
     IReservedOperationResult,
+    validateDeployPayload,
     Wallet,
 } from "asi-wallet-sdk";
-import { useSdkContext } from "../../sdk-react-kit";
+import {
+    formatAssetAmount,
+    toErrorText,
+    useSdkContext,
+} from "../../sdk-react-kit";
 import {
     useRelevantResultGuard,
     type TIsResultRelevant,
@@ -22,8 +29,6 @@ const EXAMPLE_CONTRACT = `new stdout(\`rho:io:stdout\`), deployerId(\`rho:rchain
   stdout!("Hello from ASI Wallet!") |
   deployerId!("Deploy successful")
 }`;
-
-const DEFAULT_PHLO_LIMIT = "100000000";
 
 interface IAccountEntry {
     walletId: string;
@@ -51,7 +56,9 @@ const DeployPage = (): ReactElement => {
     );
 
     const [code, setCode] = useState<string>(EXAMPLE_CONTRACT);
-    const [phloLimit, setPhloLimit] = useState<string>(DEFAULT_PHLO_LIMIT);
+    const [phloLimit, setPhloLimit] = useState<string>(
+        String(DEFAULT_PHLO_LIMIT),
+    );
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -68,22 +75,6 @@ const DeployPage = (): ReactElement => {
         [],
     );
 
-    const selectedWalletId: string = useMemo(() => {
-        for (const wallet of openWallets) {
-            if (
-                !wallet
-                    .getAccounts()
-                    .some(
-                        (account: Account) =>
-                            account.getId() === selectedAccountId,
-                    )
-            ) {
-                continue;
-            }
-
-            return wallet.getId();
-        }
-    }, [openWallets, selectedAccountId]);
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
             openWallets.flatMap((wallet: Wallet) =>
@@ -135,11 +126,13 @@ const DeployPage = (): ReactElement => {
                 ? Number(phloLimit)
                 : undefined;
 
-            if (
-                parsedPhloLimit !== undefined &&
-                !Number.isFinite(parsedPhloLimit)
-            ) {
-                setError("Phlo limit must be a number");
+            const { isValid, error: payloadError } = validateDeployPayload({
+                term: code,
+                phloLimit: parsedPhloLimit,
+            });
+
+            if (!isValid) {
+                setError(payloadError);
 
                 return;
             }
@@ -150,8 +143,8 @@ const DeployPage = (): ReactElement => {
 
             try {
                 balance = await getAvailableBalance(
-                    selectedWalletId,
-                    selectedAccountId,
+                    selectedEntry.walletId,
+                    selectedEntry.account.getId(),
                 );
             } catch (balanceError) {
                 if (!isBalanceRelevant()) {
@@ -159,8 +152,7 @@ const DeployPage = (): ReactElement => {
                 }
 
                 setError(
-                    (balanceError as Error)?.message ??
-                        "Deploy aborted: balance is unavailable",
+                    toErrorText(balanceError, "Deploy aborted: balance is unavailable"),
                 );
 
                 return;
@@ -172,10 +164,16 @@ const DeployPage = (): ReactElement => {
                 return;
             }
 
-            const minGasCost =
-                (Number(phloLimit) * DEFAULT_PHLO_PRICE) / 1000000000;
-            if (balance <= 0 || balance < minGasCost) {
-                setError("Transaction aborted: Insufficient balance");
+            const reservedGasCost: bigint =
+                BigInt(parsedPhloLimit ?? DEFAULT_PHLO_LIMIT) *
+                BigInt(DEFAULT_PHLO_PRICE);
+
+            if (balance < reservedGasCost) {
+                setError(
+                    `Transaction aborted: Insufficient balance, the deploy reserves ${formatAssetAmount(
+                        reservedGasCost,
+                    )}`,
+                );
 
                 return;
             }
@@ -202,15 +200,16 @@ const DeployPage = (): ReactElement => {
             }
 
             setDeployId(reserved.deployId);
-            setStatus("Submitted");
+            setStatus(DeployStatus.DEPLOYING);
 
             unsubscribeRef.current = reserved.subscribe({
                 onStatus: (deployStatus) => setStatus(deployStatus.status),
-                onConfirmed: () => setStatus("Finalized"),
-                onError: (watchError) => setError(watchError.message),
+                onConfirmed: () => setStatus(DeployStatus.FINALIZED),
+                onError: (watchError) =>
+                    setError(toErrorText(watchError, "Deploy watch failed")),
             });
         } catch (deployError) {
-            setError((deployError as Error)?.message ?? "Deploy failed");
+            setError(toErrorText(deployError, "Deploy failed"));
         } finally {
             setIsLoading(false);
         }
@@ -247,7 +246,7 @@ const DeployPage = (): ReactElement => {
                 return;
             }
 
-            setError((exploreError as Error)?.message ?? "Explore failed");
+            setError(toErrorText(exploreError, "Explore failed"));
         } finally {
             setIsLoading(false);
         }

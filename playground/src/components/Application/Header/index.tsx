@@ -24,7 +24,7 @@ const Header = (): ReactElement => {
                 type="button"
                 onClick={sdk.closeAllWallets}
             >
-                LOCK ALL WALLETS
+                CLOSE ALL WALLETS
             </button>
             <button
                 className="app-header__reset"

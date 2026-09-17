@@ -99,6 +99,22 @@ body {
   margin-right: auto;
 }
 
+.wallets-page__session {
+  margin-right: auto;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #1e824c;
+  background: #e8f5ec;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  white-space: nowrap;
+}
+
+.wallets-page__session--locked {
+  color: #8a6100;
+  background: #fff7e6;
+}
+
 .wallets-page__action {
   background: #6366f1;
   color: #fff;
