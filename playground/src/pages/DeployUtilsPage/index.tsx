@@ -16,6 +16,7 @@ import {
     Wallet,
     type IDeployStatusResult,
     type IDeployWatchHandle,
+    type NetworkId,
     type SignedResult,
 } from "asi-wallet-sdk";
 import {
@@ -28,6 +29,11 @@ import {
     toIntegerRangeError,
     useSdkContext,
 } from "../../sdk-react-kit";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "../../sdk-react-kit/hooks/useRelevantResultGuard";
 import useSecureAction from "@hooks/useSecureAction";
 import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
@@ -79,6 +85,9 @@ const DeployUtilsPage = (): ReactElement => {
         exploreDeploy,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
+    const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [term, setTerm] = useState<string>(EXAMPLE_CONTRACT);
@@ -105,6 +114,7 @@ const DeployUtilsPage = (): ReactElement => {
     const [isExploring, setIsExploring] = useState<boolean>(false);
 
     const watchHandleRef = useRef<IDeployWatchHandle | null>(null);
+    const watchNetworkIdRef = useRef<NetworkId | undefined>(undefined);
     const logIdRef = useRef<number>(0);
 
     useEffect(
@@ -205,6 +215,21 @@ const DeployUtilsPage = (): ReactElement => {
         setIsWatching(false);
     };
 
+    useEffect(() => {
+        const networkId: NetworkId | undefined = currentNetwork?.id;
+
+        if (!watchHandleRef.current) {
+            return;
+        }
+
+        if (watchNetworkIdRef.current === networkId) {
+            return;
+        }
+
+        stopWatch();
+        appendLog("network changed, watch stopped");
+    }, [currentNetwork?.id]);
+
     const handleSign = async (): Promise<void> => {
         if (!selectedEntry) {
             return;
@@ -255,7 +280,13 @@ const DeployUtilsPage = (): ReactElement => {
         setWatchLog([]);
         setIsWatching(true);
 
-        appendLog(`watching ${watchedDeployId.trim()}`);
+        watchNetworkIdRef.current = currentNetwork?.id;
+
+        appendLog(
+            `watching ${watchedDeployId.trim()}${
+                currentNetwork ? ` on ${currentNetwork.name}` : ""
+            }`,
+        );
 
         watchHandleRef.current = watchDeploy(
             watchedDeployId.trim(),
@@ -283,14 +314,26 @@ const DeployUtilsPage = (): ReactElement => {
     };
 
     const handleExplore = async (): Promise<void> => {
+        const isResultRelevant: TIsResultRelevant = startRequest();
+
         setIsExploring(true);
         setExploreError(null);
         setExploreResult(null);
 
         try {
-            setExploreResult(await exploreDeploy(exploreCode));
+            const result: unknown = await exploreDeploy(exploreCode);
+
+            if (!isResultRelevant()) {
+                return;
+            }
+
+            setExploreResult(result);
         } catch (error) {
             console.error(error);
+
+            if (!isResultRelevant()) {
+                return;
+            }
 
             setExploreError(toErrorText(error, "Explore failed"));
         } finally {
