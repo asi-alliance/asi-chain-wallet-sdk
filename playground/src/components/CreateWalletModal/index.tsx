@@ -6,6 +6,7 @@ import {
 } from "asi-wallet-sdk";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
+import { toAccountNameError } from "../../sdk-react-kit";
 
 export type TWalletCreatePayload =
     | {
@@ -82,9 +83,16 @@ const CreateWalletModal = ({
 
         const formData = new FormData(event.currentTarget);
 
-        const name = (formData.get("name") as string) ?? "";
+        const name = ((formData.get("name") as string) ?? "").trim();
         const password = (formData.get("password") as string) ?? "";
         const repassword = (formData.get("repassword") as string) ?? "";
+
+        const nameError = toAccountNameError(name);
+
+        if (nameError) {
+            setLocalError(nameError);
+            return;
+        }
 
         if (password !== repassword) {
             setLocalError("Passwords do not match.");
@@ -110,7 +118,7 @@ const CreateWalletModal = ({
 
             onSubmit({
                 mode: "privateKey",
-                name: name.trim(),
+                name,
                 privateKey: normalizePrivateKeyHex(privateKey),
                 password,
             });
@@ -125,7 +133,7 @@ const CreateWalletModal = ({
 
         onSubmit({
             mode: "mnemonic",
-            name: name.trim(),
+            name,
             mnemonic: mnemonicWords.join(" "),
             password,
         });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Address,
     Client,
     ClientEvent,
     IAccountKeyfile,
@@ -482,8 +483,8 @@ const useSdk = () => {
     );
 
     const getBalance = useCallback(
-        (address: string): Promise<bigint> =>
-            requireClient().getBalance(address as never),
+        (address: Address): Promise<bigint> =>
+            requireClient().getBalance(address),
         [requireClient],
     );
 

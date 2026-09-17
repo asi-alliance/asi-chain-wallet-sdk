@@ -1,9 +1,23 @@
 import {
     DEFAULT_ASSET,
+    DEFAULT_NODE_API_PROFILE,
     genRandomHex,
     isIntegerInRange,
+    isNodeApiProfile,
+    NodeApiProfile,
     NON_NEGATIVE_INTEGER_REGEX,
+    validateAccountName,
+    validateAddress,
+    type AddressValidationResult,
 } from "asi-wallet-sdk";
+
+export const toNodeApiProfile = (value: unknown): NodeApiProfile => {
+    if (isNodeApiProfile(value)) {
+        return value;
+    }
+
+    return DEFAULT_NODE_API_PROFILE;
+};
 
 const SIGNATURE_HEX_LENGTH: number = 142;
 
@@ -82,6 +96,33 @@ export const toDeployIdError = (value: string): string | null => {
     }
 
     return null;
+};
+
+export const toAddressError = (value: string): string | null => {
+    const address: string = value.trim();
+
+    if (!address) {
+        return "Address is required";
+    }
+
+    const { isValid, errorCode }: AddressValidationResult =
+        validateAddress(address);
+
+    if (isValid) {
+        return null;
+    }
+
+    return `Address is invalid: ${errorCode}`;
+};
+
+export const toAccountNameError = (value: string): string | null => {
+    const { isValid, error } = validateAccountName(value);
+
+    if (isValid) {
+        return null;
+    }
+
+    return error ?? null;
 };
 
 export const toDeployIdLengthError = (value: string): string | null => {

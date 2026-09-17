@@ -1,5 +1,6 @@
-import { type FormEvent, type ReactElement } from "react";
+import { useState, type FormEvent, type ReactElement } from "react";
 import "./style.css";
+import { toAccountNameError } from "../../sdk-react-kit";
 
 export interface IDeriveWalletModalProps {
     onSubmit: (name: string, password: string) => void;
@@ -10,15 +11,26 @@ const DeriveWalletModal = ({
     onSubmit,
     onClose,
 }: IDeriveWalletModalProps): ReactElement => {
+    const [localError, setLocalError] = useState<string | null>(null);
+
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        setLocalError(null);
 
         const formData = new FormData(event.currentTarget);
 
-        const name = (formData.get("name") as string) ?? "";
+        const name = ((formData.get("name") as string) ?? "").trim();
         const password = (formData.get("password") as string) ?? "";
 
-        onSubmit(name.trim(), password);
+        const nameError = toAccountNameError(name);
+
+        if (nameError) {
+            setLocalError(nameError);
+
+            return;
+        }
+
+        onSubmit(name, password);
     };
 
     return (
@@ -57,6 +69,12 @@ const DeriveWalletModal = ({
                             required
                         />
                     </div>
+
+                    {localError && (
+                        <div className="wallet-create-modal__error">
+                            {localError}
+                        </div>
+                    )}
 
                     <div className="wallet-create-modal__actions">
                         <button

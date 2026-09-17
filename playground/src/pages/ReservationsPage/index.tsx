@@ -9,7 +9,6 @@ import "./style.css";
 import {
     Account,
     DEFAULT_ASSET,
-    getErrorMessage,
     Wallet,
     type ITransactionReservation,
     type TTransactionReservationMeta,
@@ -21,6 +20,7 @@ import {
     formatAmount,
     formatAssetAmount,
     generateDeployId,
+    toErrorText,
     isAmountInputAllowed,
     isDeployIdInputAllowed,
     toDeployIdError,
@@ -174,7 +174,7 @@ const ReservationsPage = (): ReactElement => {
                 if (!isDisposed) {
                     setAvailable(null);
                     setError(
-                        getErrorMessage(
+                        toErrorText(
                             balanceError,
                             "Available balance is unavailable",
                         ),
@@ -310,7 +310,7 @@ const ReservationsPage = (): ReactElement => {
         try {
             meta = toReservationMeta(form, reservedAmount);
         } catch (parseError) {
-            setError(getErrorMessage(parseError, "Reservation form is invalid"));
+            setError(toErrorText(parseError, "Reservation form is invalid"));
 
             return;
         }
@@ -334,7 +334,7 @@ const ReservationsPage = (): ReactElement => {
         } catch (submitError) {
             console.error(submitError);
 
-            setError(getErrorMessage(submitError, "Reservation action failed"));
+            setError(toErrorText(submitError, "Reservation action failed"));
         }
     };
 
@@ -362,7 +362,7 @@ const ReservationsPage = (): ReactElement => {
         } catch (removeError) {
             console.error(removeError);
 
-            setError(getErrorMessage(removeError, "Reservation removal failed"));
+            setError(toErrorText(removeError, "Reservation removal failed"));
         }
     };
 
@@ -384,7 +384,7 @@ const ReservationsPage = (): ReactElement => {
             setRawSnapshot(JSON.stringify(items, null, 2));
         } catch (snapshotError) {
             setError(
-                getErrorMessage(snapshotError, "Reservations read failed"),
+                toErrorText(snapshotError, "Reservations read failed"),
             );
         }
     };

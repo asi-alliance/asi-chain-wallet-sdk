@@ -11,12 +11,17 @@ import {
     HighlightedRows,
     type IHighlightedRowsProps,
 } from "@components/common/HighlightedRows";
-import { formatAssetAmount, parseAmount } from "../../sdk-react-kit";
+import {
+    formatAssetAmount,
+    parseAmount,
+    toAddressError,
+} from "../../sdk-react-kit";
+import { isAddress, type Address } from "asi-wallet-sdk";
 
 export interface ITransferModalProps {
-    fromAddress: string;
+    fromAddress: Address;
     availableBalance: bigint;
-    onConfirm: (toAddress: string, amount: bigint) => void;
+    onConfirm: (toAddress: Address, amount: bigint) => void;
     onClose: () => void;
 }
 
@@ -62,8 +67,8 @@ const TransferModal = ({
         }
     }, [amountInput, availableBalance]);
 
-    const toAddressError = toAddress.trim() ? null : "Recipient is required";
-    const isValid = !toAddressError && !amountError && amount !== null;
+    const recipientError = toAddressError(toAddress);
+    const isValid = !recipientError && !amountError && amount !== null;
 
     const detailsRows = useMemo<IHighlightedRowsProps["rows"]>(
         () => [
@@ -93,11 +98,13 @@ const TransferModal = ({
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
-        if (!isValid || amount === null) {
+        const recipient = toAddress.trim();
+
+        if (!isValid || amount === null || !isAddress(recipient)) {
             return;
         }
 
-        onConfirm(toAddress.trim(), amount);
+        onConfirm(recipient, amount);
     };
 
     return (
@@ -126,9 +133,9 @@ const TransferModal = ({
                             required
                         />
                         <div className="form-error-slot">
-                            {toAddressTouched && toAddressError && (
+                            {toAddressTouched && recipientError && (
                                 <div className="form-error">
-                                    {toAddressError}
+                                    {recipientError}
                                 </div>
                             )}
                         </div>

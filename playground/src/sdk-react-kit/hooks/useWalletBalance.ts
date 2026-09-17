@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ITransactionReservation, NetworkId } from "asi-wallet-sdk";
+import type {
+    Address,
+    ITransactionReservation,
+    NetworkId,
+} from "asi-wallet-sdk";
 import type { UseSdkValue } from "./useSdk";
+import { toErrorText } from "../errors";
 import {
     useRelevantResultGuard,
     type TIsResultRelevant,
@@ -34,7 +39,7 @@ export const useWalletBalance = (
     sdk: UseSdkValue,
     walletId: string,
     accountId: string,
-    address: string,
+    address: Address,
     options?: ILoadingBalanceOptions,
 ): UseWalletBalanceValue => {
     const {
@@ -85,7 +90,7 @@ export const useWalletBalance = (
 
             setBalance(UNKNOWN_BALANCE);
             setError(
-                (balanceError as Error)?.message ?? "Balance is unavailable",
+                toErrorText(balanceError, "Balance is unavailable"),
             );
         } finally {
             setIsFetching(false);

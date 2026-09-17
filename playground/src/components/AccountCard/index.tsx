@@ -1,11 +1,11 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account, ExportKeyfileService } from "asi-wallet-sdk";
+import { Account, ExportKeyfileService, type Address } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
-import { formatAssetAmount } from "../../sdk-react-kit";
+import { formatAssetAmount, toErrorText } from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 import { downloadTextFile } from "@utils/functions";
 import useSecureAction from "@hooks/useSecureAction";
@@ -58,7 +58,7 @@ const AccountCard = ({
 
     const closeModal = () => setModalState({ type: null });
 
-    const transfer = async (toAddress: string, amount: bigint) => {
+    const transfer = async (toAddress: Address, amount: bigint) => {
         try {
             setIsSending(true);
 
@@ -68,7 +68,7 @@ const AccountCard = ({
                 confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
                 action: (password?: string) =>
                     sdk.transfer(
-                        { walletId, accountId, to: toAddress as never, amount },
+                        { walletId, accountId, to: toAddress, amount },
                         password,
                     ),
             });
@@ -96,7 +96,7 @@ const AccountCard = ({
             });
         } catch (error) {
             console.error(error);
-            alert((error as Error)?.message ?? "Transfer failed");
+            alert(toErrorText(error, "Transfer failed"));
         } finally {
             setIsSending(false);
         }
@@ -108,7 +108,7 @@ const AccountCard = ({
             props: {
                 fromAddress: address,
                 availableBalance: balance.available ?? 0n,
-                onConfirm: (toAddress: string, amount: bigint) => {
+                onConfirm: (toAddress: Address, amount: bigint) => {
                     closeModal();
                     void transfer(toAddress, amount);
                 },
@@ -127,7 +127,7 @@ const AccountCard = ({
             );
         } catch (error) {
             console.error(error);
-            alert((error as Error)?.message ?? "Export failed");
+            alert(toErrorText(error, "Export failed"));
         }
     };
 

@@ -12,7 +12,6 @@ import {
     DEFAULT_PHLO_PRICE,
     DEPLOY_STATUS_POLLING_TIMEOUT,
     DeployStatus,
-    getErrorMessage,
     validateDeployPayload,
     Wallet,
     type IDeployStatusResult,
@@ -25,6 +24,7 @@ import {
     isIntegerInputAllowed,
     toDeployIdError,
     toDeployIdLengthError,
+    toErrorText,
     toIntegerRangeError,
     useSdkContext,
 } from "../../sdk-react-kit";
@@ -243,7 +243,7 @@ const DeployUtilsPage = (): ReactElement => {
         } catch (error) {
             console.error(error);
 
-            setSignError(getErrorMessage(error, "Signing failed"));
+            setSignError(toErrorText(error, "Signing failed"));
         } finally {
             setIsSigning(false);
         }
@@ -271,7 +271,7 @@ const DeployUtilsPage = (): ReactElement => {
                     setIsWatching(false);
                 },
                 onError: (watchError: Error) => {
-                    appendLog(getErrorMessage(watchError, "watch failed"));
+                    appendLog(toErrorText(watchError, "watch failed"));
                     setIsWatching(false);
                 },
             },
@@ -292,7 +292,7 @@ const DeployUtilsPage = (): ReactElement => {
         } catch (error) {
             console.error(error);
 
-            setExploreError(getErrorMessage(error, "Explore failed"));
+            setExploreError(toErrorText(error, "Explore failed"));
         } finally {
             setIsExploring(false);
         }

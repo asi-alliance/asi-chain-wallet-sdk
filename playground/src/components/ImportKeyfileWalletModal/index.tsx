@@ -11,6 +11,7 @@ import {
     type ReactElement,
 } from "react";
 import "./style.css";
+import { toErrorText } from "../../sdk-react-kit";
 
 export interface IKeyfileImportPayload {
     keyfile: string;
@@ -147,7 +148,7 @@ const ImportKeyfileWalletModal = ({
             setSelectedIndexes(getSelectableIndexes(keyfilePreview));
         } catch (error) {
             setLocalError(
-                (error as Error)?.message ?? "Keyfile cannot be read.",
+                toErrorText(error, "Keyfile cannot be read."),
             );
         } finally {
             setIsPreviewLoading(false);

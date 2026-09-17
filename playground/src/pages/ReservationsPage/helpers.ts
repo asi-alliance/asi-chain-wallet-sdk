@@ -3,13 +3,15 @@ import {
     DEFAULT_PHLO_PRICE,
     GasFee,
     isAddress,
-    validateAddress,
-    type AddressValidationResult,
     type ITransactionReservation,
     type TTransactionReservationMeta,
     type TransactionReservationKind,
 } from "asi-wallet-sdk";
-import { formatAmount, parseAmount } from "../../sdk-react-kit";
+import {
+    formatAmount,
+    parseAmount,
+    toAddressError,
+} from "../../sdk-react-kit";
 
 export const MIN_GAS_COST: string = formatAmount(GasFee.MIN);
 export const MAX_GAS_COST: string = formatAmount(GasFee.MAX);
@@ -115,19 +117,7 @@ export const toRecipientError = (
         return null;
     }
 
-    const to: string = form.to.trim();
-
-    if (!to) {
-        return "Recipient is required";
-    }
-
-    const { isValid, errorCode }: AddressValidationResult = validateAddress(to);
-
-    if (isValid) {
-        return null;
-    }
-
-    return `Recipient address is invalid: ${errorCode}`;
+    return toAddressError(form.to);
 };
 
 export const toFormState = (

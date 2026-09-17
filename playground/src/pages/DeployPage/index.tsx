@@ -4,11 +4,16 @@ import {
     Account,
     DEFAULT_PHLO_LIMIT,
     DEFAULT_PHLO_PRICE,
+    DeployStatus,
     IReservedOperationResult,
     validateDeployPayload,
     Wallet,
 } from "asi-wallet-sdk";
-import { formatAssetAmount, useSdkContext } from "../../sdk-react-kit";
+import {
+    formatAssetAmount,
+    toErrorText,
+    useSdkContext,
+} from "../../sdk-react-kit";
 import {
     useRelevantResultGuard,
     type TIsResultRelevant,
@@ -147,8 +152,7 @@ const DeployPage = (): ReactElement => {
                 }
 
                 setError(
-                    (balanceError as Error)?.message ??
-                        "Deploy aborted: balance is unavailable",
+                    toErrorText(balanceError, "Deploy aborted: balance is unavailable"),
                 );
 
                 return;
@@ -196,15 +200,16 @@ const DeployPage = (): ReactElement => {
             }
 
             setDeployId(reserved.deployId);
-            setStatus("Submitted");
+            setStatus(DeployStatus.DEPLOYING);
 
             unsubscribeRef.current = reserved.subscribe({
                 onStatus: (deployStatus) => setStatus(deployStatus.status),
-                onConfirmed: () => setStatus("Finalized"),
-                onError: (watchError) => setError(watchError.message),
+                onConfirmed: () => setStatus(DeployStatus.FINALIZED),
+                onError: (watchError) =>
+                    setError(toErrorText(watchError, "Deploy watch failed")),
             });
         } catch (deployError) {
-            setError((deployError as Error)?.message ?? "Deploy failed");
+            setError(toErrorText(deployError, "Deploy failed"));
         } finally {
             setIsLoading(false);
         }
@@ -241,7 +246,7 @@ const DeployPage = (): ReactElement => {
                 return;
             }
 
-            setError((exploreError as Error)?.message ?? "Explore failed");
+            setError(toErrorText(exploreError, "Explore failed"));
         } finally {
             setIsLoading(false);
         }
