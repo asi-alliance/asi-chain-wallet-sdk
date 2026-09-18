@@ -1,5 +1,4 @@
 import { type ReactElement } from "react";
-import "./style.css";
 import { formatAssetAmount } from "../../sdk-react-kit";
 import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 

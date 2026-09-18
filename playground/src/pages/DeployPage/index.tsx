@@ -152,7 +152,10 @@ const DeployPage = (): ReactElement => {
                 }
 
                 setError(
-                    toErrorText(balanceError, "Deploy aborted: balance is unavailable"),
+                    toErrorText(
+                        balanceError,
+                        "Deploy aborted: balance is unavailable",
+                    ),
                 );
 
                 return;
@@ -355,7 +358,7 @@ const DeployPage = (): ReactElement => {
 
                 {deployId && (
                     <div className="deploy-page__success">
-                        <div>Deploy submitted successfully!</div>
+                        <div>Deploy sent successfully!</div>
                         <div className="deploy-page__deploy-id">
                             Deploy ID: {deployId}
                         </div>

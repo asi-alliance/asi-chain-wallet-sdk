@@ -1,5 +1,4 @@
 import { useState, type FormEvent, type ReactElement } from "react";
-import "./style.css";
 import { toAccountNameError } from "../../sdk-react-kit";
 
 export interface IDeriveWalletModalProps {

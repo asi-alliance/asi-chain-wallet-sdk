@@ -6,7 +6,6 @@ import {
     type ReactElement,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import "./styles.css";
 import {
     Account,
     ClientEvent,

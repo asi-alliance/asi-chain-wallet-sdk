@@ -1,5 +1,4 @@
 import { JSX, ReactElement } from "react";
-import "./style.css";
 
 export interface IHighlightedRowsProps {
   title: string,

@@ -41,7 +41,7 @@ const AccountCard = ({
     onRename,
     onRemove,
 }: IAccountCardProps): ReactElement => {
-    const { setModalState } = useAppContext();
+    const { setModalState, withLoader } = useAppContext();
     const runSecureAction = useSecureAction();
 
     const address = account.getAddress();
@@ -67,10 +67,16 @@ const AccountCard = ({
                 passwordTitle: "Enter wallet password to send",
                 confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
                 action: (password?: string) =>
-                    sdk.transfer(
-                        { walletId, accountId, to: toAddress, amount },
-                        password,
-                    ),
+                    withLoader(async () => {
+                        const result = await sdk.transfer(
+                            { walletId, accountId, to: toAddress, amount },
+                            password,
+                        );
+
+                        await reload();
+
+                        return result;
+                    }),
             });
 
             if (!reserved) {
@@ -81,8 +87,6 @@ const AccountCard = ({
                 onConfirmed: reload,
                 onError: reload,
             });
-
-            await reload();
 
             setModalState({
                 type: Modals.TRANSFER_COMPLETED_MODAL,
@@ -150,30 +154,6 @@ const AccountCard = ({
             <div className="account-card-index">
                 {index === null ? "null" : index}
             </div>
-            {onRemove && (
-                <div className="remove-block">
-                    <button onClick={onRemove}>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="red"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="lucide lucide-trash2-icon lucide-trash-2"
-                        >
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                    </button>
-                </div>
-            )}
             <div className="account-card-body">
                 <div className="account-card-head">
                     <div className="account-card-name">{account.getName()}</div>
@@ -220,6 +200,15 @@ const AccountCard = ({
                     >
                         Export
                     </button>
+                    {onRemove && (
+                        <button
+                            className="account-card-button account-card-button--danger"
+                            type="button"
+                            onClick={onRemove}
+                        >
+                            Remove
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

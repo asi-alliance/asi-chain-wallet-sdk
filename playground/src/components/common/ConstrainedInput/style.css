@@ -1,9 +1,10 @@
 .constrained-input {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-    color: #444;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-body);
+    min-width: 0;
 }
 
 .constrained-input__label {
@@ -15,36 +16,67 @@
 .constrained-input__row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
+    min-width: 0;
 }
 
 .constrained-input__control {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
-    background: #fff;
-    min-width: 11rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 11rem;
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: var(--text-md);
+    color: var(--text-strong);
+    background: var(--surface-card);
+    transition: border-color var(--duration) var(--ease-out);
+}
+
+.constrained-input__control:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-surface);
 }
 
 .constrained-input__control--wide {
-    min-width: 24rem;
+    width: 24rem;
+    max-width: 100%;
 }
 
 .constrained-input__control[readonly] {
-    background: #f3f4f6;
-    color: #4338ca;
+    background: var(--surface-inset);
+    color: var(--accent);
     font-weight: 600;
     cursor: default;
 }
 
 .constrained-input__hint {
-    font-size: 0.72rem;
-    color: #6b7280;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
 }
 
 .constrained-input__error {
-    font-size: 0.72rem;
-    color: #c62828;
-    max-width: 18rem;
+    font-size: var(--text-xs);
+    color: var(--danger);
+    max-width: 24rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 37.5rem) {
+    .constrained-input {
+        flex: 1 1 100%;
+    }
+
+    .constrained-input__label {
+        white-space: normal;
+    }
+
+    .constrained-input__control,
+    .constrained-input__control--wide {
+        width: 100%;
+        min-height: var(--tap-target);
+    }
 }
