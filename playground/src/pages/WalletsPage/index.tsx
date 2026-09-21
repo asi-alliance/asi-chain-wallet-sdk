@@ -1,5 +1,11 @@
 import AccountCard from "@components/AccountCard";
-import { Fragment, useState, type ReactElement } from "react";
+import {
+    Fragment,
+    useEffect,
+    useRef,
+    useState,
+    type ReactElement,
+} from "react";
 import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -156,6 +162,22 @@ const WalletsPage = (): ReactElement => {
         "create" | "import" | null
     >(null);
     const [activeColumn, setActiveColumn] = useState<WalletColumn>("privateKey");
+
+    const isColumnPickedRef = useRef<boolean>(false);
+
+    useEffect(() => {
+        if (isColumnPickedRef.current || sdk.walletsMetadata.length === 0) {
+            return;
+        }
+
+        isColumnPickedRef.current = true;
+
+        const hasPrivateKey: boolean = sdk.walletsMetadata.some(
+            (meta: IWalletMetadata) => meta.type === WalletTypes.PRIVATE_KEY,
+        );
+
+        setActiveColumn(hasPrivateKey ? "privateKey" : "mnemonic");
+    }, [sdk.walletsMetadata]);
 
     if (!sdk.isReady) {
         return <div>Loading SDK...</div>;

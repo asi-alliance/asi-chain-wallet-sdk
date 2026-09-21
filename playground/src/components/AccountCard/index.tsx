@@ -73,6 +73,11 @@ const AccountCard = ({
                             password,
                         );
 
+                        result.subscribe({
+                            onConfirmed: reload,
+                            onError: reload,
+                        });
+
                         await reload();
 
                         return result;
@@ -82,11 +87,6 @@ const AccountCard = ({
             if (!reserved) {
                 return;
             }
-
-            reserved.subscribe({
-                onConfirmed: reload,
-                onError: reload,
-            });
 
             setModalState({
                 type: Modals.TRANSFER_COMPLETED_MODAL,
