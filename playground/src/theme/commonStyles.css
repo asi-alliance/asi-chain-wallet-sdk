@@ -1,21 +1,22 @@
 :root {
-  --color-warn: #d99e00;
-  --color-error: #c62828;
-  --color-success: #00ff00;
+  --color-warn: var(--warning);
+  --color-error: var(--danger);
+  --color-success: var(--success);
 }
 
 .currency-value {
   font-weight: 600;
-  color: #2196f3;
-  font-family: "Courier New", monospace;
+  color: var(--accent);
+  font-family: var(--font-mono);
 }
 
 .section {
-  border: 2px solid blue;
-  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 .section:not(:last-child) {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 /* table */
@@ -23,14 +24,13 @@
   border-collapse: collapse;
 }
 .table td {
-  border: 2px solid rgb(155, 155, 155);
-
+  border: 1px solid var(--border-default);
 }
 .table td:not(:last-child) {
-  border-right-color: rgb(230, 230, 230);
+  border-right-color: var(--border-subtle);
 }
 .table th {
-  border-bottom: 2px solid rgb(155, 155, 155);
+  border-bottom: 1px solid var(--border-strong);
 }
 /* /table */
 

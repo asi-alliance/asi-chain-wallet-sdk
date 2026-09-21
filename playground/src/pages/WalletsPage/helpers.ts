@@ -1,5 +1,6 @@
 import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
+import { toAccountNameError, toErrorText } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { TWalletCreatePayload } from "@components/CreateWalletModal";
 import { IKeyfileImportPayload } from "@components/ImportKeyfileWalletModal";
@@ -25,6 +26,8 @@ export type WalletPageHandlers = {
     importKeyfile: () => void;
     openWallet: (signerId: string) => void;
     closeWallet: (walletId: string) => void;
+    lockWallet: (walletId: string) => void;
+    unlockWallet: (walletId: string) => void;
     deriveAccount: (walletId: string) => void;
     exportWalletKeyfile: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
@@ -65,7 +68,7 @@ export const createWalletPageHandlers = ({
                 closeModal();
             } catch (error) {
                 console.error(error);
-                alert((error as Error)?.message ?? "Failed to create wallet");
+                alert(toErrorText(error, "Failed to create wallet"));
             }
         });
 
@@ -88,7 +91,7 @@ export const createWalletPageHandlers = ({
                 closeModal();
             } catch (error) {
                 console.error(error);
-                alert((error as Error)?.message ?? "Failed to import keyfile");
+                alert(toErrorText(error, "Failed to import keyfile"));
             }
         });
 
@@ -173,7 +176,7 @@ export const createWalletPageHandlers = ({
                             } catch (error) {
                                 console.error(error);
                                 alert(
-                                    "Failed to unlock wallet. Please check your password.",
+                                    toErrorText(error, "Failed to open wallet"),
                                 );
                             }
                         }),
@@ -182,6 +185,29 @@ export const createWalletPageHandlers = ({
             }),
 
         closeWallet: (walletId: string) => sdk.closeWallet(walletId),
+
+        lockWallet: (walletId: string) => sdk.lockWallet(walletId),
+
+        unlockWallet: (walletId: string) =>
+            setModalState({
+                type: Modals.PASSWORD_MODAL,
+                props: {
+                    title: "Enter wallet password to unlock the session",
+                    onSubmit: (password: string) =>
+                        withLoader(async () => {
+                            try {
+                                await sdk.unlockWallet(walletId, password);
+                                closeModal();
+                            } catch (error) {
+                                console.error(error);
+                                alert(
+                                    toErrorText(error, "Failed to unlock wallet"),
+                                );
+                            }
+                        }),
+                    onClose: closeModal,
+                },
+            }),
 
         deriveAccount: (walletId: string) =>
             setModalState({
@@ -199,8 +225,7 @@ export const createWalletPageHandlers = ({
                             } catch (error) {
                                 console.error(error);
                                 alert(
-                                    (error as Error)?.message ??
-                                        "Failed to derive account",
+                                    toErrorText(error, "Failed to derive account"),
                                 );
                             }
                         }),
@@ -230,8 +255,7 @@ export const createWalletPageHandlers = ({
                             } catch (error) {
                                 console.error(error);
                                 alert(
-                                    (error as Error)?.message ??
-                                        "Failed to export wallet keyfile",
+                                    toErrorText(error, "Failed to export wallet keyfile"),
                                 );
                             }
                         }),
@@ -248,15 +272,23 @@ export const createWalletPageHandlers = ({
                 } catch (error) {
                     console.error(error);
                     alert(
-                        (error as Error)?.message ?? "Failed to remove wallet",
+                        toErrorText(error, "Failed to remove wallet"),
                     );
                 }
             }),
 
         renameAccount: (walletId: string, accountId: string) => {
-            const name = window.prompt("New account name");
+            const name = window.prompt("New account name")?.trim();
 
             if (!name) return;
+
+            const nameError = toAccountNameError(name);
+
+            if (nameError) {
+                alert(nameError);
+
+                return;
+            }
 
             withLoader(async () => {
                 try {
@@ -264,7 +296,7 @@ export const createWalletPageHandlers = ({
                 } catch (error) {
                     console.error(error);
                     alert(
-                        (error as Error)?.message ?? "Failed to rename account",
+                        toErrorText(error, "Failed to rename account"),
                     );
                 }
             });
@@ -279,7 +311,7 @@ export const createWalletPageHandlers = ({
                 } catch (error) {
                     console.error(error);
                     alert(
-                        (error as Error)?.message ?? "Failed to remove account",
+                        toErrorText(error, "Failed to remove account"),
                     );
                 }
             }),

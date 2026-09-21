@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Address,
     Client,
     ClientEvent,
     IAccountKeyfile,
@@ -16,13 +17,16 @@ import {
     INetworkUpdate,
     IReservedOperationResult,
     ITransactionReservation,
+    ISignDeployRequest,
     ITransferRequest,
     IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
     NetworkId,
     NetworkName,
+    SignedResult,
     TReservationsByWallet,
+    TTransactionReservationRequest,
     TUnsubscribe,
     Wallet,
 } from "asi-wallet-sdk";
@@ -51,6 +55,7 @@ const useSdk = () => {
     const [reservationsByWallet, setReservationsByWallet] =
         useState<TReservationsByWallet>({});
     const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
+    const [lockedWalletIds, setLockedWalletIds] = useState<string[]>([]);
 
     const clientRef = useRef<Client | null>(null);
 
@@ -147,6 +152,13 @@ const useSdk = () => {
                     });
                 },
             ),
+            eventBus.on(ClientEvent.WALLET_LOCKED, (walletId: string) => {
+                setLockedWalletIds((currentIds: string[]) =>
+                    currentIds.includes(walletId)
+                        ? currentIds
+                        : [...currentIds, walletId],
+                );
+            }),
         ];
 
         return () => {
@@ -209,35 +221,103 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
+    const forgetLockedWallet = useCallback((walletId: string): void => {
+        setLockedWalletIds((currentIds: string[]) =>
+            currentIds.filter((id: string) => id !== walletId),
+        );
+    }, []);
+
+    const syncWalletLock = useCallback((walletId: string): void => {
+        const currentClient = clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        const isUnlocked: boolean = currentClient.isWalletUnlocked(walletId);
+
+        setLockedWalletIds((currentIds: string[]) => {
+            const isTracked: boolean = currentIds.includes(walletId);
+
+            if (isUnlocked) {
+                return isTracked
+                    ? currentIds.filter((id: string) => id !== walletId)
+                    : currentIds;
+            }
+
+            return isTracked ? currentIds : [...currentIds, walletId];
+        });
+    }, []);
+
+    const withSessionSync = useCallback(
+        async <T>(walletId: string, action: () => Promise<T>): Promise<T> => {
+            try {
+                return await action();
+            } finally {
+                syncWalletLock(walletId);
+            }
+        },
+        [syncWalletLock],
+    );
+
     const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
             const wallet = await requireClient().openWallet(signerId, password);
+
+            forgetLockedWallet(wallet.getId());
 
             await refresh();
 
             return wallet;
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
     );
 
     const closeWallet = useCallback(
         (walletId: string): void => {
             requireClient().closeWallet(walletId);
+
+            forgetLockedWallet(walletId);
         },
-        [requireClient],
+        [requireClient, forgetLockedWallet],
     );
 
     const closeAllWallets = useCallback((): void => {
         requireClient().closeAllWallets();
+
+        setLockedWalletIds([]);
     }, [requireClient]);
+
+    const lockWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().lockWallet(walletId);
+        },
+        [requireClient],
+    );
+
+    const unlockWallet = useCallback(
+        async (walletId: string, password: string): Promise<void> => {
+            await requireClient().unlockWallet(walletId, password);
+
+            forgetLockedWallet(walletId);
+        },
+        [requireClient, forgetLockedWallet],
+    );
+
+    const isWalletLocked = useCallback(
+        (walletId: string): boolean => lockedWalletIds.includes(walletId),
+        [lockedWalletIds],
+    );
 
     const removeWallet = useCallback(
         async (walletId: string): Promise<void> => {
             await requireClient().removeWallet(walletId);
 
+            forgetLockedWallet(walletId);
+
             await refresh();
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
     );
 
     const deriveAccount = useCallback(
@@ -335,8 +415,10 @@ const useSdk = () => {
             request: ITransferRequest,
             password?: string,
         ): Promise<IReservedOperationResult> =>
-            requireClient().transfer(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().transfer(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const deploy = useCallback(
@@ -344,8 +426,21 @@ const useSdk = () => {
             request: IDeployRequest,
             password?: string,
         ): Promise<IReservedOperationResult> =>
-            requireClient().deploy(request, password),
-        [requireClient],
+            withSessionSync(request.walletId, () =>
+                requireClient().deploy(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const signDeploy = useCallback(
+        (
+            request: ISignDeployRequest,
+            password?: string,
+        ): Promise<SignedResult> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().signDeploy(request, password),
+            ),
+        [requireClient, withSessionSync],
     );
 
     const isWalletUnlocked = useCallback(
@@ -427,8 +522,8 @@ const useSdk = () => {
     );
 
     const getBalance = useCallback(
-        (address: string): Promise<bigint> =>
-            requireClient().getBalance(address as never),
+        (address: Address): Promise<bigint> =>
+            requireClient().getBalance(address),
         [requireClient],
     );
 
@@ -441,6 +536,45 @@ const useSdk = () => {
     const getReservations = useCallback(
         (walletId: string): Promise<ITransactionReservation[]> =>
             requireClient().getReservations(walletId),
+        [requireClient],
+    );
+
+    const addTransactionReservation = useCallback(
+        (
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().addTransactionReservation(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const updateTransactionReservation = useCallback(
+        (
+            reservationId: string,
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().updateTransactionReservation(
+                    reservationId,
+                    request,
+                    password,
+                ),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const removeTransactionReservation = useCallback(
+        (
+            walletId: string,
+            reservationId: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().removeTransactionReservation(
+                walletId,
+                reservationId,
+            ),
         [requireClient],
     );
 
@@ -461,20 +595,10 @@ const useSdk = () => {
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
+        setLockedWalletIds([]);
+
         await refresh();
     }, [requireClient, refresh]);
-
-    const toDisplayAmount = useCallback(
-        (atomicAmount: bigint): string =>
-            requireClient().toDisplayAmount(atomicAmount),
-        [requireClient],
-    );
-
-    const toAtomicAmount = useCallback(
-        (amount: string | number): bigint =>
-            requireClient().toAtomicAmount(amount),
-        [requireClient],
-    );
 
     return {
         client,
@@ -495,12 +619,16 @@ const useSdk = () => {
         openWallet,
         closeWallet,
         closeAllWallets,
+        lockWallet,
+        unlockWallet,
+        isWalletLocked,
         removeWallet,
         deriveAccount,
         renameAccount,
         removeAccount,
         transfer,
         deploy,
+        signDeploy,
         isWalletUnlocked,
         exploreDeploy,
         watchDeploy,
@@ -512,12 +640,13 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getReservations,
+        addTransactionReservation,
+        updateTransactionReservation,
+        removeTransactionReservation,
         hasNetworkReservations,
         isNetworkBusy,
         isCurrentNetworkBusy,
         clearPersistence,
-        toDisplayAmount,
-        toAtomicAmount,
     };
 };
 

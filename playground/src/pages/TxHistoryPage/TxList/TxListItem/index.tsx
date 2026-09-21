@@ -7,6 +7,18 @@ interface TxListItemProps {
     transaction: Transaction;
 }
 
+const CONTRACT_PREVIEW_LENGTH: number = 40;
+
+const toContractPreview = (contractCode: string): string => {
+    const singleLine: string = contractCode.replace(/\s+/g, " ").trim();
+
+    if (singleLine.length <= CONTRACT_PREVIEW_LENGTH) {
+        return singleLine;
+    }
+
+    return `${singleLine.substring(0, CONTRACT_PREVIEW_LENGTH)}...`;
+};
+
 const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
     const handleCopyDeployId = async (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -22,29 +34,31 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
 
     return (
         <tr id={`history-transaction-row-${transaction.id}`}>
-            <td>{formatDate(transaction.timestamp)}</td>
-            <td>
+            <td data-label="Date">{formatDate(transaction.timestamp)}</td>
+            <td data-label="Type">
                 <span className="tx-table__type">{transaction.type}</span>
             </td>
-            <td>
+            <td data-label="Status">
                 <span
                     className={`tx-table__status tx-table__status--${transaction.status}`}
                 >
                     {transaction.status}
                 </span>
             </td>
-            <td className="tx-table__mono">
+            <td className="tx-table__mono" data-label="From">
                 {transaction.from === "Unknown"
                     ? "Unknown"
                     : formatAddress(transaction.from)}
             </td>
-            <td className="tx-table__mono">
+            <td className="tx-table__mono" data-label="To">
                 {transaction.to ? formatAddress(transaction.to) : "-"}
             </td>
-            <td>{transaction.amount ?? "-"}</td>
-            <td>
+            <td data-label="Amount">{transaction.amount ?? "-"}</td>
+            <td data-label="Details">
                 <div className="tx-table__details">
-                    {transaction.note && <div>{transaction.note}</div>}
+                    {transaction.gasCost && (
+                        <div>Gas: {transaction.gasCost}</div>
+                    )}
 
                     {transaction.deployId && (
                         <div>
@@ -63,6 +77,14 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
                     {transaction.blockHash && (
                         <div>
                             Block: {transaction.blockHash.substring(0, 16)}...
+                        </div>
+                    )}
+
+                    {transaction.contractCode && (
+                        <div title={transaction.contractCode}>
+                            Contract: {toContractPreview(
+                                transaction.contractCode,
+                            )}
                         </div>
                     )}
                 </div>

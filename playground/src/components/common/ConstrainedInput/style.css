@@ -1,0 +1,82 @@
+.constrained-input {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-body);
+    min-width: 0;
+}
+
+.constrained-input__label {
+    white-space: nowrap;
+    line-height: 1.2;
+    min-height: 1.2em;
+}
+
+.constrained-input__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.constrained-input__control {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 11rem;
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: var(--text-md);
+    color: var(--text-strong);
+    background: var(--surface-card);
+    transition: border-color var(--duration) var(--ease-out);
+}
+
+.constrained-input__control:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-surface);
+}
+
+.constrained-input__control--wide {
+    width: 24rem;
+    max-width: 100%;
+}
+
+.constrained-input__control[readonly] {
+    background: var(--surface-inset);
+    color: var(--accent);
+    font-weight: 600;
+    cursor: default;
+}
+
+.constrained-input__hint {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.constrained-input__error {
+    font-size: var(--text-xs);
+    color: var(--danger);
+    max-width: 24rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 37.5rem) {
+    .constrained-input {
+        flex: 1 1 100%;
+    }
+
+    .constrained-input__label {
+        white-space: normal;
+    }
+
+    .constrained-input__control,
+    .constrained-input__control--wide {
+        width: 100%;
+        min-height: var(--tap-target);
+    }
+}

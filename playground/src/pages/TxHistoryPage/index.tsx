@@ -6,7 +6,6 @@ import {
     type ReactElement,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import "./styles.css";
 import {
     Account,
     ClientEvent,
@@ -58,8 +57,7 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 };
 
 const TxHistoryPage = (): ReactElement => {
-    const { client, openWallets, currentNetwork, reservationsByWallet } =
-        useSdkContext();
+    const { client, openWallets, currentNetwork } = useSdkContext();
 
     const [searchParams, setSearchParams] = useSearchParams();
 
