@@ -1,5 +1,11 @@
 import AccountCard from "@components/AccountCard";
-import { Fragment, useState, type ReactElement } from "react";
+import {
+    Fragment,
+    useEffect,
+    useRef,
+    useState,
+    type ReactElement,
+} from "react";
 import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -7,6 +13,8 @@ import { createWalletPageHandlers, type WalletPageHandlers } from "./helpers";
 import "./style.css";
 import NetworkSelector from "@components/NetworkSelector";
 import { WalletTypes, type IWalletMetadata, type Wallet } from "asi-wallet-sdk";
+
+type WalletColumn = "privateKey" | "mnemonic";
 
 interface WalletRowProps {
     meta: IWalletMetadata;
@@ -153,6 +161,23 @@ const WalletsPage = (): ReactElement => {
     const [selectedMode, setSelectedMode] = useState<
         "create" | "import" | null
     >(null);
+    const [activeColumn, setActiveColumn] = useState<WalletColumn>("privateKey");
+
+    const isColumnPickedRef = useRef<boolean>(false);
+
+    useEffect(() => {
+        if (isColumnPickedRef.current || sdk.walletsMetadata.length === 0) {
+            return;
+        }
+
+        isColumnPickedRef.current = true;
+
+        const hasPrivateKey: boolean = sdk.walletsMetadata.some(
+            (meta: IWalletMetadata) => meta.type === WalletTypes.PRIVATE_KEY,
+        );
+
+        setActiveColumn(hasPrivateKey ? "privateKey" : "mnemonic");
+    }, [sdk.walletsMetadata]);
 
     if (!sdk.isReady) {
         return <div>Loading SDK...</div>;
@@ -172,6 +197,9 @@ const WalletsPage = (): ReactElement => {
         setIsChoosingMethod(false);
         setSelectedMode(null);
     };
+
+    const countOf = (type: WalletTypes): number =>
+        sdk.walletsMetadata.filter((meta) => meta.type === type).length;
 
     const renderList = (type: WalletTypes) =>
         sdk.walletsMetadata
@@ -198,8 +226,40 @@ const WalletsPage = (): ReactElement => {
                     Import keyfile
                 </button>
             </div>
-            <div className="wallets-page__grid">
-                <section className="wallets-page__column">
+            <div className="wallets-page__tabs">
+                <button
+                    className={`wallets-page__tab ${
+                        activeColumn === "privateKey"
+                            ? "wallets-page__tab--active"
+                            : ""
+                    }`}
+                    type="button"
+                    aria-pressed={activeColumn === "privateKey"}
+                    onClick={() => setActiveColumn("privateKey")}
+                >
+                    Private Key ({countOf(WalletTypes.PRIVATE_KEY)})
+                </button>
+                <button
+                    className={`wallets-page__tab ${
+                        activeColumn === "mnemonic"
+                            ? "wallets-page__tab--active"
+                            : ""
+                    }`}
+                    type="button"
+                    aria-pressed={activeColumn === "mnemonic"}
+                    onClick={() => setActiveColumn("mnemonic")}
+                >
+                    Mnemonic ({countOf(WalletTypes.HD)})
+                </button>
+            </div>
+            <div
+                className="wallets-page__grid"
+                data-active-column={activeColumn}
+            >
+                <section
+                    className="wallets-page__column"
+                    data-column="privateKey"
+                >
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
                             Private Key wallets
@@ -225,7 +285,10 @@ const WalletsPage = (): ReactElement => {
                     </div>
                 </section>
 
-                <section className="wallets-page__column">
+                <section
+                    className="wallets-page__column"
+                    data-column="mnemonic"
+                >
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
                             Mnemonic wallets
@@ -283,7 +346,7 @@ const WalletsPage = (): ReactElement => {
                         )}
                     </div>
 
-                    <div className="wallets-page__list mnemonics">
+                    <div className="wallets-page__list">
                         {renderList(WalletTypes.HD)}
                     </div>
                 </section>

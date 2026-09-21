@@ -5,7 +5,6 @@ import {
     validatePrivateKey,
 } from "asi-wallet-sdk";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-import "./style.css";
 import { toAccountNameError } from "../../sdk-react-kit";
 
 export type TWalletCreatePayload =

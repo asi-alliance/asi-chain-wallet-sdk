@@ -5,7 +5,6 @@ import {
     type FormEvent,
     type ReactElement,
 } from "react";
-import "./style.css";
 import {
     Account,
     DEFAULT_ASSET,
@@ -687,26 +686,33 @@ const ReservationsPage = (): ReactElement => {
                                             reservation: ITransactionReservation,
                                         ) => (
                                             <tr key={reservation.id}>
-                                                <td>{reservation.kind}</td>
-                                                <td>
+                                                <td data-label="Kind">
+                                                    {reservation.kind}
+                                                </td>
+                                                <td data-label="Account">
                                                     {accountNamesById[
                                                         reservation.accountId
                                                     ] ?? reservation.accountId}
                                                 </td>
-                                                <td className="reservations-table__mono">
+                                                <td
+                                                    className="reservations-table__mono"
+                                                    data-label="Deploy id"
+                                                >
                                                     {formatAddress(
                                                         reservation.details
                                                             .deployId,
                                                     )}
                                                 </td>
-                                                <td>
+                                                <td
+                                                    data-label={`Reserved, ${assetName}`}
+                                                >
                                                     {formatAmount(
                                                         BigInt(
                                                             reservation.pendingAmount,
                                                         ),
                                                     )}
                                                 </td>
-                                                <td>
+                                                <td data-label="Details">
                                                     <div className="reservations-table__details">
                                                         {reservation.details
                                                             .to && (
@@ -756,13 +762,13 @@ const ReservationsPage = (): ReactElement => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td>
+                                                <td data-label="Expires in">
                                                     {toExpirationLabel(
                                                         reservation.expirationTime,
                                                         now,
                                                     )}
                                                 </td>
-                                                <td>
+                                                <td data-label="Actions">
                                                     <div className="reservations-table__actions">
                                                         <button
                                                             type="button"
