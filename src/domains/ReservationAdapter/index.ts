@@ -392,7 +392,7 @@ export default class ReservationAdapter {
     }
 
     public dispose(): void {
-        this.reservationsManager.dispose();
+        this.reservationsManager.close();
     }
 
     private async encryptReservationData(

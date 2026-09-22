@@ -1,5 +1,5 @@
 import ItemManager from "@services/ItemManager";
-import { IDisposable } from "./../DisposableItemManager/index";
+import { IClosable } from "@domains/ClosableDomain";
 import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiClientManager from "@domains/ApiClientManager";
 import { NetworkId } from "@domains/Network";
@@ -12,6 +12,7 @@ import DeployStatusPoller, {
     IDeployWatchOptions,
 } from "@services/DeployStatusPoller";
 import { EnsureExclusiveReservation } from "@utils/decorators/transactionReservationsManager";
+import { SkipWhenInactive } from "@utils/decorators";
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
@@ -26,7 +27,7 @@ export interface ITransactionReservationsManagerOptions {
 
 export default class TransactionReservationsManager
     extends ItemManager<ITransactionReservation>
-    implements IDisposable
+    implements IClosable
 {
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
     private readonly subscribers: Map<string, Set<IDeployWatchCallbacks>> =
@@ -36,6 +37,7 @@ export default class TransactionReservationsManager
         ReturnType<typeof setTimeout>
     > = new Map();
     private readonly exclusiveIds: Set<string> = new Set();
+    private active: boolean = true;
 
     private readonly onAdded?: (reservation: ITransactionReservation) => void;
     private readonly onReplaced?: (
@@ -78,6 +80,7 @@ export default class TransactionReservationsManager
         }
     }
 
+    @SkipWhenInactive
     public add(id: string, reservation: ITransactionReservation): void {
         this.track(id, reservation);
 
@@ -203,7 +206,14 @@ export default class TransactionReservationsManager
         );
     }
 
-    public dispose(): void {
+    public isActive(): boolean {
+        return this.active;
+    }
+
+    @SkipWhenInactive
+    public close(): void {
+        this.active = false;
+
         for (const id of Array.from(this.watchers.keys())) {
             this.stopWatch(id);
         }
@@ -288,6 +298,7 @@ export default class TransactionReservationsManager
         this.expirationTimers.set(reservation.id, timer);
     }
 
+    @SkipWhenInactive
     private rearm(id: string): void {
         const targetReservation: ITransactionReservation | null = this.get(id);
 
