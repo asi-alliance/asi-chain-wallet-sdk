@@ -11,12 +11,14 @@ import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
+import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
@@ -446,18 +448,22 @@ export default class ReservationAdapter {
         });
     }
 
-    private async reserve(
+    private async reserveAndSubmit(
         wallet: Wallet,
-        deployId: string,
+        signedDeploy: SignedResult,
         reservation: ITransactionReservation,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
         await this.persistReservation(reservation, wallet, passwordProvider);
 
+        await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
+            signedDeploy,
+        );
+
         this.reservationsManager.add(reservation.id, reservation);
 
         return {
-            deployId,
+            deployId: reservation.details.deployId,
             subscribe: (callbacks: IDeployWatchCallbacks) =>
                 this.reservationsManager.subscribe(reservation.id, callbacks),
         };
@@ -482,34 +488,41 @@ export default class ReservationAdapter {
             ReservationAdapter.operationsGuard.runReservationAction(
                 ReservationAction.TRANSFER,
                 { accountId, networkId },
-                async () => {
-                    await this.ensureSufficientBalance(account, pendingAmount, {
-                        context: "ReservationAdapter.transfer",
-                    });
+                () =>
+                    ApiClientManager.getInstance().runNetworkOperation(
+                        async () => {
+                            await this.ensureSufficientBalance(
+                                account,
+                                pendingAmount,
+                                { context: "ReservationAdapter.transfer" },
+                            );
 
-                    const deployId: string = await wallet.transfer(
-                        accountId,
-                        details,
-                        passwordProvider,
-                    );
+                            const signedDeploy: SignedResult =
+                                await wallet.signTransfer(
+                                    accountId,
+                                    details,
+                                    passwordProvider,
+                                );
 
-                    const reservation: ITransactionReservation =
-                        TransactionReservationFabric.createTransfer({
-                            kind: "transfer",
-                            deployId,
-                            networkId,
-                            account,
-                            pendingAmount,
-                            details,
-                        });
+                            const reservation: ITransactionReservation =
+                                TransactionReservationFabric.createTransfer({
+                                    kind: "transfer",
+                                    deployId: signedDeploy.signature,
+                                    networkId,
+                                    account,
+                                    pendingAmount,
+                                    details,
+                                });
 
-                    return this.reserve(
-                        wallet,
-                        deployId,
-                        reservation,
-                        passwordProvider,
-                    );
-                },
+                            return this.reserveAndSubmit(
+                                wallet,
+                                signedDeploy,
+                                reservation,
+                                passwordProvider,
+                            );
+                        },
+                        { networkId },
+                    ),
             ),
         );
     }
@@ -535,34 +548,41 @@ export default class ReservationAdapter {
             ReservationAdapter.operationsGuard.runReservationAction(
                 ReservationAction.DEPLOY,
                 { accountId, networkId },
-                async () => {
-                    await this.ensureSufficientBalance(account, pendingAmount, {
-                        context: "ReservationAdapter.deploy",
-                    });
+                () =>
+                    ApiClientManager.getInstance().runNetworkOperation(
+                        async () => {
+                            await this.ensureSufficientBalance(
+                                account,
+                                pendingAmount,
+                                { context: "ReservationAdapter.deploy" },
+                            );
 
-                    const deployId: string = await wallet.deploy(
-                        accountId,
-                        details,
-                        passwordProvider,
-                    );
+                            const signedDeploy: SignedResult =
+                                await wallet.signDeploy(
+                                    accountId,
+                                    details,
+                                    passwordProvider,
+                                );
 
-                    const reservation: ITransactionReservation =
-                        TransactionReservationFabric.createDeploy({
-                            kind: "deploy",
-                            deployId,
-                            networkId,
-                            account,
-                            pendingAmount,
-                            term: details.term,
-                        });
+                            const reservation: ITransactionReservation =
+                                TransactionReservationFabric.createDeploy({
+                                    kind: "deploy",
+                                    deployId: signedDeploy.signature,
+                                    networkId,
+                                    account,
+                                    pendingAmount,
+                                    term: details.term,
+                                });
 
-                    return this.reserve(
-                        wallet,
-                        deployId,
-                        reservation,
-                        passwordProvider,
-                    );
-                },
+                            return this.reserveAndSubmit(
+                                wallet,
+                                signedDeploy,
+                                reservation,
+                                passwordProvider,
+                            );
+                        },
+                        { networkId },
+                    ),
             ),
         );
     }
