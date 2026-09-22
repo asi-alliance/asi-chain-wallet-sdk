@@ -1,66 +1,38 @@
 import {
     INetworkConfig,
-    INetworkEndpoints,
     INetworkRecord,
     INetworkUpdate,
     IPersistedNetworkRecord,
-    NETWORK_URL_FIELDS,
     NetworkId,
     NetworkName,
     TNetworksConfig,
 } from "@domains/Network";
 import {
+    ensureValid,
     generateRandomId,
+    validateNetworkConfigUrls,
     validateNodeApiProfile,
-    validateUrl,
 } from "@utils/index";
 import { isNodeApiProfile } from "@utils/guards";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
     EnsureNetworkNotDefault,
+    EnsureNetworkRecordNotDefault,
 } from "@utils/decorators/networkConfigProvider";
 
 export default class NetworkConfigProvider {
     private networksRecords: Map<NetworkId, INetworkRecord> | null = null;
 
-    private validateConfigUrls(
-        config: Partial<INetworkConfig>,
-        { allowEmpty }: { allowEmpty: boolean },
-    ): void {
-        NETWORK_URL_FIELDS.forEach((field: keyof INetworkEndpoints) => {
-            const url: string | undefined = config[field];
-
-            if (url === undefined) {
-                return;
-            }
-
-            if (allowEmpty && url.trim().length === 0) {
-                return;
-            }
-
-            const { isValid, error } = validateUrl(url);
-
-            if (!isValid) {
-                throw new Error(`Invalid ${field}: ${error}`);
-            }
-        });
-    }
-
-    private validateConfigProfile(config: Partial<INetworkConfig>): void {
-        const { isValid, error } = validateNodeApiProfile(
-            config.nodeApiProfile,
-        );
-
-        if (!isValid) {
-            throw new Error(`Invalid nodeApiProfile: ${error}`);
-        }
-    }
-
     public initialize(config: TNetworksConfig): void {
         Object.values(config).forEach((networkConfig: INetworkConfig) => {
-            this.validateConfigUrls(networkConfig, { allowEmpty: true });
-            this.validateConfigProfile(networkConfig);
+            ensureValid(
+                validateNetworkConfigUrls(networkConfig, { allowEmpty: true }),
+                { context: "NetworkConfigProvider.initialize" },
+            );
+            ensureValid(validateNodeApiProfile(networkConfig.nodeApiProfile), {
+                context: "NetworkConfigProvider.initialize",
+            });
         });
 
         this.networksRecords = new Map<NetworkId, INetworkRecord>(
@@ -113,12 +85,31 @@ export default class NetworkConfigProvider {
     }
 
     @EnsureNetworkConfigProviderReady
+    @EnsureNetworkRecordNotDefault
+    public set(record: INetworkRecord): void {
+        ensureValid(
+            validateNetworkConfigUrls(record.config, { allowEmpty: false }),
+            { context: "NetworkConfigProvider.set" },
+        );
+        ensureValid(validateNodeApiProfile(record.config.nodeApiProfile), {
+            context: "NetworkConfigProvider.set",
+        });
+
+        this.networksRecords!.set(record.id, record);
+    }
+
+    @EnsureNetworkConfigProviderReady
     public add(
         name: NetworkName,
         networkConfig: INetworkConfig,
     ): INetworkRecord {
-        this.validateConfigUrls(networkConfig, { allowEmpty: false });
-        this.validateConfigProfile(networkConfig);
+        ensureValid(
+            validateNetworkConfigUrls(networkConfig, { allowEmpty: false }),
+            { context: "NetworkConfigProvider.add" },
+        );
+        ensureValid(validateNodeApiProfile(networkConfig.nodeApiProfile), {
+            context: "NetworkConfigProvider.add",
+        });
 
         const record: INetworkRecord = {
             id: generateRandomId(),
@@ -148,11 +139,16 @@ export default class NetworkConfigProvider {
     @EnsureNetworkNotDefault
     public update(id: NetworkId, update: INetworkUpdate): void {
         if (update.config) {
-            this.validateConfigUrls(update.config, { allowEmpty: false });
+            ensureValid(
+                validateNetworkConfigUrls(update.config, { allowEmpty: false }),
+                { context: "NetworkConfigProvider.update" },
+            );
         }
 
         if (update.config && update.config.nodeApiProfile !== undefined) {
-            this.validateConfigProfile(update.config);
+            ensureValid(validateNodeApiProfile(update.config.nodeApiProfile), {
+                context: "NetworkConfigProvider.update",
+            });
         }
 
         const record: INetworkRecord = this.networksRecords!.get(id)!;

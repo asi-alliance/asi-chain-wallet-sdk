@@ -7,6 +7,7 @@ import {
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworksState,
     INetworkUpdate,
     NetworkId,
     NetworkName,
@@ -144,7 +145,9 @@ export interface IClientEventDispatcher {
         walletId: string,
         accounts: Account[],
     ): void | Promise<void>;
+    /** @deprecated Use {@link IClientEventDispatcher.onNetworksChanged} instead. */
     onNetworkChanged?(network: INetworkRecord): void | Promise<void>;
+    onNetworksChanged?(networksState: INetworksState): void | Promise<void>;
     onReservationsChanged?(
         reservationsByWallet: TReservationsByWallet,
     ): void | Promise<void>;
@@ -785,6 +788,8 @@ export default class Client extends ClosableDomain {
             apiClientManager.getCurrentNetwork(),
         );
 
+        this.emitNetworksChanged();
+
         this.emitReservationsChanged();
     }
 
@@ -1156,6 +1161,10 @@ export default class Client extends ClosableDomain {
         return ApiClientManager.getInstance().getNetworks();
     }
 
+    public getNetworksState(): INetworksState {
+        return ApiClientManager.getInstance().getNetworksState();
+    }
+
     public getNetwork(id: NetworkId): INetworkRecord {
         return ApiClientManager.getInstance().getNetwork(id);
     }
@@ -1170,11 +1179,18 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
-    public addNetwork(
+    public async addNetwork(
         name: NetworkName,
         config: INetworkConfig,
     ): Promise<INetworkRecord> {
-        return NetworkManager.addNetwork(name, config);
+        const record: INetworkRecord = await NetworkManager.addNetwork(
+            name,
+            config,
+        );
+
+        this.emitNetworksChanged();
+
+        return record;
     }
 
     public hasNetworkReservations(networkId?: NetworkId): boolean {
@@ -1198,6 +1214,8 @@ export default class Client extends ClosableDomain {
 
                 await NetworkManager.updateNetwork(id, update);
 
+                this.emitNetworksChanged();
+
                 if (!isConfigChanged) {
                     return;
                 }
@@ -1216,6 +1234,8 @@ export default class Client extends ClosableDomain {
             async () => {
                 await NetworkManager.removeNetwork(id);
 
+                this.emitNetworksChanged();
+
                 await this.reservationAdapterManager.removeNetworkReservations(
                     id,
                 );
@@ -1231,6 +1251,13 @@ export default class Client extends ClosableDomain {
         this.eventBus.emit(
             ClientEvent.RESERVATIONS_CHANGED,
             this.reservationAdapterManager.getReservationsByWallet(),
+        );
+    }
+
+    private emitNetworksChanged(): void {
+        this.eventBus.emit(
+            ClientEvent.NETWORKS_CHANGED,
+            ApiClientManager.getInstance().getNetworksState(),
         );
     }
 

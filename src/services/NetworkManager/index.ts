@@ -1,6 +1,11 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import StorageManager from "@services/StorageManager";
 import {
+    createNetworkRecord,
+    createUpdatedNetworkRecord,
+} from "@fabrics/network";
+import { EnsureNetworkIsIdle } from "@utils/decorators/networkManager";
+import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
@@ -11,10 +16,10 @@ import {
 } from "@domains/Network";
 
 class NetworkManager {
-    public static initialize = async (
+    public static async initialize(
         networksConfig: TNetworksConfig,
         defaultNetwork?: NetworkName,
-    ): Promise<void> => {
+    ): Promise<void> {
         const customNetworks: IPersistedNetworkRecord[] =
             await StorageManager.getCustomNetworks();
 
@@ -23,39 +28,45 @@ class NetworkManager {
             customNetworks,
             defaultNetwork,
         );
-    };
+    }
 
-    public static addNetwork = async (
+    public static async addNetwork(
         name: NetworkName,
         config: INetworkConfig,
-    ): Promise<INetworkRecord> => {
-        const record: INetworkRecord = ApiClientManager.getInstance().addNetwork(
-            name,
-            config,
-        );
+    ): Promise<INetworkRecord> {
+        const record: INetworkRecord = createNetworkRecord({ name, config });
 
         await StorageManager.saveCustomNetwork(record);
 
-        return record;
-    };
+        ApiClientManager.getInstance().applyNetwork(record);
 
-    public static updateNetwork = async (
+        return record;
+    }
+
+    @EnsureNetworkIsIdle
+    public static async updateNetwork(
         id: NetworkId,
         update: INetworkUpdate,
-    ): Promise<void> => {
+    ): Promise<void> {
         const apiClientManager: ApiClientManager =
             ApiClientManager.getInstance();
 
-        apiClientManager.updateNetwork(id, update);
+        const record: INetworkRecord = createUpdatedNetworkRecord({
+            record: apiClientManager.getNetwork(id),
+            update,
+        });
 
-        await StorageManager.updateCustomNetwork(apiClientManager.getNetwork(id));
-    };
+        await StorageManager.updateCustomNetwork(record);
 
-    public static removeNetwork = async (id: NetworkId): Promise<void> => {
-        ApiClientManager.getInstance().removeNetwork(id);
+        apiClientManager.applyNetwork(record);
+    }
 
+    @EnsureNetworkIsIdle
+    public static async removeNetwork(id: NetworkId): Promise<void> {
         await StorageManager.deleteCustomNetwork(id);
-    };
+
+        ApiClientManager.getInstance().removeNetwork(id);
+    }
 }
 
 export default NetworkManager;

@@ -7,6 +7,7 @@ import {
     INetworkConfig,
     INetworkContext,
     INetworkRecord,
+    INetworksState,
     INetworkUpdate,
     IPersistedNetworkRecord,
     NetworkId,
@@ -190,6 +191,25 @@ export default class ApiClientManager {
             clients,
             api: createNodeApiAdapter(config.nodeApiProfile, clients),
         };
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetworksState(): INetworksState {
+        return {
+            networks: this.networkConfigProvider.getAll(),
+            selectedNetwork: this.networkConfigProvider.get(
+                this.currentNetworkId!,
+            ),
+        };
+    }
+
+    @EnsureApiClientManagerInitialized
+    public applyNetwork(record: INetworkRecord): void {
+        this.networkConfigProvider.set(record);
+
+        if (this.currentNetworkId === record.id) {
+            this.switchNetwork(record.id);
+        }
     }
 
     @EnsureApiClientManagerInitialized
