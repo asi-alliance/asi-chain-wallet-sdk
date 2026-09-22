@@ -424,6 +424,8 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async removeWallet(walletId: string): Promise<Wallet> {
+        await this.lifecycleGuard.drain();
+
         const removedWallet: Wallet = await this.walletManager.delete(walletId);
         removedWallet.lock();
         this.reservationAdapterManager.remove(walletId);
