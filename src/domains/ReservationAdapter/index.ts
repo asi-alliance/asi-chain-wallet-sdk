@@ -456,11 +456,17 @@ export default class ReservationAdapter {
     ): Promise<IReservedOperationResult> {
         await this.persistReservation(reservation, wallet, passwordProvider);
 
-        await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
-            signedDeploy,
-        );
+        try {
+            await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
+                signedDeploy,
+            );
 
-        this.reservationsManager.add(reservation.id, reservation);
+            this.reservationsManager.add(reservation.id, reservation);
+        } catch (error: unknown) {
+            await this.remove(reservation.id);
+
+            throw error;
+        }
 
         return {
             deployId: reservation.details.deployId,
