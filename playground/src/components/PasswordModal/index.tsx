@@ -1,5 +1,4 @@
 import { type FormEvent, type ReactElement } from "react";
-import "./style.css";
 
 export interface IPasswordModalProps {
     title: string;

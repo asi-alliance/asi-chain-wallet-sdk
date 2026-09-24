@@ -1,7 +1,7 @@
 import { NetworkId } from "asi-wallet-sdk";
 import { ReactElement } from "react";
 import "./style.css";
-import { useSdkContext } from "../../sdk-react-kit";
+import { toErrorText, useSdkContext } from "../../sdk-react-kit";
 
 const NetworkSelector = (): ReactElement => {
     const { networkRecords, currentNetwork, setNetwork, isCurrentNetworkBusy } =
@@ -12,7 +12,7 @@ const NetworkSelector = (): ReactElement => {
             setNetwork(networkId);
         } catch (error) {
             console.error(error);
-            alert((error as Error)?.message ?? "Failed to switch network");
+            alert(toErrorText(error, "Failed to switch network"));
         }
     };
 

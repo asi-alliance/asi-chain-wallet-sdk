@@ -1,6 +1,7 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
+import type { TDeployDetails } from "@services/TransactionService";
 import { GasFee } from "@config/index";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
@@ -12,6 +13,7 @@ import {
     encodeBase16,
     encodeBase58,
 } from "@utils/codec";
+import { isIntegerInRange } from "./primitives";
 
 const { blake2bHex } = blakejs;
 
@@ -262,6 +264,46 @@ export const validateReservationPayload = (
             isValid: false,
             error: "Reserved amount must cover the transfer amount and gas cost",
         };
+    }
+
+    return { isValid: true };
+};
+
+const MIN_PHLO_VALUE: number = 1;
+const MAX_PHLO_VALUE: number = Number.MAX_SAFE_INTEGER;
+
+export const validateDeployPayload = ({
+    term,
+    phloLimit,
+    phloPrice,
+    shardId,
+}: TDeployDetails): { isValid: boolean; error?: string } => {
+    if (!term.trim()) {
+        return { isValid: false, error: "Deploy term must not be empty" };
+    }
+
+    if (
+        phloLimit !== undefined &&
+        !isIntegerInRange(phloLimit, MIN_PHLO_VALUE, MAX_PHLO_VALUE)
+    ) {
+        return {
+            isValid: false,
+            error: "Phlo limit must be a positive safe integer",
+        };
+    }
+
+    if (
+        phloPrice !== undefined &&
+        !isIntegerInRange(phloPrice, MIN_PHLO_VALUE, MAX_PHLO_VALUE)
+    ) {
+        return {
+            isValid: false,
+            error: "Phlo price must be a positive safe integer",
+        };
+    }
+
+    if (shardId !== undefined && !shardId.trim()) {
+        return { isValid: false, error: "Shard id must not be empty" };
     }
 
     return { isValid: true };

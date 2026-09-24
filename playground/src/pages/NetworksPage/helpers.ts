@@ -1,5 +1,6 @@
 import type { ApplicationContextValue } from "@components/Application/context";
 import type { UseSdkValue } from "../../sdk-react-kit";
+import { toErrorText } from "../../sdk-react-kit";
 import { Modals } from "@components/Application/meta";
 import { INetworkModalPayload } from "@components/NetworkModal";
 import {
@@ -56,8 +57,7 @@ export const createNetworksPageHandlers = ({
                             } catch (error) {
                                 console.error(error);
                                 alert(
-                                    (error as Error)?.message ??
-                                        "Failed to add network",
+                                    toErrorText(error, "Failed to add network"),
                                 );
                             }
                         }),
@@ -103,8 +103,7 @@ export const createNetworksPageHandlers = ({
                             } catch (error) {
                                 console.error(error);
                                 alert(
-                                    (error as Error)?.message ??
-                                        "Failed to update network",
+                                    toErrorText(error, "Failed to update network"),
                                 );
                             }
                         }),
@@ -127,7 +126,7 @@ export const createNetworksPageHandlers = ({
                 } catch (error) {
                     console.error(error);
                     alert(
-                        (error as Error)?.message ?? "Failed to remove network",
+                        toErrorText(error, "Failed to remove network"),
                     );
                 }
             }),
@@ -137,7 +136,7 @@ export const createNetworksPageHandlers = ({
                 sdk.setNetwork(networkId);
             } catch (error) {
                 console.error(error);
-                alert((error as Error)?.message ?? "Failed to switch network");
+                alert(toErrorText(error, "Failed to switch network"));
             }
         },
     };

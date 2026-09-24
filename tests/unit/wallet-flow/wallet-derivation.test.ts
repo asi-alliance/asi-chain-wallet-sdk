@@ -46,19 +46,6 @@ const printWalletState = (title: string, wallet: Wallet) => {
 
     console.log("Accounts count:", wallet.getAccounts().length);
 
-    console.log(
-        "Active account:",
-        wallet.getActiveAccount()
-            ? {
-                  name: wallet.getActiveAccount()?.getName(),
-
-                  index: wallet.getActiveAccount()?.getIndex(),
-
-                  address: wallet.getActiveAccount()?.getAddress(),
-              }
-            : null,
-    );
-
     console.log("\nAccounts:");
 
     wallet.getAccounts().forEach((account: Account, index: number) => {
