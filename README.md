@@ -52,6 +52,8 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
 - **External Reservation Management** - Deploys submitted outside the SDK can lock funds too: reservations can be added, updated, and removed directly, with validation and concurrency guards, via [Client](docs/DOMAINS.md#external-reservations)
+- **Detached Deploy Signing** - `signDeploy` builds and signs a deploy and returns the signed envelope for callers that submit it themselves, via [Client](docs/DOMAINS.md)
+- **Explicit Account Targeting** - No active-account state: every call names its wallet and account, so concurrent operations on one wallet cannot sign for the wrong account, via [Client](docs/DOMAINS.md#no-active-account)
 - **Typed Failures** - Decryption, storage, and node errors carry a machine-readable code and structured fields instead of an assembled message string, via [CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
 - **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
@@ -259,13 +261,14 @@ the SDK operation behind it. Route those failures somewhere visible with the
 ### Check Balance and Transfer
 
 ```typescript
-const active = hdWallet.getActiveAccount()!;
+// The SDK keeps no active account: every call names its target account
+const [account] = hdWallet.getAccounts();
 
 // Total and reservation-aware available balance
-const balance = await client.getBalance(active.getAddress());
+const balance = await client.getBalance(account.getAddress());
 const available = await client.getAvailableBalance(
     hdWallet.getId(),
-    active.getId(),
+    account.getId(),
 );
 console.log("Balance:", client.toDisplayAmount(balance));
 
@@ -273,7 +276,7 @@ console.log("Balance:", client.toDisplayAmount(balance));
 const reserved = await client.transfer(
     {
         walletId: hdWallet.getId(),
-        accountId: active.getId(),
+        accountId: account.getId(),
         to: recipientAddress,
         amount: client.toAtomicAmount("10"), // 10 ASI
     },
@@ -306,7 +309,7 @@ history stay correct.
 ```typescript
 const request = {
     walletId: hdWallet.getId(),
-    accountId: active.getId(),
+    accountId: account.getId(),
     kind: "transfer" as const,
     deployId, // the deploy you submitted yourself
     to: recipientAddress,
@@ -340,6 +343,35 @@ so these calls are a correction channel, not a lifecycle to manage by hand.
 Concurrent actions on the same account, deploy, or reservation are refused with
 `ReservationActionInProgressError` (status `409`) rather than interleaved. See
 [External reservations](docs/DOMAINS.md#external-reservations).
+
+### Sign a Deploy Without Submitting It
+
+When the submission is yours but the signature is not, `signDeploy` stops after
+signing and hands back the signed envelope. Nothing is sent to the node and no
+reservation is created, so pair it with `addTransactionReservation` to lock the
+funds locally.
+
+```typescript
+const signed = await client.signDeploy(
+    {
+        walletId: hdWallet.getId(),
+        accountId: account.getId(),
+        term: rholangTerm,
+        phloLimit: 500_000, // optional, defaults from config
+        phloPrice: 1, // optional, defaults from config
+        shardId: "root", // optional, defaults to "root"
+    },
+    "wallet-password", // omit while a signing session is active
+);
+
+// { data, deployer, signature, sigAlgorithm } - submit it yourself
+await submitToNode(signed);
+```
+
+`validAfterBlockNumber` and `timestamp` are filled in by the SDK from the current
+chain head, so the call still needs the network. The payload is validated before
+anything is signed: a blank term, a non-positive or unsafe `phloLimit` /
+`phloPrice`, or a blank `shardId` are rejected.
 
 ---
 

@@ -115,11 +115,24 @@ importKeyfileAccounts(source: unknown, password: string, options?): Promise<IKey
 deriveAccount(walletId: string, accountName: string, password: string): Promise<ICreatedAccountData>
 removeAccount(walletId: string, accountId: string): Promise<Account>
 renameAccount(walletId: string, accountId: string, name: string): Promise<void>
-setActiveAccount(walletId: string, accountId: string): void
 
 getWalletManager(): WalletManager
 getInsensitiveAccountsData(): Promise<IInsensitiveCacheRecord[]> // requires withInsensitiveCacheStorage flag
 ```
+
+### No active account
+
+There is no active-account state, and `Client.setActiveAccount` no longer exists.
+Every account-scoped call names its target explicitly as `walletId` +
+`accountId`, and the wallet resolves it per call through `Wallet.getAccount`,
+which throws `UnknownAccountError` (`404`) when the id does not belong to that
+wallet. Previously `transfer` and `deploy` mutated the wallet's active account as
+a side effect of being called, so two concurrent operations on one wallet could
+sign for the wrong account; nothing is mutated now, so concurrent calls on
+different accounts of the same wallet stay independent.
+
+Integrators that tracked a "currently selected account" through the SDK keep that
+selection in their own state and pass the id into each call.
 
 ### Open vs unlocked
 
@@ -316,6 +329,7 @@ Deploys of arbitrary Rholang:
 
 ```ts
 deploy(request: IDeployRequest, password?: string): Promise<IReservedOperationResult> // same session rules as transfer
+signDeploy(request: ISignDeployRequest, password?: string): Promise<SignedResult>     // signs only, submits nothing
 exploreDeploy(rholang: string): Promise<unknown>                 // read-only, no unlock/password
 watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle  // poll deploy status
 ```
@@ -326,6 +340,39 @@ lock funds (`phloLimit * phloPrice` for a deploy) and both return an
 deploy-watch callbacks to that reservation. Both also run inside
 `ApiClientManager.runNetworkOperation`, which marks the network busy for the
 duration and reports it through `onNetworkBusyChanged`.
+
+`signDeploy` stops one step earlier: it builds the `DeployData`, signs it, and
+returns the signed envelope for the caller to submit. Nothing is sent to the
+node and **no reservation is created**, so an integration that submits the deploy
+itself pairs it with
+[`addTransactionReservation`](#external-reservations) to lock the funds locally.
+
+```ts
+interface ISignDeployRequest {
+    walletId: string;
+    accountId: string;
+    term: string;
+    phloLimit?: number; // defaults to DEFAULT_PHLO_LIMIT
+    phloPrice?: number; // defaults to DEFAULT_PHLO_PRICE
+    shardId?: string;   // defaults to "root"
+}
+
+interface SignedResult {
+    data: DeployData;
+    deployer: string;
+    signature: string;
+    sigAlgorithm: string;
+}
+```
+
+Unlike `deploy`, the request carries `phloPrice` and `shardId`: the caller owns
+the submission, so it owns the full deploy shape. `validAfterBlockNumber` and
+`timestamp` are still filled in by the SDK from the current chain head, which is
+why the call needs the network and is wrapped in `runNetworkOperation`. The
+payload is validated at the signing boundary by `validateDeployPayload` — a
+blank `term`, a `phloLimit` or `phloPrice` outside the positive safe-integer
+range, or a blank `shardId` are rejected before anything is signed. Session
+rules are the same as for `transfer`.
 
 ### External reservations
 
@@ -686,8 +733,8 @@ instead.
 `importKeyfile` builds a wallet from a decrypted wallet keyfile: it decrypts the
 keyfile secret, mints a **new** signer for it through `createImportedSigner`
 (a new signer id, freshly encrypted secret, and a freshly generated data key),
-recreates the declared accounts, and makes the first one active. Importing the
-same secret twice is prevented above this layer, not here.
+and recreates the declared accounts. Importing the same secret twice is prevented
+above this layer, not here.
 
 Account access:
 
@@ -697,9 +744,21 @@ getType(): WalletTypes
 getSigner(): Signer
 getAccounts(): Account[]
 getAccountsMap(): Map<string, Account>
-getActiveAccount(): Account | null
-setActiveAccount(id: string): void
+getAccount(id: string): Account // throws UnknownAccountError when the id is not in this wallet
+runAccountOperation<TResult>(accountId: string, operation: (account: Account) => Promise<TResult>): Promise<TResult>
 ```
+
+A wallet holds no active account. `getAccount` resolves the target per call and
+refuses an id from another wallet instead of silently falling back to a default,
+and `runAccountOperation` is the single entry point for anything that signs on
+behalf of one account: it resolves the account, registers it in the wallet's
+`accountOperationsGuard` (a `ConcurrentOperationGuardService` in
+`OperationScopeMode.SHARED`) for the duration, and hands it to the callback.
+Shared mode means several operations on the same account still run in parallel;
+what the scope provides is a truthful answer to "is this account busy right now",
+which `@EnsureAccountIsIdle` uses to keep `removeAccount` from deleting an
+account mid-signing. Nesting is therefore safe — `ReservationAdapter.transfer`
+wraps `Wallet.transfer`, and both take the same shared scope.
 
 Session (delegated to the `Signer`):
 
@@ -722,8 +781,9 @@ updateAccount(id: string, payload: TEditableAccountOptions): void
 Signing / transfer:
 
 ```ts
-transfer(payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
-deploy(payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<string>
+transfer(accountId: string, payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
+deploy(accountId: string, payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<string>
+signDeploy(accountId: string, payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<SignedResult>
 ```
 
 Behavior notes:
@@ -731,27 +791,32 @@ Behavior notes:
 - `deriveAccount` is guarded by the `@OnlyHDWallet` decorator; calling it on a
   private-key wallet throws `HDWalletOnlyOperationError`. It auto-computes the
   next free derivation index.
-- `removeAccount` is guarded twice. `@OnlyHDWallet` keeps it off private-key
+- `removeAccount` is guarded three times. `@OnlyHDWallet` keeps it off private-key
   wallets, whose single account **is** the wallet — removing it would leave a
   wallet that can sign nothing while its secret stays in storage; use
-  `Client.removeWallet` for that intent. The second guard rejects removing the
-  last remaining account of an HD wallet with `LastAccountRemovalError`, for the
-  same reason.
+  `Client.removeWallet` for that intent. `@EnsureAccountIsIdle` rejects an account
+  that currently holds an operation scope with `AccountBusyError` (`409`), so a
+  transfer, deploy, or reservation action in flight cannot have its account pulled
+  out from under it. The last guard rejects removing the last remaining account of
+  an HD wallet with `LastAccountRemovalError`, for the same reason as the first.
 - `addAccounts` is the bulk counterpart used by keyfile account import. It adds
-  the accounts to the internal `AccountManager` and promotes the first of them to
-  active only when the wallet had no active account.
-- Removing an account no longer disturbs the active one unless the active account
-  is the one being removed.
+  the accounts to the internal `AccountManager` and reorders it by derivation
+  index.
 - `isPasswordValid` attempts a decrypt of the stored secret and reports the
   outcome as a boolean instead of throwing. It exists so an export can reject a
   wrong password up front with a precise error rather than failing halfway
   through serialization. Only `InvalidPasswordError` becomes `false`; a storage
   failure, a corrupted record, or an unsupported encryption version is rethrown,
   so a broken vault is never reported to the user as a typo.
-- `transfer` and `deploy` are guarded by `@EnsureActiveAccountExist` and delegate
-  to `ApiServiceRegistry.transactions`. `passwordProvider` is optional
-  — when a session is active the signer uses the in-memory secret; otherwise the
-  password is required or a `WalletLockedError` is thrown.
+- `transfer`, `deploy`, and `signDeploy` take the target `accountId` as their
+  first argument, run inside `runAccountOperation`, and delegate to
+  `ApiServiceRegistry.transactions`. An id that is not in this wallet fails with
+  `UnknownAccountError` before anything else happens. `passwordProvider` is
+  optional — when a session is active the signer uses the in-memory secret;
+  otherwise the password is required or a `WalletLockedError` is thrown.
+- `signDeploy` returns the signed `SignedResult` instead of a deploy id: it signs
+  and stops, leaving submission to the caller. `deploy` is the same pipeline plus
+  the node submission.
 
 ---
 
@@ -1086,6 +1151,8 @@ Wallet and account errors:
 | `WalletActionInProgressError` | `WALLET_ACTION_IN_PROGRESS` | `409` | `action`, `signerId` |
 | `WalletOperationCancelledError` | `WALLET_OPERATION_CANCELLED` | `409` | `signerId` |
 | `LastAccountRemovalError` | `LAST_ACCOUNT_REMOVAL` | `409` | `walletId`, `accountId` |
+| `UnknownAccountError` | `UNKNOWN_ACCOUNT` | `404` | `walletId`, `accountId` |
+| `AccountBusyError` | `ACCOUNT_BUSY` | `409` | `walletId`, `accountId` |
 | `ReservationActionInProgressError` | `RESERVATION_ACTION_IN_PROGRESS` | `409` | `action`, `networkId`, `accountId?` |
 
 Keyfile errors:
@@ -1233,6 +1300,16 @@ private-key wallet that owns exactly one account.
 account would leave a wallet that can sign nothing while its secret stays in
 storage. It carries both ids so a UI can explain which wallet is affected, and
 `Client.removeWallet` remains the way to actually get rid of the wallet.
+
+`UnknownAccountError` and `AccountBusyError` are the two failures of addressing
+an account by id, now that no call falls back to an active account.
+`UnknownAccountError` (`404`) says the id does not belong to that wallet — a
+stale id from a removed account, or an id from a different wallet — and is raised
+by `Wallet.getAccount`, which every account-scoped call goes through.
+`AccountBusyError` (`409`) says the account is addressable but currently holds an
+operation scope; `@EnsureAccountIsIdle` raises it on `removeAccount` while a
+transfer, deploy, or reservation action for that account is still running. Both
+carry `walletId` and `accountId`, and `409` is the retryable one.
 
 `DomainClosedError` is thrown by `@EnsureActive` on a domain that has already
 been closed. Its `410` status says the resource is permanently gone: build a new
@@ -2050,10 +2127,16 @@ update(wallet: Wallet, reservationId: string, payload: TCreateTransactionReserva
 remove(id: string): Promise<ITransactionReservation>
 
 // deploys submitted by the SDK
-transfer(wallet: Wallet, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
-deploy(wallet: Wallet, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
+transfer(wallet: Wallet, accountId: string, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
+deploy(wallet: Wallet, accountId: string, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 dispose(): void
 ```
+
+`transfer` and `deploy` take the target `accountId` next to the wallet instead of
+reading the wallet's active account, and `add` and `update` read it from
+`payload.account`. All four run their body inside `wallet.runAccountOperation`,
+so the account is marked busy for the whole reservation action, not just for the
+signing step inside it.
 
 `pendingAmount` already carries the whole locked cost — `amount + GasFee.MAX` for
 a transfer, `phloLimit * phloPrice` for a deploy — so the reserved balance is a

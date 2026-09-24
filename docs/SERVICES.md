@@ -72,7 +72,7 @@ getBySignerId(signerId: string): Wallet | null
 deriveAccount(walletId, accountName, passwordProvider): Promise<IDerivedAccount>
 removeAccount(walletId, accountId): Promise<Account>
 renameAccount(walletId, accountId, name): Promise<void>
-setActiveAccount(walletId, accountId): void
+getAccount(walletId, accountId): Account          // delegates to Wallet.getAccount
 getPublicWalletsMetadata(): Promise<IWalletMetadata[]>
 count(): Promise<number>
 countInStorage(): Promise<number>
@@ -116,15 +116,14 @@ so the second one is rejected on the in-memory reservation instead.
 
 ### AccountManager (`src/services/AccountManager/index.ts`)
 
-`ItemManager<Account>` owned by each `Wallet`; also tracks the active account.
+`ItemManager<Account>` owned by each `Wallet`. It holds the accounts and their
+order, nothing else — the active-account state it used to carry is gone.
 
 ```ts
 create(payload: TCreateAccountPayload, secretProvider): Promise<ICreatedAccountData>
 addAccounts(accounts: Account[]): void
 remove(id: string): Account
 update(id: string, payload: TEditableAccountOptions): void
-setActiveAccount(id: string): void
-getActiveAccount(): Account | null
 getAccounts(): Account[]
 getAccountsMap(): Map<string, Account>
 getAccount(id: string): Account | null
@@ -140,18 +139,15 @@ the same order. Ordering uses `KeyDerivationService.compareIndexes`, which sorts
 indexed accounts ascending and pushes index-less ones (an imported private key
 has no derivation index) to the end.
 
-That ordering is also what defines the **default active account**: it is the
-first entry of the ordered map, not whichever account happened to be inserted
-first. Previously `Wallet.fromKeyfile` chose the first entry of an unordered map
-and an imported wallet could open on `m/44'/.../3` instead of `m/44'/.../0`.
+That ordering is what a UI listing accounts gets: the first entry is the lowest
+derivation index, not whichever account happened to be inserted first, so an
+imported wallet lists `m/44'/.../0` first instead of `m/44'/.../3`.
 
-`addAccounts` registers several already-created accounts at once and promotes the
-default to active **only when there was no active account**, so a bulk keyfile
-import never steals the selection the user is currently on.
-
-`remove` reassigns the active account only when the removed one was active.
-It previously reset the active account on every removal, which moved the
-selection out from under the user when they deleted some other account.
+`addAccounts` registers several already-created accounts at once and re-sorts the
+map afterwards. `remove` is a plain removal. Neither touches any selection: an
+account is chosen per call by the caller, so a bulk keyfile import or a deletion
+elsewhere in the list cannot move the selection out from under the user (see
+[No active account](DOMAINS.md#no-active-account)).
 
 ### AccountsService (`src/services/Accounts/index.ts`)
 
@@ -392,6 +388,7 @@ class ConcurrentOperationGuardService<TOwner = string> extends ItemManager<TOwne
     ): Promise<T>;
 
     hasExclusiveScope(key: string): boolean;
+    hasScopeHolders(key: string): boolean;
 }
 ```
 
@@ -428,6 +425,14 @@ another shared one. Shared holders are tracked per acquisition under a unique
 and the scope is only freed when the last of them is done. A scope conflict is
 reported through the same `createConflictError` factory as a key conflict and is
 checked first, so the coarser reason wins when both would apply.
+
+The two predicates answer different questions. `hasExclusiveScope` asks whether a
+writer holds the scope; `hasScopeHolders` asks whether *anyone* does, shared
+readers included. The second one is what makes a shared scope observable without
+taking it: `Wallet` keeps a `ConcurrentOperationGuardService<string>` keyed by
+account id, every account operation runs in `SHARED` mode, and
+`@EnsureAccountIsIdle` calls `hasScopeHolders` to refuse removing an account
+while any operation on it is still running.
 
 ### WalletOperationGuardService (`src/services/WalletOperationGuard/index.ts`)
 
@@ -1110,8 +1115,9 @@ falsy balance to mean "empty account" have to handle the error explicitly.
 Builds, signs and submits deploys end to end.
 
 ```ts
-transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
-deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
+transfer(payload: ITransferPayload): Promise<string>      // returns submitted deployId
+deploy(payload: IDeployPayload): Promise<string>          // arbitrary Rholang term
+signDeploy(payload: IDeployPayload): Promise<SignedResult> // signs without submitting
 ```
 
 `transfer` builds its term with `this.terms.createTransferDeploy(...)`, so the
@@ -1147,11 +1153,23 @@ interface IDeployPayload {
 ```
 
 `transfer` validates recipient + amount, then generates the transfer RhoLang;
-`deploy` takes an arbitrary `term` (rejects an empty one). Both share a private
-`signAndSubmit`: read latest block number → build the appropriate `TSigningContext`
-(HD adds `index`) → serialize + `blake2b-256` hash + sign → submit via
-`DeployService`. Defaults `phloLimit`/`phloPrice` from config and `shardId` to
-`"root"`.
+`deploy` takes an arbitrary `term` from the caller.
+
+`signDeploy` is the shared core and is now **public**, because a caller that
+submits the deploy itself needs exactly this half: validate the payload through
+`validateDeployPayload` (`ensureValid` turns a rejection into a thrown error) →
+read the latest block number → build the appropriate `TSigningContext` (HD adds
+`index`) → assemble the `DeployData` → serialize + `blake2b-256` hash + sign, and
+return the `SignedResult`. Defaults `phloLimit`/`phloPrice` from config and
+`shardId` to `"root"`, and sets `validAfterBlockNumber` to the chain head minus
+one.
+
+`deploy` is `signDeploy` followed by the private `submitSignedDeploy`, which
+pushes the signed envelope through `DeployService` and fails when the response
+carries no deploy id. Because validation lives in `signDeploy`, every path that
+signs a deploy is validated the same way — the ad-hoc phlo checks that used to sit
+in `transfer` are gone, along with the "term must not be empty" check that only
+`deploy` performed.
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 

@@ -2,18 +2,23 @@
 
 This document summarizes the example React playground in `playground/src`. The
 playground consumes the SDK through a small integration layer (`sdk-react-kit`)
-and is split into routed pages (Wallets, Transaction History, Networks, Deploy).
+and is split into routed pages (Wallets, Transaction History, Networks, Deploy,
+Deploy Utils, Reservations).
 
 The SDK is imported as `asi-wallet-sdk` (a `file:..` dependency in the
 playground's `package.json`). Network endpoints come from Vite env vars (`.env`).
+`npm run build` runs `tsc --noEmit` before `vite build`, so a playground that
+drifts from the SDK's types fails the build instead of shipping.
 
 ---
 
 ## Entry (`playground/src/index.tsx`)
 
 Mounts `Application` into `#root` inside a `BrowserRouter` via
-`react-dom/client`'s `createRoot`, and imports the global theme
-(`theme/commonStyles.css`).
+`react-dom/client`'s `createRoot`, and imports the global theme in load order:
+`theme/tokens.css`, `theme/commonStyles.css`, `theme/pageLayout.css`,
+`theme/dataTable.css`, `theme/modal.css`, `theme/statusPanel.css` (see
+[Theme](#theme-playgroundsrctheme)).
 
 ---
 
@@ -43,8 +48,19 @@ const unsubscribes: TUnsubscribe[] = [
     eventBus.on(ClientEvent.NETWORK_CHANGED, setCurrentNetwork),
     eventBus.on(ClientEvent.RESERVATIONS_CHANGED, setReservationsByWallet),
     eventBus.on(ClientEvent.NETWORK_BUSY_CHANGED, updateBusyNetworkIds),
+    eventBus.on(ClientEvent.WALLET_LOCKED, trackLockedWallet),
 ];
 ```
+
+`WALLET_LOCKED` feeds a `lockedWalletIds` list, which is what lets the UI show a
+session as locked the moment the SDK auto-locks it rather than on the next
+render. The event fires on the auto-lock timer, so it cannot be inferred from the
+calls the app itself makes; every path that can change the session the other way
+(`openWallet`, `unlockWallet`, `closeWallet`, `removeWallet`, `clearPersistence`)
+drops the wallet from that list. Operations that sign go through an internal
+`withSessionSync(walletId, action)` wrapper, which re-reads
+`client.isWalletUnlocked(walletId)` in a `finally`, so a session consumed or
+re-established by the call itself is reflected even when no event was emitted.
 
 Returned value (`UseSdkValue`):
 
@@ -68,18 +84,31 @@ Returned value (`UseSdkValue`):
   without touching storage, and only `removeWallet` deletes it. `openWallets`
   holds whatever is currently in memory.
 - Signing sessions: `isWalletUnlocked(walletId)` — used by `useSecureAction` to
-  decide whether a password prompt is needed (see below). `openWallet` starts the
-  session as a side effect of opening; the SDK auto-locks it after the policy's
-  timeout (`SDK_CLIENT_SESSION_AUTO_LOCK_MS`).
+  decide whether a password prompt is needed (see below) — plus
+  `lockWallet(walletId)`, `unlockWallet(walletId, password)`, and the
+  render-friendly `isWalletLocked(walletId)`, which reads the local
+  `lockedWalletIds` list instead of calling into the SDK during render.
+  `openWallet` starts the session as a side effect of opening; the SDK auto-locks
+  it after the policy's timeout (`SDK_CLIENT_SESSION_AUTO_LOCK_MS`).
 - Account lifecycle: `deriveAccount(walletId, name, password)`,
-  `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`,
-  `setActiveAccount(walletId, accountId)`.
+  `renameAccount(walletId, accountId, name)`, `removeAccount(walletId, accountId)`.
+  There is no `setActiveAccount`: the SDK keeps no active account, so every call
+  names its `walletId` and `accountId` (see
+  [No active account](DOMAINS.md#no-active-account)).
 - Transfers & balances: `transfer(request, password?)` (password omitted while a
-  session is active), `getBalance(address)`,
+  session is active), `getBalance(address: Address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
+- Reservations for externally submitted deploys:
+  `addTransactionReservation(request, password?)`,
+  `updateTransactionReservation(reservationId, request, password?)`,
+  `removeTransactionReservation(walletId, reservationId)`. The first two sign
+  (they persist into the encrypted reservation store), so they run through
+  `withSessionSync`; the removal does not.
 - Deploys: `deploy(request, password?)` (arbitrary Rholang term via
   `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
-  rules as `transfer`), `exploreDeploy(rholang)` (read-only, no unlock/password),
+  rules as `transfer`), `signDeploy(request, password?)` (signs without
+  submitting, `ISignDeployRequest` adds `phloPrice` and `shardId`, resolves to a
+  `SignedResult`), `exploreDeploy(rholang)` (read-only, no unlock/password),
   `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
   `transfer` and `deploy` both resolve to an `IReservedOperationResult`
   (`{ deployId, subscribe }`), so the caller follows the deploy through
@@ -98,8 +127,12 @@ Returned value (`UseSdkValue`):
   rather than polling the SDK, so rendering stays synchronous;
   `hasNetworkReservations` delegates straight to the client and answers whether
   funds are still locked on a network before it is removed.
-- Amounts: `toDisplayAmount(atomic)`, `toAtomicAmount(value)`.
 - Persistence: `clearPersistence()`.
+
+Amount conversion is no longer proxied through the hook: `toDisplayAmount` and
+`toAtomicAmount` are gone from `UseSdkValue` in favour of the asset-aware
+[formatters](#formatters-formattersindexts), which read the decimals from the
+`Asset` instead of assuming the native token.
 
 Input types: `ICreateHDWalletInput = { name, mnemonic }`,
 `ICreatePkWalletInput = { name, privateKey }`.
@@ -118,18 +151,28 @@ useSdkContext(): SdkContextValue
 
 ### useWalletBalance (`hooks/useWalletBalance.ts`)
 
-Loads total balance, available balance, and reservation count for one account.
+Loads total and available balance for one account, and reports how many
+reservations it holds.
 
 ```ts
-useWalletBalance(sdk: UseSdkValue, walletId, accountId, address, options?): UseWalletBalanceValue
-// { balance: { total, available, reservationCount }, isFetching, reload }
+useWalletBalance(sdk: UseSdkValue, walletId, accountId, address: Address, options?): UseWalletBalanceValue
+// { balance: { total, available }, reservationCount, isFetching, error, reload }
 // options: { reloadIntervalMs?: number }, default 30000
 ```
 
-The hook reloads on mount, on every `reloadIntervalMs` tick, and whenever the
-current network changes. It reads the SDK through the stable `getBalance`,
-`getAvailableBalance`, and `getReservations` callbacks instead of the whole
-`sdk` object, so a re-render of `Application` no longer restarts the polling.
+The hook reloads on mount, on every `reloadIntervalMs` tick, whenever the current
+network changes, and whenever `reservationCount` changes. It reads the SDK
+through the stable `getBalance` and `getAvailableBalance` callbacks instead of
+the whole `sdk` object, so a re-render of `Application` no longer restarts the
+polling.
+
+`reservationCount` left the fetched `balance` object: it is derived from
+`sdk.reservationsByWallet` filtered by `accountId`, which the
+`RESERVATIONS_CHANGED` event already keeps current, so counting no longer costs a
+`getReservations` call per balance read and no longer lags an event. Because the
+count is a render input, a new reservation also triggers the balance reload that
+makes the available amount catch up. Errors are rendered through `toErrorText`,
+so a `CustomError` shows its code rather than a bare message.
 
 ### useRelevantResultGuard (`hooks/useRelevantResultGuard.ts`)
 
@@ -174,15 +217,22 @@ plus empty `MainNet`/`TestNet` placeholders) and exposes `DEFAULT_NETWORK`
 `DEFAULT_NETWORK` already was:
 
 ```ts
-nodeApiProfile: env.VITE_DEVNET_NODE_API_PROFILE as NodeApiProfile,
+nodeApiProfile: toNodeApiProfile(env.VITE_DEVNET_NODE_API_PROFILE),
 ```
 
 Env keys: `VITE_DEVNET_NODE_API_PROFILE=scala`, `VITE_DEV_NODE_API_PROFILE=rust`,
 `VITE_MAINNET_NODE_API_PROFILE`, `VITE_TESTNET_NODE_API_PROFILE`. New keys must
-also be declared in `playground/src/vite-env.d.ts`. There is no fallback on
-purpose — a missing key makes `Client.create` throw
-`Invalid nodeApiProfile: Node API profile is required` at startup instead of
-quietly assuming a profile.
+also be declared in `playground/src/vite-env.d.ts`.
+
+The value is narrowed through `toNodeApiProfile` rather than cast with
+`as NodeApiProfile`: env vars are strings of unknown content, and a cast only
+hides that from the type checker until `Client.create` throws at startup. The
+helper runs the SDK's own `isNodeApiProfile` guard and falls back to
+`DEFAULT_NODE_API_PROFILE` (`scala`) when the key is missing or misspelled, so a
+typo in `.env` starts the playground on the legacy profile instead of failing to
+boot. An application that would rather refuse an unknown profile should throw in
+its own wrapper instead — the SDK still rejects an invalid value it is given
+directly.
 
 `DevNet` runs the legacy Scala node, `Dev` the new Rust node. `AlexanderNet` exists
 only in the repository-root `.env` (`VITE_NETWORKS`) so far, not in the playground.
@@ -191,9 +241,58 @@ only in the repository-root `.env` (`VITE_NETWORKS`) so far, not in the playgrou
 
 ```ts
 formatAddress(address: string): string   // 10-char prefix … 8-char suffix
-formatAmount(amount: bigint | null | undefined): string // "N/A" or fromAtomicAmount(...)
+formatAmount(amount: bigint | null | undefined, asset?: Asset): string      // "N/A" or the decimal amount
+formatAssetAmount(amount: bigint | null | undefined, asset?: Asset): string // the amount plus the asset name
+parseAmount(amount: string | number, asset?: Asset): bigint                 // decimal string to atomic units
 formatDate(date: Date): string
 ```
+
+All three amount helpers default to `DEFAULT_ASSET` and take the decimals from
+`asset.getDecimals()` instead of the `NATIVE_TOKEN_DECIMALS_AMOUNT` constant, so
+a non-native asset formats and parses correctly without a second code path.
+`formatAssetAmount` is what UI surfaces use, which is why the hardcoded `"ASI"`
+suffix disappeared from components: the unit now comes from `asset.getName()`.
+
+### errors (`errors/index.ts`)
+
+```ts
+toErrorText(error: unknown, fallback: string): string
+```
+
+Wraps the SDK's `getErrorMessage` and, for a `CustomError`, prefixes the
+machine-readable code: `ACCOUNT_BUSY: Account ... has an operation in progress`.
+Every `alert` and error panel in the playground goes through it, replacing the
+scattered `(error as Error)?.message ?? "..."` casts — the taxonomy in
+[CustomError](DOMAINS.md#customerror-srcdomainscustomerrorindexts) is only useful
+if the code reaches the surface.
+
+### validators (`validators/index.ts`)
+
+Input guards and error-message builders shared by the forms, all of them layered
+over SDK primitives (`validateAddress`, `validateAccountName`,
+`isIntegerInRange`, `isNodeApiProfile`, `NON_NEGATIVE_INTEGER_REGEX`,
+`genRandomHex`) rather than re-implementing the rules:
+
+```ts
+toNodeApiProfile(value: unknown): NodeApiProfile
+
+isAmountInputAllowed(value: string): boolean          // keystroke guard, respects the asset decimals
+isIntegerInputAllowed(value: string, max?: number): boolean
+isDeployIdInputAllowed(value: string): boolean        // hex only
+
+toAddressError(value: string): string | null          // reports the AddressValidationErrorCode
+toAccountNameError(value: string): string | null
+toIntegerRangeError(value: string, options: IIntegerRangeOptions): string | null
+toDeployIdError(value: string): string | null         // hex, whole bytes
+toDeployIdLengthError(value: string): string | null   // 128-144 hex chars
+
+generateDeployId(): string                            // a random signature-shaped id
+```
+
+The split is deliberate: `is...Allowed` runs on every keystroke and only blocks
+characters that could never become valid, while `to...Error` runs on the current
+value and explains why it is not acceptable yet. That keeps a field from
+rejecting an intermediate state such as `"0."` while still refusing to submit it.
 
 ---
 
@@ -205,19 +304,25 @@ Root component. Instantiates `useLoader` and `useSdk`, provides
 loader.
 
 - `context.ts` — `ApplicationContext` with `{ modalState, setModalState, withLoader }`
-  and the `useAppContext()` hook.
+  and the `useAppContext()` hook. `withLoader` is typed
+  `<T>(method: () => T | Promise<T>) => Promise<T>`, so a caller can await the
+  wrapped work and read its result instead of firing it and hoping.
 - `meta.tsx` — the `Modals` enum and the `ModalProps` union.
 - `ModalManager.tsx` — maps `Modals` to `PasswordModal`, `TransferModal`,
   `CreateWalletModal`, `DeriveWalletModal`, `TransferCompletedModal`,
   `NetworkModal`.
-- `Header/` — brand, `ApplicationNavigation`, and a "CLEAR SDK LS" button that
-  calls `sdk.clearPersistence()` and reloads.
+- `Header/` — brand, `ApplicationNavigation`, a "CLOSE ALL WALLETS" button
+  (`sdk.closeAllWallets()`, memory only), and a "CLEAR SDK LS" button that calls
+  `sdk.clearPersistence()` and reloads. The first was labelled "LOCK ALL WALLETS"
+  before, which named the wrong thing: closing drops wallets from memory, while
+  locking only ends the signing session.
 
 ---
 
 ## Routing (`playground/src/router`)
 
-- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, `/networks`, default `/wallets`).
+- `paths.ts` — `PATHS` (`/wallets`, `/tx-history`, `/networks`, `/deploy`,
+  `/deploy-utils`, `/reservations`, default `/wallets`).
 - `routes.ts` — `PAGE_ROUTES` mapping each path to a label and page component.
 - `index.tsx` — `ApplicationNavigation` (NavLinks) and `PersistentPageRoutes`,
   which keep every page mounted and toggle visibility with `hidden` so page state
@@ -230,10 +335,24 @@ loader.
 ### WalletsPage (`pages/WalletsPage/index.tsx`)
 
 Two columns — Private Key wallets and Mnemonic (HD) wallets — rendered from
-`sdk.walletsMetadata`. Closed wallets show an "Open" button; open wallets render
-their accounts as `AccountCard`s plus "Export keyfile", "Close", and (for HD)
-"Derive" actions. A page-level "Import keyfile" button sits next to the network
-selector. HD create/import offers a 12/24-word choice.
+`sdk.walletsMetadata`. Closed wallets are labelled `closed` and show an "Open"
+button; open wallets render their accounts as `AccountCard`s plus "Export
+keyfile", "Close wallet", the session toggle, and (for HD) "Derive" actions. A
+page-level "Import keyfile" button sits next to the network selector. HD
+create/import offers a 12/24-word choice.
+
+The two states are shown separately because they are separate: the row's badge
+reads `session unlocked` or `session locked` from `sdk.isWalletLocked(walletId)`,
+and the button next to it is "Lock session" or "Unlock session" accordingly,
+while "Close wallet" (previously mislabelled "Lock wallet") drops the wallet from
+memory entirely. Unlocking opens `PasswordModal` and calls `sdk.unlockWallet`;
+locking needs nothing.
+
+On narrow screens the two columns become tabs — `Private Key (n)` /
+`Mnemonic (n)` — with the grid switching through a `data-active-column`
+attribute. The first render picks the tab that has wallets in it, once: a
+`isColumnPickedRef` guard keeps a later metadata refresh from yanking the tab
+back while the user is reading the other one.
 
 The page matches metadata to open wallets through a
 `Map<signerId, Wallet>` built from `sdk.openWallets`, because
@@ -248,10 +367,14 @@ rendered at all otherwise. This mirrors the `@OnlyHDWallet` and
 error.
 
 `helpers.ts` builds `WalletPageHandlers`: `createPk`, `importPk`, `createHd`,
-`importHd`, `importKeyfile`, `openWallet`, `closeWallet`, `deriveAccount`,
-`exportWalletKeyfile`, `removeWallet`, `renameAccount`, `removeAccount`. These
-open the relevant modals and call the matching `useSdk` methods through
-`withLoader`.
+`importHd`, `importKeyfile`, `openWallet`, `closeWallet`, `lockWallet`,
+`unlockWallet`, `deriveAccount`, `exportWalletKeyfile`, `removeWallet`,
+`renameAccount`, `removeAccount`. These open the relevant modals and call the
+matching `useSdk` methods through `withLoader`. Every failure path reports
+through `toErrorText`, so an alert carries the SDK error code, and
+`renameAccount` runs the prompted name through `toAccountNameError` before
+calling the SDK — the same `validateAccountName` rule, applied before a round
+trip.
 
 `submitImportKeyfile` is where the two-way import branch lives: the modal hands
 back `{ keyfile, password, existingSignerId, accountIndexes }`, and the handler
@@ -295,7 +418,11 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
   [SERVICES.md](SERVICES.md).
 - `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
 - `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
-  deploy id and block hash, and offers a copy-deploy-id button.
+  deploy id and block hash, and offers a copy-deploy-id button. Every cell
+  carries a `data-label`, which is what the shared table styles use to restack
+  the row as a labeled card on a narrow screen. The details cell shows the gas
+  cost and a single-line, 40-character preview of a deploy's contract code
+  instead of the removed `note` field.
 
 ### NetworksPage (`pages/NetworksPage/index.tsx`)
 
@@ -329,6 +456,64 @@ example contract), and set a phlo limit. **Deploy** runs
 `sdk.exploreDeploy(code)` and needs no unlock/password. Errors and the
 explore/deploy result are shown inline.
 
+The account picker now carries its own `walletId` instead of searching the open
+wallets for the account, and the form validates through the SDK's
+`validateDeployPayload` rather than its own `Number.isFinite` check, so the page
+refuses exactly what the signing boundary would refuse. The pre-flight balance
+check compares the balance against `phloLimit * DEFAULT_PHLO_PRICE` in atomic
+units — the amount the deploy will actually reserve — instead of the ad-hoc
+division it used before.
+
+### DeployUtilsPage (`pages/DeployUtilsPage/index.tsx`)
+
+The deploy calls that sit outside the reserve-and-submit flow, in three panels:
+
+- **Sign deploy without submitting** — `sdk.signDeploy` through `useSecureAction`,
+  with account, phlo limit, phlo price, and shard id. The result is rendered as
+  the raw `SignedResult` with a copy button, so it can be handed to whatever will
+  submit it. Phlo price and shard id are pinned to `DEFAULT_PHLO_PRICE` and
+  `"root"` in the UI: the SDK passes both through as given, but the chain does
+  not currently finalize a deploy priced differently or aimed at another shard,
+  so a payload signed that way would fail downstream for reasons that say nothing
+  about the signing.
+- **Watch a deploy by id** — `sdk.watchDeploy` with a configurable interval and
+  timeout, appending every `IDeployStatusResult` to a status log. It polls the
+  node of the current network and needs no wallet, so any deploy id works,
+  including one produced elsewhere.
+- **Exploratory deploy** — `sdk.exploreDeploy`, read-only, no unlock or password.
+
+Deploy ids are validated as signatures: hex only while typing
+(`isDeployIdInputAllowed`), then `toDeployIdError` and `toDeployIdLengthError`
+on submit, with `generateDeployId()` filling a plausible one for experiments.
+The page uses `useRelevantResultGuard` so a result that arrives after a network
+switch is discarded.
+
+### ReservationsPage (`pages/ReservationsPage/index.tsx`)
+
+The external-reservation API as a form: pick an open wallet and one of its
+accounts, then add, edit, or remove reservations for deploys submitted outside
+the SDK.
+
+- The form covers both reservation kinds. `kind: "transfer"` asks for recipient
+  and amount; `kind: "deploy"` asks for the term instead and locks gas only. The
+  reserved total is derived, not typed — `amount + gasCost` for a transfer, the
+  gas cost alone for a deploy — which is the invariant
+  `validateReservationPayload` enforces on the SDK side.
+- Gas cost defaults per kind (`GasFee.MAX` for a transfer,
+  `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy) and a transfer's gas is
+  held between `GasFee.MIN` and `GasFee.MAX`.
+- Submitting runs `addTransactionReservation` or, when a row is being edited,
+  `updateTransactionReservation` with the same reservation id, both through
+  `useSecureAction`. **Remove** confirms first, then calls
+  `removeTransactionReservation`.
+- The table lists the selected wallet's reservations from
+  `sdk.reservationsByWallet` with kind, account, deploy id, details, and a
+  countdown to `expirationTime` ticking every second, so a reservation expiring
+  under the SDK's own timer is visible as it happens.
+- **`Client.getReservations()` raw result** dumps the unformatted array as JSON
+  next to the rendered table, which is the point of a playground: the shape the
+  SDK returns, not only the shape the UI chose to show.
+
 ---
 
 ## Components
@@ -341,6 +526,13 @@ Represents one SDK `Account`. Shows name, address, available balance (via
 when a session is active, otherwise a `PasswordModal` — and shows
 `TransferCompletedModal`), Reload balance, Rename, Copy address, and Export
 (downloads the encrypted keyfile from `sdk.getExportedAccountData`).
+
+The transfer itself runs inside `withLoader`, so the loader stays up until the
+reservation exists and the balance has been re-read, and the subscription to the
+returned `IReservedOperationResult` is attached before that await — a deploy
+confirmed quickly still triggers the reload. Amounts are rendered with
+`formatAssetAmount`, so the unit comes from the asset rather than a hardcoded
+`"ASI"`, and `reservationCount` is passed to `ReservationStatus` from the hook.
 
 ```ts
 interface IAccountCardProps {
@@ -370,7 +562,10 @@ The profile is a `<select>` populated from `NODE_API_PROFILE_DESCRIPTORS`, with
 options labelled `"<label> (<stability>)"` — e.g. `Rust node (experimental)`. It
 defaults to `initialConfig?.nodeApiProfile ?? DEFAULT_NODE_API_PROFILE`, so
 editing preselects the network's current profile and adding preselects `scala`.
-This is the one place a default profile is applied, and it belongs here: the UI
+On submit the selected value goes through `toNodeApiProfile` rather than a cast,
+so form data that is not a known profile falls back instead of reaching
+`Client.create` as a lie about its type. This is the one place a default profile
+is applied, and it belongs here: the UI
 offers a starting value, the SDK never guesses one.
 
 ```ts
@@ -389,26 +584,38 @@ interface INetworkModalProps {
 ### ReservationStatus (`components/ReservationStatus/index.tsx`)
 
 Displays total/available balances and, when reservations exist, the reserved
-amount and active-transfer count.
+amount and the reservation count. The reserved amount is derived as
+`total - available` rather than summed separately, and a failed read renders as
+`unavailable` instead of a zero that would read as "no funds".
 
 ```ts
-interface IReservationStatusProps { balance: WalletBalance; isFetching?: boolean }
+interface IReservationStatusProps {
+    balance: WalletBalance;       // { total, available }
+    reservationCount: number;
+    isFetching?: boolean;
+    error?: string | null;
+}
 ```
 
 ### TransferModal (`components/TransferModal/index.tsx`)
 
-Collects recipient and amount, validating the amount against `availableBalance`
-(parsed with `toAtomicAmount` / `NATIVE_TOKEN_DECIMALS_AMOUNT`). Confirms with an
-atomic `bigint`.
+Collects recipient and amount, validating the recipient through `toAddressError`
+(the SDK's `validateAddress`, so a malformed address is refused before the SDK
+sees it) and the amount against `availableBalance` (parsed with `parseAmount`).
+Confirms with a branded `Address` and an atomic `bigint`.
 
 ```ts
 interface ITransferModalProps {
-    fromAddress: string;
+    fromAddress: Address;
     availableBalance: bigint;
-    onConfirm: (toAddress: string, amount: bigint) => void;
+    onConfirm: (toAddress: Address, amount: bigint) => void;
     onClose: () => void;
 }
 ```
+
+Addresses travel as the SDK's branded `Address` rather than `string`, so the
+`as never` casts that used to bridge the two are gone; the modal narrows with
+`isAddress` at the point where a validated input becomes one.
 
 ### TransferCompletedModal (`components/TransferCompletedModal/index.tsx`)
 
@@ -429,7 +636,9 @@ interface ITransferCompletedModalProps {
 
 Create or import a wallet by private key or mnemonic. Validates matching
 passwords and required fields; for private keys it parses a JSON byte array; for
-mnemonics it opens a nested `InputsForm`.
+mnemonics it opens a nested `InputsForm`. The account name is checked with
+`toAccountNameError` before submit and the reason is shown in the modal, so a
+name the SDK would refuse never becomes a failed call.
 
 ```ts
 type TWalletCreatePayload =
@@ -450,7 +659,8 @@ interface IWalletCreateModalProps {
 
 ### DeriveWalletModal (`components/DeriveWalletModal/index.tsx`)
 
-Collects a name + password to derive a new HD account.
+Collects a name + password to derive a new HD account, with the same inline
+`toAccountNameError` check as the create modal.
 
 ```ts
 interface IDeriveWalletModalProps {
@@ -469,18 +679,6 @@ interface IPasswordModalProps {
 }
 ```
 
-### SelectModal (`components/SelectModal/index.tsx`)
-
-Simple option list.
-
-```ts
-interface ISelectModalProps {
-    title: string;
-    options: { title: string; onClick(): void; disabled?: boolean }[];
-    onClose?: () => void;
-}
-```
-
 ### Mnemonic input components
 
 - **InputsForm** (`components/InputsForm/index.tsx`) — grid of word inputs with
@@ -491,8 +689,15 @@ interface ISelectModalProps {
   in `output` mode change/paste handlers are omitted (read-only).
 - **Input** (`components/Input/index.tsx`) — one controlled word input; prevents
   Enter default and supports multi-word paste.
-- **InputsFormActionsButtons** (`components/InputsFormActionsButtons/index.tsx`) —
-  renders an array of `{ type, className, onClick?, label }` buttons.
+
+`InputsForm` validates the phrase through the SDK's `Mnemonic` service rather
+than its own word list: the words are joined and normalized
+(`Mnemonic.wordArrayToMnemonic` + `Mnemonic.normalizeMnemonic`) and checked with
+`Mnemonic.isMnemonicValid`, which covers the checksum as well as the wordlist.
+The per-word BIP-39 checks that were commented out are gone with it, so an
+invalid phrase is reported once, on submit, by the same rule the SDK will apply.
+The `InputsFormActionsButtons` wrapper was removed; the forms render their
+buttons directly.
 
 ### FullScreenLoader (`components/FullScreenLoader/index.tsx`)
 
@@ -501,11 +706,19 @@ Fullscreen spinner shown while `useLoader` reports loading.
 ### Common components (`components/common`)
 
 - **HighlightedRows** — labeled value rows with optional accent/description.
-- **KeyValueTable** — two-column table with an optional per-row state class.
 - **SelectFilter** — labeled `<select>` from `{ label, value }[]` options.
+- **ConstrainedInput** — a labeled text input that filters keystrokes through an
+  `isAllowed` guard and renders an optional hint, error, and trailing action
+  (`{ id, label, value, onChange, isAllowed?, hint?, error?, readOnly?, wide?, inputMode?, action? }`).
+  It is the form primitive behind the reservation and deploy-utils pages: the
+  guard rejects characters that could never be valid while the `error` explains
+  a value that is merely not valid yet.
 - **Pagination** — `{ page, hasNextPage, onChange }` pager for sources with no
   known total: it renders a trailing window of up to five page numbers ending at
   `page + 1` when a next page is assumed, plus prev/next arrows.
+
+`KeyValueTable` and `SelectModal` were removed; the pages that used them render
+tables and option lists through the shared theme classes instead.
 
 ---
 
@@ -532,10 +745,42 @@ Fullscreen spinner shown while `useLoader` reports loading.
   This keeps the blocking browser `confirm`/`prompt` in the app layer — the SDK
   stays UI-free and its Node tests are unaffected.
 
-- **useLoader** (`hooks/useLoader.ts`) — `{ isLoading, setIsLoading, withLoader }`;
-  `withLoader` toggles the loader and defers the wrapped work to the next tick.
+- **useLoader** (`hooks/useLoader.ts`) — `{ isLoading, setIsLoading, withLoader }`.
+  `withLoader<T>(method: () => T | Promise<T>): Promise<T>` awaits the wrapped
+  work and clears the loader in a `finally`, returning its result. It used to
+  defer the call through a `setTimeout` and return nothing, which hid failures
+  and cleared the loader before async work finished.
 - **utils/constants** — mnemonic word-count constants (`MIN_WORDS_COUNT` 12,
-  `MAX_WORDS_COUNT` 24, `WordsCountVariants`, `DEFAULT_WORDS_COUNT`).
+  `MAX_WORDS_COUNT` 24, `DEFAULT_WORDS_COUNT`) and
+  `SDK_CLIENT_SESSION_AUTO_LOCK_MS`, deliberately set to 15 seconds here so the
+  auto-lock and the unlock flow are observable while clicking through the
+  playground. Use the SDK's own default in a real application.
 - **utils/functions** — `sanitizeWord(raw)` and `clippedWordCount(value)` for
   mnemonic inputs.
 - **utils/misc** — `copyTextToClipboard(text)`.
+
+---
+
+## Theme (`playground/src/theme`)
+
+The per-component `style.css` files were collapsed into a shared layer, imported
+once in `index.tsx` in this order:
+
+- **tokens.css** — CSS custom properties (colors, spacing, radii, typography)
+  that everything else refers to; nothing here renders on its own.
+- **commonStyles.css** — element-level resets and shared primitives.
+- **pageLayout.css** — the page frame: panels, headers, hints, form rows, and the
+  responsive column-to-tab behaviour the Wallets page uses.
+- **dataTable.css** — the table look, including the `data-label` fallback that
+  turns rows into stacked cards on narrow screens.
+- **modal.css** — one modal skeleton for every dialog, replacing the copies that
+  lived in `CreateWalletModal`, `DeriveWalletModal`, `NetworkModal`,
+  `PasswordModal`, `TransferCompletedModal`, and `SelectModal`.
+- **statusPanel.css** — the status, notice, and error surfaces shared by the
+  reservation, deploy, and balance panels.
+
+A component keeps its own `style.css` only for what is genuinely local to it
+(`AccountCard`, `ConstrainedInput`, the two new pages). The point of the split is
+that a shared class changes in one place: the modals, tables, and panels on six
+pages stayed consistent through the rework because none of them owned its own
+copy of the rules.

@@ -288,12 +288,13 @@ they knew about keyfile envelopes and wallet types, which made a leaf utils
 module depend on the domain layer. The shape guards they call
 (`isEncryptedData`, `isKeyfileWalletAccount`) stayed in `@utils/guards`.
 
-Amount and reservation validation:
+Amount, reservation, and deploy validation:
 
 ```ts
 ensureValid(result: { isValid: boolean; error?: string }, context: IErrorContext): void
 validatePositiveAmount(amount: bigint): { isValid: boolean; error?: string }
 validateReservationPayload(payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
+validateDeployPayload(payload: TDeployDetails): { isValid: boolean; error?: string }
 ```
 
 `ensureValid` turns any `{ isValid, error }` result into a throw prefixed with
@@ -311,6 +312,14 @@ mean anything — `amount + gasCost <= pendingAmount`. A reservation that does n
 cover its own transfer plus gas would under-lock the balance and let the account
 overspend, so it is refused rather than clamped. `gasCost` defaults to
 `GasFee.MAX` for that comparison when the caller omits it.
+
+`validateDeployPayload` is the boundary check every signed deploy passes through,
+called from `TransactionService.signDeploy` and therefore covering `deploy` and
+`transfer` as well. It rejects a blank `term`, a `phloLimit` or `phloPrice` that
+is not an integer between `1` and `Number.MAX_SAFE_INTEGER` (both optional; an
+omitted value falls back to the configured default), and a `shardId` that is
+present but blank. Putting it at the signing boundary means a caller cannot reach
+the signer with a payload the node would reject, whichever entry point it used.
 
 `validateUrl` powers custom-network endpoint validation in
 `NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
@@ -433,7 +442,7 @@ Wallet / client / API guards:
 
 ```ts
 OnlyHDWallet; // throws HDWalletOnlyOperationError on non-HD wallets
-EnsureActiveAccountExist; // throws when the wallet has no active account
+EnsureAccountIsIdle; // throws AccountBusyError when the account has a running operation
 EnsureApiClientManagerInitialized; // throws before ApiClientManager.initialize()
 EnsureApiClientManagerConfigured; // throws when the network config isn't ready
 EnsureWithInsensitiveCacheStorage; // throws when the cache-storage flag is off
@@ -445,6 +454,14 @@ context), so a caller can branch on `code` and show which operation was refused.
 It used to be `async` and to throw a plain `Error`, which forced every guarded
 method to return a promise even when it was synchronous — `Wallet.removeAccount`
 is one, and it can now stay synchronous under the guard.
+
+`EnsureAccountIsIdle` replaces the former `EnsureActiveAccountExist`, which
+existed only to assert that a wallet had an active account before signing.
+Accounts are now addressed explicitly, so the interesting question is no longer
+"is one selected" but "is this one in use": the decorator reads the `accountId`
+from the **first argument** of the guarded method, asks the wallet's
+`accountOperationsGuard` whether that key has any holders, and throws
+`AccountBusyError` if it does. `Wallet.removeAccount` is its only use.
 
 Lifecycle guards:
 

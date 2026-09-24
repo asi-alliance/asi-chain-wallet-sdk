@@ -159,13 +159,25 @@ would not be the one the path string names.
   - The session is a distinct object with a generation counter, so an unlock that
     completes after a concurrent lock zeroizes its secret and is cancelled rather
     than installed.
+- Deploy signing:
+  - The signed digest is `blake2b-256` over the protobuf-serialized `DeployData`,
+    whose `validAfterBlockNumber` and `timestamp` are filled in by the SDK from
+    the current chain head rather than by the caller.
+  - The payload is validated before it is hashed: non-empty term, phlo limit and
+    phlo price within the positive safe integer range, non-blank shard id.
+  - A deploy may be signed without being submitted (`Client.signDeploy`), which
+    returns the signature, the deployer public key, the algorithm name, and the
+    signed `DeployData` — never key material. Submitting it is the caller's step
+    and does not change the key-handling boundary above.
 - Source of truth:
   - `src/services/Signer/index.ts`
+  - `src/services/TransactionService/index.ts`
   - `src/domains/Signer/index.ts`
   - `src/domains/SigningSession/index.ts`
   - `src/domains/AutoTimer/index.ts`
   - `src/domains/Wallet/index.ts`
   - `src/utils/validators/primitives.ts`
+  - `src/utils/validators/domain.ts`
 
 ## 4. Versioning and Migration Notes
 

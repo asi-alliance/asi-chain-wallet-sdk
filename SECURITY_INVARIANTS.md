@@ -131,8 +131,13 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    an HD wallet must be refused.
 2. Account removal must be refused on private-key wallets, whose single account
    is the wallet itself; removing the wallet is a separate, explicit operation.
-3. Removing an account must not silently change which account is active unless
-   the removed account was the active one.
+3. An account with an operation in progress must not be removed. Every
+   account-scoped operation registers the account for its duration, and removal
+   is refused with `AccountBusyError` while any holder remains, so a transfer,
+   deploy, or reservation action cannot have its account deleted underneath it.
+4. Removing an account must not disturb the other accounts of the wallet. There
+   is no active-account state to reassign: each operation names its account
+   explicitly, so a removal elsewhere in the list cannot redirect a signature.
 
 ## 3. Deploy Integrity Invariants
 
@@ -152,6 +157,16 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    `index` not hardened, every component an integer within the BIP-32 range and
    written without leading zeros. Two different strings must never derive the
    same key.
+8. Deploy payload validation must sit at the signing boundary, not at each entry
+   point. A non-empty term, a phlo limit and phlo price within the positive safe
+   integer range, and a non-blank shard id must be established before a deploy is
+   hashed and signed, so no caller can reach the signer with a payload that was
+   validated by a different rule or not at all.
+9. Signing a deploy without submitting it must be held to the same rules as
+   submitting one: the same payload validation, the same session or password
+   requirement, and the same account addressing. A returned signed payload is a
+   spendable authorization, so a sign-only path must never be the cheap way
+   around a check that the submitting path performs.
 
 ### 3a. Reservation Invariants
 

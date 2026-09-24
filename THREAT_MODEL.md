@@ -15,7 +15,11 @@ Date: 2026-03-19
 2. Password-derived encryption material.
 3. Per-signer data keys, which encrypt non-signing user data at rest
    (transaction reservations) and are themselves stored password-encrypted.
-4. Signed deploy payloads before submission.
+4. Signed deploy payloads before submission. `Client.signDeploy` hands such a
+   payload to the integrator, so it also crosses the SDK boundary: it carries no
+   key material, but it is a spendable authorization for the account that signed
+   it, and anything that can replay or alter it before submission spends those
+   funds.
 5. Wallet metadata and vault contents stored in browser storage.
 6. Key fingerprints stored in plaintext. These are one-way hashes of public
    material and are not confidential, but they do link stored records to a key
@@ -132,6 +136,14 @@ Current controls:
 17. Typed failures: decryption, storage, and API errors carry machine-readable
     codes and structured fields, and a password check reports `false` only for an
     actual password failure.
+18. Validation at the signing boundary: term, phlo limit, phlo price, and shard id
+    are checked where the deploy is signed rather than at each entry point, so
+    submitting a deploy, transferring, and signing without submitting are all held
+    to one rule.
+19. Explicit account targeting: operations name their wallet and account instead
+    of mutating a shared "active account", so concurrent operations cannot
+    redirect each other's signature, and an account is registered as busy for the
+    duration of its operation, which blocks its removal mid-flight.
 
 Planned/required controls:
 
