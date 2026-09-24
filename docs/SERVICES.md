@@ -5,18 +5,25 @@ This file documents the current service modules under `src/services`.
 Services split into a few groups:
 
 - **Managers** — in-memory ownership of domain objects (`ItemManager`,
-  `WalletManager`, `AccountManager`, `ReservationAdapterManager`,
-  `TransactionReservationsManager`, `DisposableItemManager`).
+  `WalletManager`, `AccountManager`, `AccountsService`,
+  `ReservationAdapterManager`, `TransactionReservationsManager`,
+  `DisposableItemManager`).
+- **Events & lifecycle** — `ClientEventBus`, `ClientLifecycleGuard`,
+  `ConcurrentOperationGuardService`, `WalletOperationGuardService`.
 - **Read models** — `TransactionsHistoryAggregator`, `CollectionQueryService`.
-- **Persistence orchestration** — `StorageManager`, `NetworkManager`,
-  `InsensitiveCacheStorageManager`, `InsensitiveCacheStorageSerializer`.
+- **Persistence orchestration** — `StorageBootstrap`, `StorageMigrationRunner`,
+  `StorageManager`, `NetworkManager`, `InsensitiveCacheStorageManager`,
+  `InsensitiveCacheStorageSerializer`, `WalletPersistenceService`,
+  `WalletUniquenessService`.
 - **API services** — instantiated by `ApiServiceRegistry`: `DeployService`,
   `BlockService`, `AccountDataService`, `AssetsService`, `TransactionService`,
-  `DeployStatusPoller`, plus the `GraphqlParser` helpers.
-- **Export** — `ExportService` (account keyfile + transactions JSON/CSV).
+  `DeployStatusPoller`, plus the `GraphqlParser` and `HttpResponseParser`
+  helpers.
+- **Keyfiles** — `ExportKeyfileService`, `ImportKeyfileService`,
+  `KeyfileSerializer`, `WalletImportService`.
 - **Crypto / key primitives** — `CryptoService`, `WalletsService`,
   `MnemonicService`, `KeyDerivationService`, `KeysManager`, `SignerService`,
-  `BinaryWriter` (documented under domains).
+  `KeyFingerprintService`, `BinaryWriter` (documented under domains).
 
 ---
 
@@ -28,10 +35,13 @@ Generic in-memory `Map<string, T>` registry used as a base class.
 
 ```ts
 add(id: string, item: T): void
+addMany(entries: Iterable<[string, T]>): void
 remove(id: string): T          // throws when missing
 get(id: string): T | null
 has(id: string): boolean
 hasByFilter(filter: (item: T) => boolean): boolean
+getByFilter(filter: (item: T) => boolean): T[]
+removeByFilter(filter: (item: T) => boolean): T[]
 getAll(): T[]
 getMap(): Map<string, T>
 clear(): void
@@ -53,32 +63,67 @@ interface IDisposable {
 `ItemManager<Wallet>` that bridges wallets to `StorageManager`. Owned by `Client`.
 
 ```ts
-createHD(params: ICreateHDWalletParams, passwordProvider): Promise<Wallet>
+createHD(params: ICreateHDWalletParams, secretProvider): Promise<Wallet> // { accountName, index? }
 createPrivateKey(accountName: string, secretProvider): Promise<Wallet>
-unlock(signerId: string, passwordProvider): Promise<Wallet>
+importKeyfile(payload: IImportKeyfileWalletPayload, passwordProvider): Promise<Wallet>
+open(signerId: string, passwordProvider): Promise<Wallet>
 delete(id: string): Promise<Wallet>              // removes signer + accounts from storage
+getBySignerId(signerId: string): Wallet | null
 deriveAccount(walletId, accountName, passwordProvider): Promise<IDerivedAccount>
 removeAccount(walletId, accountId): Promise<Account>
 renameAccount(walletId, accountId, name): Promise<void>
-setActiveAccount(walletId, accountId): void
+getAccount(walletId, accountId): Account          // delegates to Wallet.getAccount
 getPublicWalletsMetadata(): Promise<IWalletMetadata[]>
 count(): Promise<number>
 countInStorage(): Promise<number>
 ```
 
+`ICreateHDWalletParams` no longer carries the mnemonic: the recovery phrase
+arrives through the `SecretsProvider` instead (see
+[SecretsProvider](DOMAINS.md#secretsprovider-srcdomainssecretsproviderindexts)).
+
+`getBySignerId` exists because wallets are keyed by `walletId` in memory while
+keyfiles and stored records identify a wallet by its `signerId`. Keyfile account
+import uses it to find the open wallet a set of accounts belongs to.
+
 `IWalletMetadata = { signerId, type, accounts: IAccountMetadata[] }` is the
-lightweight, non-secret listing used by UIs to render locked wallets.
+lightweight, non-secret listing used by UIs to render closed wallets. Its
+`accounts` are sorted by derivation index through
+`KeyDerivationService.compareIndexes`, the same rule `AccountManager` applies, so
+a closed wallet lists its accounts in the order they will appear once it is
+opened rather than in storage insertion order.
+
+`open` replaces the former `unlock`: loading a stored wallet into memory and
+holding a signing session are separate steps now, and only the first belongs
+here (see [Open vs unlocked](DOMAINS.md#open-vs-unlocked)).
+
+Concurrency and duplicates are enforced here, not in `Client`, through the
+`WalletOperationGuardService` **singleton**, shared by every `WalletManager`
+instance and by `WalletPersistenceService`. Sharing it is deliberate: two
+managers over the same storage must not each think they are the only writer.
+
+- `open` and `deriveAccount` run inside `runWalletAction`, so a second concurrent
+  attempt at the same action on the same signer throws
+  `WalletActionInProgressError` instead of racing.
+- `persist` (the tail of every create and import path) runs inside
+  `runWalletCreation`, which reserves the wallet's fingerprints for the duration
+  and then delegates the storage check to
+  [WalletUniquenessService](#walletuniquenessservice-srcserviceswalletuniquenessindexts).
+
+The reservation is what closes the window a storage-only check would leave open:
+two identical wallets created in the same tick would both read an empty storage,
+so the second one is rejected on the in-memory reservation instead.
 
 ### AccountManager (`src/services/AccountManager/index.ts`)
 
-`ItemManager<Account>` owned by each `Wallet`; also tracks the active account.
+`ItemManager<Account>` owned by each `Wallet`. It holds the accounts and their
+order, nothing else — the active-account state it used to carry is gone.
 
 ```ts
 create(payload: TCreateAccountPayload, secretProvider): Promise<ICreatedAccountData>
+addAccounts(accounts: Account[]): void
 remove(id: string): Account
 update(id: string, payload: TEditableAccountOptions): void
-setActiveAccount(id: string): void
-getActiveAccount(): Account | null
 getAccounts(): Account[]
 getAccountsMap(): Map<string, Account>
 getAccount(id: string): Account | null
@@ -86,21 +131,99 @@ getAccount(id: string): Account | null
 
 `ICreatedAccountData = { accountId: string; account: Account }`.
 
+Accounts are kept **ordered by derivation index**, not by insertion order. The
+manager sorts on construction and re-sorts after `create` and `addAccounts`, so
+a wallet restored from storage, a wallet whose accounts arrived from a keyfile,
+and a wallet that has just derived a new account all enumerate their accounts in
+the same order. Ordering uses `KeyDerivationService.compareIndexes`, which sorts
+indexed accounts ascending and pushes index-less ones (an imported private key
+has no derivation index) to the end.
+
+That ordering is what a UI listing accounts gets: the first entry is the lowest
+derivation index, not whichever account happened to be inserted first, so an
+imported wallet lists `m/44'/.../0` first instead of `m/44'/.../3`.
+
+`addAccounts` registers several already-created accounts at once and re-sorts the
+map afterwards. `remove` is a plain removal. Neither touches any selection: an
+account is chosen per call by the caller, so a bulk keyfile import or a deletion
+elsewhere in the list cannot move the selection out from under the user (see
+[No active account](DOMAINS.md#no-active-account)).
+
+### AccountsService (`src/services/Accounts/index.ts`)
+
+Creates a batch of accounts from one secret provider, sequentially.
+
+```ts
+AccountsService.createAccounts(accounts: TCreateAccountPayload[], secretProvider): Promise<Account[]>
+```
+
+Deliberately sequential rather than `Promise.all`: each `Account.create` derives
+a key from the shared secret, and serializing keeps only one derivation in flight
+at a time. It creates accounts in memory only — persistence is
+`WalletPersistenceService`'s job, which is what lets the keyfile import preview
+derive addresses without writing anything.
+
 ### ReservationAdapterManager (`src/services/ReservationAdapterManager/index.ts`)
 
 `DisposableItemManager<ReservationAdapter>` keyed by wallet id. Owned by `Client`.
 
 ```ts
-create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
+new ReservationAdapterManager({ reservationAdapters?, onReservationsChanged? })
+
+create(wallet, passwordProvider?): Promise<ReservationAdapter>
+remove(id: string): ReservationAdapter
+removeByFilter(filter: (adapter: ReservationAdapter) => boolean): ReservationAdapter[]
+clear(): void
 getReservationsByWallet(): TReservationsByWallet
-removeNetworkReservations(networkId: NetworkId): Promise<void>
+getAllReservations(): ITransactionReservation[]
+getIncomingReservations(targetAddress: Address): ITransactionReservation[]
+getPendingTransactions(walletId: string, account: Account): Transaction[]
+hasNetworkReservations(networkId: NetworkId): boolean
+isExclusiveNetwork(networkId: NetworkId): boolean
+runExclusiveNetworkAction<T>(networkId: NetworkId, operation: () => Promise<T>): Promise<T>
+removeNetworkReservations(networkId: NetworkId): Promise<void> // @EnsureExclusiveNetwork
 ```
 
 Reservations are encrypted with the signer's data key, so building the adapter
 needs an active session or the optional `passwordProvider` — `Client` forwards
-the provider it already has when creating, importing, or unlocking a wallet.
-`getReservationsByWallet` is the payload of `onReservationsChanged`;
-`removeNetworkReservations` fans a removed network out to every adapter.
+the provider it already has when creating or opening a wallet.
+
+This manager owns the reservation change notification. `Client` passes a single
+`onReservationsChanged` callback at construction, and every path that can alter
+the picture re-fires it: `create`, `remove`, `removeByFilter`, `clear`,
+`removeNetworkReservations` (in a `finally`, so a partial failure still notifies),
+plus the `onAdded` / `onReplaced` / `onRemoved` / `onConfirmed` / `onExpired`
+callbacks it subscribes on each adapter. `Client` turns that one callback into
+the `reservationsChanged` event with `getReservationsByWallet()` as the payload,
+so no caller has to wire adapter callbacks itself. `onReplaced` and `onRemoved`
+are new: an externally managed reservation can be rewritten or dropped without
+ever being confirmed, and a UI showing available balance has to hear about it.
+
+`hasNetworkReservations` answers whether any open wallet still holds funds on a
+network, which is what `Client.hasNetworkReservations` exposes to UIs before a
+network is removed. `removeNetworkReservations` fans a removed or reconfigured
+network out to every adapter.
+
+**Cross-wallet reads.** A reservation is stored by the wallet that created it,
+but its recipient may be an account of a different local wallet. This manager is
+the only place that can see every adapter at once, so the cross-wallet reads live
+here: `getAllReservations` flattens all adapters, and `getIncomingReservations`
+filters them down to transfers addressed to one account, excluding self-transfers
+so the sender does not see its own row twice. `getPendingTransactions(walletId,
+account)` is what `Client.getTransactionsHistory` calls: it concatenates the
+incoming rows drawn from every wallet with the outgoing rows of this wallet's own
+adapter, each rendered from the reading account's point of view.
+
+**Network exclusivity.** `runExclusiveNetworkAction` takes an exclusive scope on
+a network through the shared
+[ReservationOperationGuardService](#reservationoperationguardservice-srcservicesreservationoperationguardindexts)
+and runs the operation inside it. `Client.updateNetwork` and `Client.removeNetwork`
+wrap their whole body in it, so the config change and the reservation cleanup are
+one atomic step with respect to reservation writes. `removeNetworkReservations`
+is decorated with `@EnsureExclusiveNetwork` and refuses to run outside that
+scope, which makes the requirement structural instead of a convention a future
+call site could forget. `isExclusiveNetwork` is the predicate the decorator
+reads.
 
 ### TransactionReservationsManager (`src/services/TransactionReservationsManager/index.ts`)
 
@@ -113,15 +236,25 @@ the reservation and its expiration timer stay, so the deploy status being unknow
 keeps the funds locked until the reservation genuinely expires. Implements
 `IDisposable`.
 
+It extends `ItemManager<ITransactionReservation>`, so the map, the filtered
+reads, and `clear` come from there instead of being reimplemented over a private
+`Map`.
+
 ```ts
 new TransactionReservationsManager(reservations, options?: ITransactionReservationsManagerOptions)
-add(reservation): void
-subscribe(reservationId: string, callbacks: IDeployWatchCallbacks): () => void
-remove(id: string): boolean
+add(id: string, reservation): void
+replace(reservation): void      // @EnsureExclusiveReservation
+remove(id: string): ITransactionReservation
 get(id: string): ITransactionReservation | null
+getKnown(id: string): ITransactionReservation   // throws when unknown
 getAll(): ITransactionReservation[]
 getByNetworkId(networkId: NetworkId): ITransactionReservation[]
 getByAccountId(accountId: string, networkId: NetworkId): ITransactionReservation[]
+removeByNetworkId(networkId: NetworkId): ITransactionReservation[]
+ensureUniqueDeployId(deployId: string, networkId: NetworkId, excludedReservationId?: string): void
+isExclusiveReservation(id: string): boolean
+runExclusive<T>(id: string, operation: () => Promise<T>): Promise<T>
+subscribe(reservationId: string, callbacks: IDeployWatchCallbacks): () => void
 dispose(): void
 ```
 
@@ -130,9 +263,32 @@ network id. `subscribe` attaches per-reservation deploy-watch callbacks on top o
 the shared `watchCallbacks` and returns its own unsubscribe; it is what
 `ReservationAdapter` hands back inside `IReservedOperationResult`.
 
+`get` returns `null` for an unknown id, `getKnown` throws. The distinction
+matters because most call sites here are acting on a reservation the caller has
+just named, where a silent `null` would turn into a confusing failure further
+down.
+
+`ensureUniqueDeployId` enforces one reservation per deploy per network.
+`excludedReservationId` lets an update keep its own deploy id without colliding
+with itself.
+
+**`runExclusive` and the rearm cycle.** An in-flight reservation owns two timers:
+a `DeployStatusPoller` watching for confirmation and an expiration timeout. Both
+can fire at any moment and both delete the reservation. Rewriting or removing a
+reservation while they are armed is a race: a confirmation landing halfway
+through an update would delete the record the update is about to persist.
+`runExclusive` closes it — it marks the reservation exclusive, cancels its
+watcher, clears its expiration timer, runs the operation, and then rearms both in
+a `finally` (only if the reservation still exists, so a removal does not resurrect
+its own timers). `replace` is decorated with `@EnsureExclusiveReservation` and
+throws unless it is called inside that window, so the ordering cannot be
+bypassed.
+
 ```ts
 interface ITransactionReservationsManagerOptions {
     onAdded?(reservation): void;
+    onReplaced?(reservation): void;
+    onRemoved?(reservation): void;
     onConfirmed?(reservation): void;
     onExpired?(reservation): void;
     onFailed?(reservation, error: Error): void;
@@ -142,11 +298,221 @@ interface ITransactionReservationsManagerOptions {
 ```
 
 `onAdded` fires from `add` only, so reservations restored through the
-constructor stay silent — the caller already knows about them.
+constructor stay silent — the caller already knows about them. `onReplaced` and
+`onRemoved` cover the externally driven edits. `removeByNetworkId` deliberately
+does not fire `onRemoved` per reservation: it is the bulk path behind a network
+wipe, which notifies once at the manager level instead of once per record.
 
 `onFailed` is a notification, not a release signal: the reservation survives it
 and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
 `ReservationAdapter` uses to delete the stored record.
+
+---
+
+## Events & lifecycle
+
+### ClientEventBus (`src/services/ClientEventBus/index.ts`)
+
+Typed pub/sub behind `Client.getEventBus()`. Owned by `Client`, which is the only
+code allowed to `emit`.
+
+```ts
+new ClientEventBus(onListenerError?: TClientEventListenerErrorHandler)
+
+getSource(): IClientEventSource // frozen { on, off } handed to integrators
+on<TName>(name: TName, listener: TClientEventListener<TName>): TUnsubscribe
+off<TName>(name: TName, listener: TClientEventListener<TName>): void
+emit<TName>(name: TName, ...payload: IClientEventMap[TName]): void
+clear(): void
+```
+
+`IClientEventMap` ties each `ClientEvent` member to its payload tuple, so
+`on(ClientEvent.ACCOUNTS_CHANGED, listener)` type-checks the listener's
+`(walletId, accounts)` signature. The event names and payloads are listed in
+[Client events](DOMAINS.md#events).
+
+Two properties matter for integrators:
+
+- **Late subscription.** Listeners can be attached and detached at any point in
+  the client's life, unlike the constructor-time `IClientEventDispatcher`. `on`
+  returns its own unsubscribe.
+- **Listener isolation.** `emit` iterates over a snapshot of the bucket, so a
+  listener that unsubscribes during dispatch cannot corrupt the loop, and each
+  listener is invoked through `runProtected`. A synchronous throw or a rejected
+  promise is routed to `onListenerError(name, error)`; an error handler that
+  throws in turn is only logged. A broken listener can therefore never break the
+  SDK operation that emitted the event, and the bus does not await async
+  listeners.
+
+`getSource` returns a frozen facade so that handing the bus to UI code does not
+hand over `emit` and `clear` with it.
+
+### ClientLifecycleGuard (`src/services/ClientLifecycleGuard/index.ts`)
+
+`LifecycleGuard` specialized for wallet-scoped work.
+
+```ts
+new ClientLifecycleGuard(discardWallet: (wallet: Wallet) => void)
+
+runWalletPublication(operation: () => Promise<Wallet>): Promise<Wallet>
+runAccountsUpdate<T>(signerId: string, operation: () => Promise<T>): Promise<T>
+```
+
+`Client` wraps `createHDWallet`, `createPrivateKeyWallet`, `openWallet`, and
+`importWalletKeyfile` in `runWalletPublication`. If the guard was invalidated
+while the wallet was being built (a logout, a `clearPersistence`, or a `close`),
+the finished wallet is handed to `discardWallet` — which locks it and drops it
+from both the wallet manager and the reservation adapter manager — and the caller
+gets a `WalletOperationCancelledError`.
+
+`runAccountsUpdate` is the same generation check for work that produces accounts
+rather than a wallet, used by `importKeyfileAccounts`. There is nothing to
+discard here (the accounts are already persisted against a stored signer), so it
+only reports the cancellation, naming the `signerId` the work belonged to.
+
+The base `LifecycleGuard` contract is documented under
+[domains](DOMAINS.md#lifecycleguard-srcdomainslifecycleguardindexts).
+
+### ConcurrentOperationGuardService (`src/services/ConcurrentOperationGuard/index.ts`)
+
+Generic mutual exclusion over named keys. An `ItemManager<TOwner>` where a present
+key means "an operation owns this right now".
+
+```ts
+class ConcurrentOperationGuardService<TOwner = string> extends ItemManager<TOwner> {
+    run<T>(
+        reservations: Map<string, TOwner>,
+        createConflictError: (conflictOwner: TOwner) => Error,
+        operation: () => Promise<T>,
+        scope?: IOperationScope<TOwner>,
+    ): Promise<T>;
+
+    hasExclusiveScope(key: string): boolean;
+    hasScopeHolders(key: string): boolean;
+}
+```
+
+`run` claims **all** keys atomically or none: it scans for a conflict first,
+throws the caller's error when one is found, and otherwise registers every key,
+runs the operation, and releases the keys in a `finally`. The owner value stored
+under each key is what the error factory receives, so the rejection can name what
+already holds the key rather than just reporting a generic clash.
+
+**Scopes.** Plain keys are all-or-nothing: any two operations naming the same key
+conflict. That is wrong for a whole class of cases where many operations may
+proceed together but one must run alone — several accounts writing reservations
+on one network are fine side by side, while wiping that network's reservations is
+not. The optional `scope` adds a second, coarser layer of exclusion on top of the
+keys:
+
+```ts
+enum OperationScopeMode {
+    SHARED = "SHARED",
+    EXCLUSIVE = "EXCLUSIVE",
+}
+
+interface IOperationScope<TOwner> {
+    key: string;
+    mode: OperationScopeMode;
+    owner: TOwner;
+}
+```
+
+This is a reader/writer lock. An exclusive holder blocks everything on that scope
+key, shared or exclusive. A shared holder blocks only an exclusive claim, never
+another shared one. Shared holders are tracked per acquisition under a unique
+`Symbol`, so releases never collide between concurrent holders of the same scope
+and the scope is only freed when the last of them is done. A scope conflict is
+reported through the same `createConflictError` factory as a key conflict and is
+checked first, so the coarser reason wins when both would apply.
+
+The two predicates answer different questions. `hasExclusiveScope` asks whether a
+writer holds the scope; `hasScopeHolders` asks whether *anyone* does, shared
+readers included. The second one is what makes a shared scope observable without
+taking it: `Wallet` keeps a `ConcurrentOperationGuardService<string>` keyed by
+account id, every account operation runs in `SHARED` mode, and
+`@EnsureAccountIsIdle` calls `hasScopeHolders` to refuse removing an account
+while any operation on it is still running.
+
+### WalletOperationGuardService (`src/services/WalletOperationGuard/index.ts`)
+
+The wallet-specific guard, built on the generic one. A process-wide **singleton**
+(`WalletOperationGuardService.getInstance()`) so every `WalletManager` and
+`WalletPersistenceService` share one lock table.
+
+```ts
+WalletOperationGuardService.getInstance(): WalletOperationGuardService
+
+runWalletCreation<T>(wallet: Wallet, operation: () => Promise<T>): Promise<T>
+runWalletAction<T>(action: WalletAction, signerId: string, operation: () => Promise<T>): Promise<T>
+```
+
+Two key namespaces keep the two concerns apart:
+
+- `runWalletCreation` reserves `SIGNER:<signerFingerprint>` plus
+  `ACCOUNT:<accountFingerprint>` for every account of the wallet. A conflict means
+  the same secret is already being created, and it surfaces as
+  `DuplicateWalletError` or `DuplicateAccountError` depending on which key
+  matched — the owner record carries `signerId` and, for accounts, `accountId`.
+- `runWalletAction` reserves `<action>:<signerId>` and raises
+  `WalletActionInProgressError`. `WalletAction` covers `OPEN`, `DERIVE_ACCOUNT`,
+  and `SAVE_ACCOUNTS`, so opening a wallet twice, deriving two accounts at once,
+  or importing two overlapping keyfile selections into the same signer all
+  serialize instead of racing.
+
+### ReservationOperationGuardService (`src/services/ReservationOperationGuard/index.ts`)
+
+The reservation-specific guard, also built on the generic one and also a
+process-wide **singleton**, so `ReservationAdapter` (one per wallet) and
+`ReservationAdapterManager` share one lock table. Without a shared table, two
+wallets could not be kept from wiping and writing the same network at once.
+
+```ts
+ReservationOperationGuardService.getInstance(): ReservationOperationGuardService
+
+runReservationAction<T>(action: ReservationAction, target: IReservationOperationTarget, operation: () => Promise<T>): Promise<T>
+runNetworkReservationAction<T>(action: ReservationAction, networkId: NetworkId, operation: () => Promise<T>): Promise<T>
+hasNetworkScope(networkId: NetworkId): boolean
+```
+
+```ts
+interface IReservationOperationTarget {
+    accountId: string;
+    networkId: NetworkId;
+    deployId?: string;
+    reservationId?: string;
+}
+
+interface IReservationOperationOwner {
+    action: ReservationAction;
+    networkId: NetworkId;
+    accountId?: string;
+}
+```
+
+`runReservationAction` is the per-account path, used by `add`, `update`,
+`remove`, `transfer`, and `deploy`. It claims up to three keys at once, all
+prefixed `RESERVATION:`:
+
+| Key | Always claimed | What it prevents |
+| --- | --- | --- |
+| `RESERVATION:ACCOUNT:<networkId>:<accountId>` | yes | two actions on one account's funds on one network, so two balance checks cannot both pass against the same money |
+| `RESERVATION:DEPLOY:<networkId>:<deployId>` | when a deploy id is known | two reservations racing to claim the same deploy |
+| `RESERVATION:<reservationId>` | when an existing reservation is targeted | an update racing a removal of the same record |
+
+On top of those it takes a **shared** scope on
+`RESERVATION:NETWORK:<networkId>`, which is what makes per-account work parallel
+across accounts but still mutually exclusive with a network-wide operation.
+
+`runNetworkReservationAction` is the network-wide path, used through
+`ReservationAdapterManager.runExclusiveNetworkAction` by `Client.updateNetwork`
+and `Client.removeNetwork`. It claims **no** per-account keys and instead takes
+an **exclusive** scope on the same network key, so it waits for nothing in
+particular but excludes every per-account action for its duration.
+
+Conflicts surface as `ReservationActionInProgressError`, carrying the action that
+already holds the key, its network, and its account when the conflict is
+per-account.
 
 ---
 
@@ -219,6 +585,12 @@ slices the caller's page out. Past the first page the slice offset is corrected
 by `aheadCount` — the pending rows that sit newer than the indexer window that
 came back, i.e. the ones earlier pages already consumed.
 
+Both corrections cover the **pending** side only. The executed window this
+service asks for is still subject to the indexer paging defect described under
+[GraphqlParser](#known-limitation-offset-and-limit-are-applied-twice): past the
+first page `transfers` and `deployments` are sliced independently, and no
+widening or re-slicing here can rebuild rows the indexer never returned.
+
 #### Eventual consistency of the pending → executed transition
 
 The two sources are not updated by the same actor: a reservation is released
@@ -238,6 +610,100 @@ the indexer has caught up resolves them.
 
 ## Persistence orchestration
 
+### StorageBootstrap (`src/services/StorageBootstrap/index.ts`)
+
+The ordered startup of the whole storage layer. `Client.create` calls it instead
+of `StorageManager.init` directly.
+
+```ts
+StorageBootstrap.init(options?: IStorageBootstrapOptions): Promise<void>
+StorageBootstrap.close(): void
+
+interface IStorageBootstrapOptions {
+    storageOptions?: IStorageFabricOptions;
+    withInsensitiveCacheStorage?: boolean;
+}
+```
+
+The order is the point:
+
+1. Open the schema metadata table on its own. It has to be readable before
+   anything else is touched.
+2. `runner.assertCompatible()` — **before** any other table is created. A newer
+   schema, a malformed migration chain, or an interrupted previous migration
+   aborts here, while storage is still untouched.
+3. Initialize `StorageManager` and, when the flag is set,
+   `InsensitiveCacheStorageManager`.
+4. `runner.run()` — apply pending migrations.
+
+Checking compatibility before step 3 is what keeps a downgrade harmless: opening
+a table can create it, so an SDK that cannot read the current schema must not
+reach that code at all. `MIGRATABLE_TABLES` lists the tables the runner backs up
+and restores; the metadata table is deliberately not among them.
+
+### StorageMigrationRunner (`src/services/StorageMigrationRunner/`)
+
+Applies schema migrations with a per-step backup and rollback. Split across
+`runner.ts` (the engine) and `migrations.ts` (the declared list) to keep the
+import cycle out.
+
+```ts
+new StorageMigrationRunner({ storage, metadataRepository, tables, migrations?, currentVersion? })
+
+assertCompatible(): Promise<void>
+run(): Promise<number> // returns the version storage ends on
+
+interface IStorageMigration {
+    version: number;
+    description: string;
+    resumable: boolean;
+    run(storage: ITableService<ITableRecord>): Promise<void>;
+}
+```
+
+`STORAGE_MIGRATIONS` is currently empty: `CURRENT_STORAGE_VERSION` and
+`BASELINE_STORAGE_VERSION` are both `1`, so existing installs are already on the
+supported version. The machinery is in place so the first real schema change does
+not have to invent it under pressure.
+
+**`assertCompatible` runs four checks**, in this order:
+
+1. *Downgrade.* Stored version greater than `currentVersion` raises
+   `StorageVersionDowngradeError`. Storage is left alone.
+2. *Declared versions are valid.* Duplicate versions, or versions outside
+   `BASELINE + 1 .. currentVersion`, raise `StorageMigrationChainError`. This is
+   a defect in the SDK's own migration list.
+3. *The chain has no gaps.* Every version between the stored one and the current
+   one must have a migration, or `StorageMigrationChainError` again. A gap would
+   mean silently skipping a schema step.
+4. *A previous interruption is resumable.* A non-null `pendingVersion` means the
+   last run stopped mid-migration; unless it is safe to retry, it raises
+   `StorageMigrationInterruptedError` with the reason (`ROLLBACK_FAILED`,
+   `MIGRATION_NOT_RESUMABLE`, `MIGRATION_NOT_FOUND`).
+
+**Each migration step** is wrapped in a backup and rollback:
+
+1. Snapshot every migratable table that currently exists, plus the table-name
+   list.
+2. Mark `pendingVersion` so a crash mid-step is detectable on the next start.
+3. Run the migration, then `saveVersion` (which clears `pendingVersion`).
+4. On failure, roll back: drop tables the migration created, restore every
+   snapshotted table, then clear `pendingVersion`.
+
+The rollback drops created tables **as well as** restoring rows, because a
+migration that added a table and then failed would otherwise leave a table the
+previous SDK build does not expect. The metadata table is excluded from that
+cleanup for the obvious reason.
+
+If the rollback itself fails, the failures are recorded in `rollbackFailure` and
+`StorageMigrationRollbackError` is raised. That flag is sticky: every subsequent
+start refuses to migrate, because storage now holds partially migrated data that
+cannot be reasoned about. A successful rollback instead produces
+`StorageMigrationFailedError` with `isStorageIntact: true`.
+
+`run` writes `currentVersion` at the end even when no migration ran, which is how
+fresh storage gets stamped on first use.
+
 ### StorageManager (`src/services/StorageManager/index.ts`)
 
 Static façade over the four repositories (signers, accounts, transaction
@@ -249,11 +715,14 @@ composes/decomposes the `Wallet` aggregate.
 ```ts
 StorageManager.init(options?: IStorageFabricOptions): Promise<void>
 
-// signers (encrypted secret + encrypted data key)
+// signers (encrypted secret + encrypted data key + plaintext fingerprint)
 saveSigner / saveSigners / getSigner / getSigners / updateSigner / deleteSigner / deleteMultipleSigners
+findSignerByFingerprint(fingerprint: string): Promise<ISignerStorageRecord | null>
 
 // accounts
 saveAccount / saveAccounts / getAccount / getAccounts / updateAccount / deleteAccount / deleteMultipleAccounts
+getAccountsBySignerId(signerId: string): Promise<IAccountStorageRecord[]>
+findAccountByFingerprint(fingerprint: string): Promise<IAccountStorageRecord | null>
 
 // wallets (aggregate of signer + accounts)
 saveWallet(options): Promise<void>
@@ -275,6 +744,17 @@ deleteCustomNetwork(id: NetworkId): Promise<void>
 clear(): Promise<void>
 close(): void
 ```
+
+Signer and account records carry a plaintext `fingerprint` next to the encrypted
+payload. That is what the two `find*ByFingerprint` lookups match on, and it is
+why duplicate detection works while every wallet is closed — nothing has to be
+decrypted to answer "is this secret already stored?". The fingerprint is a
+one-way hash of public material only; see
+[KeyFingerprintService](#keyfingerprintservice-srcserviceskeyfingerprintindexts).
+
+`getAccountsBySignerId` and `getTransactionReservationsBySignerId` now resolve
+inside their repositories through `getByFilter` rather than by reading every row
+and filtering in the manager.
 
 ### NetworkManager (`src/services/NetworkManager/index.ts`)
 
@@ -325,26 +805,199 @@ InsensitiveCacheStorageSerializer.serialize(account: Account): IInsensitiveCache
 
 ---
 
-## Export
+## Keyfiles
 
-### ExportService (`src/services/ExportService/index.ts`)
+Four services split one flow into layers that can be reasoned about separately:
+`KeyfileSerializer` decides the on-disk shape, `ExportKeyfileService` and
+`ImportKeyfileService` own the two directions of the boundary, and
+`WalletImportService` turns a validated keyfile into a decision about what the
+caller should do with it. `Client` only calls the last one.
 
-Serializes account and transaction data for download. Pure formatting — it never
-decrypts anything.
+The two keyfile kinds and the public entry points are described in
+[Client keyfile export & import](DOMAINS.md#keyfile-export--import).
+
+### KeyfileSerializer (`src/services/KeyfileSerializer/index.ts`)
+
+The single place that decides what a keyfile contains.
 
 ```ts
-ExportService.exportAccountKeyfile(input: IAccountKeyfileInput): string
-ExportService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
-
-interface IAccountKeyfileInput { address: string; encryptedPrivateKey: EncryptedData }
+KeyfileSerializer.serializeAccount(account: Account): IKeyfileAccount            // { name, address, index }
+KeyfileSerializer.serializeWalletAccount(account: Account): IKeyfileWalletAccount // { name, index }
+KeyfileSerializer.serializeWallet(wallet, passwordProvider): Promise<IKeyfileWallet>
 ```
 
-`exportAccountKeyfile` wraps the address and the **encrypted** private key in the
-versioned ASI keyfile envelope (`{ version, type: "asi-wallet-keyfile", address,
-encryptedPrivateKey, timestamp }`) — the plaintext key never leaves the signer.
-`exportTransactions` returns pretty-printed JSON (default) or CSV built from
-`TRANSACTIONS_CSV_HEADERS` with RFC-4180 quoting. `Client.getExportedAccountData`
-and `Client.getExportedTransactionsData` are the high-level entry points.
+```ts
+interface IKeyfileWallet {
+    walletType: WalletTypes;
+    encryptedPrivateData: EncryptedData; // the signer's stored ciphertext, reused as-is
+    encryptedAccounts: EncryptedData;    // the account list, encrypted under the password
+}
+```
+
+Two details carry the security properties of the whole feature:
+
+- `encryptedPrivateData` is the signer's **existing** `encryptedSecret`, copied
+  out unchanged. Export never decrypts the secret, so no plaintext key exists at
+  any point during it.
+- The account list is encrypted rather than stored in the clear. A wallet
+  keyfile therefore leaks neither keys nor how many accounts a wallet has or at
+  which indexes, which would otherwise be a usable fingerprint of the owner.
+
+Note the asymmetry between the two account shapes: a wallet keyfile stores
+`{ name, index }` **without** the address, because the address is re-derived from
+the secret on import and storing it would be redundant data to keep consistent.
+The standalone account keyfile stores the address precisely because it has no
+secret to derive it from.
+
+### ExportKeyfileService (`src/services/ExportKeyfileService/index.ts`)
+
+Builds keyfile envelopes and serializes transaction exports. Replaces the former
+`ExportService`.
+
+```ts
+ExportKeyfileService.exportAccountKeyfile(account: Account): IAccountKeyfile
+ExportKeyfileService.exportWalletKeyfile(wallet, passwordProvider): Promise<IWalletKeyfile>
+ExportKeyfileService.exportTransactions(transactions: Transaction[], format?: ExportFormat): string
+ExportKeyfileService.transactionsToCsv(transactions: Transaction[]): string
+ExportKeyfileService.toJSON(data: unknown): string
+```
+
+Every keyfile gets the same envelope: `{ version, type, timestamp }`, where
+`type` is a `KeyfileTypes` member. `version` is `ASI_WALLET_KEYFILE_VERSION` and
+import refuses anything else.
+
+`exportWalletKeyfile` checks the password through `Wallet.isPasswordValid`
+**before** serializing and throws `InvalidKeyfilePasswordError` on a mismatch, so
+a wrong password produces a precise error rather than a half-built file. Any
+other serialization failure is normalized to `InvalidKeyfileError`, whose message
+now names the underlying reason through `getErrorMessage` instead of the flat
+`Wallet keyfile cannot be created` — the error class stays the same, so the
+taxonomy is unchanged, but a failed export is diagnosable.
+
+The keyfile builders return objects; only `exportTransactions` returns a string
+(pretty-printed JSON by default, or CSV built from `TRANSACTIONS_CSV_HEADERS`
+with RFC-4180 quoting). `toJSON` is exposed so a caller that wants a downloadable
+file gets the same 2-space formatting the SDK uses. The CSV no longer has a
+`Note` column: `Transaction.note` was removed, and the column was always empty.
+
+### ImportKeyfileService (`src/services/ImportKeyfileService/index.ts`)
+
+The parsing and decryption half of the boundary. Every failure here is a typed
+keyfile error.
+
+```ts
+ImportKeyfileService.fromJSON(source: string): unknown
+ImportKeyfileService.parseWalletKeyfile(source: unknown): IWalletKeyfile
+ImportKeyfileService.decryptKeyfileAccounts(keyfile, passwordProvider): Promise<IKeyfileWalletAccount[]>
+ImportKeyfileService.toImportPayload(keyfile, passwordProvider, options?): Promise<IImportKeyfileWalletPayload>
+ImportKeyfileService.decryptKeyfileSecret(walletType, encryptedSecret, passwordProvider): Promise<TDecryptedSecret>
+```
+
+`parseWalletKeyfile` accepts either a parsed object or a raw JSON string and
+validates the envelope type, the version, the wallet type, and both encrypted
+sections. `decryptKeyfileAccounts` then validates the decrypted list — non-empty,
+well-shaped, no duplicate indexes, and at most one account for a private-key
+keyfile.
+
+Both checks are **private static methods of this service**. They used to live in
+`@utils/validators` as `validateWalletKeyfile` and `validateWalletKeyfileAccounts`
+and are no longer exported from there: a utils module that knows about keyfile
+envelopes and wallet types imports half the domain layer back into the leaves of
+the dependency graph, which is what produced the import cycles this split
+removed. What stays in utils are the shape guards these methods call
+(`isEncryptedData`, `isKeyfileWalletAccount`), which depend on types only.
+
+`toImportPayload` narrows the accounts to `options.accountIndexes` when given.
+An empty array and an index the keyfile does not declare are both rejected with
+`InvalidKeyfileError`, the latter naming the missing indexes, so a selection
+built against a stale preview fails loudly instead of importing a subset.
+
+`decryptKeyfileSecret` cross-checks the decrypted secret against the declared
+`walletType`: an HD keyfile must decrypt to a seed, a private-key keyfile to a
+private key. A mismatch is a tampered or corrupted file, not a usable wallet.
+
+Throughout, a failed decrypt becomes `InvalidKeyfilePasswordError` and a failed
+structural check becomes `InvalidKeyfileError` — the split a UI needs to decide
+between re-prompting for the password and rejecting the file. The translation is
+now narrow: only `InvalidPasswordError` from the crypto layer becomes
+`InvalidKeyfilePasswordError`, while a `CorruptedDataError` or a storage failure
+propagates as itself. Catching everything as a bad password would have told the
+user to retype a correct password against a damaged file forever.
+
+### WalletImportService (`src/services/WalletImport/index.ts`)
+
+Turns a keyfile into a decision. This is the layer `Client` talks to.
+
+```ts
+WalletImportService.previewKeyfileImport(source, passwordProvider): Promise<Omit<IKeyfileImportPreview, "isExistingWalletOpen">>
+WalletImportService.prepareKeyfileImport(source, passwordProvider, options?): Promise<IKeyfileImportPlan>
+WalletImportService.prepareKeyfileAccountsImport(source, passwordProvider, options?): Promise<IKeyfileAccountsImportPlan>
+```
+
+All three share one private `resolveKeyfileImport`, which parses, decrypts,
+builds a `SecretsProvider` over the decrypted secret, and looks the secret up in
+storage by fingerprint. That single lookup is what the three entry points then
+interpret differently:
+
+| Entry point | Secret already stored | Secret unknown |
+| --- | --- | --- |
+| `previewKeyfileImport` | reports `existingSignerId` | reports `null` |
+| `prepareKeyfileImport` | throws `DuplicateWalletError` | returns the plan |
+| `prepareKeyfileAccountsImport` | returns the plan plus `signerId` | throws `KeyfileWalletNotFoundError` |
+
+A private-key keyfile whose secret is already stored is rejected inside
+`resolveKeyfileImport` itself, before the split: a private-key wallet has exactly
+one account, so there is no "add accounts to the existing wallet" case for it.
+
+`previewKeyfileImport` derives every declared account through `AccountsService`
+and checks each one's fingerprint against storage, marking it `new` or
+`already-imported` with the existing account id. Nothing is persisted, so a
+preview is safe to run on any file the user drops in.
+
+`Client` adds the one fact this service cannot know — whether the existing wallet
+is currently **open** — and returns the completed `IKeyfileImportPreview`.
+
+### WalletUniquenessService (`src/services/WalletUniqueness/index.ts`)
+
+The one place that answers "is this key already stored?".
+
+```ts
+WalletUniquenessService.findSignerBySecret(secretProvider): Promise<ISignerStorageRecord | null>
+WalletUniquenessService.findExistingAccount(account): Promise<IAccountStorageRecord | null>
+WalletUniquenessService.assertAccountIsNotDuplicate(account): Promise<void>
+WalletUniquenessService.assertWalletIsNotDuplicate(wallet): Promise<void>
+```
+
+The lookups are fingerprint-based, so they work while every wallet is closed and
+never decrypt stored data. `findSignerBySecret` fingerprints a decrypted secret
+through `KeyFingerprintService.fromSecret`, which is what lets keyfile import ask
+"does this secret already exist?" before creating anything.
+
+The `assert*` variants raise `DuplicateWalletError` / `DuplicateAccountError`
+naming the existing owner. This logic was previously private to `WalletManager`;
+it moved here because keyfile import, account import, and wallet creation all
+need it and must agree on the answer.
+
+### WalletPersistenceService (`src/services/WalletPersistence/index.ts`)
+
+Creates and persists accounts against an existing signer, without going through a
+`Wallet` aggregate.
+
+```ts
+WalletPersistenceService.createAccounts(signerId, accounts: TCreateAccountPayload[], secretProvider): Promise<Account[]>
+WalletPersistenceService.saveAccounts(signerId, accounts: Account[]): Promise<void>
+```
+
+This is the path `Client.importKeyfileAccounts` uses, and it exists because that
+import must work whether or not the target wallet is currently open. Writing
+through storage rather than through the in-memory wallet means a closed wallet
+receives its new accounts just as well; `Client` separately updates the wallet in
+memory when it happens to be open.
+
+`saveAccounts` runs inside `runWalletAction(SAVE_ACCOUNTS, signerId)` and
+re-checks every account for duplicates **inside** the guard, so two concurrent
+imports of overlapping selections cannot both pass their checks and then both
+write.
 
 ---
 
@@ -403,6 +1056,12 @@ type IDeployStatusResult =
     | { status: CHECK_ERROR; errorMessage: string };
 ```
 
+`submitSignedDeploy` and `exploreDeployData` throw `ApiRequestError`
+(`source: ApiSource.NODE`) instead of a `DeployService.*: <message>` string, so a
+caller can tell a node failure from a validation failure without parsing text.
+`NodeApiAdapter.getDeployStatus` fills `errorMessage` through `getErrorMessage`,
+so a `CHECK_ERROR` never carries `[object Object]` or an empty string.
+
 ### BlockService (`src/services/BlockService/index.ts`)
 
 ```ts
@@ -429,20 +1088,36 @@ Balance reads via an exploratory deploy.
 getBalance(address: Address, asset: Asset): Promise<IBalanceData> // { amount: bigint; asset }
 ```
 
-Validates the address first (throws on invalid); any exploration/parse failure
-resolves to `{ amount: 0n, asset }`. The balance term comes from
+Validates the address first (throws on invalid). The balance term comes from
 `this.terms.createCheckBalanceDeploy(address)`, so the vault contract it addresses
-follows the active network's profile. Note that the catch-all fallback means a
-transport failure is reported as a zero balance, not as an error — callers cannot
-distinguish "no funds" from "node unreachable" here.
+follows the active network's profile.
+
+**The zero-balance fallback is gone.** A read that cannot be trusted now throws
+`BalanceUnavailableError` (status `502`) carrying the address and a reason, so
+"no funds" and "the node did not answer" are no longer the same value. Four cases
+raise it:
+
+- the exploratory deploy itself fails (transport, node error) — the reason is the
+  underlying message, read through `getErrorMessage` so a silent failure still
+  names the node api rather than producing an empty string;
+- the node answers with `ExprString`, which is how the vault reports its own
+  error;
+- `ExprInt` carries something that is not a non-negative integer — validated
+  through `parseAtomicAmount`, so an overflowing or fractional value is rejected
+  instead of being coerced;
+- no expression comes back at all.
+
+Only a genuine `ExprInt` amount resolves. Callers that previously relied on a
+falsy balance to mean "empty account" have to handle the error explicitly.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
 
 Builds, signs and submits deploys end to end.
 
 ```ts
-transfer(payload: ITransferPayload): Promise<string> // returns submitted deployId
-deploy(payload: IDeployPayload): Promise<string>     // arbitrary Rholang term
+transfer(payload: ITransferPayload): Promise<string>      // returns submitted deployId
+deploy(payload: IDeployPayload): Promise<string>          // arbitrary Rholang term
+signDeploy(payload: IDeployPayload): Promise<SignedResult> // signs without submitting
 ```
 
 `transfer` builds its term with `this.terms.createTransferDeploy(...)`, so the
@@ -478,11 +1153,23 @@ interface IDeployPayload {
 ```
 
 `transfer` validates recipient + amount, then generates the transfer RhoLang;
-`deploy` takes an arbitrary `term` (rejects an empty one). Both share a private
-`signAndSubmit`: read latest block number → build the appropriate `TSigningContext`
-(HD adds `index`) → serialize + `blake2b-256` hash + sign → submit via
-`DeployService`. Defaults `phloLimit`/`phloPrice` from config and `shardId` to
-`"root"`.
+`deploy` takes an arbitrary `term` from the caller.
+
+`signDeploy` is the shared core and is now **public**, because a caller that
+submits the deploy itself needs exactly this half: validate the payload through
+`validateDeployPayload` (`ensureValid` turns a rejection into a thrown error) →
+read the latest block number → build the appropriate `TSigningContext` (HD adds
+`index`) → assemble the `DeployData` → serialize + `blake2b-256` hash + sign, and
+return the `SignedResult`. Defaults `phloLimit`/`phloPrice` from config and
+`shardId` to `"root"`, and sets `validAfterBlockNumber` to the chain head minus
+one.
+
+`deploy` is `signDeploy` followed by the private `submitSignedDeploy`, which
+pushes the signed envelope through `DeployService` and fails when the response
+carries no deploy id. Because validation lives in `signDeploy`, every path that
+signs a deploy is validated the same way — the ad-hoc phlo checks that used to sit
+in `transfer` are gone, along with the "term must not be empty" check that only
+`deploy` performed.
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 
@@ -504,6 +1191,14 @@ Deploy status comes from the node, which runs ahead of the indexer that serves
 transaction history: a deploy is confirmed here before the transaction shows up
 in `Client.getTransactionsHistory`.
 
+The two ways a watch ends badly are now distinct types. Exhausting the timeout
+raises `DeployTimeoutError` (`408`) carrying the `deployId` and `timeoutMs`, and
+its message says the deploy may still be processed — a timeout here means the
+poller stopped looking, not that the deploy failed. A poll that throws propagates
+the original error when it already carries a readable message, and is otherwise
+wrapped in `ApiRequestError` naming the deploy it was watching. Either way a
+reservation is not released on failure; see `onFailed` above.
+
 ### GraphqlParser (`src/services/GraphqlParser/`)
 
 Anti-corruption layer between the indexer's GraphQL shape and the domain
@@ -522,9 +1217,79 @@ transfer wins over its matching deployment, but inherits the deployment's block
 hash) and sorting by timestamp descending. Deployment-only rows map to
 `type: "deploy"`.
 
-`mapper.ts` maps a `RawTransfer` to `Transaction` (`send`/`receive` decided by
-comparing normalized addresses; robust timestamp parsing). `queryOptions.ts`
-defines `Pagination` (`{ offset?, limit? }`), `Order`, and `QueryOptions`.
+`mapper.ts` maps a `RawTransfer` to `Transaction` (robust timestamp parsing).
+`send` versus `receive` is decided by `resolveTransferType(from, viewerAddress)`
+from `@utils/functions`, the same helper the reservation fabric uses to render a
+pending row, so an indexed transfer and its pending twin cannot disagree about
+direction. `queryOptions.ts` defines `Pagination` (`{ offset?, limit? }`),
+`Order`, and `QueryOptions`.
+
+#### Known limitation: offset and limit are applied twice
+
+`createTransactionHistoryRequest` builds a single query, but `$offset` and
+`$limit` land on **two independent root fields** — `transfers` and `deployments`
+— each ordered by `block_number` descending. A page of the merged timeline
+cannot be expressed that way, so paging over the mapped result is skewed:
+
+- `{ offset: 0, limit: 20 }` returns up to 20 transfers **plus** up to 20
+  deployments, i.e. up to 40 rows before de-duplication. Every row of the true
+  first page is in there — a row that belongs to the newest 20 of the merged
+  timeline is necessarily among the newest 20 of its own list — so the first
+  page is recoverable by slicing, which is what `mergeHistoryPage` does. The
+  no-pending path of `Client.getTransactionsHistory` does **not** slice and
+  returns the over-sized list as it came back.
+- `{ offset: 20, limit: 20 }` skips the first 20 transfers and, separately, the
+  first 20 deployments. That is not the same as skipping positions 20-39 of the
+  merged timeline: rows are dropped between pages while others repeat across
+  pages. The skew grows with every page and with any imbalance between the two
+  collections — an account with many transfers and few deployments loses
+  transfers permanently.
+
+The query also orders by `block_number` while `mapTransactionHistory` sorts by
+`timestamp`; the two orderings are assumed to agree.
+
+Both node API profiles are affected: `NodeApiAdapter.getTransactionHistory` is
+not overridden, so `scala` and `rust` issue the same query through the same
+`IndexerClient`.
+
+The intended fix is on the indexer side — one root field returning the merged,
+ordered timeline under a single `offset` and `limit` — which is the direction the
+new Rust indexer API is taking. Until DevNet serves that API and this query is
+rewritten against it, the behaviour above holds for both profiles: `RUST` is
+still `EXPERIMENTAL` (see
+[NodeApiProfile](DOMAINS.md#nodeapiprofile-srcdomainsnodeapiprofileindexts)) and
+shares the query with `SCALA`.
+
+Tracked in
+[#178](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/178). Until it
+is fixed, treat anything past the first page as best effort: read the first page
+only, or overfetch with a deliberately large `limit` and slice on the caller
+side.
+
+### HttpResponseParser (`src/services/HttpResponseParser/index.ts`)
+
+Keeps large chain integers intact across JSON parsing. Installed as the
+`transformResponse` of both `BaseHttpClient` and `BaseGraphQLClient`, so it
+applies to every node and indexer response.
+
+```ts
+HttpResponseParser.parseWithBigIntegersAsStrings(data: unknown): unknown
+```
+
+The problem it solves: balances and phlo amounts routinely exceed
+`Number.MAX_SAFE_INTEGER`, and `JSON.parse` silently rounds them to the nearest
+representable double. By the time SDK code sees the value, the precision is
+already gone — `BigInt` conversion afterwards cannot recover it.
+
+The parser scans the raw response text and re-quotes any **integer literal that
+is not a safe integer**, turning it into a string before parsing. The scanning
+regex matches string literals as well as numbers so that digits already inside a
+quoted string are skipped rather than double-quoted. Non-integers (floats,
+exponent notation) are left alone, since they were never exact to begin with.
+
+It is deliberately total: a non-string input is returned unchanged, and a parse
+failure falls back to the raw data instead of throwing, so a malformed response
+surfaces through the normal error path rather than as a transform crash.
 
 ---
 
@@ -547,13 +1312,30 @@ CryptoService.deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 - Version `2`
 - KDF `PBKDF2`, `100_000` iterations, `SHA-256`
 - Cipher `AES-GCM`, 256-bit key
-- Salt `16` bytes, IV `12` bytes, data key `32` bytes
+- Salt `16` bytes, IV `12` bytes, auth tag `16` bytes, data key `32` bytes
 
-Decryption throws on an unsupported version or invalid credentials.
+`decryptWithPassword` checks the envelope before spending any work on it. The
+version must match the profile exactly (`UnsupportedEncryptionVersionError`), and
+each base64 field is decoded and length-checked (`CorruptedDataError` naming the
+field through `CorruptedDataSource`): the salt must be exactly
+`SALT_LENGTH`, the IV exactly `IV_LENGTH`, and the ciphertext at least
+`AUTH_TAG_LENGTH`, since an AES-GCM payload shorter than its own authentication
+tag cannot be a valid one. Only then is the key derived and the payload decrypted.
+
+Without those checks, a truncated or corrupted record reached
+`crypto.subtle.decrypt` and failed there, which is indistinguishable from a wrong
+password — so damaged storage was reported to the user as a typo. Now a failed
+`crypto.subtle.decrypt` on a well-formed envelope has exactly one meaning and
+raises `InvalidPasswordError`. A WebCrypto failure during key derivation itself
+raises `KeyDerivationError`, which is an environment problem rather than either.
 
 `decryptSignerData` decrypts the stored signer secret and returns either
 private-key credentials or an HD secret (with the `rootHDPath` re-parsed into a
-`Bip44Path`).
+`Bip44Path`). The decrypted JSON is validated with `isStoredSecret` before it is
+used: a private key must survive `toUint8Array` and fall inside the secp256k1
+range, and a seed must be a valid mnemonic with a parseable BIP-44 root path.
+Anything else raises `CorruptedDataError`. Previously the parsed object was
+trusted on the strength of a `"privateKey" in keyMaterial` check alone.
 
 `generateDataKeySecret` returns 32 random bytes as base64. It is a
 high-entropy secret used in place of a password in the same
@@ -586,10 +1368,46 @@ enum MnemonicStrength { TWELVE_WORDS = 128, TWENTY_FOUR_WORDS = 256 }
 MnemonicService.generateMnemonic(strength?): string
 MnemonicService.generateMnemonicArray(strength?): string[]
 MnemonicService.isMnemonicValid(mnemonic: string): boolean
+MnemonicService.normalizeMnemonic(mnemonic: string): string
 MnemonicService.mnemonicToWordArray(mnemonic: string): string[]
 MnemonicService.wordArrayToMnemonic(words: string[]): string
 MnemonicService.mnemonicToSeed(mnemonic: string | string[], passphrase?): Promise<Uint8Array>
 ```
+
+`normalizeMnemonic` trims, lowercases, and collapses runs of whitespace to single
+spaces. `Client.createHDWallet` normalizes before validating and before deriving,
+so a phrase pasted with stray casing or double spaces produces the same wallet
+(and therefore the same fingerprint) as its canonical form, instead of slipping
+past duplicate detection.
+
+### KeyFingerprintService (`src/services/KeyFingerprint/index.ts`)
+
+Derives the stable, non-reversible identity of a key pair. Used to detect
+duplicate wallets and accounts without decrypting anything.
+
+```ts
+KeyFingerprintService.fromPublicKey(publicKey: Uint8Array): string   // sha256(publicKey), hex
+KeyFingerprintService.fromPrivateKey(privateKey: Uint8Array): string // public key first, then as above
+KeyFingerprintService.fromMnemonic(mnemonic: string): Promise<string>
+KeyFingerprintService.fromSecret(secret: TFingerprintSecret): Promise<string>
+```
+
+`fromSecret` is the entry point callers should use: it takes a decrypted secret
+of either shape and dispatches to the right variant (`privateKey` present means
+private-key, otherwise a seed). It exists so the signer fabric and keyfile import
+do not each re-implement the same branch, and so both always produce the same
+fingerprint for the same secret.
+
+`fromMnemonic` derives the BIP-32 master node and hashes
+`publicKey || chainCode`, then zeroizes the seed in a `finally`. Hashing the
+master node rather than the seed means the same mnemonic always yields the same
+fingerprint while nothing recoverable is stored.
+
+Where each one is used: `Account` computes `fromPublicKey` in its constructor,
+and the signer fabric computes `fromPrivateKey` for a private-key signer and
+`fromMnemonic` for an HD signer. Both values are persisted in plaintext next to
+the encrypted secret, because a hash of public material discloses nothing that
+the chain does not already show.
 
 ### KeyDerivationService (`src/services/KeyDerivation/index.ts`)
 
@@ -602,9 +1420,17 @@ KeyDerivationService.derivePrivateKey(masterNode: BIP32Interface, path: Bip44Pat
 KeyDerivationService.mnemonicToSeed(mnemonicWords: string[] | string, passphrase?): Promise<Uint8Array>
 KeyDerivationService.seedToMasterNode(seed): BIP32Interface
 KeyDerivationService.deriveNextKeyFromMnemonic(mnemonicWords, currentIndex, options?): Promise<Uint8Array>
+KeyDerivationService.compareIndexes(first: number | null, second: number | null): number
 ```
 
 Derived seeds are zeroized after use.
+
+`compareIndexes` is the ordering rule for derivation indexes, kept here because
+this is the module that defines what an index means. It sorts present indexes
+ascending and places `null` ones last — an imported private-key account has no
+index and belongs at the end rather than at position zero. `AccountManager` and
+`WalletManager.getPublicWalletsMetadata` both use it, so the in-memory account
+order and the metadata a UI lists before opening a wallet agree.
 
 ### KeysManager (`src/services/KeysManager/index.ts`)
 

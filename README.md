@@ -43,9 +43,18 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 
 - **Client Facade** - Single entry point for wallet lifecycle, networks, balances, and transfers via [Client](docs/DOMAINS.md)
 - **Multi-Account HD Wallets** - Private-key and BIP-39/BIP-44 HD wallets with on-demand account derivation via [Wallet](docs/DOMAINS.md) and [Account](docs/DOMAINS.md)
+- **Separate Open and Unlocked States** - Wallets are loaded into memory independently of the signing session that holds the decrypted secret, via [Client](docs/DOMAINS.md#open-vs-unlocked) and [SigningSession](docs/DOMAINS.md)
+- **Event Subscriptions** - Typed, isolated listeners attachable at any time through `client.getEventBus()` via [ClientEventBus](docs/SERVICES.md)
+- **Duplicate Protection** - Wallets and accounts are matched on non-reversible key fingerprints, so re-importing the same secret is refused even while everything is locked, via [KeyFingerprintService](docs/SERVICES.md)
+- **Encrypted Wallet Keyfiles** - Password-protected export and import of a whole wallet, with a preview that reports which accounts are new before anything is written, via [Client](docs/DOMAINS.md#keyfile-export--import)
+- **Versioned Storage with Migrations** - Persisted data carries a schema version; incompatible or interrupted state is refused up front instead of being silently rewritten, via [StorageMigrationRunner](docs/SERVICES.md)
 - **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
 - **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
+- **External Reservation Management** - Deploys submitted outside the SDK can lock funds too: reservations can be added, updated, and removed directly, with validation and concurrency guards, via [Client](docs/DOMAINS.md#external-reservations)
+- **Detached Deploy Signing** - `signDeploy` builds and signs a deploy and returns the signed envelope for callers that submit it themselves, via [Client](docs/DOMAINS.md)
+- **Explicit Account Targeting** - No active-account state: every call names its wallet and account, so concurrent operations on one wallet cannot sign for the wrong account, via [Client](docs/DOMAINS.md#no-active-account)
+- **Typed Failures** - Decryption, storage, and node errors carry a machine-readable code and structured fields instead of an assembled message string, via [CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
 - **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
@@ -107,6 +116,13 @@ const client = await Client.create({
 });
 ```
 
+`Client.create` also brings storage up to date. Persisted data carries a schema
+version, and startup refuses to touch anything it cannot safely handle: data
+written by a newer SDK build, a malformed migration chain, or a migration that a
+previous run left unfinished. Those rejections are `StorageSchemaError`s carrying
+an `isStorageIntact` flag, which tells you whether the data on disk is still
+readable (update the SDK) or needs restoring from an export.
+
 `nodeApiProfile` is required on every network. It selects which f1r3node
 implementation the SDK talks to — `SCALA` for the legacy node, `RUST` for the new
 one — and that choice drives the HTTP request shape, the endpoint a given call
@@ -145,16 +161,114 @@ console.log("New address:", account.getAddress());
 
 See [Client](docs/DOMAINS.md), [Wallet](docs/DOMAINS.md), and [Account](docs/DOMAINS.md) for the full API reference.
 
+Creating a wallet whose secret is already stored throws `DuplicateWalletError`,
+and one whose key already belongs to a stored account throws
+`DuplicateAccountError`. Both carry the ids of the existing owner, and both work
+while every wallet is closed, because the match runs on a key fingerprint rather
+than on decrypted material.
+
+### Open, Unlock, and Close Wallets
+
+A wallet being **open** (present in memory) and a wallet being **unlocked** (able
+to sign without a password) are two different states.
+
+```typescript
+// Load a stored wallet into memory. With the default session policy it comes
+// back already unlocked.
+const wallet = await client.openWallet(signerId, "wallet-password");
+
+client.isWalletOpen(wallet.getId()); // true
+client.isWalletUnlocked(wallet.getId()); // true
+
+// End the signing session, keep the wallet open
+client.lockWallet(wallet.getId());
+
+// Start a new session on the wallet that is already open
+await client.unlockWallet(wallet.getId(), "wallet-password");
+
+// Drop it from memory; storage is untouched
+client.closeWallet(wallet.getId());
+
+// Delete it from storage for good
+await client.removeWallet(wallet.getId());
+```
+
+Sessions are fixed-duration: they auto-lock `autoLockMs` after unlock (15 min by
+default) and are not extended by activity. Signing after expiry without a
+password throws `WalletLockedError` with an HTTP-style status `403`, so a UI can
+treat it like an expired token and re-prompt. See
+[Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
+
+### Export and Import a Wallet Keyfile
+
+A wallet keyfile is the password-protected backup of a whole wallet: its secret
+plus its account list, both encrypted.
+
+```typescript
+// Export (returns an object; serialize it however you like)
+const keyfile = await client.exportWalletKeyfile(wallet.getId(), "wallet-password");
+
+// Import: look before you write
+const preview = await client.previewWalletKeyfileImport(keyfile, "wallet-password");
+
+if (preview.existingSignerId) {
+    // The secret is already stored - add only the accounts that are new
+    const newIndexes = preview.accounts
+        .filter((account) => account.status === "new")
+        .map((account) => account.index!);
+
+    await client.importKeyfileAccounts(keyfile, "wallet-password", {
+        accountIndexes: newIndexes,
+    });
+} else {
+    // Unknown secret - create the wallet
+    await client.importWalletKeyfile(keyfile, "wallet-password");
+}
+```
+
+`previewWalletKeyfileImport` writes nothing. It decrypts the keyfile, derives
+every account it declares, and reports each one as `"new"` or
+`"already-imported"`, so a UI can show what an import would actually do and let
+the user choose. `source` accepts either the object or its JSON string.
+
+Note that `getExportedAccountData` is a different thing: a public, passwordless
+descriptor of one account (name, address, index). It carries no key material and
+cannot restore anything. See [keyfile export & import](docs/DOMAINS.md#keyfile-export--import).
+
+### Subscribe to Events
+
+`client.getEventBus()` returns a typed `on` / `off` source. Unlike the
+constructor-time `eventDispatcher`, subscriptions can be added and removed at any
+point in the client's life, and `on` hands back its own unsubscribe.
+
+```typescript
+import { ClientEvent } from "@asichain/asi-wallet-sdk";
+
+const unsubscribe = client
+    .getEventBus()
+    .on(ClientEvent.WALLETS_CHANGED, (wallets) => {
+        render(wallets);
+    });
+
+// later
+unsubscribe();
+```
+
+Listeners are isolated: one that throws or rejects never breaks the emit loop or
+the SDK operation behind it. Route those failures somewhere visible with the
+`onListenerError` option on `Client.create`.
+
 ### Check Balance and Transfer
 
 ```typescript
-const active = hdWallet.getActiveAccount()!;
+// The SDK keeps no active account: every call names its target account
+const [account] = hdWallet.getAccounts();
 
 // Total and reservation-aware available balance
-const balance = await client.getBalance(active.getAddress());
+const balance = await client.getBalance(account.getAddress());
 const available = await client.getAvailableBalance(
     hdWallet.getId(),
-    active.getId(),
+    account.getId(),
 );
 console.log("Balance:", client.toDisplayAmount(balance));
 
@@ -162,7 +276,7 @@ console.log("Balance:", client.toDisplayAmount(balance));
 const reserved = await client.transfer(
     {
         walletId: hdWallet.getId(),
-        accountId: active.getId(),
+        accountId: account.getId(),
         to: recipientAddress,
         amount: client.toAtomicAmount("10"), // 10 ASI
     },
@@ -177,7 +291,87 @@ const unsubscribe = reserved.subscribe({
 });
 ```
 
+A balance read that cannot be trusted now throws `BalanceUnavailableError`
+(status `502`) carrying the address and a reason, instead of resolving to `0n`.
+A node that is unreachable, a vault that reports an error, and an account with no
+funds are three different outcomes, so handle the error rather than reading a
+falsy balance as "empty".
+
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
+
+### Reserve Funds for a Deploy You Submit Yourself
+
+`transfer` and `deploy` reserve funds on their own. When the deploy is submitted
+outside the SDK — a hardware signer, a relayer, another app on the same vault —
+the reservation can be created directly so the available balance and the pending
+history stay correct.
+
+```typescript
+const request = {
+    walletId: hdWallet.getId(),
+    accountId: account.getId(),
+    kind: "transfer" as const,
+    deployId, // the deploy you submitted yourself
+    to: recipientAddress,
+    amount: client.toAtomicAmount("10"),
+    gasCost: client.toAtomicAmount("0.1"),
+    pendingAmount: client.toAtomicAmount("10.1"), // must cover amount + gasCost
+};
+
+const reservation = await client.addTransactionReservation(
+    request,
+    "wallet-password",
+);
+
+// Correct it while it is still pending, keeping the same reservation id
+await client.updateTransactionReservation(reservation.id, {
+    ...request,
+    amount: client.toAtomicAmount("12"),
+    pendingAmount: client.toAtomicAmount("12.1"),
+});
+
+// Or release the funds early
+await client.removeTransactionReservation(hdWallet.getId(), reservation.id);
+```
+
+`pendingAmount` is the total to lock and must cover `amount + gasCost`; a
+reservation that does not is rejected rather than under-locking the balance. The
+whole available balance may be reserved. A reservation still expires on its own
+after `RESERVATION_EXPIRATION_TIME` and is released when the deploy is confirmed,
+so these calls are a correction channel, not a lifecycle to manage by hand.
+
+Concurrent actions on the same account, deploy, or reservation are refused with
+`ReservationActionInProgressError` (status `409`) rather than interleaved. See
+[External reservations](docs/DOMAINS.md#external-reservations).
+
+### Sign a Deploy Without Submitting It
+
+When the submission is yours but the signature is not, `signDeploy` stops after
+signing and hands back the signed envelope. Nothing is sent to the node and no
+reservation is created, so pair it with `addTransactionReservation` to lock the
+funds locally.
+
+```typescript
+const signed = await client.signDeploy(
+    {
+        walletId: hdWallet.getId(),
+        accountId: account.getId(),
+        term: rholangTerm,
+        phloLimit: 500_000, // optional, defaults from config
+        phloPrice: 1, // optional, defaults from config
+        shardId: "root", // optional, defaults to "root"
+    },
+    "wallet-password", // omit while a signing session is active
+);
+
+// { data, deployer, signature, sigAlgorithm } - submit it yourself
+await submitToNode(signed);
+```
+
+`validAfterBlockNumber` and `timestamp` are filled in by the SDK from the current
+chain head, so the call still needs the network. The payload is validated before
+anything is signed: a blank term, a non-positive or unsafe `phloLimit` /
+`phloPrice`, or a blank `shardId` are rejected.
 
 ---
 
@@ -203,6 +397,8 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │                      Domains                                  │  │
 │  │  • Wallet / Account    - Multi-account HD & PK wallets        │  │
 │  │  • Signer (HD / PK)    - No-raw-export signing boundary       │  │
+│  │  • SigningSession      - Fixed-window in-memory secret        │  │
+│  │  • LifecycleGuard      - Invalidate + drain in-flight work    │  │
 │  │  • Asset               - Token representation                 │  │
 │  │  • ReservationAdapter  - Pending-transaction reservations     │  │
 │  │  • ApiClientManager    - Per-network transport clients        │  │
@@ -214,9 +410,15 @@ See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions
 │  │                  Services / Managers                          │  │
 │  │  • WalletManager / AccountManager - In-memory ownership       │  │
 │  │  • StorageManager      - Persistence orchestration            │  │
+│  │  • ClientEventBus      - Typed client event subscriptions     │  │
+│  │  • WalletOperationGuard- Duplicate & concurrency guards       │  │
+│  │  • ReservationOperationGuard - Per-network reservation locks  │  │
+│  │  • StorageBootstrap / StorageMigrationRunner (schema)         │  │
+│  │  • ExportKeyfileService / ImportKeyfileService                │  │
 │  │  • DeployService / BlockService / AccountDataService          │  │
 │  │  • AssetsService / TransactionService / DeployStatusPoller    │  │
 │  │  • CryptoService / KeysManager / KeyDerivation / Mnemonic     │  │
+│  │  • KeyFingerprintService - Non-reversible key identity        │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
@@ -340,9 +542,14 @@ npm run build
 # Watch mode for development
 npm run dev
 
-# Run security release gates locally
-npm run security:gate
+# Run the release gate locally: build, unit tests, security tests,
+# secret-log scan, and a production-dependency audit
+npm run gate
 ```
+
+The gate was `npm run security:gate` and covered security checks only; it now
+also runs `npm run test:unit`, so the same command CI runs is the one that has to
+pass locally. The GitHub workflow is `.github/workflows/gate.yml`.
 
 ### Playground
 

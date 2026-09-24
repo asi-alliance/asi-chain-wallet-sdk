@@ -15,8 +15,18 @@ Date: 2026-03-19
 2. Password-derived encryption material.
 3. Per-signer data keys, which encrypt non-signing user data at rest
    (transaction reservations) and are themselves stored password-encrypted.
-4. Signed deploy payloads before submission.
+4. Signed deploy payloads before submission. `Client.signDeploy` hands such a
+   payload to the integrator, so it also crosses the SDK boundary: it carries no
+   key material, but it is a spendable authorization for the account that signed
+   it, and anything that can replay or alter it before submission spends those
+   funds.
 5. Wallet metadata and vault contents stored in browser storage.
+6. Key fingerprints stored in plaintext. These are one-way hashes of public
+   material and are not confidential, but they do link stored records to a key
+   pair, so they are listed here as metadata rather than as secrets.
+7. Exported wallet keyfiles. They carry the encrypted signing secret and an
+   encrypted account list, so a keyfile is exactly as sensitive as the vault it
+   came from once its password is known.
 
 ## 3. Trust Boundaries
 
@@ -37,9 +47,34 @@ Date: 2026-03-19
 
 1. Secret leakage through logs/errors/debug tooling.
 2. Injection in deploy term construction.
-3. Weak or incorrect input validation (addresses, amounts).
+3. Weak or incorrect input validation (addresses, amounts, imported private keys).
 4. Offline brute-force attempts on stolen ciphertext.
 5. Recovery failure due mnemonic-handling defects.
+6. State races around lock and logout: an unlock or a wallet publication that
+   completes after the user locked, closed, or logged out, and persistence writes
+   landing after a `clearPersistence`.
+7. A hostile or faulty node answer being read as valid state, in particular an
+   unreadable balance being treated as zero funds, or a large integer amount
+   being rounded during JSON parsing.
+8. Malicious or corrupted keyfiles supplied as import input: malformed
+   structure, a secret contradicting the declared wallet type, or crafted
+   account lists.
+9. Offline attacks on an exported keyfile, which travels outside the app's
+   storage boundary and is only as strong as its password.
+10. Storage schema confusion: data written by a different SDK build being read or
+    rewritten under the wrong assumptions, or a migration interrupted mid-way
+    leaving partially converted data.
+11. Tampered ciphertext at rest: a stored record edited so that it still decrypts
+    under the user's password but decodes into different key material, a
+    different derivation path, or a reservation for a different amount.
+12. Reservation manipulation: an under-covering or duplicated reservation letting
+    an account spend past its balance, or two concurrent reservation actions both
+    passing a balance check against the same funds.
+13. Non-canonical derivation paths: two different path strings resolving to the
+    same key, or a component overflowing into the hardened range, so a wallet
+    derives keys the user did not intend.
+14. Failure-mode confusion: a damaged vault being reported as a wrong password,
+    which sends the user into an endless retry instead of a restore.
 
 ## 6. Out-of-Scope / Assumptions
 
@@ -60,6 +95,55 @@ Current controls:
 5. Key separation for stored user data: transaction reservations are encrypted
    with a per-signer data key rather than the signing secret, so persistence code
    never touches key material that can sign.
+6. Cancellation on lock: the signing session carries a generation counter, so an
+   unlock that resolves after a lock zeroizes its secret and fails with
+   `WalletOperationCancelledError` instead of silently reopening the wallet.
+7. Bounded teardown: `close()` and `clearPersistence()` invalidate in-flight work
+   and drain it under a timeout before clearing storage, and a wallet published
+   after that point is discarded rather than exposed.
+8. Fail-closed reads: unreadable or unparsable balances raise
+   `BalanceUnavailableError` instead of collapsing to zero, so a hostile or
+   unreachable node cannot present an account as empty.
+9. Duplicate rejection without decryption: wallets and accounts are matched on
+   one-way key fingerprints, so re-importing a stored secret is refused while
+   everything remains locked.
+10. Keyfile boundary validation: structure, envelope type, and version are
+    checked before decryption, and the decrypted secret is cross-checked against
+    the declared wallet type. Export never decrypts the secret, and import
+    re-encrypts it locally with a fresh data key.
+11. Version-gated storage: compatibility is asserted before any table is opened,
+    migrations run under backup and rollback, and an unrecoverable state is
+    reported with `isStorageIntact: false` rather than being migrated on a guess.
+12. Precision-preserving response parsing: unsafe integer literals are quoted
+    before `JSON.parse`, so chain amounts are never silently rounded in transit.
+13. Validation after decryption: a decrypted secret must be usable key material
+    (secp256k1 range, or a valid mnemonic with a canonical BIP-44 root path) and
+    a decrypted reservation must match its declared structure, or the record is
+    rejected as corrupted. Byte arrays rebuilt from stored JSON are checked
+    element by element, and index-keyed objects must carry contiguous ordered
+    keys, so tampering cannot change the decoded bytes.
+14. Envelope checks before decryption: version, salt length, IV length, and a
+    ciphertext at least as long as its authentication tag are verified first, so
+    a corrupted payload is reported as corrupted rather than as a wrong password.
+15. Canonical derivation paths: the BIP-44 purpose is fixed, `coinType` and
+    `account` must be hardened, `change` and `index` must not be, and every
+    component must be an in-range integer with no leading zeros.
+16. Reservation invariants enforced at the boundary: the reserved amount must
+    cover the transfer plus gas, recipients are checksum-validated, one deploy
+    holds at most one reservation per network, and a per-network reader/writer
+    lock serializes reservation writes against each other and against network
+    cleanup.
+17. Typed failures: decryption, storage, and API errors carry machine-readable
+    codes and structured fields, and a password check reports `false` only for an
+    actual password failure.
+18. Validation at the signing boundary: term, phlo limit, phlo price, and shard id
+    are checked where the deploy is signed rather than at each entry point, so
+    submitting a deploy, transferring, and signing without submitting are all held
+    to one rule.
+19. Explicit account targeting: operations name their wallet and account instead
+    of mutating a shared "active account", so concurrent operations cannot
+    redirect each other's signature, and an account is registered as busy for the
+    duration of its operation, which blocks its removal mid-flight.
 
 Planned/required controls:
 
