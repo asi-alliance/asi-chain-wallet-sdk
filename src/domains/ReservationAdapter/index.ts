@@ -25,6 +25,7 @@ import TransactionReservationFabric, {
 } from "@fabrics/transactionReservation";
 import {
     CorruptedDataSource,
+    DeploySubmissionRejectedError,
     IErrorContext,
     ReservationAction,
 } from "@domains/CustomError";
@@ -442,6 +443,19 @@ export default class ReservationAdapter {
         });
     }
 
+    private async settleFailedSubmission(
+        reservation: ITransactionReservation,
+        error: unknown,
+    ): Promise<void> {
+        if (error instanceof DeploySubmissionRejectedError) {
+            await ReservationAdapter.releaseFromStorage(reservation.id);
+
+            return;
+        }
+
+        this.reservationsManager.add(reservation.id, reservation);
+    }
+
     private async reserveAndSubmit(
         wallet: Wallet,
         signedDeploy: SignedResult,
@@ -455,7 +469,7 @@ export default class ReservationAdapter {
                 signedDeploy,
             );
         } catch (error: unknown) {
-            await ReservationAdapter.releaseFromStorage(reservation.id);
+            await this.settleFailedSubmission(reservation, error);
 
             throw error;
         }

@@ -5,9 +5,10 @@ import { SignedResult } from "@services/Signer";
 import {
     ApiRequestError,
     ApiSource,
+    DeploySubmissionRejectedError,
     UnknownErrorReason,
 } from "@domains/CustomError";
-import { getErrorMessage } from "@utils/index";
+import { getErrorMessage, isRejectedByServer } from "@utils/index";
 
 export default class DeployService {
     private readonly nodeApiProvider: NodeApiProvider;
@@ -47,10 +48,22 @@ export default class DeployService {
 
             return this.extractDeployId(result);
         } catch (error) {
+            const reason: string = getErrorMessage(
+                error,
+                UnknownErrorReason.NODE_API,
+            );
+
+            if (isRejectedByServer(error)) {
+                throw new DeploySubmissionRejectedError(
+                    "DeployService.submitSignedDeploy",
+                    reason,
+                );
+            }
+
             throw new ApiRequestError(
                 ApiSource.NODE,
                 "DeployService.submitSignedDeploy",
-                getErrorMessage(error, UnknownErrorReason.NODE_API),
+                reason,
             );
         }
     }
