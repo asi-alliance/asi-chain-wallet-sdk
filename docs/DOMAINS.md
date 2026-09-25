@@ -564,17 +564,10 @@ anything.
 
 Transaction export:
 
-```ts
-getExportedTransactionsData(
-    walletId: string,
-    accountId: string,
-    format?: ExportFormat,   // "json" (default) | "csv"
-    networkId?: string,
-): Promise<string>
-```
-
-Serializes the account's history (transfers + deployments) as JSON or CSV. This
-one still returns a string, because a spreadsheet export has no object form.
+`Client.getExportedTransactionsData` is temporarily disabled until the export
+contract is resolved (issue #173). To export the rows already loaded through
+`getTransactionsHistory`, pass them to `ExportKeyfileService.exportTransactions`
+(see SERVICES.md).
 
 Amount helpers (bound to the native token decimals):
 
