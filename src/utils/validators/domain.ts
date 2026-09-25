@@ -1,5 +1,6 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
+import type { ITransactionReservation } from "@domains/Transaction";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
 import { GasFee } from "@config/index";
@@ -263,6 +264,27 @@ export const validateReservationPayload = (
         return {
             isValid: false,
             error: "Reserved amount must cover the transfer amount and gas cost",
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateReservationUpdateTarget = (
+    currentReservation: ITransactionReservation,
+    payload: TCreateTransactionReservationPayload,
+): { isValid: boolean; error?: string } => {
+    if (currentReservation.accountId !== payload.account.getId()) {
+        return {
+            isValid: false,
+            error: "Reservation cannot be moved to another account",
+        };
+    }
+
+    if (currentReservation.networkId !== payload.networkId) {
+        return {
+            isValid: false,
+            error: "Reservation cannot be moved to another network",
         };
     }
 

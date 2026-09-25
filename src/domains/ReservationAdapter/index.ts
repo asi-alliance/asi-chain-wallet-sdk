@@ -31,10 +31,12 @@ import {
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
 import {
     ensureValid,
+    isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
     validatePositiveAmount,
     validateReservationPayload,
+    validateReservationUpdateTarget,
 } from "@utils/index";
 
 export interface IReservedOperationResult {
@@ -52,33 +54,33 @@ export default class ReservationAdapter {
         reservations: ITransactionReservation[],
         reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
-        const releaseFromStorage = (
-            reservation: ITransactionReservation,
-        ): void => {
-            StorageManager.deleteTransactionReservation(reservation.id).catch(
-                (error: unknown) =>
-                    console.error(
-                        "ReservationAdapter: failed to delete released reservation:",
-                        error,
-                    ),
-            );
-        };
-
         this.reservationsManager = new TransactionReservationsManager(
             reservations,
             {
                 ...reservationsManagerOptions,
                 onConfirmed: (reservation: ITransactionReservation) => {
-                    releaseFromStorage(reservation);
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onConfirmed?.(reservation);
                 },
                 onExpired: (reservation: ITransactionReservation) => {
-                    releaseFromStorage(reservation);
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onExpired?.(reservation);
                 },
             },
+        );
+    }
+
+    private static async releaseFromStorage(
+        reservationId: ITransactionReservation["id"],
+    ): Promise<void> {
+        return StorageManager.deleteTransactionReservation(reservationId).catch(
+            (error: unknown) =>
+                console.error(
+                    "ReservationAdapter: failed to delete released reservation:",
+                    error,
+                ),
         );
     }
 
@@ -183,23 +185,13 @@ export default class ReservationAdapter {
                                     reservationId,
                                 );
 
-                            if (
-                                currentReservation.accountId !==
-                                payload.account.getId()
-                            ) {
-                                throw new Error(
-                                    "ReservationAdapter.update: Reservation cannot be moved to another account",
-                                );
-                            }
-
-                            if (
-                                currentReservation.networkId !==
-                                payload.networkId
-                            ) {
-                                throw new Error(
-                                    "ReservationAdapter.update: Reservation cannot be moved to another network",
-                                );
-                            }
+                            ensureValid(
+                                validateReservationUpdateTarget(
+                                    currentReservation,
+                                    payload,
+                                ),
+                                { context: "ReservationAdapter.update" },
+                            );
 
                             this.reservationsManager.ensureUniqueDeployId(
                                 payload.deployId,
@@ -306,9 +298,11 @@ export default class ReservationAdapter {
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
-                !isSerializedReservationPrivateData(privateData) ||
-                privateData.expirationTime <= Date.now() ||
-                !knownNetworkIds.has(record.networkId)
+                !isRestorableReservationData(
+                    privateData,
+                    record.networkId,
+                    knownNetworkIds,
+                )
             ) {
                 await StorageManager.deleteTransactionReservation(record.id);
 
@@ -460,13 +454,13 @@ export default class ReservationAdapter {
             await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
                 signedDeploy,
             );
-
-            this.reservationsManager.add(reservation.id, reservation);
         } catch (error: unknown) {
-            await this.remove(reservation.id);
+            await ReservationAdapter.releaseFromStorage(reservation.id);
 
             throw error;
         }
+
+        this.reservationsManager.add(reservation.id, reservation);
 
         return {
             deployId: reservation.details.deployId,
