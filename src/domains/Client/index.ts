@@ -1,6 +1,5 @@
 import {
     DEFAULT_AUTO_LOCK_MS,
-    ExportFormat,
     NATIVE_TOKEN_DECIMALS_AMOUNT,
     RequirePassword,
 } from "@config/index";
@@ -748,23 +747,25 @@ export default class Client extends ClosableDomain {
         };
     }
 
-    @EnsureActive
-    public async getExportedTransactionsData(
-        walletId: string,
-        accountId: string,
-        format: ExportFormat = ExportFormat.JSON,
-        networkId?: string,
-    ): Promise<string> {
-        const currentAccount: Account = this.walletManager.getAccount(
-            walletId,
-            accountId,
-        );
-
-        const transactions: Transaction[] =
-            await currentAccount.getTransactionsHistory(networkId);
-
-        return ExportKeyfileService.exportTransactions(transactions, format);
-    }
+    // TODO(Issue #173): Restore once the transactions export contract is resolved.
+    // The export must cover the full history with a row limit instead of the raw indexer call below.
+    // @EnsureActive
+    // public async getExportedTransactionsData(
+    //     walletId: string,
+    //     accountId: string,
+    //     format: ExportFormat = ExportFormat.JSON,
+    //     networkId?: string,
+    // ): Promise<string> {
+    //     const currentAccount: Account = this.walletManager.getAccount(
+    //         walletId,
+    //         accountId,
+    //     );
+    //
+    //     const transactions: Transaction[] =
+    //         await currentAccount.getTransactionsHistory(networkId);
+    //
+    //     return ExportKeyfileService.exportTransactions(transactions, format);
+    // }
 
     public getCurrentNetworkId(): NetworkId {
         return ApiClientManager.getInstance().getCurrentNetworkId();
