@@ -38,6 +38,7 @@ import {
     MAX_GAS_COST,
     MIN_GAS_COST,
     toDefaultGasCost,
+    toDuplicateDeployIdError,
     toExpirationLabel,
     toFormState,
     toGasCostError,
@@ -204,7 +205,13 @@ const ReservationsPage = (): ReactElement => {
         [form],
     );
 
-    const deployIdError: string | null = toDeployIdError(form.deployId);
+    const deployIdError: string | null =
+        toDeployIdError(form.deployId) ??
+        toDuplicateDeployIdError(
+            form.deployId,
+            reservations,
+            editedReservationId,
+        );
 
     const recipientError: string | null = toRecipientError(form);
 
