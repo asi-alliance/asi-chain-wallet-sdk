@@ -401,16 +401,13 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
 
 - A second `SelectFilter` picks the source: **All** (default, `sources`
   omitted), **Pending only** (`["pending"]`), **Executed only** (`["executed"]`).
-- Pages hold `PAGE_SIZE` 10 rows and the current page lives in the `?page=`
-  query param, so a page survives a reload and is shareable. Changing the
-  account or the mode resets it (`replace: true`, no history entry). "Next" is
-  offered while the page came back full — the SDK returns no total count.
-- Pages past the first are best effort while
+- The page is not paginated: it requests only the first `HISTORY_LIMIT` 50
+  transactions (`pagination: { limit: 50 }`). Pages past the first are
+  unreliable while
   [#178](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/178) is
   open: the indexer pages transfers and deployments separately, so a row can be
-  missing from one page and repeated on another. The **Pending only** mode is
-  paginated locally and is not affected.
-- Reloads on account, mode, page, network change, and on this wallet's entry in
+  missing from one page and repeated on another.
+- Reloads on account, mode, network change, and on this wallet's entry in
   `reservationsByWallet`, so a fresh transfer shows up as pending without a
   manual refresh.
 - Because the poller and the indexer advance independently, a just confirmed
@@ -715,7 +712,8 @@ Fullscreen spinner shown while `useLoader` reports loading.
   a value that is merely not valid yet.
 - **Pagination** — `{ page, hasNextPage, onChange }` pager for sources with no
   known total: it renders a trailing window of up to five page numbers ending at
-  `page + 1` when a next page is assumed, plus prev/next arrows.
+  `page + 1` when a next page is assumed, plus prev/next arrows. Currently not
+  used by any page: TxHistoryPage dropped it until #178 is resolved.
 
 `KeyValueTable` and `SelectModal` were removed; the pages that used them render
 tables and option lists through the shared theme classes instead.
