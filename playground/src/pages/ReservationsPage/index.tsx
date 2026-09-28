@@ -532,7 +532,7 @@ const ReservationsPage = (): ReactElement => {
                             }
                             isAllowed={isDeployIdInputAllowed}
                             hint="hex of the deploy signature"
-                            error={deployIdError}
+                            error={form.deployId ? deployIdError : null}
                             wide
                             action={
                                 <button
@@ -558,7 +558,7 @@ const ReservationsPage = (): ReactElement => {
                                     onChange={(value: string) =>
                                         updateForm({ to: value.trim() })
                                     }
-                                    error={recipientError}
+                                    error={form.to ? recipientError : null}
                                     wide
                                 />
                                 <ConstrainedInput
@@ -588,7 +588,7 @@ const ReservationsPage = (): ReactElement => {
                                     ? `network charges ${MIN_GAS_COST} to ${MAX_GAS_COST}`
                                     : `default deploy budget is ${DEFAULT_DEPLOY_GAS_COST}`
                             }
-                            error={gasCostError}
+                            error={form.gasCost ? gasCostError : null}
                         />
 
                         <ConstrainedInput
