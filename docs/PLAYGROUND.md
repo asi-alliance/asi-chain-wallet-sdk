@@ -499,6 +499,12 @@ the SDK.
 - Gas cost defaults per kind (`GasFee.MAX` for a transfer,
   `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy) and a transfer's gas is
   held between `GasFee.MIN` and `GasFee.MAX`.
+- The deploy id field flags a deploy id that already has a reservation in the
+  listed ones (`toDuplicateDeployIdError`, the edited row excluded) and blocks
+  **Create**/**Save**, mirroring `ensureUniqueDeployId` on the SDK side. The
+  list holds the selected wallet's reservations on the current network, the
+  same scope the SDK checks. If the SDK still rejects the submit, its error is
+  shown under the form.
 - Submitting runs `addTransactionReservation` or, when a row is being edited,
   `updateTransactionReservation` with the same reservation id, both through
   `useSecureAction`. **Remove** confirms first, then calls
