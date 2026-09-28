@@ -285,6 +285,14 @@ export const isNetworkConfigChanged = (
     );
 };
 
+export const isSameNetworkConfig = (
+    first: INetworkConfig,
+    second: INetworkConfig,
+): boolean =>
+    NETWORK_CONFIG_FIELDS.every(
+        (field: keyof INetworkConfig) => first[field] === second[field],
+    );
+
 export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({
     ...record,
     schemaVersion: record.schemaVersion ?? BASELINE_STORAGE_VERSION,
