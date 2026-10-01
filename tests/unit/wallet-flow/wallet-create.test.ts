@@ -10,14 +10,24 @@ import Bip44Path from "@domains/Bip44Path";
 import { ISignerRecord, WalletTypes } from "@domains/Signer";
 import { IAccountRecord } from "@domains/Account";
 import CryptoService from "@services/Crypto";
+import {
+    CustomErrorCode,
+    HDWalletOnlyOperationError,
+    LastAccountRemovalError,
+} from "@domains/CustomError";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 
 const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
+}));
+
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
 }));
 
 const createPkProvider = (password: string) => {
@@ -42,6 +52,8 @@ const createSignerRecord = (wallet: Wallet): ISignerRecord => ({
     id: "signer-id",
     type: wallet.getType(),
     encryptedData: wallet.getSigner().getEncryptedSecret(),
+    encryptedDataKey: wallet.getSigner().getEncryptedDataKey(),
+    fingerprint: wallet.getSigner().getFingerprint(),
 });
 
 const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>
@@ -64,7 +76,7 @@ test("should create PK wallet", async () => {
 
     const wallet = await Wallet.createPk(accountOptions, provider);
 
-    const activeAccount = wallet.getActiveAccount();
+    const initialAccount = wallet.getAccounts()[0];
 
     const decrypted = (await CryptoService.decryptSignerData(
         wallet.getSigner().getEncryptedSecret(),
@@ -75,9 +87,9 @@ test("should create PK wallet", async () => {
     console.log("Wallet ID:", wallet.getId());
     console.log("Wallet Type:", wallet.getType());
     console.log("Accounts count:", wallet.getAccounts().length);
-    console.log("Account name:", activeAccount?.getName());
-    console.log("Account index:", activeAccount?.getIndex());
-    console.log("Account address:", activeAccount?.getAddress());
+    console.log("Account name:", initialAccount.getName());
+    console.log("Account index:", initialAccount.getIndex());
+    console.log("Account address:", initialAccount.getAddress());
     console.log(
         "Private key restored:",
         Buffer.from(decrypted.privateKey).equals(Buffer.from(privateKey)),
@@ -87,11 +99,36 @@ test("should create PK wallet", async () => {
     assert.ok(wallet.getId());
     assert.ok(wallet.getSigner());
     assert.equal(wallet.getAccounts().length, 1);
-    assert.ok(activeAccount);
-    assert.equal(activeAccount?.getName(), "Main account");
-    assert.equal(activeAccount?.getIndex(), null);
-    assert.ok(activeAccount?.getAddress());
+    assert.ok(initialAccount);
+    assert.equal(initialAccount.getName(), "Main account");
+    assert.equal(initialAccount.getIndex(), null);
+    assert.ok(initialAccount.getAddress());
     assert.deepEqual(decrypted.privateKey, privateKey);
+});
+
+test("PK wallet should reject account removal", async () => {
+    const { provider } = createPkProvider(PASSWORD);
+
+    const wallet = await Wallet.createPk(accountOptions, provider);
+
+    const accountId = wallet.getAccounts()[0].getId();
+
+    assert.throws(
+        () => wallet.removeAccount(accountId),
+        (error: unknown) => {
+            assert.ok(error instanceof HDWalletOnlyOperationError);
+            assert.equal(error.code, CustomErrorCode.HD_WALLET_ONLY_OPERATION);
+            assert.equal(error.operation, "removeAccount");
+
+            console.log("\n[PK Account Removal]");
+            console.log("Rejected with:", error.name, error.message);
+
+            return true;
+        },
+    );
+
+    assert.equal(wallet.getAccounts().length, 1);
+    assert.equal(wallet.getAccounts()[0].getId(), accountId);
 });
 
 test("should sign payload with PK wallet signer", async () => {
@@ -116,16 +153,15 @@ test("should sign payload with PK wallet signer", async () => {
 test("should create HD wallet", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
-    const account = wallet.getActiveAccount();
+    const account = wallet.getAccounts()[0];
 
     const secret = (await CryptoService.decryptSignerData(
         wallet.getSigner().getEncryptedSecret(),
@@ -135,14 +171,14 @@ test("should create HD wallet", async () => {
     console.log("\n[HD Wallet Creation]");
     console.log("Wallet ID:", wallet.getId());
     console.log("Wallet Type:", wallet.getType());
-    console.log("Account address:", account?.getAddress());
+    console.log("Account address:", account.getAddress());
     console.log("HD Path:", secret.rootHDPath.toString());
     console.log("Seed length:", secret.seed.length);
 
     assert.equal(wallet.getType(), WalletTypes.HD);
     assert.equal(wallet.getAccounts().length, 1);
     assert.ok(account);
-    assert.ok(account?.getAddress());
+    assert.ok(account.getAddress());
     assert.ok(typeof secret.seed === "string");
     assert.ok(secret.rootHDPath instanceof Bip44Path);
 });
@@ -150,29 +186,27 @@ test("should create HD wallet", async () => {
 test("HD wallet should generate different addresses for different indexes", async () => {
     const wallet0 = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const wallet1 = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions,
             pathOptions: {
                 index: 1,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
-    const address0 = wallet0.getActiveAccount()?.getAddress();
+    const address0 = wallet0.getAccounts()[0].getAddress();
 
-    const address1 = wallet1.getActiveAccount()?.getAddress();
+    const address1 = wallet1.getAccounts()[0].getAddress();
 
     console.log("\n[HD Address Derivation]");
     console.log("Index 0 address:", address0);
@@ -195,7 +229,7 @@ test("should restore PK wallet", async () => {
         passwordProvider,
     );
 
-    const originalAddress = original.getActiveAccount()?.getAddress();
+    const originalAddress = original.getAccounts()[0].getAddress();
 
     const restoredAddress = restored
         .getAccounts()
@@ -219,13 +253,12 @@ test("should restore PK wallet", async () => {
 test("should restore HD wallet", async () => {
     const original = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const restored = await Wallet.restore(
@@ -236,7 +269,7 @@ test("should restore HD wallet", async () => {
         passwordProvider,
     );
 
-    const originalAddress = original.getActiveAccount()?.getAddress();
+    const originalAddress = original.getAccounts()[0].getAddress();
 
     const restoredAddress = restored
         .getAccounts()
@@ -286,18 +319,17 @@ test("PK and HD wallet should generate independent addresses", async () => {
 
     const hd = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
-    const pkAddress = pk.getActiveAccount()?.getAddress();
+    const pkAddress = pk.getAccounts()[0].getAddress();
 
-    const hdAddress = hd.getActiveAccount()?.getAddress();
+    const hdAddress = hd.getAccounts()[0].getAddress();
 
     console.log("\n[Wallet Type Independence]");
     console.log("PK address:", pkAddress);
@@ -310,13 +342,12 @@ test("PK and HD wallet should generate independent addresses", async () => {
 test("HD wallet should update, remove account and reuse freed derivation index", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions: accountPayload,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     console.log("\n=== INITIAL WALLET ===");
@@ -328,6 +359,28 @@ test("HD wallet should update, remove account and reuse freed derivation index",
             address: account.getAddress(),
         })),
     );
+
+    //
+    // LAST ACCOUNT CANNOT BE REMOVED
+    //
+
+    const initialAccountId = wallet.getAccounts()[0].getId();
+
+    assert.throws(
+        () => wallet.removeAccount(initialAccountId),
+        (error: unknown) => {
+            assert.ok(error instanceof LastAccountRemovalError);
+            assert.equal(error.code, CustomErrorCode.LAST_ACCOUNT_REMOVAL);
+            assert.equal(error.walletId, wallet.getId());
+            assert.equal(error.accountId, initialAccountId);
+
+            console.log("\nLast account removal rejected:", error.message);
+
+            return true;
+        },
+    );
+
+    assert.equal(wallet.getAccounts().length, 1);
 
     const account1 = await wallet.deriveAccount(
         {
@@ -422,6 +475,16 @@ test("HD wallet should update, remove account and reuse freed derivation index",
     console.log("Indexes after delete:", indexesAfterDelete);
 
     assert.deepEqual(indexesAfterDelete, [0, 1, 3]);
+
+    const firstAccountAfterDelete = wallet.getAccounts()[0];
+
+    console.log("First account after delete:", {
+        name: firstAccountAfterDelete.getName(),
+        index: firstAccountAfterDelete.getIndex(),
+    });
+
+    assert.equal(firstAccountAfterDelete.getId(), initialAccountId);
+    assert.ok(wallet.getAccountsMap().has(initialAccountId));
 
     //
     // CREATE NEW ACCOUNT

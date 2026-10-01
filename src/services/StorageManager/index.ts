@@ -8,13 +8,21 @@ import {
     AccountsStorageRepository,
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
+import {
+    INetworkRecord,
+    IPersistedNetworkRecord,
+    NetworkId,
+} from "@domains/Network";
 import { EncryptedData } from "@services/Crypto";
-import { NetworkName } from "@domains/Network";
 import {
     TransactionReservationsStorageRepository,
     ITransactionReservationsStorageRecord,
 } from "@domains/TransactionReservationsStorageRepository";
-import { IStorageFabricOptions } from "@fabrics/Storage";
+import {
+    CustomNetworksStorageRepository,
+    ICustomNetworkStorageRecord,
+} from "@domains/CustomNetworksStorageRepository";
+import { IStorageFabricOptions } from "@fabrics/storage";
 
 export interface ISaveSignerToStorageOptions {
     id: string;
@@ -39,13 +47,13 @@ export interface IGetWalletFromStorageOptions {
 }
 
 export interface IWalletStorageData {
-    signer: ISignerRecord;
+    signer: ISignerStorageRecord;
     accounts: IAccountRecord[];
 }
 
 export interface ISaveTransactionReservationsOptions {
     id: string;
-    networkName: NetworkName;
+    networkId: NetworkId;
     signerId: string;
     encryptedData: EncryptedData;
 }
@@ -59,6 +67,7 @@ class StorageManager {
         await TransactionReservationsStorageRepository.getInstance(
             options,
         ).initialize();
+        await CustomNetworksStorageRepository.getInstance(options).initialize();
     };
 
     public static saveSigner = async ({
@@ -70,6 +79,8 @@ class StorageManager {
             id,
             type,
             signer.getEncryptedSecret(),
+            signer.getEncryptedDataKey(),
+            signer.getFingerprint(),
         );
     };
 
@@ -82,6 +93,8 @@ class StorageManager {
                     signerOption.id,
                     signerOption.type,
                     signerOption.signer.getEncryptedSecret(),
+                    signerOption.signer.getEncryptedDataKey(),
+                    signerOption.signer.getFingerprint(),
                 ),
             ),
         );
@@ -99,16 +112,26 @@ class StorageManager {
             id: signerStorageRecord.id,
             type: signerStorageRecord.type,
             encryptedData: signerStorageRecord.encryptedData,
+            encryptedDataKey: signerStorageRecord.encryptedDataKey,
+            fingerprint: signerStorageRecord.fingerprint,
         };
     };
 
-    public static getSigners = async (): Promise<ISignerRecord[]> => {
+    public static getSigners = async (): Promise<ISignerStorageRecord[]> => {
         return SignersStorageRepository.getInstance().getAllSigners();
+    };
+
+    public static findSignerByFingerprint = async (
+        fingerprint: string,
+    ): Promise<ISignerStorageRecord | null> => {
+        return SignersStorageRepository.getInstance().findSignerByFingerprint(
+            fingerprint,
+        );
     };
 
     public static updateSigner = async (
         id: string,
-        updates: Partial<ISignerRecord>,
+        updates: Partial<ISignerStorageRecord>,
     ): Promise<void> => {
         await SignersStorageRepository.getInstance().updateSigner(id, updates);
     };
@@ -133,6 +156,7 @@ class StorageManager {
             signerId,
             account.getName(),
             account.getIndex(),
+            account.getFingerprint(),
         );
     };
 
@@ -145,6 +169,7 @@ class StorageManager {
                 signerId,
                 name: account.getName(),
                 index: account.getIndex(),
+                fingerprint: account.getFingerprint(),
                 createdAt: Date.now(),
             }),
         );
@@ -163,8 +188,24 @@ class StorageManager {
         return accountStorageRecord;
     };
 
-    public static getAccounts = async (): Promise<IAccountRecord[]> => {
+    public static getAccounts = async (): Promise<IAccountStorageRecord[]> => {
         return AccountsStorageRepository.getInstance().getAllAccounts();
+    };
+
+    public static getAccountsBySignerId = async (
+        signerId: string,
+    ): Promise<IAccountStorageRecord[]> => {
+        return AccountsStorageRepository.getInstance().getAccountsBySignerId(
+            signerId,
+        );
+    };
+
+    public static findAccountByFingerprint = async (
+        fingerprint: string,
+    ): Promise<IAccountStorageRecord | null> => {
+        return AccountsStorageRepository.getInstance().findAccountByFingerprint(
+            fingerprint,
+        );
     };
 
     public static updateAccount = async (
@@ -229,12 +270,8 @@ class StorageManager {
         const signerRecord: ISignerRecord =
             await StorageManager.getSigner(signerId);
 
-        const accountRecords: IAccountRecord[] = (
-            await StorageManager.getAccounts()
-        ).filter(
-            (accountRecord: IAccountRecord) =>
-                accountRecord.signerId === signerId,
-        );
+        const accountRecords: IAccountRecord[] =
+            await StorageManager.getAccountsBySignerId(signerId);
 
         return Wallet.restore(
             { signerRecord, accountRecords },
@@ -243,13 +280,13 @@ class StorageManager {
     };
 
     public static getWallets = async (): Promise<IWalletStorageData[]> => {
-        const signerRecords: ISignerRecord[] =
+        const signerRecords: ISignerStorageRecord[] =
             await StorageManager.getSigners();
 
         const accountRecords: IAccountRecord[] =
             await StorageManager.getAccounts();
 
-        return signerRecords.map((signerRecord: ISignerRecord) => ({
+        return signerRecords.map((signerRecord: ISignerStorageRecord) => ({
             signer: signerRecord,
             accounts: accountRecords.filter(
                 (accountRecord: IAccountRecord) =>
@@ -260,13 +297,13 @@ class StorageManager {
 
     public static saveTransactionReservation = async ({
         id,
-        networkName,
+        networkId,
         signerId,
         encryptedData,
     }: ISaveTransactionReservationsOptions): Promise<void> => {
         await TransactionReservationsStorageRepository.getInstance().saveTransactionReservation(
             id,
-            networkName,
+            networkId,
             signerId,
             encryptedData,
         );
@@ -274,15 +311,9 @@ class StorageManager {
 
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
-        networkName: NetworkName,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
-        const records =
-            await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
-
-        return records.filter(
-            (record: ITransactionReservationsStorageRecord) =>
-                record.signerId === signerId &&
-                record.networkName === networkName,
+        return TransactionReservationsStorageRepository.getInstance().getTransactionReservationsBySignerId(
+            signerId,
         );
     };
 
@@ -312,16 +343,62 @@ class StorageManager {
         );
     };
 
+    public static getCustomNetworks = async (): Promise<
+        IPersistedNetworkRecord[]
+    > => {
+        const records: ICustomNetworkStorageRecord[] =
+            await CustomNetworksStorageRepository.getInstance().getAllCustomNetworks();
+
+        return records.map((record: ICustomNetworkStorageRecord) => ({
+            id: record.id,
+            name: record.name,
+            config: record.config,
+        }));
+    };
+
+    public static saveCustomNetwork = async (
+        network: INetworkRecord,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().saveCustomNetwork(
+            network.id,
+            network.name,
+            network.config,
+        );
+    };
+
+    public static updateCustomNetwork = async (
+        network: INetworkRecord,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().updateCustomNetwork(
+            network.id,
+            {
+                name: network.name,
+                config: network.config,
+                updatedAt: Date.now(),
+            },
+        );
+    };
+
+    public static deleteCustomNetwork = async (
+        id: NetworkId,
+    ): Promise<void> => {
+        await CustomNetworksStorageRepository.getInstance().deleteCustomNetwork(
+            id,
+        );
+    };
+
     public static clear = async (): Promise<void> => {
         await SignersStorageRepository.getInstance().clearAllData();
         await AccountsStorageRepository.getInstance().clearAllData();
         await TransactionReservationsStorageRepository.getInstance().clearAllData();
+        await CustomNetworksStorageRepository.getInstance().clearAllData();
     };
 
     public static close = (): void => {
         SignersStorageRepository.getInstance().close();
         AccountsStorageRepository.getInstance().close();
         TransactionReservationsStorageRepository.getInstance().close();
+        CustomNetworksStorageRepository.getInstance().close();
     };
 }
 

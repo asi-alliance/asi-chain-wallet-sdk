@@ -1,12 +1,17 @@
 import InputsForm from "../InputsForm";
+import {
+    decodeBase16,
+    PRIVATE_KEY_LENGTH,
+    validatePrivateKey,
+} from "asi-wallet-sdk";
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
-import "./style.css";
+import { toAccountNameError } from "../../sdk-react-kit";
 
 export type TWalletCreatePayload =
     | {
           mode: "privateKey";
           name: string;
-          privateKey: Uint8Array;
+          privateKey: string;
           password: string;
       }
     | {
@@ -24,11 +29,29 @@ export interface IWalletCreateModalProps {
     onSubmit: (payload: TWalletCreatePayload) => void;
     onClose?: () => void;
     initialMnemonic?: string;
-    initialPrivateKey?: Uint8Array;
+    initialPrivateKey?: string;
 }
 
 const toWordArray = (mnemonic?: string): string[] =>
     mnemonic ? mnemonic.trim().split(/\s+/).filter(Boolean) : [];
+
+const normalizePrivateKeyHex = (hex: string): string => {
+    return hex.trim().replace(/^0x/i, "");
+};
+
+const getPrivateKeyError = (hex: string): string | null => {
+    const clean = normalizePrivateKeyHex(hex);
+
+    if (clean.length !== PRIVATE_KEY_LENGTH * 2) {
+        return `Invalid private key: expected ${PRIVATE_KEY_LENGTH * 2} hexadecimal characters`;
+    }
+
+    if (/[^0-9a-fA-F]/.test(clean)) {
+        return "Invalid private key: only hexadecimal characters are allowed";
+    }
+
+    return validatePrivateKey(decodeBase16(clean)).error ?? null;
+};
 
 const CreateWalletModal = ({
     variant = 12,
@@ -38,7 +61,7 @@ const CreateWalletModal = ({
     onClose,
     isInputMode = false,
     initialMnemonic,
-    initialPrivateKey = new Uint8Array(),
+    initialPrivateKey = "",
 }: IWalletCreateModalProps): ReactElement => {
     const [localError, setLocalError] = useState<string | null>(null);
     const [isMnemonicModalOpen, setIsMnemonicModalOpen] = useState(false);
@@ -59,9 +82,16 @@ const CreateWalletModal = ({
 
         const formData = new FormData(event.currentTarget);
 
-        const name = (formData.get("name") as string) ?? "";
+        const name = ((formData.get("name") as string) ?? "").trim();
         const password = (formData.get("password") as string) ?? "";
         const repassword = (formData.get("repassword") as string) ?? "";
+
+        const nameError = toAccountNameError(name);
+
+        if (nameError) {
+            setLocalError(nameError);
+            return;
+        }
 
         if (password !== repassword) {
             setLocalError("Passwords do not match.");
@@ -69,23 +99,28 @@ const CreateWalletModal = ({
         }
 
         if (mode === "privateKey") {
-            const privateKey = (formData.get("privateKey") as string) ?? "";
+            const privateKey = (
+                (formData.get("privateKey") as string) ?? ""
+            ).trim();
 
-            if (!privateKey.trim()) {
+            if (!privateKey) {
                 setLocalError("Private key is required.");
                 return;
             }
 
-            try {
-                onSubmit({
-                    mode: "privateKey",
-                    name: name.trim(),
-                    privateKey: new Uint8Array(JSON.parse(privateKey.trim())),
-                    password,
-                });
-            } catch {
-                setLocalError("Private key must be a JSON byte array.");
+            const privateKeyError = getPrivateKeyError(privateKey);
+
+            if (privateKeyError) {
+                setLocalError(privateKeyError);
+                return;
             }
+
+            onSubmit({
+                mode: "privateKey",
+                name,
+                privateKey: normalizePrivateKeyHex(privateKey),
+                password,
+            });
 
             return;
         }
@@ -97,7 +132,7 @@ const CreateWalletModal = ({
 
         onSubmit({
             mode: "mnemonic",
-            name: name.trim(),
+            name,
             mnemonic: mnemonicWords.join(" "),
             password,
         });
@@ -150,9 +185,7 @@ const CreateWalletModal = ({
                                 type="text"
                                 autoComplete="off"
                                 required
-                                defaultValue={JSON.stringify(
-                                    Array.from(initialPrivateKey),
-                                )}
+                                defaultValue={initialPrivateKey}
                                 readOnly={!isInputMode}
                             />
                         </div>

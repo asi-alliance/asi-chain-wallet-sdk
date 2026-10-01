@@ -1,34 +1,49 @@
 import ApiClientManager from "@domains/ApiClientManager";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { GraphqlParser } from "@services/GraphqlParser";
 import { Transaction } from "@domains/Transaction";
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 
 export default class AccountDataService {
+    private readonly nodeApiProvider: NodeApiProvider;
     private readonly apiClientManager: ApiClientManager;
 
-    constructor(apiClientManager?: ApiClientManager) {
+    constructor(
+        nodeApiProvider?: NodeApiProvider,
+        apiClientManager?: ApiClientManager,
+    ) {
+        this.nodeApiProvider =
+            nodeApiProvider ?? NodeApiProvider.getInstance();
         this.apiClientManager =
             apiClientManager ?? ApiClientManager.getInstance();
     }
 
+    private get api(): NodeApiAdapter {
+        return this.nodeApiProvider.getApi();
+    }
+
     public async getTransactionHistory(
         address: string,
-        networkName?: NetworkName,
+        publicKey: string,
         pagination: Pagination = {},
+        networkId?: NetworkId,
     ): Promise<Transaction[]> {
         try {
-            const currentNetwork: NetworkName =
-                networkName ?? ApiClientManager.getInstance().getNetwork();
+            const currentNetworkId: NetworkId =
+                networkId ?? this.apiClientManager.getCurrentNetworkId();
 
-            const response = await this.apiClientManager
-                .getIndexerClient()
-                .getTransactionHistory(address, pagination);
+            const response = await this.api.getTransactionHistory(
+                address,
+                publicKey,
+                pagination,
+            );
 
             return GraphqlParser.mapTransactionHistory(
                 response,
                 address,
-                currentNetwork,
+                currentNetworkId,
             );
         } catch (error) {
             if (GraphqlParser.isRecoverableNetworkError(error)) {

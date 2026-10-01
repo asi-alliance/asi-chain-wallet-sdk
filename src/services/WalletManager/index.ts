@@ -1,9 +1,13 @@
 import Account from "@domains/Account";
 import ItemManager from "@services/ItemManager";
-import Wallet from "@domains/Wallet";
+import KeyDerivationService from "@services/KeyDerivation";
+import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import StorageManager, { IWalletStorageData } from "@services/StorageManager";
 import { WalletTypes } from "@domains/Signer";
+import { WalletAction } from "@domains/CustomError";
+import WalletOperationGuardService from "@services/WalletOperationGuard";
+import WalletUniquenessService from "@services/WalletUniqueness";
 
 export interface IAccountMetadata {
     id: string;
@@ -18,7 +22,6 @@ export interface IWalletMetadata {
 }
 
 export interface ICreateHDWalletParams {
-    mnemonic: string;
     accountName: string;
     index?: number;
 }
@@ -29,17 +32,19 @@ export interface IDerivedAccount {
 }
 
 export default class WalletManager extends ItemManager<Wallet> {
+    private static readonly operationsGuard: WalletOperationGuardService =
+        WalletOperationGuardService.getInstance();
+
     public async createHD(
-        { mnemonic, accountName, index }: ICreateHDWalletParams,
-        passwordProvider: SecretsProvider,
+        { accountName, index }: ICreateHDWalletParams,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const wallet: Wallet = await Wallet.createHD(
             {
-                mnemonic,
                 pathOptions: { index: index ?? 0 },
                 accountOptions: { name: accountName },
             },
-            passwordProvider,
+            secretProvider,
         );
 
         await this.persist(wallet);
@@ -61,18 +66,46 @@ export default class WalletManager extends ItemManager<Wallet> {
         return wallet;
     }
 
-    public async unlock(
+    public getBySignerId(signerId: string): Wallet | null {
+        return (
+            this.getAll().find(
+                (wallet: Wallet) => wallet.getSigner().getId() === signerId,
+            ) ?? null
+        );
+    }
+
+    public async importKeyfile(
+        payload: IImportKeyfileWalletPayload,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const wallet: Wallet = await Wallet.importKeyfile(
+            payload,
+            passwordProvider,
+        );
+
+        await this.persist(wallet);
+
+        return wallet;
+    }
+
+    public async open(
         signerId: string,
         passwordProvider: SecretsProvider,
     ): Promise<Wallet> {
-        const wallet: Wallet = await StorageManager.getWallet({
+        return WalletManager.operationsGuard.runWalletAction(
+            WalletAction.OPEN,
             signerId,
-            passwordProvider,
-        });
+            async () => {
+                const wallet: Wallet = await StorageManager.getWallet({
+                    signerId,
+                    passwordProvider,
+                });
 
-        this.add(wallet.getId(), wallet);
+                this.add(wallet.getId(), wallet);
 
-        return wallet;
+                return wallet;
+            },
+        );
     }
 
     public async delete(id: string): Promise<Wallet> {
@@ -104,14 +137,24 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         const signerId: string = wallet.getSigner().getId();
 
-        const { account, accountId } = await wallet.deriveAccount(
-            { name: accountName },
-            passwordProvider,
+        return WalletManager.operationsGuard.runWalletAction(
+            WalletAction.DERIVE_ACCOUNT,
+            signerId,
+            async () => {
+                const { account, accountId } = await wallet.deriveAccount(
+                    { name: accountName },
+                    passwordProvider,
+                );
+
+                await StorageManager.saveAccount({
+                    id: accountId,
+                    account,
+                    signerId,
+                });
+
+                return { accountId, account };
+            },
         );
-
-        await StorageManager.saveAccount({ id: accountId, account, signerId });
-
-        return { accountId, account };
     }
 
     public async removeAccount(
@@ -147,16 +190,14 @@ export default class WalletManager extends ItemManager<Wallet> {
         await StorageManager.updateAccount(accountId, { name });
     }
 
-    public setActiveAccount(walletId: string, accountId: string): void {
+    public getAccount(walletId: string, accountId: string): Account {
         const currentWallet: Wallet | null = this.get(walletId);
 
         if (!currentWallet) {
-            throw new Error(
-                "WalletManager.setActiveAccount: unknown wallet id",
-            );
+            throw new Error("WalletManager.getAccount: unknown wallet id");
         }
 
-        currentWallet.setActiveAccount(accountId);
+        return currentWallet.getAccount(accountId);
     }
 
     public async getPublicWalletsMetadata(): Promise<IWalletMetadata[]> {
@@ -166,11 +207,18 @@ export default class WalletManager extends ItemManager<Wallet> {
         return walletsData.map(({ signer, accounts }: IWalletStorageData) => ({
             signerId: signer.id,
             type: signer.type,
-            accounts: accounts.map((account) => ({
-                id: account.id,
-                name: account.name,
-                index: account.index,
-            })),
+            accounts: accounts
+                .map((account) => ({
+                    id: account.id,
+                    name: account.name,
+                    index: account.index,
+                }))
+                .sort((first: IAccountMetadata, second: IAccountMetadata) =>
+                    KeyDerivationService.compareIndexes(
+                        first.index,
+                        second.index,
+                    ),
+                ),
         }));
     }
 
@@ -183,11 +231,19 @@ export default class WalletManager extends ItemManager<Wallet> {
     }
 
     private async persist(wallet: Wallet): Promise<void> {
-        await StorageManager.saveWallet({
-            signerId: wallet.getSigner().getId(),
-            wallet,
-        });
+        const signerId: string = wallet.getSigner().getId();
 
-        this.add(wallet.getId(), wallet);
+        return WalletManager.operationsGuard.runWalletCreation(
+            wallet,
+            async () => {
+                await WalletUniquenessService.assertWalletIsNotDuplicate(
+                    wallet,
+                );
+
+                await StorageManager.saveWallet({ signerId, wallet });
+
+                this.add(wallet.getId(), wallet);
+            },
+        );
     }
 }

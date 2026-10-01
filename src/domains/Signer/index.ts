@@ -1,6 +1,12 @@
-import Bip44Path from "@domains/Bip44Path";
 import type SecretsProvider from "@domains/SecretsProvider";
-import { EncryptedData } from "@services/Crypto";
+import type { TDecryptedSecret } from "@domains/SecretsProvider";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import { InvalidPasswordError, WalletLockedError } from "@domains/CustomError";
+import SigningSession, {
+    ISigningSessionOptions,
+} from "@domains/SigningSession";
+
+export const SIGNER_KEY_PREFIX: string = "SIGNER";
 
 export enum WalletTypes {
     PRIVATE_KEY = "private-key",
@@ -10,14 +16,16 @@ export enum WalletTypes {
 export interface ISignerOptions {
     id: string;
     encryptedSecret: EncryptedData;
+    encryptedDataKey: EncryptedData;
+    fingerprint: string;
 }
 
 export type TPKSigningContext = {
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
 };
 
 export type THDSigningContext = {
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
     index: number;
 };
 
@@ -32,23 +40,134 @@ export interface ISignerRecord {
     id: string;
     type: WalletTypes;
     encryptedData: EncryptedData;
+    encryptedDataKey: EncryptedData;
+    fingerprint: string;
 }
 
 export default abstract class Signer {
     protected readonly id: string;
     protected encryptedSecret: EncryptedData;
+    protected encryptedDataKey: EncryptedData;
+    private readonly fingerprint: string;
+    private readonly session: SigningSession;
 
-    constructor({ id, encryptedSecret }: ISignerOptions) {
+    constructor({
+        id,
+        encryptedSecret,
+        encryptedDataKey,
+        fingerprint,
+    }: ISignerOptions) {
         this.id = id;
         this.encryptedSecret = encryptedSecret;
+        this.encryptedDataKey = encryptedDataKey;
+        this.fingerprint = fingerprint;
+        this.session = new SigningSession(id);
     }
 
     public getId(): string {
         return this.id;
     }
 
+    public getFingerprint(): string {
+        return this.fingerprint;
+    }
+
     public getEncryptedSecret(): EncryptedData {
         return this.encryptedSecret;
+    }
+
+    public getEncryptedDataKey(): EncryptedData {
+        return this.encryptedDataKey;
+    }
+
+    public isUnlocked(): boolean {
+        return this.session.isActive();
+    }
+
+    public async unlock(
+        passwordProvider: SecretsProvider,
+        options?: ISigningSessionOptions,
+    ): Promise<void> {
+        const currentGeneration: number = this.session.getSessionGeneration();
+
+        const secret: TDecryptedSecret = await CryptoService.decryptSignerData(
+            this.encryptedSecret,
+            passwordProvider,
+        );
+
+        const dataKeySecret: string = await CryptoService.decryptWithPassword(
+            this.encryptedDataKey,
+            passwordProvider.getSecret().password,
+        );
+
+        this.session.hold(
+            currentGeneration,
+            { secret, dataKeySecret },
+            options,
+        );
+    }
+
+    public async resolveDataKey(
+        passwordProvider?: SecretsProvider,
+    ): Promise<string> {
+        const dataKeySecret: string | null = this.session.getDataKey();
+
+        if (dataKeySecret) {
+            return dataKeySecret;
+        }
+
+        if (!passwordProvider) {
+            throw new WalletLockedError();
+        }
+
+        return CryptoService.decryptWithPassword(
+            this.encryptedDataKey,
+            passwordProvider.getSecret().password,
+        );
+    }
+
+    protected async resolveSecret(
+        signingContext: TSigningContext,
+    ): Promise<{ secret: TDecryptedSecret; ephemeral: boolean }> {
+        const sessionSecret: TDecryptedSecret | null = this.session.getSecret();
+
+        if (sessionSecret) {
+            return { secret: sessionSecret, ephemeral: false };
+        }
+
+        if (!signingContext.passwordProvider) {
+            throw new WalletLockedError();
+        }
+
+        const secret: TDecryptedSecret = await CryptoService.decryptSignerData(
+            this.encryptedSecret,
+            signingContext.passwordProvider,
+        );
+
+        return { secret, ephemeral: true };
+    }
+
+    public lock(): void {
+        this.session.release();
+    }
+
+    public async isPasswordValid(
+        passwordProvider: SecretsProvider,
+    ): Promise<boolean> {
+        try {
+            await CryptoService.decryptSignerData(
+                this.encryptedSecret,
+                passwordProvider,
+            );
+
+            return true;
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                return false;
+            }
+
+            throw error;
+        }
     }
 
     public abstract sign(

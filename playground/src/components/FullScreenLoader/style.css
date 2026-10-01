@@ -1,11 +1,7 @@
-/* FullscreenLoader styles */
 .fullscreen-loader {
 	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100vw;
-	height: 100vh;
-	background: rgba(0, 0, 0, 0.5);
+	inset: 0;
+	background: oklch(0.24 0.021 var(--hue-brand) / 0.45);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -13,10 +9,10 @@
 }
 
 .spinner {
-	width: 64px;
-	height: 64px;
-	border: 8px solid #f3f3f3;
-	border-top: 8px solid #3498db;
+	width: 3.5rem;
+	height: 3.5rem;
+	border: 6px solid var(--surface-inset);
+	border-top-color: var(--accent);
 	border-radius: 50%;
 	animation: spin 1s linear infinite;
 }
@@ -32,5 +28,11 @@
 
 	100% {
 		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spinner {
+		animation-duration: 2s !important;
 	}
 }

@@ -1,5 +1,11 @@
 import AccountCard from "@components/AccountCard";
-import { Fragment, useState, type ReactElement } from "react";
+import {
+    Fragment,
+    useEffect,
+    useRef,
+    useState,
+    type ReactElement,
+} from "react";
 import { useAppContext } from "@components/Application/context";
 import { useSdkContext } from "../../sdk-react-kit";
 import type { UseSdkValue } from "../../sdk-react-kit";
@@ -8,20 +14,22 @@ import "./style.css";
 import NetworkSelector from "@components/NetworkSelector";
 import { WalletTypes, type IWalletMetadata, type Wallet } from "asi-wallet-sdk";
 
+type WalletColumn = "privateKey" | "mnemonic";
+
 interface WalletRowProps {
     meta: IWalletMetadata;
-    unlocked?: Wallet;
+    openWallet?: Wallet;
     handlers: WalletPageHandlers;
     sdk: UseSdkValue;
 }
 
 const WalletRow = ({
     meta,
-    unlocked,
+    openWallet,
     handlers,
     sdk,
 }: WalletRowProps): ReactElement => {
-    if (!unlocked) {
+    if (!openWallet) {
         return (
             <div className="wallets-page__card-wrap">
                 <div className="wallet-card">
@@ -31,17 +39,17 @@ const WalletRow = ({
                         </div>
                         <div className="wallet-card-address">
                             {meta.type} · {meta.accounts.length} account(s) ·
-                            locked
+                            closed
                         </div>
                         <div className="buttons">
                             <button
                                 className="wallet-card-button"
                                 type="button"
                                 onClick={() =>
-                                    handlers.unlockWallet(meta.signerId)
+                                    handlers.openWallet(meta.signerId)
                                 }
                             >
-                                Unlock
+                                Open wallet
                             </button>
                         </div>
                     </div>
@@ -50,12 +58,23 @@ const WalletRow = ({
         );
     }
 
-    const walletId = unlocked.getId();
+    const walletId = openWallet.getId();
+    const accounts = openWallet.getAccounts();
+    const canRemoveAccount =
+        openWallet.getType() === WalletTypes.HD && accounts.length > 1;
+    const isLocked = sdk.isWalletLocked(walletId);
 
     return (
         <div className="wallets-page__card-wrap">
             <div className="wallets-page__column-header">
                 <div className="wallet-card-name">{"Wallet"}</div>
+                <span
+                    className={`wallets-page__session ${
+                        isLocked ? "wallets-page__session--locked" : ""
+                    }`}
+                >
+                    {isLocked ? "session locked" : "session unlocked"}
+                </span>
                 {meta.type === WalletTypes.HD && (
                     <button
                         className="wallets-page__action"
@@ -68,13 +87,44 @@ const WalletRow = ({
                 <button
                     className="wallets-page__action"
                     type="button"
+                    onClick={() => handlers.exportWalletKeyfile(walletId)}
+                >
+                    Export keyfile
+                </button>
+                {isLocked ? (
+                    <button
+                        className="wallets-page__action"
+                        type="button"
+                        onClick={() => handlers.unlockWallet(walletId)}
+                    >
+                        Unlock session
+                    </button>
+                ) : (
+                    <button
+                        className="wallets-page__action"
+                        type="button"
+                        onClick={() => handlers.lockWallet(walletId)}
+                    >
+                        Lock session
+                    </button>
+                )}
+                <button
+                    className="wallets-page__action"
+                    type="button"
+                    onClick={() => handlers.closeWallet(walletId)}
+                >
+                    Close wallet
+                </button>
+                <button
+                    className="wallets-page__action"
+                    type="button"
                     onClick={() => handlers.removeWallet(walletId)}
                 >
                     Remove wallet
                 </button>
             </div>
 
-            {unlocked.getAccounts().map((account) => (
+            {accounts.map((account) => (
                 <AccountCard
                     key={account.getId()}
                     sdk={sdk}
@@ -83,8 +133,14 @@ const WalletRow = ({
                     onRename={() =>
                         handlers.renameAccount(walletId, account.getId())
                     }
-                    onRemove={() =>
-                        handlers.removeAccount(walletId, account.getId())
+                    onRemove={
+                        canRemoveAccount
+                            ? () =>
+                                  handlers.removeAccount(
+                                      walletId,
+                                      account.getId(),
+                                  )
+                            : undefined
                     }
                 />
             ))}
@@ -105,16 +161,30 @@ const WalletsPage = (): ReactElement => {
     const [selectedMode, setSelectedMode] = useState<
         "create" | "import" | null
     >(null);
+    const [activeColumn, setActiveColumn] = useState<WalletColumn>("privateKey");
+
+    const isColumnPickedRef = useRef<boolean>(false);
+
+    useEffect(() => {
+        if (isColumnPickedRef.current || sdk.walletsMetadata.length === 0) {
+            return;
+        }
+
+        isColumnPickedRef.current = true;
+
+        const hasPrivateKey: boolean = sdk.walletsMetadata.some(
+            (meta: IWalletMetadata) => meta.type === WalletTypes.PRIVATE_KEY,
+        );
+
+        setActiveColumn(hasPrivateKey ? "privateKey" : "mnemonic");
+    }, [sdk.walletsMetadata]);
 
     if (!sdk.isReady) {
         return <div>Loading SDK...</div>;
     }
 
-    const unlockedBySigner = new Map<string, Wallet>(
-        sdk.unlockedWallets.map((wallet) => [
-            wallet.getSigner().getId(),
-            wallet,
-        ]),
+    const openWalletsBySigner = new Map<string, Wallet>(
+        sdk.openWallets.map((wallet) => [wallet.getSigner().getId(), wallet]),
     );
 
     const handleMnemonicWords = (words: 12 | 24) => {
@@ -128,6 +198,9 @@ const WalletsPage = (): ReactElement => {
         setSelectedMode(null);
     };
 
+    const countOf = (type: WalletTypes): number =>
+        sdk.walletsMetadata.filter((meta) => meta.type === type).length;
+
     const renderList = (type: WalletTypes) =>
         sdk.walletsMetadata
             .filter((meta) => meta.type === type)
@@ -135,7 +208,7 @@ const WalletsPage = (): ReactElement => {
                 <WalletRow
                     key={meta.signerId}
                     meta={meta}
-                    unlocked={unlockedBySigner.get(meta.signerId)}
+                    openWallet={openWalletsBySigner.get(meta.signerId)}
                     handlers={handlers}
                     sdk={sdk}
                 />
@@ -143,9 +216,50 @@ const WalletsPage = (): ReactElement => {
 
     return (
         <div className="wallets-page">
-            <NetworkSelector />
-            <div className="wallets-page__grid">
-                <section className="wallets-page__column">
+            <div className="wallets-page__header">
+                <NetworkSelector />
+                <button
+                    className="wallets-page__action"
+                    type="button"
+                    onClick={handlers.importKeyfile}
+                >
+                    Import keyfile
+                </button>
+            </div>
+            <div className="wallets-page__tabs">
+                <button
+                    className={`wallets-page__tab ${
+                        activeColumn === "privateKey"
+                            ? "wallets-page__tab--active"
+                            : ""
+                    }`}
+                    type="button"
+                    aria-pressed={activeColumn === "privateKey"}
+                    onClick={() => setActiveColumn("privateKey")}
+                >
+                    Private Key ({countOf(WalletTypes.PRIVATE_KEY)})
+                </button>
+                <button
+                    className={`wallets-page__tab ${
+                        activeColumn === "mnemonic"
+                            ? "wallets-page__tab--active"
+                            : ""
+                    }`}
+                    type="button"
+                    aria-pressed={activeColumn === "mnemonic"}
+                    onClick={() => setActiveColumn("mnemonic")}
+                >
+                    Mnemonic ({countOf(WalletTypes.HD)})
+                </button>
+            </div>
+            <div
+                className="wallets-page__grid"
+                data-active-column={activeColumn}
+            >
+                <section
+                    className="wallets-page__column"
+                    data-column="privateKey"
+                >
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
                             Private Key wallets
@@ -171,7 +285,10 @@ const WalletsPage = (): ReactElement => {
                     </div>
                 </section>
 
-                <section className="wallets-page__column">
+                <section
+                    className="wallets-page__column"
+                    data-column="mnemonic"
+                >
                     <div className="wallets-page__column-header">
                         <h3 className="wallets-page__column-title">
                             Mnemonic wallets
@@ -229,7 +346,7 @@ const WalletsPage = (): ReactElement => {
                         )}
                     </div>
 
-                    <div className="wallets-page__list mnemonics">
+                    <div className="wallets-page__list">
                         {renderList(WalletTypes.HD)}
                     </div>
                 </section>

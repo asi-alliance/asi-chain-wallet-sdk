@@ -1,0 +1,294 @@
+.network-modal__overlay,
+.password-modal,
+.transfer-modal,
+.wallet-create-modal__overlay {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-4);
+	padding: var(--space-4);
+	overflow-y: auto;
+	background: oklch(0.24 0.021 var(--hue-brand) / 0.45);
+	z-index: 1000;
+}
+
+.wallet-create-modal__overlay--nested {
+	background: oklch(0.24 0.021 var(--hue-brand) / 0.62);
+	z-index: 1100;
+}
+
+.network-modal__content,
+.password-input-form,
+.transfer-modal-form,
+.wallet-create-modal__content {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+
+	width: min(34rem, 100%);
+	min-width: 0;
+	max-height: calc(100dvh - var(--space-6));
+	overflow-y: auto;
+
+	padding: var(--space-5);
+	background: var(--surface-card);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--shadow-lg);
+}
+
+.wallet-create-modal__content--nested {
+	width: min(30rem, 100%);
+	padding: var(--space-4);
+}
+
+.password-modal h2 {
+	margin: 0;
+	color: var(--text-strong);
+	font-size: var(--text-xl);
+	text-align: center;
+}
+
+.network-modal__header,
+.wallet-create-modal__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.network-modal__title,
+.wallet-create-modal__title {
+	font-size: var(--text-lg);
+	font-weight: 600;
+	color: var(--text-strong);
+	margin: 0;
+	min-width: 0;
+}
+
+.network-modal__close,
+.wallet-create-modal__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: var(--tap-target);
+	height: var(--tap-target);
+	background: none;
+	border: none;
+	border-radius: var(--radius-sm);
+	font-size: var(--text-xl);
+	line-height: 1;
+	cursor: pointer;
+	color: var(--text-faint);
+	transition:
+		color var(--duration) var(--ease-out),
+		background var(--duration) var(--ease-out);
+}
+
+.network-modal__close:hover,
+.wallet-create-modal__close:hover {
+	background: var(--danger-surface);
+	color: var(--danger);
+}
+
+.network-modal__form,
+.wallet-create-modal__form,
+.password-modal form,
+.transfer-modal form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-width: 0;
+}
+
+.network-modal__row,
+.wallet-create-modal__row,
+.password-modal .form-row,
+.transfer-modal .form-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-width: 0;
+}
+
+.wallet-create-modal__inline {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.network-modal__row label,
+.wallet-create-modal__row label,
+.password-modal .form-row label,
+.transfer-modal .form-row label {
+	font-size: var(--text-md);
+	font-weight: 500;
+	color: var(--text-body);
+}
+
+.network-modal__row input,
+.network-modal__row select,
+.wallet-create-modal__row input,
+.password-modal .form-row input,
+.transfer-modal .form-row input {
+	width: 100%;
+	min-width: 0;
+	min-height: var(--control-height);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--border-default);
+	border-radius: var(--radius-md);
+	font-family: inherit;
+	font-size: var(--text-md);
+	color: var(--text-strong);
+	background: var(--surface-card);
+	transition: border-color var(--duration) var(--ease-out);
+}
+
+.network-modal__row input:focus,
+.network-modal__row select:focus,
+.wallet-create-modal__row input:focus,
+.password-modal .form-row input:focus,
+.transfer-modal .form-row input:focus {
+	border-color: var(--accent);
+}
+
+.network-modal__row input[readonly] {
+	background: var(--surface-inset);
+	color: var(--text-muted);
+	cursor: not-allowed;
+}
+
+.wallet-create-modal__hint {
+	color: var(--text-muted);
+	font-size: var(--text-sm);
+}
+
+.network-modal__error,
+.wallet-create-modal__error {
+	color: var(--danger);
+	background: var(--danger-surface);
+	border: 1px solid var(--danger-border);
+	border-radius: var(--radius-md);
+	padding: var(--space-2) var(--space-3);
+	font-size: var(--text-sm);
+	overflow-wrap: anywhere;
+}
+
+.network-modal__actions,
+.wallet-create-modal__actions,
+.password-modal .form-actions,
+.transfer-modal .form-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+}
+
+.network-modal__button,
+.wallet-create-modal__button,
+.password-modal .form-actions button,
+.transfer-modal .form-actions button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--control-height);
+	background: var(--accent);
+	color: var(--text-on-accent);
+	border: 1px solid transparent;
+	border-radius: var(--radius-md);
+	padding: var(--space-2) var(--space-4);
+	font-family: inherit;
+	font-size: var(--text-md);
+	font-weight: 500;
+	cursor: pointer;
+	transition:
+		background var(--duration) var(--ease-out),
+		color var(--duration) var(--ease-out),
+		border-color var(--duration) var(--ease-out);
+}
+
+.network-modal__button:hover:not(:disabled),
+.wallet-create-modal__button:hover:not(:disabled),
+.password-modal .form-actions button:not(:disabled):hover,
+.transfer-modal .form-actions button:not(:disabled):hover {
+	background: var(--accent-hover);
+}
+
+.network-modal__button--secondary,
+.wallet-create-modal__button--secondary,
+.password-modal .form-actions button[type="button"],
+.transfer-modal .form-actions button[type="button"] {
+	background: var(--surface-card);
+	border-color: var(--border-default);
+	color: var(--text-body);
+}
+
+.network-modal__button--secondary:hover:not(:disabled),
+.wallet-create-modal__button--secondary:hover:not(:disabled),
+.password-modal .form-actions button[type="button"]:hover:not(:disabled),
+.transfer-modal .form-actions button[type="button"]:not(:disabled):hover {
+	background: var(--surface-sunken);
+	border-color: var(--border-strong);
+	color: var(--text-strong);
+}
+
+.password-modal .form-actions .cancel-button {
+	background: var(--danger-surface);
+	border-color: var(--danger-border);
+	color: var(--danger);
+}
+
+.password-modal .form-actions .cancel-button:hover:not(:disabled) {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: var(--text-on-accent);
+}
+
+.network-modal__button:disabled,
+.wallet-create-modal__button:disabled,
+.password-modal .form-actions button:disabled,
+.transfer-modal .form-actions button:disabled {
+	background: var(--surface-inset);
+	border-color: transparent;
+	color: var(--text-faint);
+	cursor: not-allowed;
+}
+
+@media (max-width: 37.5rem) {
+	.network-modal__overlay,
+	.password-modal,
+	.transfer-modal,
+	.wallet-create-modal__overlay {
+		justify-content: flex-start;
+		padding: var(--space-3);
+	}
+
+	.network-modal__content,
+	.password-input-form,
+	.transfer-modal-form,
+	.wallet-create-modal__content {
+		width: 100%;
+		max-height: none;
+		padding: var(--space-4);
+	}
+
+	.network-modal__row input,
+	.network-modal__row select,
+	.wallet-create-modal__row input,
+	.password-modal .form-row input,
+	.transfer-modal .form-row input {
+		min-height: var(--tap-target);
+	}
+
+	.network-modal__button,
+	.wallet-create-modal__button,
+	.password-modal .form-actions button,
+	.transfer-modal .form-actions button {
+		flex: 1 1 auto;
+		min-height: var(--tap-target);
+	}
+}

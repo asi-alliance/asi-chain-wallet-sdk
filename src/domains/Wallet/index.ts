@@ -1,32 +1,50 @@
 import Signer, { ISignerRecord, WalletTypes } from "@domains/Signer";
+import { ISigningSessionOptions } from "@domains/SigningSession";
 import Account, {
     IAccountRecord,
     TCreateAccountPayload,
     TEditableAccountOptions,
 } from "@domains/Account";
-import { createSigner, restoreSigner } from "@utils/fabrics/signer";
+import {
+    createImportedSigner,
+    createSigner,
+    restoreSigner,
+} from "@fabrics/signer";
 import { generateRandomId } from "@utils/index";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
+    TDecryptedSecret,
 } from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
 import Bip44Path from "@domains/Bip44Path";
 import AccountManager, { ICreatedAccountData } from "@services/AccountManager";
-import { EnsureActiveAccountExist, OnlyHDWallet } from "@utils/decorators";
-import { ITransferDetails } from "@services/TransactionService";
+import ConcurrentOperationGuardService, {
+    OperationScopeMode,
+} from "@services/ConcurrentOperationGuard";
+import { EnsureAccountIsIdle, OnlyHDWallet } from "@utils/decorators";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
-import CryptoService from "@services/Crypto";
+import ApiClientManager from "@domains/ApiClientManager";
+import CryptoService, { EncryptedData } from "@services/Crypto";
+import {
+    AccountBusyError,
+    LastAccountRemovalError,
+    UnknownAccountError,
+} from "@domains/CustomError";
+import ImportKeyfileService from "@services/ImportKeyfileService";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
+
+export const ACCOUNT_KEY_PREFIX: string = "ACCOUNT";
 
 export interface IWalletOptions {
     id?: string;
     type: WalletTypes;
     signer: Signer;
     accounts: Map<string, Account>;
-    activeAccount?: Account;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -38,7 +56,6 @@ export type TCreateHDPathWalletOptions =
       };
 
 export interface ICreateHDWalletOptions {
-    mnemonic: string;
     pathOptions: TCreateHDPathWalletOptions;
     accountOptions: TCreateAccountPayload;
 }
@@ -48,26 +65,25 @@ export interface IRestoreWalletPayload {
     accountRecords: IAccountRecord[];
 }
 
+export interface IImportKeyfileWalletPayload {
+    walletType: WalletTypes;
+    encryptedSecret: EncryptedData;
+    accounts: TCreateAccountPayload[];
+}
+
 export default class Wallet {
     private readonly id: string;
     private readonly type: WalletTypes;
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
+    private readonly accountOperationsGuard: ConcurrentOperationGuardService<string> =
+        new ConcurrentOperationGuardService();
 
-    private constructor({
-        id,
-        type,
-        signer,
-        accounts,
-        activeAccount,
-    }: IWalletOptions) {
+    private constructor({ id, type, signer, accounts }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;
         this.signer = signer;
-        this.accountManager = new AccountManager(
-            accounts,
-            activeAccount ?? null,
-        );
+        this.accountManager = new AccountManager(accounts);
     }
 
     public getId(): string {
@@ -82,6 +98,27 @@ export default class Wallet {
         return this.signer;
     }
 
+    public isUnlocked(): boolean {
+        return this.signer.isUnlocked();
+    }
+
+    public unlock(
+        passwordProvider: SecretsProvider,
+        options?: ISigningSessionOptions,
+    ): Promise<void> {
+        return this.signer.unlock(passwordProvider, options);
+    }
+
+    public lock(): void {
+        this.signer.lock();
+    }
+
+    public isPasswordValid(
+        passwordProvider: SecretsProvider,
+    ): Promise<boolean> {
+        return this.signer.isPasswordValid(passwordProvider);
+    }
+
     public getAccounts(): Account[] {
         return this.accountManager.getAccounts();
     }
@@ -90,12 +127,32 @@ export default class Wallet {
         return this.accountManager.getAccountsMap();
     }
 
-    public getActiveAccount(): Account | null {
-        return this.accountManager.getActiveAccount();
+    public getAccount(id: string): Account {
+        const account: Account | null = this.accountManager.getAccount(id);
+
+        if (!account) {
+            throw new UnknownAccountError(this.id, id);
+        }
+
+        return account;
     }
 
-    public setActiveAccount(id: string): void {
-        this.accountManager.setActiveAccount(id);
+    public async runAccountOperation<TResult>(
+        accountId: string,
+        operation: (account: Account) => Promise<TResult>,
+    ): Promise<TResult> {
+        const account: Account = this.getAccount(accountId);
+
+        return this.accountOperationsGuard.run(
+            new Map(),
+            () => new AccountBusyError(this.id, accountId),
+            () => operation(account),
+            {
+                key: accountId,
+                mode: OperationScopeMode.SHARED,
+                owner: accountId,
+            },
+        );
     }
 
     private getDerivationIndex(initialHDPath: Bip44Path): number | null {
@@ -103,8 +160,7 @@ export default class Wallet {
 
         const indexes = this.getAccounts()
             .map((account: Account) => account.getIndex())
-            .filter((index: number | null): index is number => index !== null)
-            .sort((a, b) => a - b);
+            .filter((index: number | null): index is number => index !== null);
 
         if (!indexes.length) {
             return initialAccountIndex;
@@ -148,7 +204,17 @@ export default class Wallet {
         );
     }
 
+    public addAccounts(accounts: Account[]): void {
+        this.accountManager.addAccounts(accounts);
+    }
+
+    @OnlyHDWallet
+    @EnsureAccountIsIdle
     public removeAccount(id: string): Account {
+        if (this.getAccounts().length === 1) {
+            throw new LastAccountRemovalError(this.id, id);
+        }
+
         return this.accountManager.remove(id);
     }
 
@@ -179,13 +245,12 @@ export default class Wallet {
             type: WalletTypes.PRIVATE_KEY,
             signer,
             accounts,
-            activeAccount: initialAccount,
         });
     }
 
     public static async createHD(
         options: ICreateHDWalletOptions,
-        passwordProvider: SecretsProvider,
+        secretProvider: SecretsProvider,
     ): Promise<Wallet> {
         const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
             options.pathOptions,
@@ -193,12 +258,14 @@ export default class Wallet {
 
         const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
             () => {
+                const { password, secret } = secretProvider.getSecret();
+
                 return {
                     secret: {
                         rootHDPath: rootHDPath.toString(),
-                        seed: options.mnemonic,
+                        seed: secret.seed,
                     },
-                    password: passwordProvider.getSecret().password,
+                    password,
                 };
             },
         );
@@ -213,7 +280,7 @@ export default class Wallet {
             () => {
                 return {
                     rootHDPath: rootHDPath,
-                    seed: options.mnemonic,
+                    seed: secretProvider.getSecret().secret.seed,
                 };
             },
         );
@@ -231,7 +298,44 @@ export default class Wallet {
             type: WalletTypes.HD,
             signer,
             accounts,
-            activeAccount: initialAccount,
+        });
+    }
+
+    public static async importKeyfile(
+        { walletType, encryptedSecret, accounts }: IImportKeyfileWalletPayload,
+        passwordProvider: SecretsProvider,
+    ): Promise<Wallet> {
+        const secret: TDecryptedSecret =
+            await ImportKeyfileService.decryptKeyfileSecret(
+                walletType,
+                encryptedSecret,
+                passwordProvider,
+            );
+
+        const signer: Signer = await createImportedSigner({
+            secret,
+            passwordProvider,
+        });
+
+        const secretProvider: SecretsProvider = new SecretsProvider(
+            () => secret,
+        );
+
+        const accountsMap: Map<string, Account> = new Map();
+
+        for (const accountOptions of accounts) {
+            const account: Account = await Account.create(
+                accountOptions,
+                secretProvider,
+            );
+
+            accountsMap.set(account.getId(), account);
+        }
+
+        return new Wallet({
+            type: walletType,
+            signer,
+            accounts: accountsMap,
         });
     }
 
@@ -272,17 +376,57 @@ export default class Wallet {
         });
     }
 
-    @EnsureActiveAccountExist
     public async transfer(
+        accountId: string,
         payload: ITransferDetails,
-        passwordProvider: SecretsProvider,
+        passwordProvider?: SecretsProvider,
     ): Promise<string> {
-        return ApiServiceRegistry.getInstance().transactions.transfer({
-            walletType: this.type,
-            account: this.getActiveAccount()!,
-            signer: this.signer,
-            details: payload,
-            passwordProvider,
-        });
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.transfer({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    details: payload,
+                    passwordProvider,
+                }),
+            ),
+        );
+    }
+
+    public async deploy(
+        accountId: string,
+        payload: TDeployDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<string> {
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.deploy({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    ...payload,
+                    passwordProvider,
+                }),
+            ),
+        );
+    }
+
+    public async signDeploy(
+        accountId: string,
+        payload: TDeployDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<SignedResult> {
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.signDeploy({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    ...payload,
+                    passwordProvider,
+                }),
+            ),
+        );
     }
 }

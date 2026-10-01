@@ -1,20 +1,38 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account, ApiServiceRegistry } from "asi-wallet-sdk";
+import { Account, ExportKeyfileService, type Address } from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
-import { formatAmount } from "../../sdk-react-kit";
+import { formatAssetAmount, toErrorText } from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
+import { downloadTextFile } from "@utils/functions";
+import useSecureAction from "@hooks/useSecureAction";
 
 export interface IAccountCardProps {
     sdk: UseSdkValue;
     walletId: string;
     account: Account;
     onRename: () => void;
-    onRemove: () => void;
+    onRemove?: () => void;
 }
+
+const getBalanceLabel = (
+    available: bigint | null,
+    isFetching: boolean,
+    error: string | null,
+): string => {
+    if (isFetching) {
+        return "loading balance ...";
+    }
+
+    if (error) {
+        return "balance unavailable";
+    }
+
+    return formatAssetAmount(available);
+};
 
 const AccountCard = ({
     sdk,
@@ -24,17 +42,14 @@ const AccountCard = ({
     onRemove,
 }: IAccountCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
+    const runSecureAction = useSecureAction();
 
     const address = account.getAddress();
     const accountId = account.getId();
     const index = account.getIndex();
 
-    const { balance, isFetching, reload } = useWalletBalance(
-        sdk,
-        walletId,
-        accountId,
-        address,
-    );
+    const { balance, reservationCount, isFetching, error, reload } =
+        useWalletBalance(sdk, walletId, accountId, address);
 
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
@@ -43,51 +58,53 @@ const AccountCard = ({
 
     const closeModal = () => setModalState({ type: null });
 
-    const transfer = (toAddress: string, amount: bigint, password: string) =>
-        withLoader(async () => {
-            try {
-                setIsSending(true);
+    const transfer = async (toAddress: Address, amount: bigint) => {
+        try {
+            setIsSending(true);
 
-                const deployId = await sdk.transfer(
-                    { walletId, accountId, to: toAddress as never, amount },
-                    password,
-                );
+            const reserved = await runSecureAction({
+                walletId,
+                passwordTitle: "Enter wallet password to send",
+                confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
+                action: (password?: string) =>
+                    withLoader(async () => {
+                        const result = await sdk.transfer(
+                            { walletId, accountId, to: toAddress, amount },
+                            password,
+                        );
 
-                ApiServiceRegistry.getInstance().poller.watch(deployId, {
-                    onConfirmed: reload,
-                    onError: reload,
-                });
+                        result.subscribe({
+                            onConfirmed: reload,
+                            onError: reload,
+                        });
 
-                await reload();
+                        await reload();
 
-                setModalState({
-                    type: Modals.TRANSFER_COMPLETED_MODAL,
-                    props: {
-                        deployId,
-                        fromAddress: address,
-                        toAddress,
-                        amount,
-                        onClose: closeModal,
-                    },
-                });
-            } catch (error) {
-                console.error(error);
-                alert((error as Error)?.message ?? "Transfer failed");
-            } finally {
-                setIsSending(false);
+                        return result;
+                    }),
+            });
+
+            if (!reserved) {
+                return;
             }
-        });
 
-    const openPasswordForTransfer = (toAddress: string, amount: bigint) =>
-        setModalState({
-            type: Modals.PASSWORD_MODAL,
-            props: {
-                title: "Enter wallet password to send",
-                onSubmit: (password: string) =>
-                    transfer(toAddress, amount, password),
-                onClose: closeModal,
-            },
-        });
+            setModalState({
+                type: Modals.TRANSFER_COMPLETED_MODAL,
+                props: {
+                    deployId: reserved.deployId,
+                    fromAddress: address,
+                    toAddress,
+                    amount,
+                    onClose: closeModal,
+                },
+            });
+        } catch (error) {
+            console.error(error);
+            alert(toErrorText(error, "Transfer failed"));
+        } finally {
+            setIsSending(false);
+        }
+    };
 
     const openTransferModal = () =>
         setModalState({
@@ -95,10 +112,28 @@ const AccountCard = ({
             props: {
                 fromAddress: address,
                 availableBalance: balance.available ?? 0n,
-                onConfirm: openPasswordForTransfer,
+                onConfirm: (toAddress: Address, amount: bigint) => {
+                    closeModal();
+                    void transfer(toAddress, amount);
+                },
                 onClose: closeModal,
             },
         });
+
+    const exportAccount = () => {
+        try {
+            const keyfile = sdk.getExportedAccountData(walletId, accountId);
+
+            downloadTextFile(
+                `asi-keyfile-${account.getName()}.json`,
+                ExportKeyfileService.toJSON(keyfile),
+                "application/json",
+            );
+        } catch (error) {
+            console.error(error);
+            alert(toErrorText(error, "Export failed"));
+        }
+    };
 
     const copyAddress = async () => {
         try {
@@ -119,28 +154,6 @@ const AccountCard = ({
             <div className="account-card-index">
                 {index === null ? "null" : index}
             </div>
-            <div className="remove-block">
-                <button onClick={onRemove}>
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="red"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="lucide lucide-trash2-icon lucide-trash-2"
-                    >
-                        <path d="M10 11v6" />
-                        <path d="M14 11v6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                </button>
-            </div>
             <div className="account-card-body">
                 <div className="account-card-head">
                     <div className="account-card-name">{account.getName()}</div>
@@ -148,11 +161,14 @@ const AccountCard = ({
                 <div className="account-card-address">{address}</div>
                 <div className="account-card-balance">
                     balance:{" "}
-                    {isFetching
-                        ? "loading balance ..."
-                        : `${formatAmount(balance.available)} ASI`}
+                    {getBalanceLabel(balance.available, isFetching, error)}
                 </div>
-                <ReservationStatus balance={balance} isFetching={isFetching} />
+                <ReservationStatus
+                    balance={balance}
+                    reservationCount={reservationCount}
+                    isFetching={isFetching}
+                    error={error}
+                />
                 <div className="buttons">
                     <button
                         className="account-card-button"
@@ -178,6 +194,21 @@ const AccountCard = ({
                     >
                         {isCopied ? "Copied" : "Copy address"}
                     </button>
+                    <button
+                        className="account-card-button"
+                        onClick={exportAccount}
+                    >
+                        Export
+                    </button>
+                    {onRemove && (
+                        <button
+                            className="account-card-button account-card-button--danger"
+                            type="button"
+                            onClick={onRemove}
+                        >
+                            Remove
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

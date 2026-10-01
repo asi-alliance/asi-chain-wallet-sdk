@@ -5,27 +5,69 @@ import {
     useState,
     type ReactElement,
 } from "react";
-import "./styles.css";
-import { Account, Transaction } from "asi-wallet-sdk";
+import {
+    Account,
+    ClientEvent,
+    ExportFormat,
+    ExportKeyfileService,
+    THistorySource,
+    Transaction,
+} from "asi-wallet-sdk";
 import { useSdkContext } from "../../sdk-react-kit";
+import {
+    useRelevantResultGuard,
+    type TIsResultRelevant,
+    type TStartRequest,
+} from "../../sdk-react-kit/hooks/useRelevantResultGuard";
 import NetworkSelector from "@components/NetworkSelector";
 import TxList from "./TxList";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
+import { downloadTextFile } from "@utils/functions";
+
+const HISTORY_LIMIT: number = 50;
+
+type HistoryMode = "all" | "pending" | "executed";
+
+const MODE_OPTIONS: SelectFilterOption[] = [
+    { label: "All", value: "all" },
+    { label: "Pending only", value: "pending" },
+    { label: "Executed only", value: "executed" },
+];
+
+const MODE_SOURCES: Record<HistoryMode, THistorySource[] | undefined> = {
+    all: undefined,
+    pending: ["pending"],
+    executed: ["executed"],
+};
+
+const FORMAT_OPTIONS: SelectFilterOption[] = [
+    { label: "JSON", value: ExportFormat.JSON },
+    { label: "CSV", value: ExportFormat.CSV },
+];
+
+const FORMAT_MIME: Record<ExportFormat, string> = {
+    [ExportFormat.JSON]: "application/json",
+    [ExportFormat.CSV]: "text/csv",
+};
 
 const TxHistoryPage = (): ReactElement => {
-    const { unlockedWallets, currentNetwork } = useSdkContext();
+    const { client, openWallets, currentNetwork } = useSdkContext();
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+    const [historyMode, setHistoryMode] = useState<HistoryMode>("all");
+    const [exportFormat, setExportFormat] = useState<ExportFormat>(
+        ExportFormat.JSON,
+    );
     const [transactions, setTransactions] = useState<Transaction[] | null>(
         null,
     );
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
     const accounts = useMemo<Account[]>(
-        () => unlockedWallets.flatMap((wallet) => wallet.getAccounts()),
-        [unlockedWallets],
+        () => openWallets.flatMap((wallet) => wallet.getAccounts()),
+        [openWallets],
     );
 
     const accountOptions = useMemo<SelectFilterOption[]>(
@@ -46,54 +88,176 @@ const TxHistoryPage = (): ReactElement => {
         [accounts, selectedAccountId],
     );
 
-    const load = useCallback(async (account: Account): Promise<void> => {
+    const selectedWallet = useMemo(
+        () =>
+            openWallets.find((wallet) =>
+                wallet.getAccountsMap().has(selectedAccountId),
+            ) ?? null,
+        [openWallets, selectedAccountId],
+    );
+
+    const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+
+    const load = useCallback(async (): Promise<void> => {
+        if (!client || !selectedWallet || !selectedAccount) {
+            setTransactions(null);
+
+            return;
+        }
+
+        const isResultRelevant: TIsResultRelevant = startRequest();
+
         setIsLoading(true);
 
         try {
-            setTransactions(await account.getTransactionsHistory());
+            const loadedTransactions: Transaction[] =
+                await client.getTransactionsHistory(
+                    selectedWallet.getId(),
+                    selectedAccount.getId(),
+                    {
+                        sources: MODE_SOURCES[historyMode],
+                        pagination: { limit: HISTORY_LIMIT },
+                    },
+                );
+
+            if (!isResultRelevant()) {
+                return;
+            }
+
+            setTransactions(loadedTransactions);
         } catch (error) {
             console.error(error);
+
+            if (!isResultRelevant()) {
+                return;
+            }
+
             setTransactions(null);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [client, selectedWallet, selectedAccount, historyMode, startRequest]);
 
     useEffect(() => {
-        if (selectedAccount) {
-            void load(selectedAccount);
-        } else {
-            setTransactions(null);
+        void load();
+    }, [load, currentNetwork]);
+
+    useEffect(() => {
+        if (!client || !selectedWallet) {
+            return;
         }
-    }, [selectedAccount, currentNetwork, load]);
+
+        return client
+            .getEventBus()
+            .on(ClientEvent.RESERVATIONS_CHANGED, () => {
+                void load();
+            });
+    }, [client, selectedWallet, load]);
+
+    const canExport = Boolean(
+        selectedAccount && transactions && transactions.length,
+    );
+
+    const handleExport = (): void => {
+        if (!selectedAccount || !transactions) {
+            return;
+        }
+
+        const content = ExportKeyfileService.exportTransactions(
+            transactions,
+            exportFormat,
+        );
+
+        downloadTextFile(
+            `transactions-${selectedAccount.getName()}.${exportFormat}`,
+            content,
+            FORMAT_MIME[exportFormat],
+        );
+    };
 
     return (
         <main className="tx-history-page">
             <NetworkSelector />
-            <h1>Transactions</h1>
 
-            {accounts.length === 0 ? (
-                <p>
-                    Unlock a wallet on the Wallets page to view its transaction
-                    history.
-                </p>
-            ) : (
-                <section className="section">
-                    <SelectFilter
-                        id="tx-account"
-                        label="Account:"
-                        value={selectedAccountId}
-                        options={accountOptions}
-                        onChange={setSelectedAccountId}
-                    />
-                </section>
-            )}
+            <section className="tx-history-page__panel">
+                <div className="tx-history-page__header">
+                    <h2 className="tx-history-page__title">Transactions</h2>
+                    {currentNetwork && (
+                        <span className="tx-history-page__network">
+                            {currentNetwork.name}
+                        </span>
+                    )}
+                </div>
 
-            {isLoading ? (
-                <p>Loading transactions...</p>
-            ) : (
-                <TxList transactions={transactions} />
-            )}
+                {accounts.length === 0 ? (
+                    <p className="tx-history-page__empty">
+                        Unlock a wallet on the Wallets page to view its
+                        transaction history.
+                    </p>
+                ) : (
+                    <div className="tx-history-page__controls">
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-account"
+                                label="Account:"
+                                value={selectedAccountId}
+                                options={accountOptions}
+                                onChange={setSelectedAccountId}
+                            />
+                        </div>
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-mode"
+                                label="Show:"
+                                value={historyMode}
+                                options={MODE_OPTIONS}
+                                onChange={(value) =>
+                                    setHistoryMode(value as HistoryMode)
+                                }
+                            />
+                        </div>
+                        <div className="tx-history-page__field">
+                            <SelectFilter
+                                id="tx-format"
+                                label="Format:"
+                                value={exportFormat}
+                                options={FORMAT_OPTIONS}
+                                onChange={(value) =>
+                                    setExportFormat(value as ExportFormat)
+                                }
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            className="tx-history-page__action"
+                            onClick={handleExport}
+                            disabled={!canExport}
+                        >
+                            Export
+                        </button>
+                        <button
+                            type="button"
+                            className="tx-history-page__action tx-history-page__action--ghost"
+                            onClick={() => void load()}
+                            disabled={!selectedAccount || isLoading}
+                        >
+                            Reload
+                        </button>
+                    </div>
+                )}
+            </section>
+
+            <section className="tx-history-page__panel">
+                {isLoading ? (
+                    <p className="tx-history-page__empty">
+                        Loading transactions...
+                    </p>
+                ) : (
+                    <TxList transactions={transactions} />
+                )}
+            </section>
         </main>
     );
 };

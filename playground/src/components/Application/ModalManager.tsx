@@ -10,11 +10,17 @@ import CreateWalletModal, {
     IWalletCreateModalProps,
 } from "@components/CreateWalletModal";
 
+import ImportKeyfileWalletModal, {
+    IImportKeyfileWalletModalProps,
+} from "@components/ImportKeyfileWalletModal";
+
 import DeriveWalletModal, {
     IDeriveWalletModalProps,
 } from "@components/DeriveWalletModal";
 
 import TransferModal, { ITransferModalProps } from "@components/TransferModal";
+
+import NetworkModal, { INetworkModalProps } from "@components/NetworkModal";
 
 import { ModalProps, Modals } from "./meta";
 import { type ReactElement } from "react";
@@ -43,6 +49,12 @@ const ModalManager = ({
                     {...(commonProps as IWalletCreateModalProps)}
                 />
             );
+        case Modals.IMPORT_KEYFILE_WALLET_MODAL:
+            return (
+                <ImportKeyfileWalletModal
+                    {...(commonProps as IImportKeyfileWalletModalProps)}
+                />
+            );
         case Modals.DERIVE_WALLET_MODAL:
             return (
                 <DeriveWalletModal
@@ -55,6 +67,8 @@ const ModalManager = ({
                     {...(commonProps as ITransferCompletedModalProps)}
                 />
             );
+        case Modals.NETWORK_MODAL:
+            return <NetworkModal {...(commonProps as INetworkModalProps)} />;
         default:
             return null;
     }

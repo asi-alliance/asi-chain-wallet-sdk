@@ -1,5 +1,6 @@
 import InputsGrid from "../InputsGrid";
-import { DEFAULT_WORDS_COUNT, WordsCountVariants } from "../../utils/constants";
+import { Mnemonic } from "asi-wallet-sdk";
+import { DEFAULT_WORDS_COUNT } from "../../utils/constants";
 import { clippedWordCount, sanitizeWord } from "../../utils/functions";
 import {
     createRef,
@@ -8,7 +9,6 @@ import {
     useState,
     useMemo,
     type ReactElement,
-    type ChangeEvent,
     type FormEvent,
     type RefObject,
 } from "react";
@@ -28,6 +28,9 @@ const createEmptyWords = (count: number): string[] =>
 
 const createErrors = (count: number): boolean[] =>
     Array.from({ length: count }, () => false);
+
+const toNormalizedMnemonic = (words: string[]): string =>
+    Mnemonic.normalizeMnemonic(Mnemonic.wordArrayToMnemonic(words));
 
 const updateArrayLength = <T,>(
     prev: T[],
@@ -92,32 +95,18 @@ const InputsForm = ({
         );
     }, [wordCount]);
 
-    const updateErrorsForWord = (index: number, word: string) => {
-        const nextErrors = [...errors];
-
-        if (!word) {
-            nextErrors[index] = false;
-
-            setErrors(nextErrors);
-
-            return;
-        }
-
-        // nextErrors[index] = !isBip39Word(word);
-
-        setErrors(nextErrors);
-    };
-
     const handleWordChange = (index: number, rawValue: string) => {
-        const sanitized = sanitizeWord(rawValue);
-
         const nextWords = [...words];
 
-        nextWords[index] = sanitized;
+        nextWords[index] = sanitizeWord(rawValue);
 
         setWords(nextWords);
 
-        updateErrorsForWord(index, sanitized);
+        const nextErrors = [...errors];
+
+        nextErrors[index] = false;
+
+        setErrors(nextErrors);
 
         setSubmitError(null);
     };
@@ -153,22 +142,12 @@ const InputsForm = ({
 
         setWords(nextWords);
 
-        const nextErrors = createErrors(wordCount);
-
-        sanitized.forEach((word, index) => {
-            if (index >= wordCount) {
-                return;
-            }
-
-            // nextErrors[index] = !isBip39Word(word);
-        });
-
-        setErrors(nextErrors);
+        setErrors(createErrors(wordCount));
 
         setSubmitError(null);
     };
 
-    const handlePasteWords = (startIndex: number, pasted: string) => {
+    const handlePasteWords = (_startIndex: number, pasted: string) => {
         resetAllWords();
 
         const parts = pasted
@@ -185,51 +164,25 @@ const InputsForm = ({
 
     const validateAll = (): boolean => {
         const trimmed = words.map((word) => word.trim());
+        const emptyFlags = trimmed.map((word) => !word);
 
-        const emptyIndexes: number[] = [];
-        const invalidIndexes: number[] = [];
+        setErrors(emptyFlags);
 
-        trimmed.forEach((word, index) => {
-            if (!word) {
-                emptyIndexes.push(index);
+        if (emptyFlags.some(Boolean)) {
+            setSubmitError("Not all fields are filled in.");
 
-                return;
-            }
-
-            // if (!isBip39Word(word)) {
-            //     invalidIndexes.push(index);
-            // }
-        });
-
-        let errorMessage: string | null = null;
-
-        if (emptyIndexes.length > 0) {
-            errorMessage = "Not all fields are filled in.";
-        }
-
-        if (invalidIndexes.length > 0) {
-            errorMessage = "Some words are not included in the BIP39 wordlist.";
-        }
-
-        setSubmitError(errorMessage);
-
-        const nextErrors = [...errors];
-
-        trimmed.forEach((word, index) => {
-            if (!word) {
-                nextErrors[index] = false;
-
-                return;
-            }
-
-            // nextErrors[index] = !isBip39Word(word);
-        });
-
-        setErrors(nextErrors);
-
-        if (emptyIndexes.length > 0 || invalidIndexes.length > 0) {
             return false;
         }
+
+        if (!Mnemonic.isMnemonicValid(toNormalizedMnemonic(trimmed))) {
+            setSubmitError(
+                "Mnemonic is not a valid BIP39 phrase: check the words and their order.",
+            );
+
+            return false;
+        }
+
+        setSubmitError(null);
 
         if (!validateWords) {
             return true;
@@ -249,37 +202,19 @@ const InputsForm = ({
     const handleSubmit = (event: FormEvent) => {
         event.preventDefault();
 
-        const isValid = validateAll();
-
-        if (!isValid) {
+        if (!validateAll()) {
             return;
         }
 
-        const normalized = words.map((word) => word.trim().toLowerCase());
-
         if (onValidSubmit) {
-            onValidSubmit(normalized);
+            onValidSubmit(Mnemonic.mnemonicToWordArray(
+                toNormalizedMnemonic(words),
+            ));
         }
     };
 
     return (
         <form className="form" onSubmit={handleSubmit}>
-            {/* <div className="form-row">
-                <label className="label">
-                    Words count:
-                    <select
-                        className="select"
-                        value={wordCount}
-                        onChange={handleSelectChange}
-                    >
-                        {WordsCountVariants.map((count) => (
-                            <option key={count} value={count}>
-                                {count}
-                            </option>
-                        ))}
-                    </select>
-                </label>
-            </div> */}
             <InputsGrid
                 mode={formMode}
                 words={words}

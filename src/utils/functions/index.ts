@@ -1,4 +1,10 @@
-import { ASI_BASE_UNIT, POWER_BASE } from "@utils/constants";
+import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
+import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import { TransactionType } from "@domains/Transaction";
+import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
+import { ITableRecord } from "@domains/TableService";
+import { BASELINE_STORAGE_VERSION } from "@config/index";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -119,31 +125,16 @@ export const fromAtomicAmountToNumber = (
 
 export const fromAtomicAmount = fromAtomicAmountToString;
 
-export const toUint8Array = (value: unknown): Uint8Array => {
-    if (value instanceof Uint8Array) {
-        return value;
+export const parseAtomicAmount = (value: unknown): bigint | null => {
+    if (typeof value === "number") {
+        return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
     }
 
-    if (
-        typeof value === "object" &&
-        value !== null &&
-        "type" in value &&
-        value.type === "Buffer" &&
-        "data" in value &&
-        Array.isArray(value.data)
-    ) {
-        return Uint8Array.from(value.data);
+    if (typeof value === "string" && DIGITS_ONLY_REGEX.test(value)) {
+        return BigInt(value);
     }
 
-    if (Array.isArray(value)) {
-        return Uint8Array.from(value);
-    }
-
-    if (typeof value === "object" && value !== null) {
-        return Uint8Array.from(Object.values(value));
-    }
-
-    throw new Error("Unsupported data format");
+    return null;
 };
 
 export type IUrlValue = string | number | boolean | undefined;
@@ -182,9 +173,127 @@ export const buildUrl = (
     return queryString ? `${url}?${queryString}` : url;
 };
 
-/**
- * @returns address in the format accepted within the SDK application
- */
 export function normalizeAddress(address: string | undefined): string {
     return address?.trim().toLowerCase() ?? "";
 }
+
+export function isSameAddress(
+    address: string | undefined,
+    other: string | undefined,
+): boolean {
+    const normalized: string = normalizeAddress(address);
+
+    return normalized !== "" && normalized === normalizeAddress(other);
+}
+
+export function resolveTransferType(
+    from: string,
+    viewerAddress: string,
+): TransactionType {
+    return isSameAddress(from, viewerAddress) ? "send" : "receive";
+}
+
+export const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    if (error instanceof Error) {
+        return error.message.trim() || error.name || fallback;
+    }
+
+    if (isRecordWithMessage(error)) {
+        return error.message;
+    }
+
+    return fallback;
+};
+
+export const parseDecryptedJson = <T>(
+    payload: string,
+    source: CorruptedDataSource,
+    isExpectedStructure: (value: unknown) => value is T,
+): T => {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(payload);
+    } catch {
+        throw new CorruptedDataError(source);
+    }
+
+    if (!isExpectedStructure(parsed)) {
+        throw new CorruptedDataError(source);
+    }
+
+    return parsed;
+};
+
+export const runProtected = (
+    run: () => void | Promise<void>,
+    onFailure: (error: unknown) => void,
+): void => {
+    try {
+        const result: unknown = run();
+
+        if (isPromiseLike(result)) {
+            Promise.resolve(result).catch(onFailure);
+        }
+    } catch (error: unknown) {
+        onFailure(error);
+    }
+};
+
+export interface IFieldSelection<T, V> {
+    selected: T[];
+    missingValues: V[];
+}
+
+export const selectByField = <T, K extends keyof T>(
+    items: T[],
+    field: K,
+    values: readonly T[K][],
+): IFieldSelection<T, T[K]> => {
+    const requestedValues: Set<T[K]> = new Set(values);
+
+    const selected: T[] = items.filter((item: T) =>
+        requestedValues.has(item[field]),
+    );
+
+    const selectedValues: Set<T[K]> = new Set(
+        selected.map((item: T) => item[field]),
+    );
+
+    const missingValues: T[K][] = Array.from(requestedValues).filter(
+        (value: T[K]) => !selectedValues.has(value),
+    );
+
+    return { selected, missingValues };
+};
+
+export const isNetworkConfigChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean => {
+    if (!update) {
+        return false;
+    }
+
+    return NETWORK_CONFIG_FIELDS.some(
+        (field: keyof INetworkConfig) =>
+            update[field] !== undefined && update[field] !== current[field],
+    );
+};
+
+export const isSameNetworkConfig = (
+    first: INetworkConfig,
+    second: INetworkConfig,
+): boolean =>
+    NETWORK_CONFIG_FIELDS.every(
+        (field: keyof INetworkConfig) => first[field] === second[field],
+    );
+
+export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({
+    ...record,
+    schemaVersion: record.schemaVersion ?? BASELINE_STORAGE_VERSION,
+});

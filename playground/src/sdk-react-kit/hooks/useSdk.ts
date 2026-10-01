@@ -1,13 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Address,
     Client,
-    IClientEventDispatcher,
+    ClientEvent,
+    IAccountKeyfile,
     ICreatedAccountData,
+    IDeployRequest,
+    IDeployWatchCallbacks,
+    IDeployWatchHandle,
+    IDeployWatchOptions,
+    IImportWalletKeyfileOptions,
+    IKeyfileAccountsImportResult,
+    IKeyfileImportPreview,
+    INetworkConfig,
+    INetworkRecord,
+    INetworkUpdate,
+    IReservedOperationResult,
     ITransactionReservation,
+    ISignDeployRequest,
     ITransferRequest,
+    IWalletKeyfile,
     IWalletMetadata,
     MnemonicStrength,
+    NetworkId,
     NetworkName,
+    SignedResult,
+    TReservationsByWallet,
+    TTransactionReservationRequest,
+    TUnsubscribe,
     Wallet,
 } from "asi-wallet-sdk";
 import { init } from "../helpers";
@@ -27,14 +47,15 @@ const useSdk = () => {
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
         [],
     );
-    const [unlockedWallets, setUnlockedWallets] = useState<Wallet[]>([]);
-    const [networks, setNetworks] = useState<NetworkName[]>([]);
-    const [currentNetwork, setCurrentNetwork] = useState<NetworkName | null>(
+    const [openWallets, setOpenWallets] = useState<Wallet[]>([]);
+    const [networkRecords, setNetworkRecords] = useState<INetworkRecord[]>([]);
+    const [currentNetwork, setCurrentNetwork] = useState<INetworkRecord | null>(
         null,
     );
-    const [reservationsByWallet, setReservationsByWallet] = useState<
-        Record<string, ITransactionReservation[]>
-    >({});
+    const [reservationsByWallet, setReservationsByWallet] =
+        useState<TReservationsByWallet>({});
+    const [busyNetworkIds, setBusyNetworkIds] = useState<NetworkId[]>([]);
+    const [lockedWalletIds, setLockedWalletIds] = useState<string[]>([]);
 
     const clientRef = useRef<Client | null>(null);
 
@@ -49,50 +70,36 @@ const useSdk = () => {
             const walletManager = currentClient.getWalletManager();
 
             setWalletsMetadata(await walletManager.getPublicWalletsMetadata());
-            setUnlockedWallets([...walletManager.getAll()]);
+            setOpenWallets([...walletManager.getAll()]);
         },
         [],
     );
 
-    const eventDispatcher = useMemo<IClientEventDispatcher>(
-        () => ({
-            onWalletsChanged: () => {
-                void refresh();
-            },
-            onAccountsChanged: () => {
-                void refresh();
-            },
-            onNetworkChanged: (networkName: NetworkName) => {
-                setCurrentNetwork(networkName);
-            },
-            onReservationsChanged: (
-                walletId: string,
-                reservations: ITransactionReservation[],
-            ) => {
-                setReservationsByWallet((previous) => ({
-                    ...previous,
-                    [walletId]: reservations,
-                }));
-            },
-        }),
-        [refresh],
-    );
+    const refreshNetworks = useCallback((activeClient?: Client): void => {
+        const currentClient = activeClient ?? clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        setNetworkRecords(currentClient.getNetworks());
+    }, []);
 
     useEffect(() => {
         let disposed = false;
 
         const initialize = async (): Promise<void> => {
-            const createdClient = await init(eventDispatcher);
+            const createdClient = await init();
 
             if (disposed) {
-                createdClient.close();
+                await createdClient.close();
 
                 return;
             }
 
             clientRef.current = createdClient;
             setClient(createdClient);
-            setNetworks(createdClient.getNetworksNames());
+            refreshNetworks(createdClient);
             setCurrentNetwork(createdClient.getCurrentNetwork());
 
             await refresh(createdClient);
@@ -102,10 +109,64 @@ const useSdk = () => {
 
         return () => {
             disposed = true;
-            clientRef.current?.close();
+            void clientRef.current?.close();
             clientRef.current = null;
         };
-    }, [eventDispatcher, refresh]);
+    }, [refresh, refreshNetworks]);
+
+    useEffect(() => {
+        if (!client) {
+            return;
+        }
+
+        const eventBus = client.getEventBus();
+
+        const unsubscribes: TUnsubscribe[] = [
+            eventBus.on(ClientEvent.WALLETS_CHANGED, () => {
+                void refresh();
+            }),
+            eventBus.on(ClientEvent.ACCOUNTS_CHANGED, () => {
+                void refresh();
+            }),
+            eventBus.on(
+                ClientEvent.NETWORK_CHANGED,
+                (network: INetworkRecord) => {
+                    setCurrentNetwork(network);
+                },
+            ),
+            eventBus.on(
+                ClientEvent.RESERVATIONS_CHANGED,
+                (reservationsByWallet: TReservationsByWallet) => {
+                    setReservationsByWallet(reservationsByWallet);
+                },
+            ),
+            eventBus.on(
+                ClientEvent.NETWORK_BUSY_CHANGED,
+                (networkId: NetworkId, isBusy: boolean) => {
+                    setBusyNetworkIds((currentIds: NetworkId[]) => {
+                        const restIds: NetworkId[] = currentIds.filter(
+                            (id: NetworkId) => id !== networkId,
+                        );
+
+                        return isBusy ? [...restIds, networkId] : restIds;
+                    });
+                },
+            ),
+            eventBus.on(ClientEvent.WALLET_LOCKED, (walletId: string) => {
+                setLockedWalletIds((currentIds: string[]) =>
+                    currentIds.includes(walletId)
+                        ? currentIds
+                        : [...currentIds, walletId],
+                );
+            }),
+        ];
+
+        return () => {
+            for (const unsubscribe of unsubscribes) {
+                unsubscribe();
+            }
+        };
+    }, [client, refresh]);
 
     const requireClient = useCallback((): Client => {
         if (!clientRef.current) {
@@ -160,27 +221,103 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const unlockWallet = useCallback(
+    const forgetLockedWallet = useCallback((walletId: string): void => {
+        setLockedWalletIds((currentIds: string[]) =>
+            currentIds.filter((id: string) => id !== walletId),
+        );
+    }, []);
+
+    const syncWalletLock = useCallback((walletId: string): void => {
+        const currentClient = clientRef.current;
+
+        if (!currentClient) {
+            return;
+        }
+
+        const isUnlocked: boolean = currentClient.isWalletUnlocked(walletId);
+
+        setLockedWalletIds((currentIds: string[]) => {
+            const isTracked: boolean = currentIds.includes(walletId);
+
+            if (isUnlocked) {
+                return isTracked
+                    ? currentIds.filter((id: string) => id !== walletId)
+                    : currentIds;
+            }
+
+            return isTracked ? currentIds : [...currentIds, walletId];
+        });
+    }, []);
+
+    const withSessionSync = useCallback(
+        async <T>(walletId: string, action: () => Promise<T>): Promise<T> => {
+            try {
+                return await action();
+            } finally {
+                syncWalletLock(walletId);
+            }
+        },
+        [syncWalletLock],
+    );
+
+    const openWallet = useCallback(
         async (signerId: string, password: string): Promise<Wallet> => {
-            const wallet = await requireClient().unlockWallet(
-                signerId,
-                password,
-            );
+            const wallet = await requireClient().openWallet(signerId, password);
+
+            forgetLockedWallet(wallet.getId());
 
             await refresh();
 
             return wallet;
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
+    );
+
+    const closeWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().closeWallet(walletId);
+
+            forgetLockedWallet(walletId);
+        },
+        [requireClient, forgetLockedWallet],
+    );
+
+    const closeAllWallets = useCallback((): void => {
+        requireClient().closeAllWallets();
+
+        setLockedWalletIds([]);
+    }, [requireClient]);
+
+    const lockWallet = useCallback(
+        (walletId: string): void => {
+            requireClient().lockWallet(walletId);
+        },
+        [requireClient],
+    );
+
+    const unlockWallet = useCallback(
+        async (walletId: string, password: string): Promise<void> => {
+            await requireClient().unlockWallet(walletId, password);
+
+            forgetLockedWallet(walletId);
+        },
+        [requireClient, forgetLockedWallet],
+    );
+
+    const isWalletLocked = useCallback(
+        (walletId: string): boolean => lockedWalletIds.includes(walletId),
+        [lockedWalletIds],
     );
 
     const removeWallet = useCallback(
         async (walletId: string): Promise<void> => {
             await requireClient().removeWallet(walletId);
 
+            forgetLockedWallet(walletId);
+
             await refresh();
         },
-        [requireClient, refresh],
+        [requireClient, refresh, forgetLockedWallet],
     );
 
     const deriveAccount = useCallback(
@@ -224,35 +361,169 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const setActiveAccount = useCallback(
-        (walletId: string, accountId: string): void => {
-            requireClient().setActiveAccount(walletId, accountId);
-
-            void refresh();
-        },
-        [requireClient, refresh],
-    );
-
     const setNetwork = useCallback(
-        (networkName: NetworkName): void => {
+        (networkId: NetworkId): void => {
             const currentClient = requireClient();
 
-            currentClient.setNetwork(networkName);
+            currentClient.setNetwork(networkId);
 
             setCurrentNetwork(currentClient.getCurrentNetwork());
         },
         [requireClient],
     );
 
+    const addNetwork = useCallback(
+        async (
+            name: NetworkName,
+            config: INetworkConfig,
+        ): Promise<INetworkRecord> => {
+            const record = await requireClient().addNetwork(name, config);
+
+            refreshNetworks();
+
+            return record;
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const updateNetwork = useCallback(
+        async (networkId: NetworkId, update: INetworkUpdate): Promise<void> => {
+            const currentClient = requireClient();
+
+            await currentClient.updateNetwork(networkId, update);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
+    const removeNetwork = useCallback(
+        async (networkId: NetworkId): Promise<void> => {
+            const currentClient = requireClient();
+
+            await currentClient.removeNetwork(networkId);
+
+            refreshNetworks();
+            setCurrentNetwork(currentClient.getCurrentNetwork());
+        },
+        [requireClient, refreshNetworks],
+    );
+
     const transfer = useCallback(
-        (request: ITransferRequest, password: string): Promise<string> =>
-            requireClient().transfer(request, password),
+        (
+            request: ITransferRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().transfer(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const deploy = useCallback(
+        (
+            request: IDeployRequest,
+            password?: string,
+        ): Promise<IReservedOperationResult> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().deploy(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const signDeploy = useCallback(
+        (
+            request: ISignDeployRequest,
+            password?: string,
+        ): Promise<SignedResult> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().signDeploy(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const isWalletUnlocked = useCallback(
+        (walletId: string): boolean =>
+            requireClient().isWalletUnlocked(walletId),
         [requireClient],
     );
 
+    const exploreDeploy = useCallback(
+        (rholang: string): Promise<unknown> =>
+            requireClient().exploreDeploy(rholang),
+        [requireClient],
+    );
+
+    const watchDeploy = useCallback(
+        (
+            deployId: string,
+            callbacks?: IDeployWatchCallbacks,
+            options?: IDeployWatchOptions,
+        ): IDeployWatchHandle =>
+            requireClient().watchDeploy(deployId, callbacks, options),
+        [requireClient],
+    );
+
+    const getExportedAccountData = useCallback(
+        (walletId: string, accountId: string): IAccountKeyfile =>
+            requireClient().getExportedAccountData(walletId, accountId),
+        [requireClient],
+    );
+
+    const exportWalletKeyfile = useCallback(
+        (walletId: string, password: string): Promise<IWalletKeyfile> =>
+            requireClient().exportWalletKeyfile(walletId, password),
+        [requireClient],
+    );
+
+    const previewWalletKeyfileImport = useCallback(
+        (source: string, password: string): Promise<IKeyfileImportPreview> =>
+            requireClient().previewWalletKeyfileImport(source, password),
+        [requireClient],
+    );
+
+    const importWalletKeyfile = useCallback(
+        async (
+            source: string,
+            password: string,
+            options?: IImportWalletKeyfileOptions,
+        ): Promise<Wallet> => {
+            const wallet = await requireClient().importWalletKeyfile(
+                source,
+                password,
+                options,
+            );
+
+            await refresh();
+
+            return wallet;
+        },
+        [requireClient, refresh],
+    );
+
+    const importKeyfileAccounts = useCallback(
+        async (
+            source: string,
+            password: string,
+            options?: IImportWalletKeyfileOptions,
+        ): Promise<IKeyfileAccountsImportResult> => {
+            const result = await requireClient().importKeyfileAccounts(
+                source,
+                password,
+                options,
+            );
+
+            await refresh();
+
+            return result;
+        },
+        [requireClient, refresh],
+    );
+
     const getBalance = useCallback(
-        (address: string): Promise<bigint> =>
-            requireClient().getBalance(address as never),
+        (address: Address): Promise<bigint> =>
+            requireClient().getBalance(address),
         [requireClient],
     );
 
@@ -268,50 +539,114 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const addTransactionReservation = useCallback(
+        (
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().addTransactionReservation(request, password),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const updateTransactionReservation = useCallback(
+        (
+            reservationId: string,
+            request: TTransactionReservationRequest,
+            password?: string,
+        ): Promise<ITransactionReservation> =>
+            withSessionSync(request.walletId, () =>
+                requireClient().updateTransactionReservation(
+                    reservationId,
+                    request,
+                    password,
+                ),
+            ),
+        [requireClient, withSessionSync],
+    );
+
+    const removeTransactionReservation = useCallback(
+        (
+            walletId: string,
+            reservationId: string,
+        ): Promise<ITransactionReservation> =>
+            requireClient().removeTransactionReservation(
+                walletId,
+                reservationId,
+            ),
+        [requireClient],
+    );
+
+    const hasNetworkReservations = useCallback(
+        (networkId?: NetworkId): boolean =>
+            requireClient().hasNetworkReservations(networkId),
+        [requireClient],
+    );
+
+    const isNetworkBusy = useCallback(
+        (networkId: NetworkId): boolean => busyNetworkIds.includes(networkId),
+        [busyNetworkIds],
+    );
+
+    const isCurrentNetworkBusy: boolean =
+        currentNetwork !== null && busyNetworkIds.includes(currentNetwork.id);
+
     const clearPersistence = useCallback(async (): Promise<void> => {
         await requireClient().clearPersistence();
 
+        setLockedWalletIds([]);
+
         await refresh();
     }, [requireClient, refresh]);
-
-    const toDisplayAmount = useCallback(
-        (atomicAmount: bigint): string =>
-            requireClient().toDisplayAmount(atomicAmount),
-        [requireClient],
-    );
-
-    const toAtomicAmount = useCallback(
-        (amount: string | number): bigint =>
-            requireClient().toAtomicAmount(amount),
-        [requireClient],
-    );
 
     return {
         client,
         isReady: client !== null,
         walletsMetadata,
-        unlockedWallets,
+        openWallets,
         reservationsByWallet,
-        networks,
+        networkRecords,
         currentNetwork,
         setNetwork,
+        addNetwork,
+        updateNetwork,
+        removeNetwork,
         generateMnemonic,
         generatePrivateKey,
         createHDWallet,
         createPrivateKeyWallet,
+        openWallet,
+        closeWallet,
+        closeAllWallets,
+        lockWallet,
         unlockWallet,
+        isWalletLocked,
         removeWallet,
         deriveAccount,
         renameAccount,
         removeAccount,
-        setActiveAccount,
         transfer,
+        deploy,
+        signDeploy,
+        isWalletUnlocked,
+        exploreDeploy,
+        watchDeploy,
+        getExportedAccountData,
+        exportWalletKeyfile,
+        previewWalletKeyfileImport,
+        importWalletKeyfile,
+        importKeyfileAccounts,
         getBalance,
         getAvailableBalance,
         getReservations,
+        addTransactionReservation,
+        updateTransactionReservation,
+        removeTransactionReservation,
+        hasNetworkReservations,
+        isNetworkBusy,
+        isCurrentNetworkBusy,
         clearPersistence,
-        toDisplayAmount,
-        toAtomicAmount,
     };
 };
 

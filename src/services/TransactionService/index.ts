@@ -1,15 +1,20 @@
 import blakejs from "blakejs";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Asset from "@domains/Asset";
-import { createTransferDeploy } from "@domains/Deploy/factory";
+import { DeployData } from "@domains/Deploy";
+import { IDeployTermFactory } from "@domains/Deploy/factory";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
 import { Address } from "@domains/Wallet";
 import {
     AddressValidationResult,
     encodeBase16,
+    ensureValid,
     INVALID_BLOCK_NUMBER,
     validateAddress,
+    validateDeployPayload,
 } from "@utils/index";
+import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import SignerService, { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
 import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
@@ -32,29 +37,91 @@ export interface ITransferPayload {
     account: Account;
     signer: Signer;
     details: ITransferDetails;
-    passwordProvider: SecretsProvider;
+    passwordProvider?: SecretsProvider;
 }
+
+export interface IDeployPayload {
+    walletType: WalletTypes;
+    account: Account;
+    signer: Signer;
+    term: string;
+    phloLimit?: number;
+    phloPrice?: number;
+    shardId?: string;
+    passwordProvider?: SecretsProvider;
+}
+
+export type TDeployDetails = Omit<
+    IDeployPayload,
+    "walletType" | "account" | "signer" | "passwordProvider"
+>;
 
 export default class TransactionService {
     private readonly deployService: DeployService;
     private readonly blockService: BlockService;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(deployService: DeployService, blockService: BlockService) {
+    constructor(
+        deployService: DeployService,
+        blockService: BlockService,
+        nodeApiProvider?: NodeApiProvider,
+    ) {
         this.deployService = deployService;
         this.blockService = blockService;
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
     }
 
-    private async signDeploy(
-        signer: Signer,
-        deployData: any,
-        signingContext: TSigningContext,
-    ): Promise<SignedResult> {
+    private get terms(): IDeployTermFactory {
+        return createDeployTermFactory(
+            this.nodeApiProvider.getApi().getProfile(),
+        );
+    }
+
+    public async signDeploy({
+        walletType,
+        account,
+        signer,
+        term,
+        phloLimit,
+        phloPrice,
+        shardId,
+        passwordProvider,
+    }: IDeployPayload): Promise<SignedResult> {
+        ensureValid(
+            validateDeployPayload({ term, phloLimit, phloPrice, shardId }),
+            { context: "TransactionService.signDeploy" },
+        );
+
+        const latestBlockNumber: number =
+            await this.blockService.getLatestBlockNumber();
+
+        if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
+            throw new Error("TransactionService: Invalid block number");
+        }
+
+        const signingContext: TSigningContext =
+            walletType !== WalletTypes.HD
+                ? {
+                      passwordProvider,
+                  }
+                : {
+                      passwordProvider,
+                      index: account.getIndex()!,
+                  };
+
+        const deployData: DeployData = {
+            term,
+            phloLimit: phloLimit ?? DEFAULT_PHLO_LIMIT,
+            phloPrice: phloPrice ?? DEFAULT_PHLO_PRICE,
+            validAfterBlockNumber: latestBlockNumber - 1,
+            timestamp: Date.now(),
+            shardId: shardId ?? "root",
+        };
+
         const serialized: Uint8Array =
             SignerService.deployDataProtobufSerialize(deployData);
 
         const hash: string = blake2bHex(serialized, undefined, 32);
-
-        // const digest = Uint8Array.from(Buffer.from(hash, "hex"));
 
         const signed = await signer.sign(hash, signingContext);
 
@@ -66,6 +133,27 @@ export default class TransactionService {
         };
     }
 
+    private async submitSignedDeploy(
+        signedDeploy: SignedResult,
+    ): Promise<string> {
+        const submittedDeployId: string | undefined =
+            await this.deployService.submitSignedDeploy(signedDeploy);
+
+        if (!submittedDeployId) {
+            throw new Error(
+                "Error on submitted deploy parsing - not found deploy id",
+            );
+        }
+
+        return submittedDeployId;
+    }
+
+    private async signAndSubmit(payload: IDeployPayload): Promise<string> {
+        const signedDeploy: SignedResult = await this.signDeploy(payload);
+
+        return this.submitSignedDeploy(signedDeploy);
+    }
+
     public async transfer({
         walletType,
         account,
@@ -73,10 +161,6 @@ export default class TransactionService {
         details,
         passwordProvider,
     }: ITransferPayload): Promise<string> {
-        if (!account) {
-            throw new Error("Wallet has no active account");
-        }
-
         const fromAddress: Address = account.getAddress();
 
         const validation: AddressValidationResult = validateAddress(details.to);
@@ -91,65 +175,25 @@ export default class TransactionService {
             throw new Error("Amount must be greater than zero");
         }
 
-        if (details.phloLimit && details.phloLimit <= 0n) {
-            throw new Error("Phlo limit must be greater than zero");
-        }
-
-        if (details.phloPrice && details.phloPrice <= 0n) {
-            throw new Error("Phlo price must be greater than zero");
-        }
-
-        const deploy: string = createTransferDeploy(
+        const term: string = this.terms.createTransferDeploy(
             fromAddress,
             details.to,
             details.amount,
         );
 
-        const latestBlockNumber: number =
-            await this.blockService.getLatestBlockNumber();
-
-        if (latestBlockNumber === INVALID_BLOCK_NUMBER) {
-            throw new Error(
-                "TransactionService.transfer: Invalid block number",
-            );
-        }
-
-        const signingContext: TSigningContext =
-            walletType !== WalletTypes.HD
-                ? {
-                      passwordProvider,
-                  }
-                : {
-                      passwordProvider,
-                      index: account.getIndex()!,
-                  };
-
-        const signedDeploy = await this.signDeploy(
+        return this.signAndSubmit({
+            walletType,
+            account,
             signer,
-            {
-                term: deploy,
-                phloLimit: details.phloLimit ?? DEFAULT_PHLO_LIMIT,
-                phloPrice: details.phloPrice ?? DEFAULT_PHLO_PRICE,
-                validAfterBlockNumber: latestBlockNumber - 1,
-                timestamp: Date.now(),
-                shardId: details.shardId ?? "root",
-            },
-            signingContext,
-        );
+            term,
+            phloLimit: details.phloLimit,
+            phloPrice: details.phloPrice,
+            shardId: details.shardId,
+            passwordProvider,
+        });
+    }
 
-        try {
-            const submittedDeployId: string | undefined =
-                await this.deployService.submitSignedDeploy(signedDeploy);
-
-            if (!submittedDeployId) {
-                throw new Error(
-                    "Error on submitted deploy parsing - not found deploy id",
-                );
-            }
-
-            return submittedDeployId;
-        } catch (error: unknown) {
-            throw error;
-        }
+    public async deploy(payload: IDeployPayload): Promise<string> {
+        return this.signAndSubmit(payload);
     }
 }

@@ -1,12 +1,29 @@
-import { NetworkName } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import { ITableRecord } from "@domains/TableService";
 
-type TransactionStatus = "pending" | "confirmed" | "failed";
+export const TRANSACTION_STATUSES = ["pending", "completed", "failed"] as const;
+
+export const TRANSACTION_TYPES = ["send", "receive", "deploy"] as const;
+
+export const TRANSACTION_DETECTED_BY_TYPES = [
+    "balance_change",
+    "manual",
+    "auto",
+] as const;
+
+export const TRANSACTION_RESERVATION_KINDS = ["transfer", "deploy"] as const;
+
+export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+export type TransactionDetectedBy =
+    (typeof TRANSACTION_DETECTED_BY_TYPES)[number];
+export type TransactionReservationKind =
+    (typeof TRANSACTION_RESERVATION_KINDS)[number];
 
 export interface Transaction {
     id: string;
     timestamp: Date;
-    type: "send" | "receive" | "deploy";
+    type: TransactionType;
     from: string;
     to?: string;
     amount?: string;
@@ -15,20 +32,47 @@ export interface Transaction {
     gasCost?: string;
     status: TransactionStatus;
     contractCode?: string;
-    note?: string;
-    networkName: NetworkName; //TODO: clarify what network data will be stored
-    detectedBy?: "balance_change" | "manual" | "auto";
+    networkId: NetworkId;
+    detectedBy?: TransactionDetectedBy;
 }
 
-export interface ITransactionReservationPrivateData {
-    timestamp: Date;
-    accountAddress: string;
-    pendingAmount: string;
+export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
+    timestamp: string;
+};
+
+export interface ITransactionReservationDetails {
     deployId: string;
+    timestamp: Date;
+    from: string;
+    to?: string;
+    amount?: string;
+    gasCost?: string;
+    contractCode?: string;
+}
+
+export type TSerializedTransactionReservationDetails = Omit<
+    ITransactionReservationDetails,
+    "timestamp"
+> & {
+    timestamp: string;
+};
+
+export interface ITransactionReservationPrivateData {
+    accountId: string;
+    pendingAmount: string;
     expirationTime: number;
+    kind: TransactionReservationKind;
+    details: ITransactionReservationDetails;
+}
+
+export interface ISerializedTransactionReservationPrivateData
+    extends Omit<ITransactionReservationPrivateData, "details"> {
+    details: TSerializedTransactionReservationDetails;
 }
 
 export interface ITransactionReservation
     extends ITransactionReservationPrivateData, ITableRecord {
-    networkName: NetworkName;
+    networkId: NetworkId;
 }
+
+export type TReservationsByWallet = Record<string, ITransactionReservation[]>;

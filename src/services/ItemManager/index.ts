@@ -9,6 +9,12 @@ export default class ItemManager<T> {
         this.items.set(id, item);
     }
 
+    public addMany(entries: Iterable<[string, T]>): void {
+        for (const [id, item] of entries) {
+            this.add(id, item);
+        }
+    }
+
     public remove(id: string): T {
         if (!this.items.has(id)) {
             throw new Error("ItemManager.remove: not found item by id");
@@ -23,6 +29,25 @@ export default class ItemManager<T> {
 
     public get(id: string): T | null {
         return this.items.get(id) ?? null;
+    }
+
+    public removeByFilter(filter: (item: T) => boolean): T[] {
+        const removedItems: T[] = [];
+
+        for (const [id, item] of this.items) {
+            if (!filter(item)) {
+                continue;
+            }
+
+            this.items.delete(id);
+            removedItems.push(item);
+        }
+
+        return removedItems;
+    }
+
+    public getByFilter(filter: (item: T) => boolean): T[] {
+        return this.getAll().filter(filter);
     }
 
     public hasByFilter(filter: (item: T) => boolean): boolean {

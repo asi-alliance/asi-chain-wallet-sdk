@@ -2,11 +2,26 @@ import IndexerClient from "@domains/IndexerClient";
 import ObserverClient from "@domains/ObserverClient";
 import ValidatorClient from "@domains/ValidatorClient";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
-import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
+import NetworkBusyRegistry from "@domains/NetworkBusyRegistry";
+import {
+    INetworkConfig,
+    INetworkContext,
+    INetworkRecord,
+    INetworkUpdate,
+    IPersistedNetworkRecord,
+    NetworkId,
+    NetworkName,
+    TNetworkBusyListener,
+    TNetworksConfig,
+} from "@domains/Network";
 import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
+    EnsureCurrentNetworkNotBusy,
+    EnsureTargetNetworkNotBusy,
 } from "@utils/decorators/apiClientManager";
+import { createApiClients } from "@fabrics/apiClients";
+import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 
 export interface IApiClients {
     validator: ValidatorClient;
@@ -14,21 +29,28 @@ export interface IApiClients {
     indexer: IndexerClient;
 }
 
+export interface INetworkOperationOptions {
+    onBusyChanged?: TNetworkBusyListener;
+    networkId?: NetworkId;
+}
+
 export default class ApiClientManager {
     private static instance: ApiClientManager;
 
     private readonly networkConfigProvider: NetworkConfigProvider;
+    private readonly networkBusyRegistry: NetworkBusyRegistry;
 
     private validatorClient: ValidatorClient | null = null;
     private observerClient: ObserverClient | null = null;
     private indexerClient: IndexerClient | null = null;
 
-    private currentNetwork: NetworkName | null = null;
+    private currentNetworkId: NetworkId | null = null;
 
     private isInitialized: boolean = false;
 
     private constructor() {
         this.networkConfigProvider = new NetworkConfigProvider();
+        this.networkBusyRegistry = new NetworkBusyRegistry();
     }
 
     public static getInstance(): ApiClientManager {
@@ -41,39 +63,40 @@ export default class ApiClientManager {
 
     public initialize(
         networksConfig: TNetworksConfig,
-        network?: NetworkName,
+        customNetworks: IPersistedNetworkRecord[] = [],
+        networkName?: NetworkName,
     ): void {
         if (this.isInitialized) {
             return;
         }
 
         this.networkConfigProvider.initialize(networksConfig);
+        this.networkConfigProvider.restoreCustomNetworks(customNetworks);
 
-        const defaultNetwork: NetworkName =
-            network ?? (Object.keys(networksConfig)[0] as NetworkName);
+        const records: INetworkRecord[] = this.networkConfigProvider.getAll();
+        const defaultRecord: INetworkRecord =
+            (networkName
+                ? records.find((record) => record.name === networkName)
+                : records[0]) ?? records[0];
 
-        this.switchNetwork(defaultNetwork);
+        this.switchNetwork(defaultRecord.id);
 
         this.isInitialized = true;
     }
 
     @EnsureApiClientManagerConfigured
-    public switchNetwork(network: NetworkName): void {
-        const config: INetworkConfig = this.networkConfigProvider.get(network);
+    @EnsureCurrentNetworkNotBusy
+    public switchNetwork(networkId: NetworkId): void {
+        const { config } = this.networkConfigProvider.get(networkId);
 
-        this.validatorClient = new ValidatorClient({
-            baseUrl: config.ValidatorURL,
-        });
+        const { validator, observer, indexer }: IApiClients =
+            createApiClients(config);
 
-        this.observerClient = new ObserverClient({
-            baseUrl: config.ReadOnlyURL,
-        });
+        this.validatorClient = validator;
+        this.observerClient = observer;
+        this.indexerClient = indexer;
 
-        this.indexerClient = new IndexerClient({
-            baseUrl: config.IndexerURL,
-        });
-
-        this.currentNetwork = network;
+        this.currentNetworkId = networkId;
     }
 
     @EnsureApiClientManagerInitialized
@@ -92,7 +115,7 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
-    public getClients() {
+    public getClients(): IApiClients {
         return {
             validator: this.validatorClient!,
             observer: this.observerClient!,
@@ -101,14 +124,103 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
-    public getNetwork(): NetworkName {
-        return this.currentNetwork!;
+    public getCurrentNetworkId(): NetworkId {
+        return this.currentNetworkId!;
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getCurrentNetwork(): INetworkRecord {
+        return this.networkConfigProvider.get(this.currentNetworkId!);
     }
 
     @EnsureApiClientManagerInitialized
     @EnsureApiClientManagerConfigured
-    public getNetworkNames(): NetworkName[] {
-        return this.networkConfigProvider.getNetworkNames();
+    public getNetworkIds(): NetworkId[] {
+        return this.networkConfigProvider.getIds();
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetworks(): INetworkRecord[] {
+        return this.networkConfigProvider.getAll();
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetwork(id: NetworkId): INetworkRecord {
+        return this.networkConfigProvider.get(id);
+    }
+
+    public isNetworkBusy(networkId: NetworkId): boolean {
+        return this.networkBusyRegistry.isBusy(networkId);
+    }
+
+    @EnsureApiClientManagerInitialized
+    public async runNetworkOperation<TResult>(
+        operation: () => Promise<TResult>,
+        { onBusyChanged, networkId }: INetworkOperationOptions = {},
+    ): Promise<TResult> {
+        const targetNetworkId: NetworkId =
+            networkId ?? this.getCurrentNetworkId();
+
+        this.networkBusyRegistry.acquire(targetNetworkId);
+
+        try {
+            onBusyChanged?.(targetNetworkId, true);
+
+            return await operation();
+        } finally {
+            this.networkBusyRegistry.release(targetNetworkId);
+            onBusyChanged?.(
+                targetNetworkId,
+                this.isNetworkBusy(targetNetworkId),
+            );
+        }
+    }
+
+    @EnsureApiClientManagerInitialized
+    public createNetworkContext(networkId?: NetworkId): INetworkContext {
+        const { id, name, config }: INetworkRecord =
+            this.networkConfigProvider.get(networkId ?? this.currentNetworkId!);
+
+        const clients: IApiClients = createApiClients(config);
+
+        return {
+            networkId: id,
+            name,
+            config,
+            clients,
+            api: createNodeApiAdapter(config.nodeApiProfile, clients),
+        };
+    }
+
+    @EnsureApiClientManagerInitialized
+    public addNetwork(
+        name: NetworkName,
+        config: INetworkConfig,
+    ): INetworkRecord {
+        return this.networkConfigProvider.add(name, config);
+    }
+
+    @EnsureApiClientManagerInitialized
+    @EnsureTargetNetworkNotBusy
+    public updateNetwork(id: NetworkId, update: INetworkUpdate): void {
+        this.networkConfigProvider.update(id, update);
+
+        if (this.currentNetworkId === id) {
+            this.switchNetwork(id);
+        }
+    }
+
+    @EnsureApiClientManagerInitialized
+    @EnsureTargetNetworkNotBusy
+    public removeNetwork(id: NetworkId): void {
+        this.networkConfigProvider.remove(id);
+
+        if (this.currentNetworkId === id) {
+            const firstNetworkId: NetworkId =
+                this.networkConfigProvider.getIds()[0];
+
+            this.switchNetwork(firstNetworkId);
+        }
     }
 
     public isReady(): boolean {
@@ -120,7 +232,9 @@ export default class ApiClientManager {
         this.observerClient = null;
         this.indexerClient = null;
 
-        this.currentNetwork = null;
+        this.currentNetworkId = null;
+
+        this.networkBusyRegistry.clear();
 
         this.isInitialized = false;
     }

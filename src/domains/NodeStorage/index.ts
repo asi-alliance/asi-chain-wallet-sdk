@@ -201,6 +201,11 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     }
 
     @EnsureDatabaseInitialized
+    public async getTableNames(): Promise<string[]> {
+        return (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ?? [];
+    }
+
+    @EnsureDatabaseInitialized
     async tableExists(tableName: string): Promise<boolean> {
         const tableKeys = await this.storageInterface!.keys(
             (item) => item.key === this.getTableKey(tableName),

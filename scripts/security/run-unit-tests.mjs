@@ -5,10 +5,6 @@ import path from "path";
 const TEST_DIR = path.resolve("tests/unit");
 const TEST_GLOB = "*.test.ts";
 
-const EXCLUDE_PATTERNS = [];
-
-//wallet-transaction-reservations.test.ts
-
 async function findTestFiles(dir) {
     const entries = await readdir(dir, { withFileTypes: true });
     const results = [];
@@ -17,11 +13,7 @@ async function findTestFiles(dir) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
             results.push(...(await findTestFiles(fullPath)));
-        } else if (
-            entry.isFile() &&
-            entry.name.endsWith(".test.ts") &&
-            !EXCLUDE_PATTERNS.includes(entry.name)
-        ) {
+        } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
             results.push(fullPath);
         }
     }
@@ -52,22 +44,14 @@ async function main() {
         process.exit(1);
     }
 
-    await Promise.all([
-        fs.rm(".tmp", {
-            recursive: true,
-            force: true,
-        }),
-        fs.rm(".persist-test", {
-            recursive: true,
-            force: true,
-        }),
-    ]);
+    await cleanupTestStorage();
 
     const child = spawn(
         process.execPath,
         [
             path.join("node_modules", "tsx", "dist", "cli.mjs"),
             "--test",
+            "--test-concurrency=1",
             ...tests,
         ],
         {

@@ -9,14 +9,19 @@ import SecretsProvider from "@domains/SecretsProvider";
 import Bip44Path from "@domains/Bip44Path";
 import KeysManager from "@services/KeysManager";
 import { WalletTypes } from "@domains/Signer";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 
 const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
+}));
+
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
 }));
 
 const accountPayload = {
@@ -40,19 +45,6 @@ const printWalletState = (title: string, wallet: Wallet) => {
     console.log("Wallet type:", wallet.getType());
 
     console.log("Accounts count:", wallet.getAccounts().length);
-
-    console.log(
-        "Active account:",
-        wallet.getActiveAccount()
-            ? {
-                  name: wallet.getActiveAccount()?.getName(),
-
-                  index: wallet.getActiveAccount()?.getIndex(),
-
-                  address: wallet.getActiveAccount()?.getAddress(),
-              }
-            : null,
-    );
 
     console.log("\nAccounts:");
 
@@ -101,13 +93,12 @@ test("PK wallet should not derive accounts", async () => {
 test("HD wallet should derive accounts with incremental indexes from zero", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions: accountPayload,
             pathOptions: {
                 index: 0,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     printWalletState("HD WALLET BEFORE DERIVATION", wallet);
@@ -159,13 +150,12 @@ test("HD wallet should derive accounts with incremental indexes from zero", asyn
 test("HD wallet should derive accounts from custom HD path index", async () => {
     const wallet = await Wallet.createHD(
         {
-            mnemonic: MNEMONIC,
             accountOptions: accountPayload,
             pathOptions: {
                 customHDPath: customPath,
             },
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     printWalletState("CUSTOM HD WALLET BEFORE DERIVATION", wallet);

@@ -1,23 +1,37 @@
 import { type ReactElement } from "react";
-import "./style.css";
-import { formatAmount } from "../../sdk-react-kit";
+import { formatAssetAmount } from "../../sdk-react-kit";
 import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IReservationStatusProps {
     balance: WalletBalance;
+    reservationCount: number;
     isFetching?: boolean;
+    error?: string | null;
 }
+
+const getAmountLabel = (
+    amount: bigint | null,
+    error?: string | null,
+): string => {
+    if (error) {
+        return "unavailable";
+    }
+
+    return formatAssetAmount(amount);
+};
 
 const ReservationStatus = ({
     balance,
+    reservationCount,
     isFetching = false,
+    error = null,
 }: IReservationStatusProps): ReactElement => {
     const totalReserved =
         balance.total !== null && balance.available !== null
             ? balance.total - balance.available
             : null;
 
-    const hasReservations = Boolean(balance.reservationCount);
+    const hasReservations = reservationCount > 0;
 
     return (
         <div
@@ -33,7 +47,7 @@ const ReservationStatus = ({
                     <span className="reservation-status__value">
                         {isFetching
                             ? "updating..."
-                            : `${formatAmount(balance.total)} ASI`}
+                            : getAmountLabel(balance.total, error)}
                     </span>
                 </div>
 
@@ -43,7 +57,7 @@ const ReservationStatus = ({
                             Reserved:
                         </span>
                         <span className="reservation-status__value reserved">
-                            {formatAmount(totalReserved)} ASI
+                            {formatAssetAmount(totalReserved)}
                         </span>
                     </div>
                 )}
@@ -53,28 +67,35 @@ const ReservationStatus = ({
                         Available:
                     </span>
                     <span className="reservation-status__value">
-                        {formatAmount(balance.available)} ASI
+                        {getAmountLabel(balance.available, error)}
                     </span>
                 </div>
 
                 {hasReservations && (
                     <div className="reservation-status__item">
                         <span className="reservation-status__label">
-                            Active Transfers:
+                            Active reservations:
                         </span>
                         <span className="reservation-status__value">
-                            {balance.reservationCount}
+                            {reservationCount}
                         </span>
                     </div>
                 )}
             </div>
 
+            {error && (
+                <div className="reservation-status__info">
+                    <p>Balance unavailable: {error}</p>
+                </div>
+            )}
+
             {hasReservations && (
                 <div className="reservation-status__info">
                     <p>
-                        {balance.reservationCount} active transfer
-                        {balance.reservationCount !== 1 ? "s" : ""} in progress.
-                        Reserved funds will be freed once confirmed.
+                        {reservationCount} reservation
+                        {reservationCount !== 1 ? "s" : ""} in progress, both
+                        transfers and deploys. Reserved funds will be freed once
+                        confirmed or expired.
                     </p>
                 </div>
             )}

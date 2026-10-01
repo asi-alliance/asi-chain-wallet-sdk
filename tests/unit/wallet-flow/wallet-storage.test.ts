@@ -9,14 +9,19 @@ import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import Bip44Path from "@domains/Bip44Path";
 import { WalletTypes } from "@domains/Signer";
+import MnemonicService from "@services/Mnemonic";
 
-const MNEMONIC =
-    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 
 const passwordProvider = new SecretsProvider(() => ({
     password: PASSWORD,
+}));
+
+const hdSecretProvider = new SecretsProvider(() => ({
+    password: PASSWORD,
+    secret: { seed: MNEMONIC },
 }));
 
 const accountOptions = {
@@ -56,12 +61,12 @@ test("should save PK wallet into storage", async () => {
     console.log("\n[2] Creating wallet instance...");
     const wallet = await Wallet.createPk(accountOptions, provider);
     const signerId = wallet.getSigner().getId();
-    const account = wallet.getActiveAccount();
+    const account = wallet.getAccounts()[0];
     console.log("    Wallet ID:", wallet.getId());
     console.log("    Wallet Type:", wallet.getType());
     console.log("    Signer ID:", signerId);
-    console.log("    Account name:", account?.getName());
-    console.log("    Account address:", account?.getAddress());
+    console.log("    Account name:", account.getName());
+    console.log("    Account address:", account.getAddress());
 
     console.log("\n[3] Saving wallet to storage...");
     await StorageManager.saveWallet({
@@ -131,12 +136,12 @@ test("should restore PK wallet from storage", async () => {
     console.log("\n[2] Creating original wallet instance...");
     const originalWallet = await Wallet.createPk(accountOptions, provider);
     const originalSignerId = originalWallet.getSigner().getId();
-    const originalAccount = originalWallet.getActiveAccount();
+    const originalAccount = originalWallet.getAccounts()[0];
     console.log("    Wallet ID:", originalWallet.getId());
     console.log("    Wallet Type:", originalWallet.getType());
     console.log("    Signer ID:", originalSignerId);
-    console.log("    Account name:", originalAccount?.getName());
-    console.log("    Account address:", originalAccount?.getAddress());
+    console.log("    Account name:", originalAccount.getName());
+    console.log("    Account address:", originalAccount.getAddress());
 
     console.log("\n[3] Saving original wallet to storage...");
     await StorageManager.saveWallet({
@@ -160,16 +165,16 @@ test("should restore PK wallet from storage", async () => {
     });
     console.log("    Wallet restored successfully");
 
-    const restoredAccount = restoredWallet.getActiveAccount();
+    const restoredAccount = restoredWallet.getAccounts()[0];
     console.log("    Restored wallet ID:", restoredWallet.getId());
     console.log("    Restored wallet type:", restoredWallet.getType());
     console.log("    Restored signer ID:", restoredWallet.getSigner().getId());
-    console.log("    Restored account name:", restoredAccount?.getName());
-    console.log("    Restored account address:", restoredAccount?.getAddress());
+    console.log("    Restored account name:", restoredAccount.getName());
+    console.log("    Restored account address:", restoredAccount.getAddress());
 
     console.log("\n[6] Comparing original vs restored:");
-    const originalAddress = originalAccount?.getAddress();
-    const restoredAddress = restoredAccount?.getAddress();
+    const originalAddress = originalAccount.getAddress();
+    const restoredAddress = restoredAccount.getAddress();
     console.log("    Original address:", originalAddress);
     console.log("    Restored address:", restoredAddress);
     console.log("    Addresses match:", originalAddress === restoredAddress);
@@ -205,17 +210,16 @@ test("should save and restore HD wallet from storage", async () => {
             pathOptions: {
                 index: 0,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
     const signerId = wallet.getSigner().getId();
-    const account = wallet.getActiveAccount();
+    const account = wallet.getAccounts()[0];
     console.log("    Wallet ID:", wallet.getId());
     console.log("    Wallet Type:", wallet.getType());
     console.log("    Signer ID:", signerId);
-    console.log("    Account name:", account?.getName());
-    console.log("    Account address:", account?.getAddress());
+    console.log("    Account name:", account.getName());
+    console.log("    Account address:", account.getAddress());
 
     console.log("\n[3] Saving HD wallet to storage...");
     await StorageManager.saveWallet({
@@ -239,16 +243,16 @@ test("should save and restore HD wallet from storage", async () => {
     });
     console.log("    HD wallet restored successfully");
 
-    const restoredAccount = restored.getActiveAccount();
+    const restoredAccount = restored.getAccounts()[0];
     console.log("    Restored wallet ID:", restored.getId());
     console.log("    Restored wallet type:", restored.getType());
     console.log("    Restored signer ID:", restored.getSigner().getId());
-    console.log("    Restored account name:", restoredAccount?.getName());
-    console.log("    Restored account address:", restoredAccount?.getAddress());
+    console.log("    Restored account name:", restoredAccount.getName());
+    console.log("    Restored account address:", restoredAccount.getAddress());
 
     console.log("\n[6] Comparing original vs restored:");
-    const originalAddress = account?.getAddress();
-    const restoredAddress = restoredAccount?.getAddress();
+    const originalAddress = account.getAddress();
+    const restoredAddress = restoredAccount.getAddress();
     console.log("    Original address:", originalAddress);
     console.log("    Restored address:", restoredAddress);
     console.log("    Addresses match:", originalAddress === restoredAddress);
@@ -273,9 +277,9 @@ test("should isolate accounts between different signers", async () => {
     const pkProvider = createPkProvider(PASSWORD).provider;
     const wallet1 = await Wallet.createPk(accountOptions, pkProvider);
     const signerId1 = wallet1.getSigner().getId();
-    const account1 = wallet1.getActiveAccount();
+    const account1 = wallet1.getAccounts()[0];
     console.log("    PK Wallet signer ID:", signerId1);
-    console.log("    PK Wallet account address:", account1?.getAddress());
+    console.log("    PK Wallet account address:", account1.getAddress());
 
     console.log("\n[2] Creating HD wallet...");
     const wallet2 = await Wallet.createHD(
@@ -284,14 +288,13 @@ test("should isolate accounts between different signers", async () => {
             pathOptions: {
                 index: 1,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
     const signerId2 = wallet2.getSigner().getId();
-    const account2 = wallet2.getActiveAccount();
+    const account2 = wallet2.getAccounts()[0];
     console.log("    HD Wallet signer ID:", signerId2);
-    console.log("    HD Wallet account address:", account2?.getAddress());
+    console.log("    HD Wallet account address:", account2.getAddress());
 
     console.log("\n[3] Saving both wallets to storage...");
     await StorageManager.saveWallet({
@@ -319,7 +322,7 @@ test("should isolate accounts between different signers", async () => {
         signerId: signerId1,
         passwordProvider,
     });
-    const restoredAddress1 = restored1.getActiveAccount()?.getAddress();
+    const restoredAddress1 = restored1.getAccounts()[0].getAddress();
     console.log("    Restored PK address:", restoredAddress1);
 
     console.log("    Restoring HD wallet with signer ID:", signerId2);
@@ -327,7 +330,7 @@ test("should isolate accounts between different signers", async () => {
         signerId: signerId2,
         passwordProvider,
     });
-    const restoredAddress2 = restored2.getActiveAccount()?.getAddress();
+    const restoredAddress2 = restored2.getAccounts()[0].getAddress();
     console.log("    Restored HD address:", restoredAddress2);
 
     console.log("\n[6] Comparison:");
@@ -365,7 +368,7 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
     const pkSignerId = pkWallet.getSigner().getId();
 
     console.log("    PK signer ID:", pkSignerId);
-    console.log("    PK address:", pkWallet.getActiveAccount()?.getAddress());
+    console.log("    PK address:", pkWallet.getAccounts()[0].getAddress());
 
     console.log("\n[2] Creating HD wallet...");
 
@@ -375,15 +378,14 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
             pathOptions: {
                 index: 0,
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const hdSignerId = hdWallet.getSigner().getId();
 
     console.log("    HD signer ID:", hdSignerId);
-    console.log("    HD address:", hdWallet.getActiveAccount()?.getAddress());
+    console.log("    HD address:", hdWallet.getAccounts()[0].getAddress());
 
     console.log("\n[3] Creating HD custom path wallet...");
 
@@ -398,9 +400,8 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
                     index: 132,
                 }),
             },
-            mnemonic: MNEMONIC,
         },
-        passwordProvider,
+        hdSecretProvider,
     );
 
     const customHDSignerId = customHDWallet.getSigner().getId();
@@ -409,7 +410,7 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
 
     console.log(
         "    Custom HD address:",
-        customHDWallet.getActiveAccount()?.getAddress(),
+        customHDWallet.getAccounts()[0].getAddress(),
     );
 
     //
@@ -498,10 +499,10 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
     });
 
     //
-    // 5. UNLOCK EACH WALLET
+    // 5. OPEN EACH WALLET
     //
 
-    console.log("\n[7] Unlocking wallets...");
+    console.log("\n[7] Opening wallets...");
 
     const restoredPk = await StorageManager.getWallet({
         signerId: pkSignerId,
@@ -533,21 +534,18 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
 
     console.log("\n[8] Verifying restored addresses...");
 
-    const originalPKAddress = pkWallet.getActiveAccount()?.getAddress();
+    const originalPKAddress = pkWallet.getAccounts()[0].getAddress();
 
-    const restoredPKAddress = restoredPk.getActiveAccount()?.getAddress();
+    const restoredPKAddress = restoredPk.getAccounts()[0].getAddress();
 
-    const originalHDAddress = hdWallet.getActiveAccount()?.getAddress();
+    const originalHDAddress = hdWallet.getAccounts()[0].getAddress();
 
-    const restoredHDAddress = restoredHD.getActiveAccount()?.getAddress();
+    const restoredHDAddress = restoredHD.getAccounts()[0].getAddress();
 
-    const originalCustomAddress = customHDWallet
-        .getActiveAccount()
-        ?.getAddress();
+    const originalCustomAddress = customHDWallet.getAccounts()[0].getAddress();
 
-    const restoredCustomAddress = restoredCustomHD
-        .getActiveAccount()
-        ?.getAddress();
+    const restoredCustomAddress =
+        restoredCustomHD.getAccounts()[0].getAddress();
 
     console.log("    PK:", originalPKAddress === restoredPKAddress);
 

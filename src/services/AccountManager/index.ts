@@ -4,6 +4,7 @@ import Account, {
 } from "@domains/Account";
 import SecretsProvider from "@domains/SecretsProvider";
 import ItemManager from "@services/ItemManager";
+import KeyDerivationService from "@services/KeyDerivation";
 import { generateRandomId } from "@utils/index";
 
 export interface ICreatedAccountData {
@@ -12,16 +13,33 @@ export interface ICreatedAccountData {
 }
 
 export default class AccountManager extends ItemManager<Account> {
-    private activeAccount: Account | null;
+    private static orderAccounts(
+        accounts: Map<string, Account>,
+    ): Map<string, Account> {
+        return new Map(
+            Array.from(accounts).sort(
+                (
+                    [, firstAccount]: [string, Account],
+                    [, secondAccount]: [string, Account],
+                ) =>
+                    KeyDerivationService.compareIndexes(
+                        firstAccount.getIndex(),
+                        secondAccount.getIndex(),
+                    ),
+            ),
+        );
+    }
 
-    constructor(
-        accounts: Map<string, Account> = new Map(),
-        activeAccount: Account | null = null,
-    ) {
-        super(accounts);
+    constructor(accounts: Map<string, Account> = new Map()) {
+        super(AccountManager.orderAccounts(accounts));
+    }
 
-        this.activeAccount =
-            activeAccount ?? accounts.values().next().value ?? null;
+    private reorder(): void {
+        const orderedAccounts: Map<string, Account> =
+            AccountManager.orderAccounts(this.items);
+
+        this.clear();
+        this.addMany(orderedAccounts);
     }
 
     public async create(
@@ -35,20 +53,18 @@ export default class AccountManager extends ItemManager<Account> {
         );
 
         this.add(accountId, account);
-
-        if (!this.activeAccount) {
-            this.activeAccount = account;
-        }
+        this.reorder();
 
         return { account, accountId };
     }
 
-    public remove(id: string): Account {
-        const removedAccount: Account = super.remove(id);
+    public addAccounts(accounts: Account[]): void {
+        const entries: [string, Account][] = accounts.map(
+            (account: Account) => [account.getId(), account],
+        );
 
-        this.activeAccount = this.items.values().next().value ?? null;
-
-        return removedAccount;
+        this.addMany(entries);
+        this.reorder();
     }
 
     public update(id: string, payload: TEditableAccountOptions): void {
@@ -61,22 +77,6 @@ export default class AccountManager extends ItemManager<Account> {
         }
 
         account.update(payload);
-    }
-
-    public setActiveAccount(id: string): void {
-        const account: Account | null = this.get(id);
-
-        if (!account) {
-            console.error("Cannot set active account");
-
-            return;
-        }
-
-        this.activeAccount = account;
-    }
-
-    public getActiveAccount(): Account | null {
-        return this.activeAccount;
     }
 
     public getAccounts(): Account[] {

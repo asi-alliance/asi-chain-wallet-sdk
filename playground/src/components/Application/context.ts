@@ -14,7 +14,7 @@ type ModalState = {
 type ApplicationContextValue = {
     modalState: ModalState;
     setModalState: Dispatch<SetStateAction<ModalState>>;
-    withLoader: (method: (...params: unknown[]) => void) => void;
+    withLoader: <T>(method: () => T | Promise<T>) => Promise<T>;
 };
 
 const ApplicationContext = createContext({} as ApplicationContextValue);

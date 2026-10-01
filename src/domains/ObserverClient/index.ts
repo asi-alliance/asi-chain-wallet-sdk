@@ -40,4 +40,8 @@ export default class ObserverClient extends BaseHttpClient {
 
         return this.get(path, view ? { params: { view } } : undefined);
     }
+
+    public submitExploratoryDeploy(body: unknown): Promise<any> {
+        return this.post("/api/explore-deploy", body);
+    }
 }

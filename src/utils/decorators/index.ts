@@ -1,8 +1,13 @@
 import { ICreateClientFlags } from "@domains/Client";
-import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import { WalletTypes } from "@domains/Signer";
 import { ITableRecord, ITableService } from "@domains/TableService";
-import AccountManager from "@services/AccountManager";
+import {
+    AccountBusyError,
+    DomainClosedError,
+    HDWalletOnlyOperationError,
+} from "@domains/CustomError";
+import LifecycleGuard from "@domains/LifecycleGuard";
+import ConcurrentOperationGuardService from "@services/ConcurrentOperationGuard";
 
 export function EnsureDatabaseInitialized<
     This extends ITableService<ITableRecord>,
@@ -89,7 +94,6 @@ export function SkipIfTableExists<
 }
 
 interface IWalletContext {
-    accountManager: AccountManager;
     getType(): WalletTypes;
 }
 
@@ -97,30 +101,69 @@ export function OnlyHDWallet<
     This extends IWalletContext,
     Args extends any[],
     Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return async function (
-        this: This,
-        ...args: Args
-    ): Promise<Awaited<Return>> {
+>(target: (...args: Args) => Return, context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
         if (this.getType() !== WalletTypes.HD) {
-            throw new Error("This operation is available only for HD wallets");
+            throw new HDWalletOnlyOperationError(String(context.name));
         }
 
-        return await target.apply(this, args);
+        return target.apply(this, args);
     };
 }
 
-export function EnsureActiveAccountExist<
-    This extends IWalletContext,
+interface IAccountOperationsContext {
+    getId(): string;
+    accountOperationsGuard: ConcurrentOperationGuardService<string>;
+}
+
+export function EnsureAccountIsIdle<
+    This extends IAccountOperationsContext,
+    Args extends [string, ...any[]],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        const [accountId] = args;
+
+        if (this.accountOperationsGuard.hasScopeHolders(accountId)) {
+            throw new AccountBusyError(this.getId(), accountId);
+        }
+
+        return target.apply(this, args);
+    };
+}
+
+export interface IClosableContext {
+    isActive(): boolean;
+}
+
+export function EnsureActive<
+    This extends IClosableContext,
     Args extends any[],
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {
-        if (!this.accountManager.getActiveAccount()) {
-            throw new Error("Wallet hasn't active account for transfer!");
+        if (!this.isActive()) {
+            throw new DomainClosedError(this.constructor.name);
         }
 
         return target.apply(this, args);
+    };
+}
+
+export interface ITrackedOperationContext {
+    lifecycleGuard: LifecycleGuard;
+}
+
+export function TrackOperation<
+    This extends ITrackedOperationContext,
+    Args extends any[],
+    Return,
+>(
+    target: (...args: Args) => Promise<Return>,
+    _context: ClassMethodDecoratorContext,
+) {
+    return function (this: This, ...args: Args): Promise<Return> {
+        return this.lifecycleGuard.track(() => target.apply(this, args));
     };
 }
 

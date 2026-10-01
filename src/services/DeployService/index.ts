@@ -1,32 +1,23 @@
-import ApiClientManager from "@domains/ApiClientManager";
-import { FAULT_TOLERANCE_THRESHOLD } from "@utils/index";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
+import { IDeployInfo, IDeployStatusResult } from "@domains/Deploy";
 import { SignedResult } from "@services/Signer";
-
-export enum DeployStatus {
-    DEPLOYING = "Deploying",
-    INCLUDED_IN_BLOCK = "IncludedInBlock",
-    FINALIZED = "Finalized",
-    CHECK_ERROR = "CheckingError",
-}
-
-export type IDeployStatusResult =
-    | {
-          status:
-              | DeployStatus.DEPLOYING
-              | DeployStatus.INCLUDED_IN_BLOCK
-              | DeployStatus.FINALIZED;
-      }
-    | {
-          status: DeployStatus.CHECK_ERROR;
-          errorMessage: string;
-      };
+import {
+    ApiRequestError,
+    ApiSource,
+    UnknownErrorReason,
+} from "@domains/CustomError";
+import { getErrorMessage } from "@utils/index";
 
 export default class DeployService {
-    private readonly apiClientManager: ApiClientManager;
+    private readonly nodeApiProvider: NodeApiProvider;
 
-    constructor(apiClientManager?: ApiClientManager) {
-        this.apiClientManager =
-            apiClientManager ?? ApiClientManager.getInstance();
+    constructor(nodeApiProvider?: NodeApiProvider) {
+        this.nodeApiProvider = nodeApiProvider ?? NodeApiProvider.getInstance();
+    }
+
+    private get api(): NodeApiAdapter {
+        return this.nodeApiProvider.getApi();
     }
 
     private extractDeployId(result: unknown): string | undefined {
@@ -52,68 +43,43 @@ export default class DeployService {
         deploy: SignedResult,
     ): Promise<string | undefined> {
         try {
-            const result = await this.apiClientManager
-                .getValidatorClient()
-                .submitDeploy(deploy);
+            const result = await this.api.submitDeploy(deploy);
 
             return this.extractDeployId(result);
         } catch (error) {
-            throw new Error(
-                `DeployService.submitDeploy: ${
-                    error instanceof Error ? error.message : String(error)
-                }`,
+            throw new ApiRequestError(
+                ApiSource.NODE,
+                "DeployService.submitSignedDeploy",
+                getErrorMessage(error, UnknownErrorReason.NODE_API),
             );
         }
     }
 
     public async exploreDeployData(rholangCode: string): Promise<any> {
         try {
-            const result = await this.apiClientManager
-                .getValidatorClient()
-                .submitExploratoryDeploy(rholangCode);
+            const result = (await this.api.exploreDeploy(rholangCode)) as {
+                expr?: unknown;
+            };
 
             return result.expr;
         } catch (error) {
-            throw new Error(
-                "DeployService.exploreDeployData: " +
-                    (error instanceof Error ? error.message : String(error)),
+            throw new ApiRequestError(
+                ApiSource.NODE,
+                "DeployService.exploreDeployData",
+                getErrorMessage(error, UnknownErrorReason.NODE_API),
             );
         }
     }
 
     public async getDeploy(deployHash: string): Promise<any> {
-        return this.apiClientManager.getObserverClient().getDeploy(deployHash);
+        return this.api.getDeploy(deployHash);
     }
 
-    public async isDeployFinalized(deploy: any): Promise<boolean> {
-        return deploy.faultTolerance >= FAULT_TOLERANCE_THRESHOLD;
+    public async isDeployFinalized(deploy: IDeployInfo): Promise<boolean> {
+        return this.api.isDeployFinalized(deploy);
     }
 
-    public async getDeployStatus(
-        deployHash: string,
-    ): Promise<IDeployStatusResult> {
-        try {
-            const deploy = await this.getDeploy(deployHash);
-
-            if (!deploy?.blockHash) {
-                return {
-                    status: DeployStatus.DEPLOYING,
-                };
-            }
-
-            const finalized = await this.isDeployFinalized(deploy);
-
-            return {
-                status: finalized
-                    ? DeployStatus.FINALIZED
-                    : DeployStatus.INCLUDED_IN_BLOCK,
-            };
-        } catch (error) {
-            return {
-                status: DeployStatus.CHECK_ERROR,
-                errorMessage:
-                    error instanceof Error ? error.message : String(error),
-            };
-        }
+    public getDeployStatus(deployHash: string): Promise<IDeployStatusResult> {
+        return this.api.getDeployStatus(deployHash);
     }
 }

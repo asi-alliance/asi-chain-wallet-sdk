@@ -1,0 +1,143 @@
+import { type ReactElement } from "react";
+import { useAppContext } from "@components/Application/context";
+import { useSdkContext } from "../../sdk-react-kit";
+import { createNetworksPageHandlers } from "./helpers";
+import "./style.css";
+
+const NetworksPage = (): ReactElement => {
+    const { setModalState, withLoader } = useAppContext();
+    const sdk = useSdkContext();
+
+    if (!sdk.isReady) {
+        return <div>Loading SDK...</div>;
+    }
+
+    const handlers = createNetworksPageHandlers({
+        sdk,
+        setModalState,
+        withLoader,
+    });
+
+    return (
+        <div className="networks-page">
+            <div className="networks-page__header">
+                <h3 className="networks-page__title">Networks</h3>
+                <button
+                    className="networks-page__action"
+                    type="button"
+                    onClick={handlers.addNetwork}
+                >
+                    Add network
+                </button>
+            </div>
+
+            {sdk.isCurrentNetworkBusy && (
+                <p className="networks-page__notice">
+                    {sdk.currentNetwork?.name} has an operation in progress:
+                    switching, editing and removing are blocked until it
+                    finishes.
+                </p>
+            )}
+
+            <div className="networks-page__list">
+                {sdk.networkRecords.map((network) => {
+                    const { id, name, config, isDefault } = network;
+                    const isActive = id === sdk.currentNetwork?.id;
+                    const isBusy = sdk.isNetworkBusy(id);
+
+                    return (
+                        <div
+                            key={id}
+                            className={`network-card ${
+                                isActive ? "network-card--active" : ""
+                            }`}
+                        >
+                            <div className="network-card__head">
+                                <span className="network-card__name">
+                                    {name}
+                                </span>
+                                <span
+                                    className={`network-card__badge ${
+                                        isDefault
+                                            ? "network-card__badge--default"
+                                            : "network-card__badge--custom"
+                                    }`}
+                                >
+                                    {isDefault ? "default" : "custom"}
+                                </span>
+                                {isActive && (
+                                    <span className="network-card__badge network-card__badge--active">
+                                        active
+                                    </span>
+                                )}
+                                {isBusy && (
+                                    <span className="network-card__badge network-card__badge--busy">
+                                        busy
+                                    </span>
+                                )}
+                            </div>
+
+                            <dl className="network-card__config">
+                                <div className="network-card__config-row">
+                                    <dt>Validator</dt>
+                                    <dd>{config.ValidatorURL || "—"}</dd>
+                                </div>
+                                <div className="network-card__config-row">
+                                    <dt>Read-only</dt>
+                                    <dd>{config.ReadOnlyURL || "—"}</dd>
+                                </div>
+                                <div className="network-card__config-row">
+                                    <dt>Indexer</dt>
+                                    <dd>{config.IndexerURL || "—"}</dd>
+                                </div>
+                                <div className="network-card__config-row">
+                                    <dt>Node API</dt>
+                                    <dd>{config.nodeApiProfile}</dd>
+                                </div>
+                            </dl>
+
+                            <div className="network-card__actions">
+                                <button
+                                    className="networks-page__action"
+                                    type="button"
+                                    onClick={() => handlers.switchNetwork(id)}
+                                    disabled={
+                                        isActive || sdk.isCurrentNetworkBusy
+                                    }
+                                >
+                                    Switch
+                                </button>
+                                {!isDefault && (
+                                    <>
+                                        <button
+                                            className="networks-page__action"
+                                            type="button"
+                                            onClick={() =>
+                                                handlers.editNetwork(network)
+                                            }
+                                            disabled={isBusy}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            className="networks-page__action networks-page__action--danger"
+                                            type="button"
+                                            onClick={() =>
+                                                handlers.removeNetwork(network)
+                                            }
+                                            disabled={isBusy}
+                                        >
+                                            Remove
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+export default NetworksPage;

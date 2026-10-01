@@ -1,0 +1,11 @@
+.deploy-page__working {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.deploy-page__deploy-id {
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+}
