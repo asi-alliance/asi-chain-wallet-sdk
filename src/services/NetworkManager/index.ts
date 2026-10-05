@@ -34,11 +34,18 @@ class NetworkManager {
         name: NetworkName,
         config: INetworkConfig,
     ): Promise<INetworkRecord> {
-        const record: INetworkRecord = createNetworkRecord({ name, config });
+        const apiClientManager: ApiClientManager =
+            ApiClientManager.getInstance();
+
+        const record: INetworkRecord = createNetworkRecord({
+            name,
+            config,
+            networks: apiClientManager.getNetworks(),
+        });
 
         await StorageManager.saveCustomNetwork(record);
 
-        ApiClientManager.getInstance().applyNetwork(record);
+        apiClientManager.applyNetwork(record);
 
         return record;
     }
@@ -54,6 +61,7 @@ class NetworkManager {
         const record: INetworkRecord = createUpdatedNetworkRecord({
             record: apiClientManager.getNetwork(id),
             update,
+            networks: apiClientManager.getNetworks(),
         });
 
         await StorageManager.updateCustomNetwork(record);

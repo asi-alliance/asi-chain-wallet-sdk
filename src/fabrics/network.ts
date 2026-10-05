@@ -8,27 +8,40 @@ import {
     ensureValid,
     generateRandomId,
     validateNetworkConfigUrls,
+    validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
 
 export interface ICreateNetworkRecordPayload {
     name: NetworkName;
     config: INetworkConfig;
+    networks: INetworkRecord[];
 }
 
 export interface IUpdateNetworkRecordPayload {
     record: INetworkRecord;
     update: INetworkUpdate;
+    networks: INetworkRecord[];
 }
+
+const otherNetworks = (
+    networks: INetworkRecord[],
+    id?: INetworkRecord["id"],
+): INetworkRecord[] =>
+    networks.filter((record: INetworkRecord) => record.id !== id);
 
 export const createNetworkRecord = ({
     name,
     config,
+    networks,
 }: ICreateNetworkRecordPayload): INetworkRecord => {
     ensureValid(validateNetworkConfigUrls(config, { allowEmpty: false }), {
         context: "createNetworkRecord",
     });
     ensureValid(validateNodeApiProfile(config.nodeApiProfile), {
+        context: "createNetworkRecord",
+    });
+    ensureValid(validateNetworkUniqueness(name, config, networks), {
         context: "createNetworkRecord",
     });
 
@@ -43,6 +56,7 @@ export const createNetworkRecord = ({
 export const createUpdatedNetworkRecord = ({
     record,
     update,
+    networks,
 }: IUpdateNetworkRecordPayload): INetworkRecord => {
     if (record.isDefault) {
         throw new Error("Network config is not default");
@@ -61,16 +75,25 @@ export const createUpdatedNetworkRecord = ({
         });
     }
 
-    const { nodeApiProfile, ...endpoints }: Partial<INetworkConfig> =
-        update.config ?? {};
+    const name: NetworkName = update.name ?? record.name;
 
-    return {
-        ...record,
-        name: update.name ?? record.name,
-        config: {
-            ...record.config,
-            ...endpoints,
-            nodeApiProfile: nodeApiProfile ?? record.config.nodeApiProfile,
-        },
-    };
+    const config: INetworkConfig = update.config
+        ? {
+              ...record.config,
+              ...update.config,
+              nodeApiProfile:
+                  update.config.nodeApiProfile ?? record.config.nodeApiProfile,
+          }
+        : record.config;
+
+    ensureValid(
+        validateNetworkUniqueness(
+            name,
+            config,
+            otherNetworks(networks, record.id),
+        ),
+        { context: "createUpdatedNetworkRecord" },
+    );
+
+    return { ...record, name, config };
 };

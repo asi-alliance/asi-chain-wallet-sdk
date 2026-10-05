@@ -19,6 +19,7 @@ import {
     EnsureApiClientManagerConfigured,
     EnsureApiClientManagerInitialized,
     EnsureCurrentNetworkNotBusy,
+    EnsureNetworkNotReconfiguring,
     EnsureTargetNetworkNotBusy,
 } from "@utils/decorators/apiClientManager";
 import { createApiClients } from "@fabrics/apiClients";
@@ -155,6 +156,7 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
+    @EnsureNetworkNotReconfiguring
     public async runNetworkOperation<TResult>(
         operation: () => Promise<TResult>,
         { onBusyChanged, networkId }: INetworkOperationOptions = {},

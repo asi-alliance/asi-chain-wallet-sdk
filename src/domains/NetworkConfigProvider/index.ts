@@ -95,6 +95,17 @@ export default class NetworkConfigProvider {
         ensureValid(validateNodeApiProfile(record.config.nodeApiProfile), {
             context: "NetworkConfigProvider.set",
         });
+        ensureValid(
+            validateNetworkUniqueness(
+                record.name,
+                record.config,
+                this.getAll().filter(
+                    (otherRecord: INetworkRecord) =>
+                        otherRecord.id !== record.id,
+                ),
+            ),
+            { context: "NetworkConfigProvider.set" },
+        );
 
         this.networksRecords!.set(record.id, record);
     }
