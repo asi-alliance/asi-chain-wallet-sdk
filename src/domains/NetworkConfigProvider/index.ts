@@ -11,6 +11,7 @@ import {
     ensureValid,
     generateRandomId,
     validateNetworkConfigUrls,
+    validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
 import { isNodeApiProfile } from "@utils/guards";
@@ -110,6 +111,10 @@ export default class NetworkConfigProvider {
         ensureValid(validateNodeApiProfile(networkConfig.nodeApiProfile), {
             context: "NetworkConfigProvider.add",
         });
+        ensureValid(
+            validateNetworkUniqueness(name, networkConfig, this.getAll()),
+            { context: "NetworkConfigProvider.add" },
+        );
 
         const record: INetworkRecord = {
             id: generateRandomId(),
@@ -153,19 +158,31 @@ export default class NetworkConfigProvider {
 
         const record: INetworkRecord = this.networksRecords!.get(id)!;
 
-        if (update.name !== undefined) {
-            record.name = update.name;
-        }
+        const name: NetworkName = update.name ?? record.name;
 
-        if (update.config) {
-            const { nodeApiProfile, ...endpoints } = update.config;
+        const config: INetworkConfig = update.config
+            ? {
+                  ...record.config,
+                  ...update.config,
+                  nodeApiProfile:
+                      update.config.nodeApiProfile ??
+                      record.config.nodeApiProfile,
+              }
+            : record.config;
 
-            record.config = {
-                ...record.config,
-                ...endpoints,
-                nodeApiProfile: nodeApiProfile ?? record.config.nodeApiProfile,
-            };
-        }
+        ensureValid(
+            validateNetworkUniqueness(
+                name,
+                config,
+                this.getAll().filter(
+                    (otherRecord: INetworkRecord) => otherRecord.id !== id,
+                ),
+            ),
+            { context: "NetworkConfigProvider.update" },
+        );
+
+        record.name = name;
+        record.config = config;
     }
 
     public isReady(): boolean {

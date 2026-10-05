@@ -4,16 +4,22 @@ import type { TCreateTransactionReservationPayload } from "@fabrics/transactionR
 import type { TDeployDetails } from "@services/TransactionService";
 import { GasFee } from "@config/index";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
-import { INetworkConfig, NETWORK_URL_FIELDS } from "@domains/Network";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import {
+    INetworkConfig,
+    INetworkRecord,
+    NetworkName,
+    NETWORK_URL_FIELDS,
+} from "@domains/Network";
 import {
     decodeBase16,
     decodeBase58,
     encodeBase16,
     encodeBase58,
 } from "@utils/codec";
+import { isSameNetworkConfig } from "@utils/functions";
 import { isIntegerInRange } from "./primitives";
 
 const { blake2bHex } = blakejs;
@@ -209,6 +215,32 @@ export const validateNetworkConfigUrls = (
         if (!isValid) {
             return { isValid: false, error: `Invalid ${field}: ${error}` };
         }
+    }
+
+    return { isValid: true };
+};
+
+export const validateNetworkUniqueness = (
+    name: NetworkName,
+    config: INetworkConfig,
+    otherRecords: INetworkRecord[],
+): { isValid: boolean; error?: string } => {
+    if (
+        otherRecords.some((record: INetworkRecord) =>
+            isSameNetworkConfig(record.config, config),
+        )
+    ) {
+        return {
+            isValid: false,
+            error: "Network with the same config already exists",
+        };
+    }
+
+    if (otherRecords.some((record: INetworkRecord) => record.name === name)) {
+        return {
+            isValid: false,
+            error: "Network with the same name already exists",
+        };
     }
 
     return { isValid: true };

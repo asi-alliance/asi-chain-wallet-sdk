@@ -120,6 +120,24 @@ export const toRecipientError = (
     return toAddressError(form.to);
 };
 
+export const toDuplicateDeployIdError = (
+    deployId: string,
+    reservations: ITransactionReservation[],
+    editedReservationId: string | null,
+): string | null => {
+    const trimmedDeployId: string = deployId.trim();
+
+    const hasDuplicate: boolean = reservations.some(
+        (reservation: ITransactionReservation) =>
+            reservation.id !== editedReservationId &&
+            reservation.details.deployId === trimmedDeployId,
+    );
+
+    return hasDuplicate
+        ? "A reservation for this deploy id already exists on the current network"
+        : null;
+};
+
 export const toFormState = (
     reservation: ITransactionReservation,
 ): IReservationFormState => ({
