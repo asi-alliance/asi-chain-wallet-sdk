@@ -10,6 +10,7 @@ import {
     TRANSACTION_RESERVATION_KINDS,
     TSerializedTransactionReservationDetails,
 } from "@domains/Transaction";
+import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
@@ -121,6 +122,22 @@ export const isSerializedReservationPrivateData = (
         isValueInConst(kind, TRANSACTION_RESERVATION_KINDS) &&
         isSerializedReservationDetails(details)
     );
+};
+
+export const isRestorableReservationData = (
+    value: unknown,
+    networkId: NetworkId,
+    knownNetworkIds: Set<NetworkId>,
+): value is ISerializedTransactionReservationPrivateData => {
+    if (!isSerializedReservationPrivateData(value)) {
+        return false;
+    }
+
+    if (value.expirationTime <= Date.now()) {
+        return false;
+    }
+
+    return knownNetworkIds.has(networkId);
 };
 
 export const isEncryptedData = (value: unknown): value is EncryptedData => {

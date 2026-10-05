@@ -429,4 +429,22 @@ export default class Wallet {
             ),
         );
     }
+
+    public async signTransfer(
+        accountId: string,
+        payload: ITransferDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<SignedResult> {
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.signTransfer({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    details: payload,
+                    passwordProvider,
+                }),
+            ),
+        );
+    }
 }

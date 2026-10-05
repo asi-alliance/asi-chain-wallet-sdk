@@ -68,6 +68,19 @@ export class TransactionReservationsStorageRepository extends BaseStorageReposit
         );
     }
 
+    public async deleteTransactionReservationsBySignerId(
+        signerId: string,
+    ): Promise<void> {
+        const records: ITransactionReservationsStorageRecord[] =
+            await this.getTransactionReservationsBySignerId(signerId);
+
+        await this.deleteManyRecords(
+            records.map(
+                (record: ITransactionReservationsStorageRecord) => record.id,
+            ),
+        );
+    }
+
     public async updateTransactionReservation(
         id: string,
         updates: Partial<ITransactionReservationsStorageRecord>,

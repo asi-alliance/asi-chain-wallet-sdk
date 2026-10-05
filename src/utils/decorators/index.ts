@@ -150,6 +150,19 @@ export function EnsureActive<
     };
 }
 
+export function SkipWhenInactive<
+    This extends IClosableContext,
+    Args extends any[],
+>(target: (...args: Args) => void, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): void {
+        if (!this.isActive()) {
+            return;
+        }
+
+        target.apply(this, args);
+    };
+}
+
 export interface ITrackedOperationContext {
     lifecycleGuard: LifecycleGuard;
 }

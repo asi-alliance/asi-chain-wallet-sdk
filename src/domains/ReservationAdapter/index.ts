@@ -11,28 +11,33 @@ import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
+import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
 } from "@fabrics/transactionReservation";
 import {
     CorruptedDataSource,
+    DeploySubmissionRejectedError,
     IErrorContext,
     ReservationAction,
 } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
 import {
     ensureValid,
+    isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
     validatePositiveAmount,
     validateReservationPayload,
+    validateReservationUpdateTarget,
 } from "@utils/index";
 
 export interface IReservedOperationResult {
@@ -50,33 +55,33 @@ export default class ReservationAdapter {
         reservations: ITransactionReservation[],
         reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
-        const releaseFromStorage = (
-            reservation: ITransactionReservation,
-        ): void => {
-            StorageManager.deleteTransactionReservation(reservation.id).catch(
-                (error: unknown) =>
-                    console.error(
-                        "ReservationAdapter: failed to delete released reservation:",
-                        error,
-                    ),
-            );
-        };
-
         this.reservationsManager = new TransactionReservationsManager(
             reservations,
             {
                 ...reservationsManagerOptions,
                 onConfirmed: (reservation: ITransactionReservation) => {
-                    releaseFromStorage(reservation);
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onConfirmed?.(reservation);
                 },
                 onExpired: (reservation: ITransactionReservation) => {
-                    releaseFromStorage(reservation);
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onExpired?.(reservation);
                 },
             },
+        );
+    }
+
+    private static async releaseFromStorage(
+        reservationId: ITransactionReservation["id"],
+    ): Promise<void> {
+        return StorageManager.deleteTransactionReservation(reservationId).catch(
+            (error: unknown) =>
+                console.error(
+                    "ReservationAdapter: failed to delete released reservation:",
+                    error,
+                ),
         );
     }
 
@@ -181,23 +186,13 @@ export default class ReservationAdapter {
                                     reservationId,
                                 );
 
-                            if (
-                                currentReservation.accountId !==
-                                payload.account.getId()
-                            ) {
-                                throw new Error(
-                                    "ReservationAdapter.update: Reservation cannot be moved to another account",
-                                );
-                            }
-
-                            if (
-                                currentReservation.networkId !==
-                                payload.networkId
-                            ) {
-                                throw new Error(
-                                    "ReservationAdapter.update: Reservation cannot be moved to another network",
-                                );
-                            }
+                            ensureValid(
+                                validateReservationUpdateTarget(
+                                    currentReservation,
+                                    payload,
+                                ),
+                                { context: "ReservationAdapter.update" },
+                            );
 
                             this.reservationsManager.ensureUniqueDeployId(
                                 payload.deployId,
@@ -304,9 +299,11 @@ export default class ReservationAdapter {
                 await ReservationAdapter.readPrivateData(record, dataKeySecret);
 
             if (
-                !isSerializedReservationPrivateData(privateData) ||
-                privateData.expirationTime <= Date.now() ||
-                !knownNetworkIds.has(record.networkId)
+                !isRestorableReservationData(
+                    privateData,
+                    record.networkId,
+                    knownNetworkIds,
+                )
             ) {
                 await StorageManager.deleteTransactionReservation(record.id);
 
@@ -390,7 +387,7 @@ export default class ReservationAdapter {
     }
 
     public dispose(): void {
-        this.reservationsManager.dispose();
+        this.reservationsManager.close();
     }
 
     private async encryptReservationData(
@@ -446,18 +443,41 @@ export default class ReservationAdapter {
         });
     }
 
-    private async reserve(
+    private async settleFailedSubmission(
+        reservation: ITransactionReservation,
+        error: unknown,
+    ): Promise<void> {
+        if (error instanceof DeploySubmissionRejectedError) {
+            await ReservationAdapter.releaseFromStorage(reservation.id);
+
+            return;
+        }
+
+        this.reservationsManager.add(reservation.id, reservation);
+    }
+
+    private async reserveAndSubmit(
         wallet: Wallet,
-        deployId: string,
+        signedDeploy: SignedResult,
         reservation: ITransactionReservation,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
         await this.persistReservation(reservation, wallet, passwordProvider);
 
+        try {
+            await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
+                signedDeploy,
+            );
+        } catch (error: unknown) {
+            await this.settleFailedSubmission(reservation, error);
+
+            throw error;
+        }
+
         this.reservationsManager.add(reservation.id, reservation);
 
         return {
-            deployId,
+            deployId: reservation.details.deployId,
             subscribe: (callbacks: IDeployWatchCallbacks) =>
                 this.reservationsManager.subscribe(reservation.id, callbacks),
         };
@@ -482,34 +502,41 @@ export default class ReservationAdapter {
             ReservationAdapter.operationsGuard.runReservationAction(
                 ReservationAction.TRANSFER,
                 { accountId, networkId },
-                async () => {
-                    await this.ensureSufficientBalance(account, pendingAmount, {
-                        context: "ReservationAdapter.transfer",
-                    });
+                () =>
+                    ApiClientManager.getInstance().runNetworkOperation(
+                        async () => {
+                            await this.ensureSufficientBalance(
+                                account,
+                                pendingAmount,
+                                { context: "ReservationAdapter.transfer" },
+                            );
 
-                    const deployId: string = await wallet.transfer(
-                        accountId,
-                        details,
-                        passwordProvider,
-                    );
+                            const signedDeploy: SignedResult =
+                                await wallet.signTransfer(
+                                    accountId,
+                                    details,
+                                    passwordProvider,
+                                );
 
-                    const reservation: ITransactionReservation =
-                        TransactionReservationFabric.createTransfer({
-                            kind: "transfer",
-                            deployId,
-                            networkId,
-                            account,
-                            pendingAmount,
-                            details,
-                        });
+                            const reservation: ITransactionReservation =
+                                TransactionReservationFabric.createTransfer({
+                                    kind: "transfer",
+                                    deployId: signedDeploy.signature,
+                                    networkId,
+                                    account,
+                                    pendingAmount,
+                                    details,
+                                });
 
-                    return this.reserve(
-                        wallet,
-                        deployId,
-                        reservation,
-                        passwordProvider,
-                    );
-                },
+                            return this.reserveAndSubmit(
+                                wallet,
+                                signedDeploy,
+                                reservation,
+                                passwordProvider,
+                            );
+                        },
+                        { networkId },
+                    ),
             ),
         );
     }
@@ -535,34 +562,41 @@ export default class ReservationAdapter {
             ReservationAdapter.operationsGuard.runReservationAction(
                 ReservationAction.DEPLOY,
                 { accountId, networkId },
-                async () => {
-                    await this.ensureSufficientBalance(account, pendingAmount, {
-                        context: "ReservationAdapter.deploy",
-                    });
+                () =>
+                    ApiClientManager.getInstance().runNetworkOperation(
+                        async () => {
+                            await this.ensureSufficientBalance(
+                                account,
+                                pendingAmount,
+                                { context: "ReservationAdapter.deploy" },
+                            );
 
-                    const deployId: string = await wallet.deploy(
-                        accountId,
-                        details,
-                        passwordProvider,
-                    );
+                            const signedDeploy: SignedResult =
+                                await wallet.signDeploy(
+                                    accountId,
+                                    details,
+                                    passwordProvider,
+                                );
 
-                    const reservation: ITransactionReservation =
-                        TransactionReservationFabric.createDeploy({
-                            kind: "deploy",
-                            deployId,
-                            networkId,
-                            account,
-                            pendingAmount,
-                            term: details.term,
-                        });
+                            const reservation: ITransactionReservation =
+                                TransactionReservationFabric.createDeploy({
+                                    kind: "deploy",
+                                    deployId: signedDeploy.signature,
+                                    networkId,
+                                    account,
+                                    pendingAmount,
+                                    term: details.term,
+                                });
 
-                    return this.reserve(
-                        wallet,
-                        deployId,
-                        reservation,
-                        passwordProvider,
-                    );
-                },
+                            return this.reserveAndSubmit(
+                                wallet,
+                                signedDeploy,
+                                reservation,
+                                passwordProvider,
+                            );
+                        },
+                        { networkId },
+                    ),
             ),
         );
     }

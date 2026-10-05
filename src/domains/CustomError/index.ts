@@ -25,6 +25,7 @@ export enum CustomErrorCode {
     KEY_DERIVATION_FAILED = "KEY_DERIVATION_FAILED",
     STORAGE_OPERATION_FAILED = "STORAGE_OPERATION_FAILED",
     API_REQUEST_FAILED = "API_REQUEST_FAILED",
+    DEPLOY_SUBMISSION_REJECTED = "DEPLOY_SUBMISSION_REJECTED",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
@@ -206,16 +207,34 @@ export class ApiRequestError extends CustomError {
     public readonly operation: string;
     public readonly reason: string;
 
-    constructor(source: ApiSource, operation: string, reason: string) {
+    constructor(
+        source: ApiSource,
+        operation: string,
+        reason: string,
+        code: CustomErrorCode = CustomErrorCode.API_REQUEST_FAILED,
+        status: number = 502,
+    ) {
         super(
-            CustomErrorCode.API_REQUEST_FAILED,
+            code,
             `Request to the ${source} failed during ${operation}: ${reason}`,
-            502,
+            status,
         );
 
         this.source = source;
         this.operation = operation;
         this.reason = reason;
+    }
+}
+
+export class DeploySubmissionRejectedError extends ApiRequestError {
+    constructor(operation: string, reason: string) {
+        super(
+            ApiSource.NODE,
+            operation,
+            reason,
+            CustomErrorCode.DEPLOY_SUBMISSION_REJECTED,
+            400,
+        );
     }
 }
 

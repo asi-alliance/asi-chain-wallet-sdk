@@ -110,6 +110,7 @@ export default class WalletManager extends ItemManager<Wallet> {
 
     public async delete(id: string): Promise<Wallet> {
         const currentWallet: Wallet = super.remove(id);
+        const signerId: string = currentWallet.getSigner().getId();
 
         const accountIds: string[] = Array.from(
             currentWallet.getAccountsMap().keys(),
@@ -119,7 +120,8 @@ export default class WalletManager extends ItemManager<Wallet> {
             await StorageManager.deleteMultipleAccounts(accountIds);
         }
 
-        await StorageManager.deleteSigner(currentWallet.getSigner().getId());
+        await StorageManager.deleteTransactionReservationsBySignerId(signerId);
+        await StorageManager.deleteSigner(signerId);
 
         return currentWallet;
     }
