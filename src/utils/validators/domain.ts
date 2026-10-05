@@ -8,12 +8,18 @@ import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import type {
+    INetworkConfig,
+    INetworkRecord,
+    NetworkName,
+} from "@domains/Network";
 import {
     decodeBase16,
     decodeBase58,
     encodeBase16,
     encodeBase58,
 } from "@utils/codec";
+import { isSameNetworkConfig } from "@utils/functions";
 import { isIntegerInRange } from "./primitives";
 
 const { blake2bHex } = blakejs;
@@ -183,6 +189,32 @@ export const validateNodeApiProfile = (
         return {
             isValid: false,
             error: `Node API profile must be one of: ${NODE_API_PROFILES.join(", ")}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateNetworkUniqueness = (
+    name: NetworkName,
+    config: INetworkConfig,
+    otherRecords: INetworkRecord[],
+): { isValid: boolean; error?: string } => {
+    if (
+        otherRecords.some((record: INetworkRecord) =>
+            isSameNetworkConfig(record.config, config),
+        )
+    ) {
+        return {
+            isValid: false,
+            error: "Network with the same config already exists",
+        };
+    }
+
+    if (otherRecords.some((record: INetworkRecord) => record.name === name)) {
+        return {
+            isValid: false,
+            error: "Network with the same name already exists",
         };
     }
 

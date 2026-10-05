@@ -5,7 +5,6 @@ import {
     useState,
     type ReactElement,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 import {
     Account,
     ClientEvent,
@@ -25,12 +24,9 @@ import TxList from "./TxList";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
-import Pagination from "@components/common/Pagination";
 import { downloadTextFile } from "@utils/functions";
 
-const PAGE_SIZE: number = 10;
-
-const PAGE_QUERY_PARAM: string = "page";
+const HISTORY_LIMIT: number = 50;
 
 type HistoryMode = "all" | "pending" | "executed";
 
@@ -59,8 +55,6 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 const TxHistoryPage = (): ReactElement => {
     const { client, openWallets, currentNetwork } = useSdkContext();
 
-    const [searchParams, setSearchParams] = useSearchParams();
-
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [historyMode, setHistoryMode] = useState<HistoryMode>("all");
     const [exportFormat, setExportFormat] = useState<ExportFormat>(
@@ -70,8 +64,6 @@ const TxHistoryPage = (): ReactElement => {
         null,
     );
     const [isLoading, setIsLoading] = useState<boolean>(false);
-
-    const page = Math.max(1, Number(searchParams.get(PAGE_QUERY_PARAM)) || 1);
 
     const accounts = useMemo<Account[]>(
         () => openWallets.flatMap((wallet) => wallet.getAccounts()),
@@ -126,10 +118,7 @@ const TxHistoryPage = (): ReactElement => {
                     selectedAccount.getId(),
                     {
                         sources: MODE_SOURCES[historyMode],
-                        pagination: {
-                            offset: (page - 1) * PAGE_SIZE,
-                            limit: PAGE_SIZE,
-                        },
+                        pagination: { limit: HISTORY_LIMIT },
                     },
                 );
 
@@ -149,14 +138,7 @@ const TxHistoryPage = (): ReactElement => {
         } finally {
             setIsLoading(false);
         }
-    }, [
-        client,
-        selectedWallet,
-        selectedAccount,
-        historyMode,
-        page,
-        startRequest,
-    ]);
+    }, [client, selectedWallet, selectedAccount, historyMode, startRequest]);
 
     useEffect(() => {
         void load();
@@ -173,36 +155,6 @@ const TxHistoryPage = (): ReactElement => {
                 void load();
             });
     }, [client, selectedWallet, load]);
-
-    const goToPage = (nextPage: number): void => {
-        const params = new URLSearchParams(searchParams);
-
-        params.set(PAGE_QUERY_PARAM, String(nextPage));
-
-        setSearchParams(params);
-    };
-
-    const resetToFirstPage = (): void => {
-        const params = new URLSearchParams(searchParams);
-
-        params.delete(PAGE_QUERY_PARAM);
-
-        setSearchParams(params, { replace: true });
-    };
-
-    const handleAccountChange = (value: string): void => {
-        setSelectedAccountId(value);
-        resetToFirstPage();
-    };
-
-    const handleModeChange = (value: string): void => {
-        setHistoryMode(value as HistoryMode);
-        resetToFirstPage();
-    };
-
-    const hasNextPage = transactions?.length === PAGE_SIZE;
-
-    const showPagination = Boolean(transactions) && (page > 1 || hasNextPage);
 
     const canExport = Boolean(
         selectedAccount && transactions && transactions.length,
@@ -252,7 +204,7 @@ const TxHistoryPage = (): ReactElement => {
                                 label="Account:"
                                 value={selectedAccountId}
                                 options={accountOptions}
-                                onChange={handleAccountChange}
+                                onChange={setSelectedAccountId}
                             />
                         </div>
                         <div className="tx-history-page__field">
@@ -261,7 +213,9 @@ const TxHistoryPage = (): ReactElement => {
                                 label="Show:"
                                 value={historyMode}
                                 options={MODE_OPTIONS}
-                                onChange={handleModeChange}
+                                onChange={(value) =>
+                                    setHistoryMode(value as HistoryMode)
+                                }
                             />
                         </div>
                         <div className="tx-history-page__field">
@@ -302,14 +256,6 @@ const TxHistoryPage = (): ReactElement => {
                     </p>
                 ) : (
                     <TxList transactions={transactions} />
-                )}
-
-                {showPagination && (
-                    <Pagination
-                        page={page}
-                        hasNextPage={hasNextPage}
-                        onChange={goToPage}
-                    />
                 )}
             </section>
         </main>
