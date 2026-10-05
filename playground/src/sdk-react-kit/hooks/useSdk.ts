@@ -14,6 +14,7 @@ import {
     IKeyfileImportPreview,
     INetworkConfig,
     INetworkRecord,
+    INetworksState,
     INetworkUpdate,
     IReservedOperationResult,
     ITransactionReservation,
@@ -75,15 +76,13 @@ const useSdk = () => {
         [],
     );
 
-    const refreshNetworks = useCallback((activeClient?: Client): void => {
-        const currentClient = activeClient ?? clientRef.current;
-
-        if (!currentClient) {
-            return;
-        }
-
-        setNetworkRecords(currentClient.getNetworks());
-    }, []);
+    const applyNetworksState = useCallback(
+        ({ networks, selectedNetwork }: INetworksState): void => {
+            setNetworkRecords(networks);
+            setCurrentNetwork(selectedNetwork);
+        },
+        [],
+    );
 
     useEffect(() => {
         let disposed = false;
@@ -99,8 +98,7 @@ const useSdk = () => {
 
             clientRef.current = createdClient;
             setClient(createdClient);
-            refreshNetworks(createdClient);
-            setCurrentNetwork(createdClient.getCurrentNetwork());
+            applyNetworksState(createdClient.getNetworksState());
 
             await refresh(createdClient);
         };
@@ -112,7 +110,7 @@ const useSdk = () => {
             void clientRef.current?.close();
             clientRef.current = null;
         };
-    }, [refresh, refreshNetworks]);
+    }, [refresh, applyNetworksState]);
 
     useEffect(() => {
         if (!client) {
@@ -128,12 +126,7 @@ const useSdk = () => {
             eventBus.on(ClientEvent.ACCOUNTS_CHANGED, () => {
                 void refresh();
             }),
-            eventBus.on(
-                ClientEvent.NETWORK_CHANGED,
-                (network: INetworkRecord) => {
-                    setCurrentNetwork(network);
-                },
-            ),
+            eventBus.on(ClientEvent.NETWORKS_CHANGED, applyNetworksState),
             eventBus.on(
                 ClientEvent.RESERVATIONS_CHANGED,
                 (reservationsByWallet: TReservationsByWallet) => {
@@ -166,7 +159,7 @@ const useSdk = () => {
                 unsubscribe();
             }
         };
-    }, [client, refresh]);
+    }, [client, refresh, applyNetworksState]);
 
     const requireClient = useCallback((): Client => {
         if (!clientRef.current) {
@@ -363,51 +356,29 @@ const useSdk = () => {
 
     const setNetwork = useCallback(
         (networkId: NetworkId): void => {
-            const currentClient = requireClient();
-
-            currentClient.setNetwork(networkId);
-
-            setCurrentNetwork(currentClient.getCurrentNetwork());
+            requireClient().setNetwork(networkId);
         },
         [requireClient],
     );
 
     const addNetwork = useCallback(
-        async (
+        (
             name: NetworkName,
             config: INetworkConfig,
-        ): Promise<INetworkRecord> => {
-            const record = await requireClient().addNetwork(name, config);
-
-            refreshNetworks();
-
-            return record;
-        },
-        [requireClient, refreshNetworks],
+        ): Promise<INetworkRecord> => requireClient().addNetwork(name, config),
+        [requireClient],
     );
 
     const updateNetwork = useCallback(
-        async (networkId: NetworkId, update: INetworkUpdate): Promise<void> => {
-            const currentClient = requireClient();
-
-            await currentClient.updateNetwork(networkId, update);
-
-            refreshNetworks();
-            setCurrentNetwork(currentClient.getCurrentNetwork());
-        },
-        [requireClient, refreshNetworks],
+        (networkId: NetworkId, update: INetworkUpdate): Promise<void> =>
+            requireClient().updateNetwork(networkId, update),
+        [requireClient],
     );
 
     const removeNetwork = useCallback(
-        async (networkId: NetworkId): Promise<void> => {
-            const currentClient = requireClient();
-
-            await currentClient.removeNetwork(networkId);
-
-            refreshNetworks();
-            setCurrentNetwork(currentClient.getCurrentNetwork());
-        },
-        [requireClient, refreshNetworks],
+        (networkId: NetworkId): Promise<void> =>
+            requireClient().removeNetwork(networkId),
+        [requireClient],
     );
 
     const transfer = useCallback(

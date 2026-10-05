@@ -1,10 +1,5 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
-import type {
-    INetworkConfig,
-    INetworkRecord,
-    NetworkName,
-} from "@domains/Network";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
 import { GasFee } from "@config/index";
@@ -12,6 +7,12 @@ import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import {
+    INetworkConfig,
+    INetworkRecord,
+    NetworkName,
+    NETWORK_URL_FIELDS,
+} from "@domains/Network";
 import {
     decodeBase16,
     decodeBase58,
@@ -189,6 +190,31 @@ export const validateNodeApiProfile = (
             isValid: false,
             error: `Node API profile must be one of: ${NODE_API_PROFILES.join(", ")}`,
         };
+    }
+
+    return { isValid: true };
+};
+
+export const validateNetworkConfigUrls = (
+    config: Partial<INetworkConfig>,
+    { allowEmpty }: { allowEmpty: boolean },
+): { isValid: boolean; error?: string } => {
+    for (const field of NETWORK_URL_FIELDS) {
+        const url: string | undefined = config[field];
+
+        if (url === undefined) {
+            continue;
+        }
+
+        if (allowEmpty && url.trim().length === 0) {
+            continue;
+        }
+
+        const { isValid, error } = validateUrl(url);
+
+        if (!isValid) {
+            return { isValid: false, error: `Invalid ${field}: ${error}` };
+        }
     }
 
     return { isValid: true };

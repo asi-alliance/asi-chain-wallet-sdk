@@ -52,3 +52,21 @@ export function EnsureNetworkNotDefault<
         return target.apply(this, args);
     };
 }
+
+export function EnsureNetworkRecordNotDefault<
+    This extends INetworkConfigProviderContext,
+    Args extends [INetworkRecord, ...any[]],
+    Return,
+>(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
+    return function (this: This, ...args: Args): Return {
+        const [record] = args;
+        const storedRecord: INetworkRecord | undefined =
+            this.networksRecords!.get(record.id);
+
+        if (record.isDefault || storedRecord?.isDefault) {
+            throw new Error("Network config is not default");
+        }
+
+        return target.apply(this, args);
+    };
+}
