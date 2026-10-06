@@ -43,6 +43,7 @@ export const GasFee = {
 export const DEPLOY_STATUS_POLLING_TIMEOUT: number = 3 * 60 * 1000;
 export const RESERVATION_EXPIRATION_TIME: number = 5 * 60 * 1000;
 export const DEFAULT_REQUEST_TIMEOUT: number = 30 * 1000;
+export const MAX_API_RESPONSE_LENGTH: number = 10 * 1024 * 1024;
 
 export const RequirePassword = {
     ONCE_PER_SESSION: "once-per-session",
