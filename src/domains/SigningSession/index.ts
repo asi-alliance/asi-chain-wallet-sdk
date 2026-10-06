@@ -1,3 +1,4 @@
+import { DEFAULT_AUTO_LOCK_MS } from "@config/index";
 import AutoTimer from "@domains/AutoTimer";
 import { WalletOperationCancelledError } from "@domains/CustomError";
 import type { TDecryptedSecret } from "@domains/SecretsProvider";
@@ -74,10 +75,20 @@ export default class SigningSession {
 
         this.release();
 
+        // TODO(next-major): Validate ISigningSessionOptions and throw on a
+        // non-positive autoLockMs instead of silently skipping the session.
+        const autoLockMs: number = options?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
+
+        if (autoLockMs <= 0) {
+            this.wipeSecret(secrets.secret);
+
+            return;
+        }
+
         const onAutoLock: (() => void) | undefined = options?.onAutoLock;
 
         const timer: AutoTimer = new AutoTimer({
-            delayMs: options?.autoLockMs ?? 0,
+            delayMs: autoLockMs,
             onElapsed: () => {
                 this.release();
 
