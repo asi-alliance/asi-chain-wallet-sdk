@@ -331,6 +331,20 @@ export default class Client extends ClosableDomain {
         }
     }
 
+    private discardWallet(wallet: Wallet): void {
+        const walletId: string = wallet.getId();
+
+        wallet.lock();
+
+        if (this.walletManager.has(walletId)) {
+            this.walletManager.remove(walletId);
+        }
+
+        if (this.reservationAdapterManager.has(walletId)) {
+            this.reservationAdapterManager.remove(walletId);
+        }
+    }
+
     @EnsureActive
     public async createHDWallet(
         { mnemonic, accountName, index }: ICreateHDWalletPayload,
@@ -351,19 +365,16 @@ export default class Client extends ClosableDomain {
         }));
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
-            async () => {
-                const createdWallet: Wallet = await this.walletManager.createHD(
+            () =>
+                this.walletManager.createHD(
                     { accountName, index },
                     secretProvider,
-                );
-
-                await this.reservationAdapterManager.create(
+                ),
+            (createdWallet: Wallet) =>
+                this.reservationAdapterManager.create(
                     createdWallet,
                     secretProvider,
-                );
-
-                return createdWallet;
-            },
+                ),
         );
 
         this.emitWalletsChanged();
@@ -390,20 +401,16 @@ export default class Client extends ClosableDomain {
         }));
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
-            async () => {
-                const createdWallet: Wallet =
-                    await this.walletManager.createPrivateKey(
-                        accountName,
-                        secretProvider,
-                    );
-
-                await this.reservationAdapterManager.create(
+            () =>
+                this.walletManager.createPrivateKey(
+                    accountName,
+                    secretProvider,
+                ),
+            (createdWallet: Wallet) =>
+                this.reservationAdapterManager.create(
                     createdWallet,
                     secretProvider,
-                );
-
-                return createdWallet;
-            },
+                ),
         );
 
         this.emitWalletsChanged();
@@ -428,20 +435,6 @@ export default class Client extends ClosableDomain {
         this.emitWalletsChanged();
 
         return removedWallet;
-    }
-
-    private discardWallet(wallet: Wallet): void {
-        const walletId: string = wallet.getId();
-
-        wallet.lock();
-
-        if (this.walletManager.has(walletId)) {
-            this.walletManager.remove(walletId);
-        }
-
-        if (this.reservationAdapterManager.has(walletId)) {
-            this.reservationAdapterManager.remove(walletId);
-        }
     }
 
     private async holdSession(
@@ -487,12 +480,8 @@ export default class Client extends ClosableDomain {
             this.createPasswordProvider(password);
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
-            async () => {
-                const openedWallet: Wallet = await this.walletManager.open(
-                    signerId,
-                    passwordProvider,
-                );
-
+            () => this.walletManager.open(signerId, passwordProvider),
+            async (openedWallet: Wallet) => {
                 if (this.shouldHoldSession()) {
                     await this.holdSession(openedWallet, passwordProvider);
                 }
@@ -501,8 +490,6 @@ export default class Client extends ClosableDomain {
                     openedWallet,
                     passwordProvider,
                 );
-
-                return openedWallet;
             },
         );
 
@@ -678,20 +665,12 @@ export default class Client extends ClosableDomain {
             );
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
-            async () => {
-                const importedWallet: Wallet =
-                    await this.walletManager.importKeyfile(
-                        payload,
-                        passwordProvider,
-                    );
-
-                await this.reservationAdapterManager.create(
+            () => this.walletManager.importKeyfile(payload, passwordProvider),
+            (importedWallet: Wallet) =>
+                this.reservationAdapterManager.create(
                     importedWallet,
                     passwordProvider,
-                );
-
-                return importedWallet;
-            },
+                ),
         );
 
         this.emitWalletsChanged();
@@ -843,38 +822,43 @@ export default class Client extends ClosableDomain {
         request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = wallet.getAccount(request.accountId);
+        return ApiClientManager.getInstance().runNetworkOperation(
+            async () => {
+                const wallet: Wallet = this.getOpenWallet(request.walletId);
+                const account: Account = wallet.getAccount(request.accountId);
 
-            const reservationAdapter: ReservationAdapter | null =
-                this.reservationAdapterManager.get(request.walletId);
+                const reservationAdapter: ReservationAdapter | null =
+                    this.reservationAdapterManager.get(request.walletId);
 
-            if (!reservationAdapter) {
-                throw new Error(
-                    "Client.addTransactionReservation: Not found reservation adapter",
-                );
-            }
+                if (!reservationAdapter) {
+                    throw new Error(
+                        "Client.addTransactionReservation: Not found reservation adapter",
+                    );
+                }
 
-            const passwordProvider: SecretsProvider | undefined =
-                password !== undefined
-                    ? this.createPasswordProvider(password)
-                    : undefined;
+                const passwordProvider: SecretsProvider | undefined =
+                    password !== undefined
+                        ? this.createPasswordProvider(password)
+                        : undefined;
 
-            await this.ensureSession(wallet, passwordProvider);
+                await this.ensureSession(wallet, passwordProvider);
 
-            const payload: TCreateTransactionReservationPayload =
-                TransactionReservationFabric.toCreatePayload(
-                    request,
-                    account,
-                    ApiClientManager.getInstance().getCurrentNetworkId(),
-                );
+                const payload: TCreateTransactionReservationPayload =
+                    TransactionReservationFabric.toCreatePayload(
+                        request,
+                        account,
+                        ApiClientManager.getInstance().getCurrentNetworkId(),
+                    );
 
-            const reservation: ITransactionReservation =
-                await reservationAdapter.add(wallet, payload, passwordProvider);
+                const reservation: ITransactionReservation =
+                    await reservationAdapter.add(
+                        wallet,
+                        payload,
+                        passwordProvider,
+                    );
 
-            return reservation;
-        },
+                return reservation;
+            },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
         );
     }
@@ -886,43 +870,44 @@ export default class Client extends ClosableDomain {
         request: TTransactionReservationRequest,
         password?: string,
     ): Promise<ITransactionReservation> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const wallet: Wallet = this.getOpenWallet(request.walletId);
-            const account: Account = wallet.getAccount(request.accountId);
+        return ApiClientManager.getInstance().runNetworkOperation(
+            async () => {
+                const wallet: Wallet = this.getOpenWallet(request.walletId);
+                const account: Account = wallet.getAccount(request.accountId);
 
-            const reservationAdapter: ReservationAdapter | null =
-                this.reservationAdapterManager.get(request.walletId);
+                const reservationAdapter: ReservationAdapter | null =
+                    this.reservationAdapterManager.get(request.walletId);
 
-            if (!reservationAdapter) {
-                throw new Error(
-                    "Client.updateTransactionReservation: Not found reservation adapter",
-                );
-            }
+                if (!reservationAdapter) {
+                    throw new Error(
+                        "Client.updateTransactionReservation: Not found reservation adapter",
+                    );
+                }
 
-            const passwordProvider: SecretsProvider | undefined =
-                password !== undefined
-                    ? this.createPasswordProvider(password)
-                    : undefined;
+                const passwordProvider: SecretsProvider | undefined =
+                    password !== undefined
+                        ? this.createPasswordProvider(password)
+                        : undefined;
 
-            await this.ensureSession(wallet, passwordProvider);
+                await this.ensureSession(wallet, passwordProvider);
 
-            const payload: TCreateTransactionReservationPayload =
-                TransactionReservationFabric.toCreatePayload(
-                    request,
-                    account,
-                    ApiClientManager.getInstance().getCurrentNetworkId(),
-                );
+                const payload: TCreateTransactionReservationPayload =
+                    TransactionReservationFabric.toCreatePayload(
+                        request,
+                        account,
+                        ApiClientManager.getInstance().getCurrentNetworkId(),
+                    );
 
-            const reservation: ITransactionReservation =
-                await reservationAdapter.update(
-                    wallet,
-                    reservationId,
-                    payload,
-                    passwordProvider,
-                );
+                const reservation: ITransactionReservation =
+                    await reservationAdapter.update(
+                        wallet,
+                        reservationId,
+                        payload,
+                        passwordProvider,
+                    );
 
-            return reservation;
-        },
+                return reservation;
+            },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
         );
     }
@@ -1011,32 +996,33 @@ export default class Client extends ClosableDomain {
         { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const wallet: Wallet = this.getOpenWallet(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(
+            async () => {
+                const wallet: Wallet = this.getOpenWallet(walletId);
 
-            const passwordProvider: SecretsProvider | undefined =
-                password !== undefined
-                    ? this.createPasswordProvider(password)
-                    : undefined;
+                const passwordProvider: SecretsProvider | undefined =
+                    password !== undefined
+                        ? this.createPasswordProvider(password)
+                        : undefined;
 
-            await this.ensureSession(wallet, passwordProvider);
+                await this.ensureSession(wallet, passwordProvider);
 
-            const reservationAdapter: ReservationAdapter | null =
-                this.reservationAdapterManager.get(walletId);
+                const reservationAdapter: ReservationAdapter | null =
+                    this.reservationAdapterManager.get(walletId);
 
-            if (!reservationAdapter) {
-                throw new Error(
-                    "Client.transfer: Not found reservation adapter",
+                if (!reservationAdapter) {
+                    throw new Error(
+                        "Client.transfer: Not found reservation adapter",
+                    );
+                }
+
+                return reservationAdapter.transfer(
+                    wallet,
+                    accountId,
+                    { to, amount, asset: DEFAULT_ASSET },
+                    passwordProvider,
                 );
-            }
-
-            return reservationAdapter.transfer(
-                wallet,
-                accountId,
-                { to, amount, asset: DEFAULT_ASSET },
-                passwordProvider,
-            );
-        },
+            },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
         );
     }
@@ -1047,30 +1033,33 @@ export default class Client extends ClosableDomain {
         { walletId, accountId, term, phloLimit }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const wallet: Wallet = this.getOpenWallet(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(
+            async () => {
+                const wallet: Wallet = this.getOpenWallet(walletId);
 
-            const passwordProvider: SecretsProvider | undefined =
-                password !== undefined
-                    ? this.createPasswordProvider(password)
-                    : undefined;
+                const passwordProvider: SecretsProvider | undefined =
+                    password !== undefined
+                        ? this.createPasswordProvider(password)
+                        : undefined;
 
-            await this.ensureSession(wallet, passwordProvider);
+                await this.ensureSession(wallet, passwordProvider);
 
-            const reservationAdapter: ReservationAdapter | null =
-                this.reservationAdapterManager.get(walletId);
+                const reservationAdapter: ReservationAdapter | null =
+                    this.reservationAdapterManager.get(walletId);
 
-            if (!reservationAdapter) {
-                throw new Error("Client.deploy: Not found reservation adapter");
-            }
+                if (!reservationAdapter) {
+                    throw new Error(
+                        "Client.deploy: Not found reservation adapter",
+                    );
+                }
 
-            return reservationAdapter.deploy(
-                wallet,
-                accountId,
-                { term, phloLimit },
-                passwordProvider,
-            );
-        },
+                return reservationAdapter.deploy(
+                    wallet,
+                    accountId,
+                    { term, phloLimit },
+                    passwordProvider,
+                );
+            },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
         );
     }
@@ -1088,22 +1077,23 @@ export default class Client extends ClosableDomain {
         }: ISignDeployRequest,
         password?: string,
     ): Promise<SignedResult> {
-        return ApiClientManager.getInstance().runNetworkOperation(async () => {
-            const wallet: Wallet = this.getOpenWallet(walletId);
+        return ApiClientManager.getInstance().runNetworkOperation(
+            async () => {
+                const wallet: Wallet = this.getOpenWallet(walletId);
 
-            const passwordProvider: SecretsProvider | undefined =
-                password !== undefined
-                    ? this.createPasswordProvider(password)
-                    : undefined;
+                const passwordProvider: SecretsProvider | undefined =
+                    password !== undefined
+                        ? this.createPasswordProvider(password)
+                        : undefined;
 
-            await this.ensureSession(wallet, passwordProvider);
+                await this.ensureSession(wallet, passwordProvider);
 
-            return wallet.signDeploy(
-                accountId,
-                { term, phloLimit, phloPrice, shardId },
-                passwordProvider,
-            );
-        },
+                return wallet.signDeploy(
+                    accountId,
+                    { term, phloLimit, phloPrice, shardId },
+                    passwordProvider,
+                );
+            },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
         );
     }
