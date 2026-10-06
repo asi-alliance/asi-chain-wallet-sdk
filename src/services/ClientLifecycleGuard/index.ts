@@ -4,6 +4,8 @@ import { WalletOperationCancelledError } from "@domains/CustomError";
 
 export type TDiscardWallet = (wallet: Wallet) => void;
 
+export type TSetupWallet = (wallet: Wallet) => Promise<unknown>;
+
 export default class ClientLifecycleGuard extends LifecycleGuard {
     private readonly discardWallet: TDiscardWallet;
 
@@ -13,14 +15,36 @@ export default class ClientLifecycleGuard extends LifecycleGuard {
         this.discardWallet = discardWallet;
     }
 
-    public runWalletPublication(
-        operation: () => Promise<Wallet>,
+    private async setupWalletOrDiscard(
+        wallet: Wallet,
+        setupWallet: TSetupWallet,
     ): Promise<Wallet> {
-        return this.run(operation, (wallet: Wallet) => {
+        try {
+            await setupWallet(wallet);
+
+            return wallet;
+        } catch (error: unknown) {
             this.discardWallet(wallet);
 
-            return new WalletOperationCancelledError(wallet.getSigner().getId());
-        });
+            throw error;
+        }
+    }
+
+    public runWalletPublication(
+        operation: () => Promise<Wallet>,
+        setupWallet: TSetupWallet = async () => {},
+    ): Promise<Wallet> {
+        return this.run(
+            async () =>
+                this.setupWalletOrDiscard(await operation(), setupWallet),
+            (wallet: Wallet) => {
+                this.discardWallet(wallet);
+
+                return new WalletOperationCancelledError(
+                    wallet.getSigner().getId(),
+                );
+            },
+        );
     }
 
     public runAccountsUpdate<T>(

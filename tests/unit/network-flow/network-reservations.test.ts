@@ -138,6 +138,35 @@ const saveReservationRecord = async (
     });
 };
 
+const saveCorruptedReservationRecord = async (
+    { signerId, dataKeySecret }: IStoredSigner,
+    id: string,
+): Promise<void> => {
+    const encryptedData: EncryptedData =
+        await CryptoService.encryptWithPassword("not-json", dataKeySecret);
+
+    await StorageManager.saveTransactionReservation({
+        id,
+        networkId: SCALA_NETWORK,
+        signerId,
+        encryptedData,
+    });
+};
+
+const createClientWithWalletEvents = (
+    walletEvents: Wallet[][],
+): Promise<Client> =>
+    Client.create({
+        networksConfig: NETWORKS_CONFIG,
+        defaultNetwork: SCALA_NETWORK,
+        storageOptions: STORAGE_OPTIONS,
+        eventDispatcher: {
+            onWalletsChanged: (wallets: Wallet[]) => {
+                walletEvents.push(wallets);
+            },
+        },
+    });
+
 const readStoredIds = async (signerId: string): Promise<string[]> => {
     const records: ITransactionReservationsStorageRecord[] =
         await StorageManager.getTransactionReservationsBySignerId(signerId);
@@ -320,4 +349,52 @@ test("an idle network is never reported as busy", async () => {
     assert.equal(restored.client.isNetworkBusy(RUST_NETWORK), false);
 
     await restored.client.close();
+});
+
+test("a failed reservations restore rolls the opened wallet back out of the client", async () => {
+    console.log("\n=== FAILED OPEN ROLLS BACK THE WALLET ===");
+
+    const signer: IStoredSigner = await createStoredSigner();
+
+    await saveCorruptedReservationRecord(signer, "corrupted");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    await assert.rejects(() => client.openWallet(signer.signerId, PASSWORD));
+
+    console.log(
+        "    Open wallets after the failure:",
+        client.getWalletManager().getAll().length,
+    );
+
+    assert.equal(client.getWalletManager().getBySignerId(signer.signerId), null);
+    assert.equal(walletEvents.length, 0);
+
+    await client.close();
+});
+
+test("opening a wallet can be retried after a failed reservations restore", async () => {
+    console.log("\n=== OPEN IS RETRIED AFTER A FAILURE ===");
+
+    const signer: IStoredSigner = await createStoredSigner();
+
+    await saveCorruptedReservationRecord(signer, "corrupted");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    await assert.rejects(() => client.openWallet(signer.signerId, PASSWORD));
+
+    await StorageManager.deleteTransactionReservation("corrupted");
+
+    const wallet: Wallet = await client.openWallet(signer.signerId, PASSWORD);
+
+    console.log("    Reopened wallet unlocked:", wallet.isUnlocked());
+
+    assert.equal(client.isWalletOpen(wallet.getId()), true);
+    assert.equal(wallet.isUnlocked(), true);
+    assert.equal(walletEvents.length, 1);
+
+    await client.close();
 });
