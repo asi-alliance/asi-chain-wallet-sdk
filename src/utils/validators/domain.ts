@@ -7,10 +7,24 @@ import type {
 } from "@domains/Network";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
-import { GasFee } from "@config/index";
+import type { IWalletKeyfile } from "@services/ExportKeyfileService";
+import type { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
+import {
+    ASI_WALLET_KEYFILE_VERSION,
+    GasFee,
+    KeyfileTypes,
+    MAX_KEYFILE_ACCOUNT_NAME_LENGTH,
+    MAX_KEYFILE_ACCOUNTS,
+} from "@config/index";
+import Bip44Path from "@domains/Bip44Path";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
+import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
-import { isNodeApiProfile } from "@utils/guards";
+import {
+    isEncryptedData,
+    isKeyfileWalletAccount,
+    isNodeApiProfile,
+} from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
     decodeBase16,
@@ -336,6 +350,143 @@ export const validateDeployPayload = ({
 
     if (shardId !== undefined && !shardId.trim()) {
         return { isValid: false, error: "Shard id must not be empty" };
+    }
+
+    return { isValid: true };
+};
+
+export const validateWalletKeyfile = (
+    source: unknown,
+): { isValid: boolean; error?: string } => {
+    if (typeof source !== "object" || source === null) {
+        return { isValid: false, error: "Keyfile is not an object" };
+    }
+
+    const keyfile = source as IWalletKeyfile;
+
+    if (keyfile.type !== KeyfileTypes.WALLET) {
+        return { isValid: false, error: "Keyfile has an unknown type" };
+    }
+
+    if (keyfile.version !== ASI_WALLET_KEYFILE_VERSION) {
+        return {
+            isValid: false,
+            error: `Keyfile version ${keyfile.version} is not supported`,
+        };
+    }
+
+    if (!Object.values(WalletTypes).includes(keyfile.walletType)) {
+        return {
+            isValid: false,
+            error: "Keyfile has an unknown wallet type",
+        };
+    }
+
+    if (!isEncryptedData(keyfile.encryptedPrivateData)) {
+        return {
+            isValid: false,
+            error: "Keyfile has no encrypted private data",
+        };
+    }
+
+    if (!isEncryptedData(keyfile.encryptedAccounts)) {
+        return {
+            isValid: false,
+            error: "Keyfile has no encrypted accounts",
+        };
+    }
+
+    return { isValid: true };
+};
+
+const validateKeyfileAccountIndex = (
+    index: number | null,
+    walletType: WalletTypes,
+): { isValid: boolean; error?: string } => {
+    if (walletType === WalletTypes.PRIVATE_KEY) {
+        return index === null
+            ? { isValid: true }
+            : {
+                  isValid: false,
+                  error: "Private key keyfile account must have no index",
+              };
+    }
+
+    if (
+        index === null ||
+        !isIntegerInRange(index, 0, Bip44Path.MAX_COMPONENT_VALUE)
+    ) {
+        return {
+            isValid: false,
+            error: `HD keyfile account index must be an integer between 0 and ${Bip44Path.MAX_COMPONENT_VALUE}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+const validateKeyfileAccount = (
+    { name, index }: IKeyfileWalletAccount,
+    walletType: WalletTypes,
+): { isValid: boolean; error?: string } => {
+    if (!name.trim().length) {
+        return { isValid: false, error: "Keyfile account name is empty" };
+    }
+
+    if (name.length > MAX_KEYFILE_ACCOUNT_NAME_LENGTH) {
+        return {
+            isValid: false,
+            error: `Keyfile account name must be ${MAX_KEYFILE_ACCOUNT_NAME_LENGTH} characters or less`,
+        };
+    }
+
+    return validateKeyfileAccountIndex(index, walletType);
+};
+
+export const validateWalletKeyfileAccounts = (
+    source: unknown,
+    walletType: WalletTypes,
+): { isValid: boolean; error?: string } => {
+    if (
+        !Array.isArray(source) ||
+        !source.length ||
+        !source.every(isKeyfileWalletAccount)
+    ) {
+        return { isValid: false, error: "Keyfile has no valid accounts" };
+    }
+
+    if (source.length > MAX_KEYFILE_ACCOUNTS) {
+        return {
+            isValid: false,
+            error: `Keyfile must contain ${MAX_KEYFILE_ACCOUNTS} accounts or less`,
+        };
+    }
+
+    if (walletType === WalletTypes.PRIVATE_KEY && source.length > 1) {
+        return {
+            isValid: false,
+            error: "Private key keyfile must contain a single account",
+        };
+    }
+
+    for (const account of source) {
+        const accountValidation: { isValid: boolean; error?: string } =
+            validateKeyfileAccount(account, walletType);
+
+        if (!accountValidation.isValid) {
+            return accountValidation;
+        }
+    }
+
+    const indexes: (number | null)[] = source.map(
+        (account: IKeyfileWalletAccount) => account.index,
+    );
+
+    if (new Set(indexes).size !== indexes.length) {
+        return {
+            isValid: false,
+            error: "Keyfile contains duplicate accounts",
+        };
     }
 
     return { isValid: true };

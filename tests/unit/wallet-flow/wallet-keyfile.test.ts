@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ASI_WALLET_KEYFILE_VERSION, KeyfileTypes } from "@config/index";
+import {
+    ASI_WALLET_KEYFILE_VERSION,
+    KeyfileTypes,
+    MAX_KEYFILE_ACCOUNT_NAME_LENGTH,
+    MAX_KEYFILE_ACCOUNTS,
+} from "@config/index";
 import Account from "@domains/Account";
+import Bip44Path from "@domains/Bip44Path";
 import Client from "@domains/Client";
 import SecretsProvider from "@domains/SecretsProvider";
 import Wallet from "@domains/Wallet";
@@ -439,10 +445,13 @@ test("import rejects a keyfile whose secret does not match its wallet type", asy
     await walletManager.delete(wallet.getId());
 
     await assert.rejects(
-        () =>
+        async () =>
             importKeyfile(walletManager, {
                 ...keyfile,
                 walletType: WalletTypes.PRIVATE_KEY,
+                encryptedAccounts: await encryptKeyfileAccounts([
+                    { name: "Main", index: null },
+                ]),
             }),
         (error: Error) =>
             error instanceof InvalidKeyfileError &&
@@ -536,6 +545,47 @@ test("import rejects malformed keyfile accounts", async () => {
                 { name: "Second", index: null },
             ],
         ],
+        ["empty account name", WalletTypes.HD, [{ name: "", index: 0 }]],
+        ["blank account name", WalletTypes.HD, [{ name: "   ", index: 0 }]],
+        [
+            "account name over the length limit",
+            WalletTypes.HD,
+            [
+                {
+                    name: "x".repeat(MAX_KEYFILE_ACCOUNT_NAME_LENGTH + 1),
+                    index: 0,
+                },
+            ],
+        ],
+        ["negative hd index", WalletTypes.HD, [{ name: "Main", index: -1 }]],
+        ["fractional hd index", WalletTypes.HD, [{ name: "Main", index: 1.5 }]],
+        [
+            "hd index outside the bip-32 range",
+            WalletTypes.HD,
+            [{ name: "Main", index: Bip44Path.MAX_COMPONENT_VALUE + 1 }],
+        ],
+        ["null hd index", WalletTypes.HD, [{ name: "Main", index: null }]],
+        [
+            "null hd index next to an explicit one",
+            WalletTypes.HD,
+            [
+                { name: "First", index: 5 },
+                { name: "Second", index: null },
+            ],
+        ],
+        [
+            "private key account with an index",
+            WalletTypes.PRIVATE_KEY,
+            [{ name: "Main", index: 0 }],
+        ],
+        [
+            "accounts over the count limit",
+            WalletTypes.HD,
+            Array.from({ length: MAX_KEYFILE_ACCOUNTS + 1 }, (_, index) => ({
+                name: `Account ${index}`,
+                index,
+            })),
+        ],
     ];
 
     for (const [reason, walletType, accounts] of malformedAccounts) {
@@ -554,6 +604,42 @@ test("import rejects malformed keyfile accounts", async () => {
             reason,
         );
     }
+});
+
+test("import accepts keyfile accounts at the validation limits", async () => {
+    console.log("\n=== KEYFILE ACCOUNTS AT THE LIMITS ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet: Wallet = await walletManager.createHD(
+        { accountName: "Main" },
+        hdSecretProvider,
+    );
+
+    const keyfile: IWalletKeyfile = await exportKeyfile(wallet);
+
+    const accounts: IKeyfileWalletAccount[] = Array.from(
+        { length: MAX_KEYFILE_ACCOUNTS },
+        (_, index) => ({ name: `Account ${index}`, index }),
+    );
+
+    accounts[0] = {
+        name: "x".repeat(MAX_KEYFILE_ACCOUNT_NAME_LENGTH),
+        index: Bip44Path.MAX_COMPONENT_VALUE,
+    };
+
+    const decrypted: IKeyfileWalletAccount[] =
+        await ImportKeyfileService.decryptKeyfileAccounts(
+            {
+                ...keyfile,
+                encryptedAccounts: await encryptKeyfileAccounts(accounts),
+            },
+            passwordProvider,
+        );
+
+    console.log("    Accepted accounts:", decrypted.length);
+
+    assert.equal(decrypted.length, MAX_KEYFILE_ACCOUNTS);
 });
 
 test("import preview lists every account of a wallet that is not stored yet", async () => {
