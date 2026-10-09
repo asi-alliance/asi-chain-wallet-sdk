@@ -20,7 +20,7 @@ export default class Bip44Path {
     private static readonly CHANGE_INDEX: number = 4;
     private static readonly INDEX_COMPONENT_INDEX: number = 5;
     private static readonly DECIMAL_RADIX: number = 10;
-    private static readonly MAX_COMPONENT_VALUE: number = 2 ** 31 - 1;
+    public static readonly MAX_COMPONENT_VALUE: number = 2 ** 31 - 1;
 
     private coinType: number;
     private account: number;
