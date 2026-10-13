@@ -8,6 +8,7 @@ import { WalletTypes } from "@domains/Signer";
 import { WalletAction } from "@domains/CustomError";
 import WalletOperationGuardService from "@services/WalletOperationGuard";
 import WalletUniquenessService from "@services/WalletUniqueness";
+import LegacyFingerprintService from "@services/LegacyFingerprint";
 
 export interface IAccountMetadata {
     id: string;
@@ -100,6 +101,8 @@ export default class WalletManager extends ItemManager<Wallet> {
                     signerId,
                     passwordProvider,
                 });
+
+                await LegacyFingerprintService.upgradeSignerFingerprint(wallet);
 
                 this.add(wallet.getId(), wallet);
 

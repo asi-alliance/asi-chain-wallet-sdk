@@ -48,6 +48,10 @@ export const registerEventDispatcher = (
         ClientEvent.WALLET_LOCKED,
         eventDispatcher.onWalletLocked?.bind(eventDispatcher),
     );
+    register(
+        ClientEvent.WALLET_FINGERPRINT_UPGRADED,
+        eventDispatcher.onWalletFingerprintUpgraded?.bind(eventDispatcher),
+    );
 
     return () => {
         for (const unsubscribe of unsubscribes) {

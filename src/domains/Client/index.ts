@@ -27,6 +27,7 @@ import Account from "@domains/Account";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
+import type { ISignerRecord } from "@domains/Signer";
 import ReservationAdapter, {
     IReservedOperationResult,
 } from "@domains/ReservationAdapter";
@@ -152,6 +153,8 @@ export interface IClientEventDispatcher {
         isBusy: boolean,
     ): void | Promise<void>;
     onWalletLocked?(walletId: string): void | Promise<void>;
+    // TODO(next-major): Remove together with LegacyFingerprintService.
+    onWalletFingerprintUpgraded?(walletId: string): void | Promise<void>;
 }
 
 export interface ISessionPolicy {
@@ -486,6 +489,10 @@ export default class Client extends ClosableDomain {
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
+        // TODO(next-major): Remove together with LegacyFingerprintService.
+        const { fingerprint: storedFingerprint }: ISignerRecord =
+            await StorageManager.getSigner(signerId);
+
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
             async () => {
                 const openedWallet: Wallet = await this.walletManager.open(
@@ -507,6 +514,13 @@ export default class Client extends ClosableDomain {
         );
 
         this.emitWalletsChanged();
+
+        if (wallet.getSigner().getFingerprint() !== storedFingerprint) {
+            this.eventBus.emit(
+                ClientEvent.WALLET_FINGERPRINT_UPGRADED,
+                wallet.getId(),
+            );
+        }
 
         return wallet;
     }
