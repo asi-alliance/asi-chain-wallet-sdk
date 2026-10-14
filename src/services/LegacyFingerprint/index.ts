@@ -1,9 +1,6 @@
 import type Wallet from "@domains/Wallet";
 import type SecretsProvider from "@domains/SecretsProvider";
-import type {
-    IHDSecret,
-    TDecryptedSecret,
-} from "@domains/SecretsProvider";
+import type { IHDSecret, TDecryptedSecret } from "@domains/SecretsProvider";
 import type { ISignerRecord } from "@domains/Signer";
 import { WalletTypes } from "@domains/Signer";
 import type { ISignerStorageRecord } from "@domains/SignersStorageRepository";
@@ -19,7 +16,9 @@ import StorageManager from "@services/StorageManager";
 // HD signer carries the root-path-aware fingerprint from
 // KeyFingerprintService.fromHDSecret.
 export default class LegacyFingerprintService {
-    public static async upgradeSignerFingerprint(wallet: Wallet): Promise<void> {
+    public static async upgradeSignerFingerprint(
+        wallet: Wallet,
+    ): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
         const fingerprint: string = wallet.getSigner().getFingerprint();
 
@@ -59,7 +58,7 @@ export default class LegacyFingerprintService {
             KeyFingerprintService.fromPrivateKey(privateKey);
         privateKey.fill(0);
 
-        return accountRecordsц
+        return accountRecords
             .filter(
                 (record: IAccountStorageRecord) => record.index === lowestIndex,
             )

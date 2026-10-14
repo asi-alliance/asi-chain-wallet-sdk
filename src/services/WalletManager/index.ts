@@ -242,14 +242,14 @@ export default class WalletManager extends ItemManager<Wallet> {
         return WalletManager.operationsGuard.runWalletCreation(
             wallet,
             async () => {
-                await WalletUniquenessService.assertWalletIsNotDuplicate(
-                    wallet,
-                );
-
                 // TODO(next-major): Remove together with LegacyFingerprintService.
                 await LegacyFingerprintService.assertWalletIsNotLegacyDuplicate(
                     wallet,
                     passwordProvider,
+                );
+
+                await WalletUniquenessService.assertWalletIsNotDuplicate(
+                    wallet,
                 );
 
                 await StorageManager.saveWallet({ signerId, wallet });
