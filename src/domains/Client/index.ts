@@ -255,24 +255,18 @@ export default class Client extends ClosableDomain {
         }
     }
 
-    private tearDownRuntimeState(): void {
+    private resetRuntimeState(): void {
+        this.lifecycleGuard.invalidate();
+
         this.lockAllSessions();
         this.walletManager.clear();
         this.reservationAdapterManager.clear();
     }
 
-    private resetRuntimeState(): void {
-        this.lifecycleGuard.invalidate();
-
-        this.tearDownRuntimeState();
-    }
-
-    private async drainAndResetRuntimeState(): Promise<void> {
-        this.lifecycleGuard.invalidate();
+    private async resetAndDrainRuntimeState(): Promise<void> {
+        this.resetRuntimeState();
 
         await this.lifecycleGuard.drain();
-
-        this.tearDownRuntimeState();
     }
 
     public getWalletManager(): WalletManager {
@@ -298,7 +292,7 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async clearPersistence(): Promise<void> {
-        await this.drainAndResetRuntimeState();
+        await this.resetAndDrainRuntimeState();
 
         await StorageManager.clear();
         await InsensitiveCacheStorageManager.clear();
@@ -309,7 +303,7 @@ export default class Client extends ClosableDomain {
     protected async onClose(): Promise<void> {
         this.eventBus.clear();
 
-        await this.drainAndResetRuntimeState();
+        await this.resetAndDrainRuntimeState();
 
         StorageManager.close();
         InsensitiveCacheStorageManager.close();

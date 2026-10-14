@@ -26,10 +26,12 @@ import TransactionReservationFabric, {
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
+    DomainClosedError,
     IErrorContext,
     ReservationAction,
 } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
+import { EnsureReservationsManagerActive } from "@utils/decorators/reservationAdapter";
 import {
     ensureValid,
     isRestorableReservationData,
@@ -447,13 +449,23 @@ export default class ReservationAdapter {
         reservation: ITransactionReservation,
         error: unknown,
     ): Promise<void> {
-        if (error instanceof DeploySubmissionRejectedError) {
+        if (
+            error instanceof DeploySubmissionRejectedError ||
+            error instanceof DomainClosedError
+        ) {
             await ReservationAdapter.releaseFromStorage(reservation.id);
 
             return;
         }
 
         this.reservationsManager.add(reservation.id, reservation);
+    }
+
+    @EnsureReservationsManagerActive
+    private submit(signedDeploy: SignedResult): Promise<string> {
+        return ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
+            signedDeploy,
+        );
     }
 
     private async reserveAndSubmit(
@@ -465,9 +477,7 @@ export default class ReservationAdapter {
         await this.persistReservation(reservation, wallet, passwordProvider);
 
         try {
-            await ApiServiceRegistry.getInstance().transactions.submitSignedDeploy(
-                signedDeploy,
-            );
+            await this.submit(signedDeploy);
         } catch (error: unknown) {
             await this.settleFailedSubmission(reservation, error);
 
