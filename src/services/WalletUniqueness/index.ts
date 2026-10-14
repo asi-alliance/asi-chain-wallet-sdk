@@ -1,6 +1,7 @@
 import type Account from "@domains/Account";
 import type Wallet from "@domains/Wallet";
 import type SecretsProvider from "@domains/SecretsProvider";
+import type { TDecryptedSecret } from "@domains/SecretsProvider";
 import type { ISignerStorageRecord } from "@domains/SignersStorageRepository";
 import type { IAccountStorageRecord } from "@domains/AccountsStorageRepository";
 import {
@@ -8,15 +9,23 @@ import {
     DuplicateWalletError,
 } from "@domains/CustomError";
 import KeyFingerprintService from "@services/KeyFingerprint";
+import LegacyFingerprintService from "@services/LegacyFingerprint";
 import StorageManager from "@services/StorageManager";
 
 export default class WalletUniquenessService {
     public static async findSignerBySecret(
         secretProvider: SecretsProvider,
     ): Promise<ISignerStorageRecord | null> {
-        return StorageManager.findSignerByFingerprint(
-            await KeyFingerprintService.fromSecret(secretProvider.getSecret()),
-        );
+        const secret: TDecryptedSecret = secretProvider.getSecret();
+
+        const signer: ISignerStorageRecord | null =
+            await StorageManager.findSignerByFingerprint(
+                await KeyFingerprintService.fromSecret(secret),
+            );
+
+        // TODO(next-major): Return the fingerprint lookup alone once
+        // LegacyFingerprintService is removed.
+        return signer ?? LegacyFingerprintService.findSignerBySecret(secret);
     }
 
     public static async findExistingAccount(

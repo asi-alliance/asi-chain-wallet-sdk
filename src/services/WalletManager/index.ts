@@ -48,7 +48,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             secretProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, secretProvider);
 
         return wallet;
     }
@@ -62,7 +62,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             secretProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, secretProvider);
 
         return wallet;
     }
@@ -84,7 +84,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             passwordProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, passwordProvider);
 
         return wallet;
     }
@@ -233,7 +233,10 @@ export default class WalletManager extends ItemManager<Wallet> {
         return (await StorageManager.getSigners()).length;
     }
 
-    private async persist(wallet: Wallet): Promise<void> {
+    private async persist(
+        wallet: Wallet,
+        passwordProvider: SecretsProvider,
+    ): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
         return WalletManager.operationsGuard.runWalletCreation(
@@ -241,6 +244,12 @@ export default class WalletManager extends ItemManager<Wallet> {
             async () => {
                 await WalletUniquenessService.assertWalletIsNotDuplicate(
                     wallet,
+                );
+
+                // TODO(next-major): Remove together with LegacyFingerprintService.
+                await LegacyFingerprintService.assertWalletIsNotLegacyDuplicate(
+                    wallet,
+                    passwordProvider,
                 );
 
                 await StorageManager.saveWallet({ signerId, wallet });
