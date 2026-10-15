@@ -1,6 +1,18 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import { NetworkBusyError } from "@domains/CustomError";
 import { NetworkId } from "@domains/Network";
+import SerialOperationQueue from "@services/SerialOperationQueue";
+
+const networkWriteQueue: SerialOperationQueue = new SerialOperationQueue();
+
+export function SerializeNetworkWrite<This, Args extends any[], Return>(
+    target: (...args: Args) => Promise<Return>,
+    _context: ClassMethodDecoratorContext,
+) {
+    return function (this: This, ...args: Args): Promise<Return> {
+        return networkWriteQueue.run(() => target.apply(this, args));
+    };
+}
 
 export function EnsureNetworkIsIdle<
     This,

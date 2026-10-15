@@ -4,7 +4,10 @@ import {
     createNetworkRecord,
     createUpdatedNetworkRecord,
 } from "@fabrics/network";
-import { EnsureNetworkIsIdle } from "@utils/decorators/networkManager";
+import {
+    EnsureNetworkIsIdle,
+    SerializeNetworkWrite,
+} from "@utils/decorators/networkManager";
 import {
     INetworkConfig,
     INetworkRecord,
@@ -30,6 +33,7 @@ class NetworkManager {
         );
     }
 
+    @SerializeNetworkWrite
     public static async addNetwork(
         name: NetworkName,
         config: INetworkConfig,
@@ -50,6 +54,7 @@ class NetworkManager {
         return record;
     }
 
+    @SerializeNetworkWrite
     @EnsureNetworkIsIdle
     public static async updateNetwork(
         id: NetworkId,
@@ -69,6 +74,7 @@ class NetworkManager {
         apiClientManager.applyNetwork(record);
     }
 
+    @SerializeNetworkWrite
     @EnsureNetworkIsIdle
     public static async removeNetwork(id: NetworkId): Promise<void> {
         await StorageManager.deleteCustomNetwork(id);
