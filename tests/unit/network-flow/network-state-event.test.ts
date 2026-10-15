@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import Client from "@domains/Client";
+import Client, { ISignDeployRequest } from "@domains/Client";
 import StorageManager from "@services/StorageManager";
+import {
+    ReservationAction,
+    ReservationActionInProgressError,
+} from "@domains/CustomError";
 import {
     INetworkConfig,
     INetworkRecord,
@@ -29,6 +33,12 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/network-state-event" };
 
 const STORAGE_FAILURE: RegExp = /storage is unavailable/;
 const SAME_NAME_FAILURE: RegExp = /Network with the same name already exists/;
+
+const SIGN_DEPLOY_REQUEST: ISignDeployRequest = {
+    walletId: "wallet-1",
+    accountId: "account-1",
+    term: "Nil",
+};
 
 interface INetworkStateContext {
     client: Client;
@@ -84,6 +94,34 @@ const countStoredByName = async (name: string): Promise<number> =>
     (await StorageManager.getCustomNetworks()).filter(
         (record: IPersistedNetworkRecord) => record.name === name,
     ).length;
+
+interface IHeldWrite<TArgs extends unknown[]> {
+    write: (...args: TArgs) => Promise<void>;
+    release: () => void;
+}
+
+const holdWrite = <TArgs extends unknown[]>(
+    write: (...args: TArgs) => Promise<void>,
+): IHeldWrite<TArgs> => {
+    let release!: () => void;
+
+    const gate: Promise<void> = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+
+    return {
+        write: async (...args: TArgs): Promise<void> => {
+            await gate;
+            await write(...args);
+        },
+        release,
+    };
+};
+
+const isNetworkCleanupError = (error: unknown, networkId: NetworkId): boolean =>
+    error instanceof ReservationActionInProgressError &&
+    error.action === ReservationAction.NETWORK_CLEANUP &&
+    error.networkId === networkId;
 
 console.log("\n[TEST NETWORKS]");
 console.log("    Default networks:", SCALA_NETWORK, RUST_NETWORK);
@@ -252,5 +290,89 @@ test("concurrent renames of different networks to one name store a single record
 
     await client.removeNetwork(first.id);
     await client.removeNetwork(second.id);
+    await client.close();
+});
+
+test("signDeploy is rejected while the selected network is being updated", async () => {
+    console.log("\n=== SIGN DEPLOY DURING NETWORK UPDATE ===");
+
+    const { client }: INetworkStateContext = await createContext();
+
+    const custom: INetworkRecord = await client.addNetwork(
+        CUSTOM_NETWORK,
+        CUSTOM_NETWORK_CONFIG,
+    );
+
+    client.setNetwork(custom.id);
+
+    const { write, release }: IHeldWrite<[INetworkRecord]> = holdWrite(
+        originalWrites.update,
+    );
+
+    StorageManager.updateCustomNetwork = write;
+
+    const updating: Promise<void> = client.updateNetwork(custom.id, {
+        name: "Renamed network",
+    });
+
+    try {
+        await assert.rejects(client.signDeploy(SIGN_DEPLOY_REQUEST), (error) =>
+            isNetworkCleanupError(error, custom.id),
+        );
+    } finally {
+        release();
+        StorageManager.updateCustomNetwork = originalWrites.update;
+    }
+
+    console.log("    signDeploy rejected with NETWORK_CLEANUP during update");
+
+    await updating;
+
+    assert.equal(client.getNetwork(custom.id).name, "Renamed network");
+
+    await client.removeNetwork(custom.id);
+    await client.close();
+});
+
+test("signDeploy is rejected while the selected network is being removed", async () => {
+    console.log("\n=== SIGN DEPLOY DURING NETWORK REMOVAL ===");
+
+    const { client }: INetworkStateContext = await createContext();
+
+    const custom: INetworkRecord = await client.addNetwork(
+        CUSTOM_NETWORK,
+        CUSTOM_NETWORK_CONFIG,
+    );
+
+    client.setNetwork(custom.id);
+
+    const { write, release }: IHeldWrite<[NetworkId]> = holdWrite(
+        originalWrites.remove,
+    );
+
+    StorageManager.deleteCustomNetwork = write;
+
+    const removing: Promise<void> = client.removeNetwork(custom.id);
+
+    try {
+        await assert.rejects(client.signDeploy(SIGN_DEPLOY_REQUEST), (error) =>
+            isNetworkCleanupError(error, custom.id),
+        );
+    } finally {
+        release();
+        StorageManager.deleteCustomNetwork = originalWrites.remove;
+    }
+
+    console.log("    signDeploy rejected with NETWORK_CLEANUP during removal");
+
+    await removing;
+
+    assert.equal(
+        client
+            .getNetworks()
+            .some((record: INetworkRecord) => record.id === custom.id),
+        false,
+    );
+
     await client.close();
 });
