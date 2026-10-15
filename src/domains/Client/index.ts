@@ -208,9 +208,14 @@ export default class Client extends ClosableDomain {
             onReservationsChanged: () => this.emitReservationsChanged(),
         });
         this.flags = flags;
+        // TODO(next-major): Validate the security config in Client.create and
+        // throw on a non-positive autoLockMs instead of mapping it to every-signature.
         this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
         this.requirePassword =
-            security?.requirePassword ?? RequirePassword.ONCE_PER_SESSION;
+            this.autoLockMs > 0
+                ? (security?.requirePassword ??
+                  RequirePassword.ONCE_PER_SESSION)
+                : RequirePassword.EVERY_SIGNATURE;
         this.lifecycleGuard = new ClientLifecycleGuard((wallet: Wallet) =>
             this.discardWallet(wallet),
         );

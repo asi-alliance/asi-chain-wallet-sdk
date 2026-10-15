@@ -551,6 +551,20 @@ The gate was `npm run security:gate` and covered security checks only; it now
 also runs `npm run test:unit`, so the same command CI runs is the one that has to
 pass locally. The GitHub workflow is `.github/workflows/gate.yml`.
 
+### Before a Major Release
+
+Minor and patch releases keep the public API backward compatible, so some
+behavior that should become a hard error is kept lenient until the next major
+release. Every such place is marked in the source with `TODO(next-major)`.
+
+Before cutting a major release:
+
+1. List all markers: `grep -rn "TODO(next-major)" src`.
+2. Open a ticket for each marker and implement the breaking change it
+   describes before the release.
+3. Remove the marker once its ticket is done, and list the change in the
+   release notes as breaking.
+
 ### Playground
 
 The [playground](playground) provides a React-based demo application for testing SDK functionality:
