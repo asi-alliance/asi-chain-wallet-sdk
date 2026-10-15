@@ -14,6 +14,7 @@ import {
     WalletOperationCancelledError,
 } from "@domains/CustomError";
 import { createSigner } from "@fabrics/signer";
+import { DEFAULT_AUTO_LOCK_MS } from "@config/index";
 import { ASI_COIN_TYPE } from "@utils/constants";
 
 const SEED = MnemonicService.generateMnemonic();
@@ -152,19 +153,26 @@ test("auto lock releases the session and wipes the key after the delay", async (
     assert.deepEqual(Array.from(privateKey), zeroedKey());
 });
 
-test("a session without an explicit auto lock delay stays held under the default delay", async () => {
+test("a session without an explicit auto lock delay locks after the default delay", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
     const session = new SigningSession("signer-default-autolock");
+    const privateKey = createPrivateKey(3);
 
     session.hold(session.getSessionGeneration(), {
-        secret: { privateKey: createPrivateKey(3) },
+        secret: { privateKey },
         dataKeySecret: DATA_KEY,
     });
 
-    await wait(40);
+    t.mock.timers.tick(DEFAULT_AUTO_LOCK_MS - 1);
 
     assert.equal(session.isActive(), true);
 
-    session.release();
+    t.mock.timers.tick(1);
+
+    assert.equal(session.isActive(), false);
+    assert.equal(session.getSecret(), null);
+    assert.deepEqual(Array.from(privateKey), zeroedKey());
 });
 
 test("hold with a zero auto lock delay installs no session and wipes the key", () => {
