@@ -19,6 +19,7 @@ export enum CustomErrorCode {
     KEYFILE_WALLET_NOT_FOUND = "KEYFILE_WALLET_NOT_FOUND",
     WALLET_OPERATION_CANCELLED = "WALLET_OPERATION_CANCELLED",
     DOMAIN_CLOSED = "DOMAIN_CLOSED",
+    OPERATIONS_SUSPENDED = "OPERATIONS_SUSPENDED",
     INVALID_PASSWORD = "INVALID_PASSWORD",
     CORRUPTED_DATA = "CORRUPTED_DATA",
     UNSUPPORTED_ENCRYPTION_VERSION = "UNSUPPORTED_ENCRYPTION_VERSION",
@@ -264,6 +265,14 @@ export class DomainClosedError extends CustomError {
         super(CustomErrorCode.DOMAIN_CLOSED, message, 410);
 
         this.domainName = domainName;
+    }
+}
+
+export class OperationsSuspendedError extends CustomError {
+    constructor(
+        message: string = "New operations are rejected until the running exclusive lifecycle action finishes",
+    ) {
+        super(CustomErrorCode.OPERATIONS_SUSPENDED, message, 409);
     }
 }
 

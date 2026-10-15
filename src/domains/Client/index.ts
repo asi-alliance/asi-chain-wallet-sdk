@@ -292,10 +292,12 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async clearPersistence(): Promise<void> {
-        await this.resetAndDrainRuntimeState();
+        await this.lifecycleGuard.runExclusive(async () => {
+            await this.resetAndDrainRuntimeState();
 
-        await StorageManager.clear();
-        await InsensitiveCacheStorageManager.clear();
+            await StorageManager.clear();
+            await InsensitiveCacheStorageManager.clear();
+        });
 
         this.emitWalletsChanged();
     }
