@@ -108,13 +108,10 @@ export default class WalletManager extends ItemManager<Wallet> {
         );
     }
 
-    public async delete(id: string): Promise<Wallet> {
-        const currentWallet: Wallet = super.remove(id);
-        const signerId: string = currentWallet.getSigner().getId();
+    public async deletePersisted(wallet: Wallet): Promise<void> {
+        const signerId: string = wallet.getSigner().getId();
 
-        const accountIds: string[] = Array.from(
-            currentWallet.getAccountsMap().keys(),
-        );
+        const accountIds: string[] = Array.from(wallet.getAccountsMap().keys());
 
         if (accountIds.length) {
             await StorageManager.deleteMultipleAccounts(accountIds);
@@ -122,6 +119,12 @@ export default class WalletManager extends ItemManager<Wallet> {
 
         await StorageManager.deleteTransactionReservationsBySignerId(signerId);
         await StorageManager.deleteSigner(signerId);
+    }
+
+    public async delete(id: string): Promise<Wallet> {
+        const currentWallet: Wallet = super.remove(id);
+
+        await this.deletePersisted(currentWallet);
 
         return currentWallet;
     }

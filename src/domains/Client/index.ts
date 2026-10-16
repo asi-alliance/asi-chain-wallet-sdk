@@ -419,11 +419,21 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async removeWallet(walletId: string): Promise<Wallet> {
-        await this.lifecycleGuard.drain();
+        const removedWallet: Wallet = await this.lifecycleGuard.runExclusive(
+            async () => {
+                const detachedWallet: Wallet =
+                    this.walletManager.remove(walletId);
 
-        const removedWallet: Wallet = await this.walletManager.delete(walletId);
-        removedWallet.lock();
-        this.reservationAdapterManager.remove(walletId);
+                detachedWallet.lock();
+                this.reservationAdapterManager.remove(walletId);
+
+                await this.lifecycleGuard.drain();
+
+                await this.walletManager.deletePersisted(detachedWallet);
+
+                return detachedWallet;
+            },
+        );
 
         if (this.flags?.withInsensitiveCacheStorage) {
             InsensitiveCacheStorageManager.deleteAll(
