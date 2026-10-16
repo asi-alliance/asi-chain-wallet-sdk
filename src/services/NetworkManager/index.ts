@@ -54,8 +54,8 @@ class NetworkManager {
         return record;
     }
 
-    @SerializeNetworkWrite
     @EnsureNetworkIsIdle
+    @SerializeNetworkWrite
     public static async updateNetwork(
         id: NetworkId,
         update: INetworkUpdate,
@@ -74,8 +74,8 @@ class NetworkManager {
         apiClientManager.applyNetwork(record);
     }
 
-    @SerializeNetworkWrite
     @EnsureNetworkIsIdle
+    @SerializeNetworkWrite
     public static async removeNetwork(id: NetworkId): Promise<void> {
         await StorageManager.deleteCustomNetwork(id);
 
