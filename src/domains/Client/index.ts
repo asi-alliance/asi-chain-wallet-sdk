@@ -490,11 +490,15 @@ export default class Client extends ClosableDomain {
             this.createPasswordProvider(password);
 
         // TODO(next-major): Remove together with LegacyFingerprintService.
-        const { fingerprint: storedFingerprint }: ISignerRecord =
-            await StorageManager.getSigner(signerId);
+        let storedFingerprint: string | undefined;
 
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
             async () => {
+                const signerRecord: ISignerRecord =
+                    await StorageManager.getSigner(signerId);
+
+                storedFingerprint = signerRecord.fingerprint;
+
                 const openedWallet: Wallet = await this.walletManager.open(
                     signerId,
                     passwordProvider,
