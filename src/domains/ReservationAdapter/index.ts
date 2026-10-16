@@ -31,6 +31,7 @@ import {
     ReservationAction,
 } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
+import KeyedLifecycleGuardService from "@services/KeyedLifecycleGuard";
 import { EnsureReservationsManagerActive } from "@utils/decorators/reservationAdapter";
 import {
     ensureValid,
@@ -50,6 +51,8 @@ export interface IReservedOperationResult {
 export default class ReservationAdapter {
     private static readonly operationsGuard: ReservationOperationGuardService =
         ReservationOperationGuardService.getInstance();
+    private static readonly submissionsGuard: KeyedLifecycleGuardService =
+        new KeyedLifecycleGuardService();
 
     private readonly reservationsManager: TransactionReservationsManager;
 
@@ -291,6 +294,8 @@ export default class ReservationAdapter {
             .getSigner()
             .resolveDataKey(passwordProvider);
 
+        await ReservationAdapter.submissionsGuard.drain(signerId);
+
         const records: ITransactionReservationsStorageRecord[] =
             await StorageManager.getTransactionReservationsBySignerId(signerId);
 
@@ -474,15 +479,24 @@ export default class ReservationAdapter {
         reservation: ITransactionReservation,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
-        await this.persistReservation(reservation, wallet, passwordProvider);
+        await ReservationAdapter.submissionsGuard.track(
+            wallet.getSigner().getId(),
+            async () => {
+                await this.persistReservation(
+                    reservation,
+                    wallet,
+                    passwordProvider,
+                );
 
-        try {
-            await this.submit(signedDeploy);
-        } catch (error: unknown) {
-            await this.settleFailedSubmission(reservation, error);
+                try {
+                    await this.submit(signedDeploy);
+                } catch (error: unknown) {
+                    await this.settleFailedSubmission(reservation, error);
 
-            throw error;
-        }
+                    throw error;
+                }
+            },
+        );
 
         this.reservationsManager.add(reservation.id, reservation);
 
