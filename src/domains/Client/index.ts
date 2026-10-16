@@ -263,6 +263,12 @@ export default class Client extends ClosableDomain {
         this.reservationAdapterManager.clear();
     }
 
+    private async resetAndDrainRuntimeState(): Promise<void> {
+        this.resetRuntimeState();
+
+        await this.lifecycleGuard.drain();
+    }
+
     public getWalletManager(): WalletManager {
         return this.walletManager;
     }
@@ -286,12 +292,12 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async clearPersistence(): Promise<void> {
-        this.resetRuntimeState();
+        await this.lifecycleGuard.runExclusive(async () => {
+            await this.resetAndDrainRuntimeState();
 
-        await this.lifecycleGuard.drain();
-
-        await StorageManager.clear();
-        await InsensitiveCacheStorageManager.clear();
+            await StorageManager.clear();
+            await InsensitiveCacheStorageManager.clear();
+        });
 
         this.emitWalletsChanged();
     }
@@ -299,9 +305,7 @@ export default class Client extends ClosableDomain {
     protected async onClose(): Promise<void> {
         this.eventBus.clear();
 
-        this.resetRuntimeState();
-
-        await this.lifecycleGuard.drain();
+        await this.resetAndDrainRuntimeState();
 
         StorageManager.close();
         InsensitiveCacheStorageManager.close();
@@ -415,9 +419,21 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async removeWallet(walletId: string): Promise<Wallet> {
-        const removedWallet: Wallet = await this.walletManager.delete(walletId);
-        removedWallet.lock();
-        this.reservationAdapterManager.remove(walletId);
+        const removedWallet: Wallet = await this.lifecycleGuard.runExclusive(
+            async () => {
+                const detachedWallet: Wallet =
+                    this.walletManager.remove(walletId);
+
+                detachedWallet.lock();
+                this.reservationAdapterManager.remove(walletId);
+
+                await this.lifecycleGuard.drain();
+
+                await this.walletManager.deletePersisted(detachedWallet);
+
+                return detachedWallet;
+            },
+        );
 
         if (this.flags?.withInsensitiveCacheStorage) {
             InsensitiveCacheStorageManager.deleteAll(
