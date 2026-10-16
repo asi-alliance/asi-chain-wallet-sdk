@@ -11,6 +11,8 @@ export enum ClientEvent {
     RESERVATIONS_CHANGED = "reservationsChanged",
     NETWORK_BUSY_CHANGED = "networkBusyChanged",
     WALLET_LOCKED = "walletLocked",
+    // TODO(next-major): Remove together with LegacyFingerprintService.
+    WALLET_FINGERPRINT_UPGRADED = "walletFingerprintUpgraded",
 }
 
 export interface IClientEventMap {
@@ -22,6 +24,7 @@ export interface IClientEventMap {
     ];
     [ClientEvent.NETWORK_BUSY_CHANGED]: [networkId: NetworkId, isBusy: boolean];
     [ClientEvent.WALLET_LOCKED]: [walletId: string];
+    [ClientEvent.WALLET_FINGERPRINT_UPGRADED]: [walletId: string];
 }
 
 export type TClientEventName = keyof IClientEventMap;

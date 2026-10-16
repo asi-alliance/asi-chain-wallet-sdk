@@ -133,8 +133,12 @@ export default class Bip44Path {
         }
     }
 
+    public toRootPathString(): string {
+        return `m/44'/${this.coinType}'/${this.account}'/${this.change}`;
+    }
+
     public toString(): string {
-        return `m/44'/${this.coinType}'/${this.account}'/${this.change}/${this.index}`;
+        return `${this.toRootPathString()}/${this.index}`;
     }
 
     public getCoinType(): number {
