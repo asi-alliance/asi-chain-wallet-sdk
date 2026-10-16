@@ -11,7 +11,10 @@ import DeployStatusPoller, {
     IDeployWatchHandle,
     IDeployWatchOptions,
 } from "@services/DeployStatusPoller";
-import { EnsureExclusiveReservation } from "@utils/decorators/transactionReservationsManager";
+import {
+    EnsureExclusiveReservation,
+    FailSubscriptionWhenInactive,
+} from "@utils/decorators/transactionReservationsManager";
 import { SkipWhenInactive } from "@utils/decorators";
 
 export interface ITransactionReservationsManagerOptions {
@@ -180,6 +183,7 @@ export default class TransactionReservationsManager
         }
     }
 
+    @FailSubscriptionWhenInactive
     public subscribe(
         reservationId: string,
         callbacks: IDeployWatchCallbacks,
