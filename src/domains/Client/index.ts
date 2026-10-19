@@ -478,14 +478,6 @@ export default class Client extends ClosableDomain {
         signerId: string,
         password: string,
     ): Promise<Wallet> {
-        if (
-            this.walletManager.hasByFilter(
-                (wallet: Wallet) => wallet.getSigner().getId() === signerId,
-            )
-        ) {
-            throw new Error("Client.openWallet: This wallet already open");
-        }
-
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
@@ -498,6 +490,17 @@ export default class Client extends ClosableDomain {
                     await StorageManager.getSigner(signerId);
 
                 storedFingerprint = signerRecord.fingerprint;
+
+                if (
+                    this.walletManager.hasByFilter(
+                        (openWallet: Wallet) =>
+                            openWallet.getSigner().getId() === signerId,
+                    )
+                ) {
+                    throw new Error(
+                        "Client.openWallet: This wallet already open",
+                    );
+                }
 
                 const openedWallet: Wallet = await this.walletManager.open(
                     signerId,
