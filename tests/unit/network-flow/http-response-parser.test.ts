@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { MAX_API_RESPONSE_LENGTH } from "@config/index";
 import HttpResponseParser from "@services/HttpResponseParser";
 
 const UNTERMINATED_QUOTES_COUNT = 100_000;
+const ESCAPED_QUOTES_COUNT = 3_500_000;
 const LINEAR_PARSE_BUDGET_MS = 1000;
 
 const parse = (data: unknown): unknown =>
@@ -61,10 +61,12 @@ test("parsing a crafted response of unterminated quotes takes linear time", () =
     );
 });
 
-test("a response over the size limit is rejected before parsing", () => {
-    const oversized = `"${"x".repeat(MAX_API_RESPONSE_LENGTH)}"`;
+test("a valid response with millions of escaped quotes is parsed into an object", () => {
+    const expr = '"'.repeat(ESCAPED_QUOTES_COUNT);
 
-    assert.throws(() => parse(oversized), /exceeds the limit/);
+    const response = parse(JSON.stringify({ expr }));
+
+    assert.deepEqual(response, { expr });
 });
 
 test("invalid json and non-string data are returned as they are", () => {
