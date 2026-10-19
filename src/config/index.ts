@@ -55,3 +55,5 @@ export type RequirePassword =
 export const DEFAULT_AUTO_LOCK_MS: number = 15 * 60 * 1000;
 
 export const DEFAULT_DRAIN_TIMEOUT_MS: number = 10 * 1000;
+export const SUBMISSION_SETTLE_TIMEOUT_MS: number =
+    DEFAULT_REQUEST_TIMEOUT + DEFAULT_DRAIN_TIMEOUT_MS;

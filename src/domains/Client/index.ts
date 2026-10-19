@@ -509,14 +509,20 @@ export default class Client extends ClosableDomain {
                     passwordProvider,
                 );
 
-                if (this.shouldHoldSession()) {
-                    await this.holdSession(openedWallet, passwordProvider);
-                }
+                try {
+                    if (this.shouldHoldSession()) {
+                        await this.holdSession(openedWallet, passwordProvider);
+                    }
 
-                await this.reservationAdapterManager.create(
-                    openedWallet,
-                    passwordProvider,
-                );
+                    await this.reservationAdapterManager.create(
+                        openedWallet,
+                        passwordProvider,
+                    );
+                } catch (error: unknown) {
+                    this.discardWallet(openedWallet);
+
+                    throw error;
+                }
 
                 return openedWallet;
             },

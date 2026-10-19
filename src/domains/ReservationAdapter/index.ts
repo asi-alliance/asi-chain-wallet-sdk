@@ -13,7 +13,12 @@ import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
+import {
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+    GasFee,
+    SUBMISSION_SETTLE_TIMEOUT_MS,
+} from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
@@ -29,6 +34,8 @@ import {
     DomainClosedError,
     IErrorContext,
     ReservationAction,
+    WalletAction,
+    WalletActionInProgressError,
 } from "@domains/CustomError";
 import ReservationOperationGuardService from "@services/ReservationOperationGuard";
 import KeyedLifecycleGuardService from "@services/KeyedLifecycleGuard";
@@ -294,7 +301,17 @@ export default class ReservationAdapter {
             .getSigner()
             .resolveDataKey(passwordProvider);
 
-        await ReservationAdapter.submissionsGuard.drain(signerId);
+        await ReservationAdapter.submissionsGuard.drain(
+            signerId,
+            SUBMISSION_SETTLE_TIMEOUT_MS,
+        );
+
+        if (ReservationAdapter.submissionsGuard.hasPendingOperations(signerId)) {
+            throw new WalletActionInProgressError(
+                WalletAction.SUBMIT_DEPLOY,
+                signerId,
+            );
+        }
 
         const records: ITransactionReservationsStorageRecord[] =
             await StorageManager.getTransactionReservationsBySignerId(signerId);

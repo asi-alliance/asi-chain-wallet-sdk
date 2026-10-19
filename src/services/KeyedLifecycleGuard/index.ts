@@ -19,4 +19,8 @@ export default class KeyedLifecycleGuardService {
     public async drain(key: string, timeoutMs?: number): Promise<void> {
         await this.guards.get(key)?.drain(timeoutMs);
     }
+
+    public hasPendingOperations(key: string): boolean {
+        return this.guards.get(key)?.hasPendingOperations() ?? false;
+    }
 }

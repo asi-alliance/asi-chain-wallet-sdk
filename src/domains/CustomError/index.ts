@@ -38,6 +38,7 @@ export enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+    SUBMIT_DEPLOY = "SUBMIT_DEPLOY",
 }
 
 export enum ReservationAction {

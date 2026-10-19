@@ -28,6 +28,10 @@ export default class LifecycleGuard {
         this.generation++;
     }
 
+    public hasPendingOperations(): boolean {
+        return this.pendingOperations.size > 0;
+    }
+
     public async drain(timeoutMs?: number): Promise<void> {
         if (!this.pendingOperations.size) {
             return;
