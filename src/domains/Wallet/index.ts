@@ -38,8 +38,6 @@ import ImportKeyfileService from "@services/ImportKeyfileService";
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
 
-export const ACCOUNT_KEY_PREFIX: string = "ACCOUNT";
-
 export interface IWalletOptions {
     id?: string;
     type: WalletTypes;
@@ -424,6 +422,24 @@ export default class Wallet {
                     account,
                     signer: this.signer,
                     ...payload,
+                    passwordProvider,
+                }),
+            ),
+        );
+    }
+
+    public async signTransfer(
+        accountId: string,
+        payload: ITransferDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<SignedResult> {
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.signTransfer({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    details: payload,
                     passwordProvider,
                 }),
             ),

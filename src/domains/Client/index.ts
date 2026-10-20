@@ -6,6 +6,7 @@ import {
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworksState,
     INetworkUpdate,
     NetworkId,
     NetworkName,
@@ -143,7 +144,9 @@ export interface IClientEventDispatcher {
         walletId: string,
         accounts: Account[],
     ): void | Promise<void>;
+    /** @deprecated Use {@link IClientEventDispatcher.onNetworksChanged} instead. */
     onNetworkChanged?(network: INetworkRecord): void | Promise<void>;
+    onNetworksChanged?(networksState: INetworksState): void | Promise<void>;
     onReservationsChanged?(
         reservationsByWallet: TReservationsByWallet,
     ): void | Promise<void>;
@@ -208,9 +211,14 @@ export default class Client extends ClosableDomain {
             onReservationsChanged: () => this.emitReservationsChanged(),
         });
         this.flags = flags;
+        // TODO(next-major): Validate the security config in Client.create and
+        // throw on a non-positive autoLockMs instead of mapping it to every-signature.
         this.autoLockMs = security?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
         this.requirePassword =
-            security?.requirePassword ?? RequirePassword.ONCE_PER_SESSION;
+            this.autoLockMs > 0
+                ? (security?.requirePassword ??
+                  RequirePassword.ONCE_PER_SESSION)
+                : RequirePassword.EVERY_SIGNATURE;
         this.lifecycleGuard = new ClientLifecycleGuard((wallet: Wallet) =>
             this.discardWallet(wallet),
         );
@@ -263,6 +271,12 @@ export default class Client extends ClosableDomain {
         this.reservationAdapterManager.clear();
     }
 
+    private async resetAndDrainRuntimeState(): Promise<void> {
+        this.resetRuntimeState();
+
+        await this.lifecycleGuard.drain();
+    }
+
     public getWalletManager(): WalletManager {
         return this.walletManager;
     }
@@ -286,12 +300,12 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async clearPersistence(): Promise<void> {
-        this.resetRuntimeState();
+        await this.lifecycleGuard.runExclusive(async () => {
+            await this.resetAndDrainRuntimeState();
 
-        await this.lifecycleGuard.drain();
-
-        await StorageManager.clear();
-        await InsensitiveCacheStorageManager.clear();
+            await StorageManager.clear();
+            await InsensitiveCacheStorageManager.clear();
+        });
 
         this.emitWalletsChanged();
     }
@@ -299,9 +313,7 @@ export default class Client extends ClosableDomain {
     protected async onClose(): Promise<void> {
         this.eventBus.clear();
 
-        this.resetRuntimeState();
-
-        await this.lifecycleGuard.drain();
+        await this.resetAndDrainRuntimeState();
 
         StorageManager.close();
         InsensitiveCacheStorageManager.close();
@@ -422,9 +434,21 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async removeWallet(walletId: string): Promise<Wallet> {
-        const removedWallet: Wallet = await this.walletManager.delete(walletId);
-        removedWallet.lock();
-        this.reservationAdapterManager.remove(walletId);
+        const removedWallet: Wallet = await this.lifecycleGuard.runExclusive(
+            async () => {
+                const detachedWallet: Wallet =
+                    this.walletManager.remove(walletId);
+
+                detachedWallet.lock();
+                this.reservationAdapterManager.remove(walletId);
+
+                await this.lifecycleGuard.drain();
+
+                await this.walletManager.deletePersisted(detachedWallet);
+
+                return detachedWallet;
+            },
+        );
 
         if (this.flags?.withInsensitiveCacheStorage) {
             InsensitiveCacheStorageManager.deleteAll(
@@ -764,6 +788,8 @@ export default class Client extends ClosableDomain {
             ClientEvent.NETWORK_CHANGED,
             apiClientManager.getCurrentNetwork(),
         );
+
+        this.emitNetworksChanged();
 
         this.emitReservationsChanged();
     }
@@ -1147,6 +1173,10 @@ export default class Client extends ClosableDomain {
         return ApiClientManager.getInstance().getNetworks();
     }
 
+    public getNetworksState(): INetworksState {
+        return ApiClientManager.getInstance().getNetworksState();
+    }
+
     public getNetwork(id: NetworkId): INetworkRecord {
         return ApiClientManager.getInstance().getNetwork(id);
     }
@@ -1161,11 +1191,18 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
-    public addNetwork(
+    public async addNetwork(
         name: NetworkName,
         config: INetworkConfig,
     ): Promise<INetworkRecord> {
-        return NetworkManager.addNetwork(name, config);
+        const record: INetworkRecord = await NetworkManager.addNetwork(
+            name,
+            config,
+        );
+
+        this.emitNetworksChanged();
+
+        return record;
     }
 
     public hasNetworkReservations(networkId?: NetworkId): boolean {
@@ -1189,6 +1226,8 @@ export default class Client extends ClosableDomain {
 
                 await NetworkManager.updateNetwork(id, update);
 
+                this.emitNetworksChanged();
+
                 if (!isConfigChanged) {
                     return;
                 }
@@ -1207,6 +1246,8 @@ export default class Client extends ClosableDomain {
             async () => {
                 await NetworkManager.removeNetwork(id);
 
+                this.emitNetworksChanged();
+
                 await this.reservationAdapterManager.removeNetworkReservations(
                     id,
                 );
@@ -1222,6 +1263,13 @@ export default class Client extends ClosableDomain {
         this.eventBus.emit(
             ClientEvent.RESERVATIONS_CHANGED,
             this.reservationAdapterManager.getReservationsByWallet(),
+        );
+    }
+
+    private emitNetworksChanged(): void {
+        this.eventBus.emit(
+            ClientEvent.NETWORKS_CHANGED,
+            ApiClientManager.getInstance().getNetworksState(),
         );
     }
 

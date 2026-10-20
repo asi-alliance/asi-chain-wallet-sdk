@@ -1,10 +1,6 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
-import type {
-    INetworkConfig,
-    INetworkRecord,
-    NetworkName,
-} from "@domains/Network";
+import type { ITransactionReservation } from "@domains/Transaction";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
 import { GasFee } from "@config/index";
@@ -12,6 +8,12 @@ import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import blakejs from "blakejs";
 import { isNodeApiProfile } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import {
+    NETWORK_URL_FIELDS,
+    type INetworkConfig,
+    type INetworkRecord,
+    type NetworkName,
+} from "@domains/Network";
 import {
     decodeBase16,
     decodeBase58,
@@ -194,6 +196,31 @@ export const validateNodeApiProfile = (
     return { isValid: true };
 };
 
+export const validateNetworkConfigUrls = (
+    config: Partial<INetworkConfig>,
+    { allowEmpty }: { allowEmpty: boolean },
+): { isValid: boolean; error?: string } => {
+    for (const field of NETWORK_URL_FIELDS) {
+        const url: string | undefined = config[field];
+
+        if (url === undefined) {
+            continue;
+        }
+
+        if (allowEmpty && url.trim().length === 0) {
+            continue;
+        }
+
+        const { isValid, error } = validateUrl(url);
+
+        if (!isValid) {
+            return { isValid: false, error: `Invalid ${field}: ${error}` };
+        }
+    }
+
+    return { isValid: true };
+};
+
 export const validateNetworkUniqueness = (
     name: NetworkName,
     config: INetworkConfig,
@@ -295,6 +322,27 @@ export const validateReservationPayload = (
         return {
             isValid: false,
             error: "Reserved amount must cover the transfer amount and gas cost",
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateReservationUpdateTarget = (
+    currentReservation: ITransactionReservation,
+    payload: TCreateTransactionReservationPayload,
+): { isValid: boolean; error?: string } => {
+    if (currentReservation.accountId !== payload.account.getId()) {
+        return {
+            isValid: false,
+            error: "Reservation cannot be moved to another account",
+        };
+    }
+
+    if (currentReservation.networkId !== payload.networkId) {
+        return {
+            isValid: false,
+            error: "Reservation cannot be moved to another network",
         };
     }
 

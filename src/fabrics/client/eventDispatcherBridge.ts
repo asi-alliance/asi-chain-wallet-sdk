@@ -37,6 +37,10 @@ export const registerEventDispatcher = (
         eventDispatcher.onNetworkChanged?.bind(eventDispatcher),
     );
     register(
+        ClientEvent.NETWORKS_CHANGED,
+        eventDispatcher.onNetworksChanged?.bind(eventDispatcher),
+    );
+    register(
         ClientEvent.RESERVATIONS_CHANGED,
         eventDispatcher.onReservationsChanged?.bind(eventDispatcher),
     );

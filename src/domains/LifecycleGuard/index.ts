@@ -1,23 +1,35 @@
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "@config/index";
 import AutoTimer from "@domains/AutoTimer";
+import LifecycleOperationGuardService from "@services/LifecycleOperationGuard";
+import { EnsureNotSuspended } from "@utils/decorators/lifecycleGuard";
 
 const DEFAULT_GENERATION: number = 0;
 
 export default class LifecycleGuard {
     private generation: number;
     private readonly pendingOperations;
+    private readonly operationsGuard: LifecycleOperationGuardService;
 
     constructor() {
         this.generation = DEFAULT_GENERATION;
         this.pendingOperations = new Set();
+        this.operationsGuard = new LifecycleOperationGuardService();
     }
 
     private isCurrentGeneration(generation: number): boolean {
         return this.generation === generation;
     }
 
+    public runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        return this.operationsGuard.runExclusiveAction(operation);
+    }
+
     public invalidate(): void {
         this.generation++;
+    }
+
+    public hasPendingOperations(): boolean {
+        return this.pendingOperations.size > 0;
     }
 
     public async drain(timeoutMs?: number): Promise<void> {
@@ -48,6 +60,7 @@ export default class LifecycleGuard {
         }
     }
 
+    @EnsureNotSuspended
     public async track<T>(operation: () => Promise<T>): Promise<T> {
         const pendingOperation: Promise<T> = operation();
 
