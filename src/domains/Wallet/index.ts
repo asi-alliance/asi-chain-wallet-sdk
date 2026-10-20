@@ -38,8 +38,6 @@ import ImportKeyfileService from "@services/ImportKeyfileService";
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
 
-export const ACCOUNT_KEY_PREFIX: string = "ACCOUNT";
-
 export interface IWalletOptions {
     id?: string;
     type: WalletTypes;

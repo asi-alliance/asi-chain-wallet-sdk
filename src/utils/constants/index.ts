@@ -43,3 +43,5 @@ export const DEFAULT_BIP_44_PATH_OPTIONS = {
     change: 0,
     index: 0,
 };
+
+export const ACCOUNT_KEY_PREFIX: string = "ACCOUNT";
