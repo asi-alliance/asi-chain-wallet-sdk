@@ -1,4 +1,14 @@
-export default abstract class ClosableDomain {
+export interface IClosable {
+    isActive(): boolean;
+    close(): void;
+}
+
+export interface IAsyncClosable {
+    isActive(): boolean;
+    close(): Promise<void>;
+}
+
+export default abstract class ClosableDomain implements IAsyncClosable {
     private active: boolean;
 
     constructor() {

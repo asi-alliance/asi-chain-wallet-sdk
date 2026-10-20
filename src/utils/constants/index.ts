@@ -27,6 +27,9 @@ export const RUST_FAULT_TOLERANCE_THRESHOLD: number = 0.33;
 
 export const INVALID_BLOCK_NUMBER = -1;
 
+export const HTTP_CLIENT_ERROR_MIN_STATUS: number = 400;
+export const HTTP_CLIENT_ERROR_MAX_STATUS: number = 499;
+
 export const DIGITS_ONLY_REGEX: RegExp = /^\d+$/;
 export const CANONICAL_INTEGER_REGEX: RegExp = /^(0|[1-9]\d*)$/;
 export const INTEGER_REGEX: RegExp = /^-?\d+$/;
