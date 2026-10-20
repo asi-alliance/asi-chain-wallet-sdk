@@ -1,5 +1,5 @@
 import { NetworkId } from "@domains/Network";
-import { ACCOUNT_KEY_PREFIX } from "@domains/Wallet";
+import { ACCOUNT_KEY_PREFIX } from "@utils/constants";
 import {
     ReservationAction,
     ReservationActionInProgressError,
