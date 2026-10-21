@@ -9,7 +9,7 @@ import {
 } from "@config/index";
 import Account from "@domains/Account";
 import Bip44Path from "@domains/Bip44Path";
-import Client from "@domains/Client";
+import Client, { IClientEventDispatcher } from "@domains/Client";
 import SecretsProvider from "@domains/SecretsProvider";
 import Wallet from "@domains/Wallet";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
@@ -66,12 +66,30 @@ const NETWORKS_CONFIG: TNetworksConfig = {
     },
 };
 
-const createClient = (): Promise<Client> =>
+const createClient = (
+    eventDispatcher?: IClientEventDispatcher,
+): Promise<Client> =>
     Client.create({
         networksConfig: NETWORKS_CONFIG,
         defaultNetwork: NETWORK_NAME,
         storageOptions: STORAGE_OPTIONS,
+        eventDispatcher,
     });
+
+const createUpgradeTrackingClient = async (): Promise<{
+    client: Client;
+    upgradedWalletIds: string[];
+}> => {
+    const upgradedWalletIds: string[] = [];
+
+    const client: Client = await createClient({
+        onWalletFingerprintUpgraded: (walletId: string) => {
+            upgradedWalletIds.push(walletId);
+        },
+    });
+
+    return { client, upgradedWalletIds };
+};
 
 const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
 
@@ -210,28 +228,35 @@ const createHDWalletWithIndexGap = async (
     return wallet;
 };
 
+const createCustomHDPath = (): Bip44Path =>
+    new Bip44Path({
+        coinType: ASI_COIN_TYPE,
+        account: 1,
+        change: 0,
+        index: 0,
+    });
+
 const exportCustomPathKeyfile = async (): Promise<IWalletKeyfile> =>
     exportKeyfile(
         await Wallet.createHD(
             {
-                pathOptions: {
-                    customHDPath: new Bip44Path({
-                        coinType: ASI_COIN_TYPE,
-                        account: 1,
-                        change: 0,
-                        index: 0,
-                    }),
-                },
+                pathOptions: { customHDPath: createCustomHDPath() },
                 accountOptions: { name: "Custom path" },
             },
             hdSecretProvider,
         ),
     );
 
-const storeLegacyFingerprint = async (wallet: Wallet): Promise<void> =>
-    StorageManager.updateSigner(wallet.getSigner().getId(), {
-        fingerprint: await KeyFingerprintService.fromMnemonic(MNEMONIC),
+const storeLegacyFingerprint = async (wallet: Wallet): Promise<string> => {
+    const legacyFingerprint: string =
+        await KeyFingerprintService.fromMnemonic(MNEMONIC);
+
+    await StorageManager.updateSigner(wallet.getSigner().getId(), {
+        fingerprint: legacyFingerprint,
     });
+
+    return legacyFingerprint;
+};
 
 const isSignedByShownKey = async (
     wallet: Wallet,
@@ -1077,21 +1102,76 @@ test("a legacy fingerprint does not merge a keyfile with a different root HD pat
     assert.equal((await StorageManager.getAccounts()).length, 1);
 });
 
+test("a legacy fingerprint lets a keyfile with a different root HD path be imported as a new wallet", async () => {
+    console.log("\n=== LEGACY FINGERPRINT AND A NEW WALLET ON ANOTHER ROOT HD PATH ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet: Wallet = await walletManager.createHD(
+        { accountName: "Main" },
+        hdSecretProvider,
+    );
+
+    await storeLegacyFingerprint(wallet);
+
+    const imported: Wallet = await importKeyfile(
+        walletManager,
+        await exportCustomPathKeyfile(),
+    );
+
+    const signers = await StorageManager.getSigners();
+
+    console.log("    Signers in storage:", signers.length);
+
+    assert.equal(signers.length, 2);
+    assert.notEqual(imported.getSigner().getId(), wallet.getSigner().getId());
+});
+
+test("a legacy wallet on a custom root HD path is matched only by that path", async () => {
+    console.log("\n=== LEGACY FINGERPRINT ON A CUSTOM ROOT HD PATH ===");
+
+    const walletManager = new WalletManager();
+
+    const keyfile: IWalletKeyfile = await exportCustomPathKeyfile();
+
+    const customPathWallet: Wallet = await importKeyfile(walletManager, keyfile);
+
+    const signerId: string = customPathWallet.getSigner().getId();
+
+    await storeLegacyFingerprint(customPathWallet);
+
+    await assert.rejects(
+        () => importKeyfile(walletManager, keyfile),
+        DuplicateWalletError,
+    );
+
+    const defaultPathWallet: Wallet = await walletManager.createHD(
+        { accountName: "Main" },
+        hdSecretProvider,
+    );
+
+    assert.equal((await StorageManager.getSigners()).length, 2);
+
+    await new WalletManager().open(signerId, passwordProvider);
+
+    const { fingerprint } = await StorageManager.getSigner(signerId);
+
+    console.log(
+        "    Upgraded to the custom path fingerprint:",
+        fingerprint !== defaultPathWallet.getSigner().getFingerprint(),
+    );
+
+    assert.equal(
+        fingerprint,
+        await KeyFingerprintService.fromHDSecret(MNEMONIC, createCustomHDPath()),
+    );
+    assert.notEqual(fingerprint, defaultPathWallet.getSigner().getFingerprint());
+});
+
 test("opening a legacy HD wallet through the client reports the fingerprint upgrade once", async () => {
     console.log("\n=== LEGACY FINGERPRINT UPGRADE EVENT ===");
 
-    const upgradedWalletIds: string[] = [];
-
-    const client: Client = await Client.create({
-        networksConfig: NETWORKS_CONFIG,
-        defaultNetwork: NETWORK_NAME,
-        storageOptions: STORAGE_OPTIONS,
-        eventDispatcher: {
-            onWalletFingerprintUpgraded: (walletId: string) => {
-                upgradedWalletIds.push(walletId);
-            },
-        },
-    });
+    const { client, upgradedWalletIds } = await createUpgradeTrackingClient();
 
     const created: Wallet = await client.createHDWallet(
         { mnemonic: MNEMONIC, accountName: "Main" },
@@ -1116,6 +1196,113 @@ test("opening a legacy HD wallet through the client reports the fingerprint upgr
         (await StorageManager.getSigner(signerId)).fingerprint,
         upgraded.getSigner().getFingerprint(),
     );
+});
+
+test("opening an already open wallet is rejected before its legacy fingerprint is upgraded", async () => {
+    console.log("\n=== OPEN AN ALREADY OPEN LEGACY WALLET ===");
+
+    const { client, upgradedWalletIds } = await createUpgradeTrackingClient();
+
+    const created: Wallet = await client.createHDWallet(
+        { mnemonic: MNEMONIC, accountName: "Main" },
+        PASSWORD,
+    );
+
+    const signerId: string = created.getSigner().getId();
+    const legacyFingerprint: string = await storeLegacyFingerprint(created);
+
+    await assert.rejects(
+        () => client.openWallet(signerId, PASSWORD),
+        /already open/,
+    );
+
+    console.log(
+        "    Open wallets:",
+        client.getWalletManager().getAll().length,
+    );
+
+    assert.equal(client.getWalletManager().getAll().length, 1);
+    assert.deepEqual(upgradedWalletIds, []);
+    assert.equal(
+        (await StorageManager.getSigner(signerId)).fingerprint,
+        legacyFingerprint,
+    );
+
+    client.closeWallet(created.getId());
+});
+
+test("concurrent opens of a legacy wallet open it once and report the upgrade once", async () => {
+    console.log("\n=== CONCURRENT OPEN OF A LEGACY WALLET ===");
+
+    const { client, upgradedWalletIds } = await createUpgradeTrackingClient();
+
+    const created: Wallet = await client.createHDWallet(
+        { mnemonic: MNEMONIC, accountName: "Main" },
+        PASSWORD,
+    );
+
+    const signerId: string = created.getSigner().getId();
+
+    await storeLegacyFingerprint(created);
+    client.closeWallet(created.getId());
+
+    const results: PromiseSettledResult<Wallet>[] = await Promise.allSettled([
+        client.openWallet(signerId, PASSWORD),
+        client.openWallet(signerId, PASSWORD),
+    ]);
+
+    const openedWallets: Wallet[] = results
+        .filter(
+            (result): result is PromiseFulfilledResult<Wallet> =>
+                result.status === "fulfilled",
+        )
+        .map((result: PromiseFulfilledResult<Wallet>) => result.value);
+
+    console.log("    Fulfilled opens:", openedWallets.length);
+    console.log("    Upgrade events:", upgradedWalletIds.length);
+
+    assert.equal(openedWallets.length, 1);
+
+    const [opened] = openedWallets;
+
+    assert.equal(client.getWalletManager().getAll().length, 1);
+    assert.deepEqual(upgradedWalletIds, [opened.getId()]);
+    assert.equal(
+        (await StorageManager.getSigner(signerId)).fingerprint,
+        opened.getSigner().getFingerprint(),
+    );
+
+    client.closeWallet(opened.getId());
+});
+
+test("opening a private key wallet through the client keeps its fingerprint and reports no upgrade", async () => {
+    console.log("\n=== PRIVATE KEY WALLET OPEN WITHOUT UPGRADE ===");
+
+    const { client, upgradedWalletIds } = await createUpgradeTrackingClient();
+
+    const created: Wallet = await client.createPrivateKeyWallet(
+        { privateKey: KeysManager.generateRandomKey(), accountName: "Main" },
+        PASSWORD,
+    );
+
+    const signerId: string = created.getSigner().getId();
+    const { fingerprint: storedFingerprint } =
+        await StorageManager.getSigner(signerId);
+
+    client.closeWallet(created.getId());
+
+    const opened: Wallet = await client.openWallet(signerId, PASSWORD);
+
+    console.log("    Upgrade events:", upgradedWalletIds.length);
+
+    assert.deepEqual(upgradedWalletIds, []);
+    assert.equal(opened.getSigner().getFingerprint(), storedFingerprint);
+    assert.equal(
+        (await StorageManager.getSigner(signerId)).fingerprint,
+        storedFingerprint,
+    );
+
+    client.closeWallet(opened.getId());
 });
 
 test.afterEach(async () => {

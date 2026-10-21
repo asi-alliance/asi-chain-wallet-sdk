@@ -14,6 +14,7 @@ import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
 import {
     DuplicateAccountError,
     DuplicateWalletError,
+    InvalidPasswordError,
     WalletAction,
     WalletActionInProgressError,
 } from "@domains/CustomError";
@@ -24,9 +25,15 @@ const MNEMONIC = MnemonicService.generateMnemonic();
 
 const PASSWORD = "12345678";
 
+const WRONG_PASSWORD = "87654321";
+
 const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/wallet-duplicate-guard" };
 
 const passwordProvider = new SecretsProvider(() => ({ password: PASSWORD }));
+
+const wrongPasswordProvider = new SecretsProvider(() => ({
+    password: WRONG_PASSWORD,
+}));
 
 const hdSecretProvider = new SecretsProvider(() => ({
     password: PASSWORD,
@@ -72,6 +79,17 @@ const settleAll = async <T>(
     );
 
     return summary;
+};
+
+const storeLegacyFingerprint = async (wallet: Wallet): Promise<string> => {
+    const legacyFingerprint: string =
+        await KeyFingerprintService.fromMnemonic(MNEMONIC);
+
+    await StorageManager.updateSigner(wallet.getSigner().getId(), {
+        fingerprint: legacyFingerprint,
+    });
+
+    return legacyFingerprint;
 };
 
 test.before(async () => {
@@ -280,9 +298,7 @@ test("a legacy HD fingerprint still rejects a second wallet with the same mnemon
         hdSecretProvider,
     );
 
-    await StorageManager.updateSigner(wallet.getSigner().getId(), {
-        fingerprint: await KeyFingerprintService.fromMnemonic(MNEMONIC),
-    });
+    await storeLegacyFingerprint(wallet);
 
     await assert.rejects(
         () =>
@@ -305,12 +321,7 @@ test("opening a legacy HD wallet upgrades its stored fingerprint", async () => {
     );
 
     const signerId: string = wallet.getSigner().getId();
-    const legacyFingerprint: string =
-        await KeyFingerprintService.fromMnemonic(MNEMONIC);
-
-    await StorageManager.updateSigner(signerId, {
-        fingerprint: legacyFingerprint,
-    });
+    const legacyFingerprint: string = await storeLegacyFingerprint(wallet);
 
     const opened: Wallet = await new WalletManager().open(
         signerId,
@@ -323,6 +334,81 @@ test("opening a legacy HD wallet upgrades its stored fingerprint", async () => {
 
     assert.equal(fingerprint, wallet.getSigner().getFingerprint());
     assert.equal(opened.getSigner().getFingerprint(), fingerprint);
+});
+
+test("a failed open with a wrong password keeps the legacy HD fingerprint", async () => {
+    console.log("\n=== LEGACY HD FINGERPRINT AND A WRONG PASSWORD ===");
+
+    const wallet: Wallet = await new WalletManager().createHD(
+        { accountName: "Main" },
+        hdSecretProvider,
+    );
+
+    const signerId: string = wallet.getSigner().getId();
+    const legacyFingerprint: string = await storeLegacyFingerprint(wallet);
+
+    const walletManager = new WalletManager();
+
+    await assert.rejects(
+        () => walletManager.open(signerId, wrongPasswordProvider),
+        InvalidPasswordError,
+    );
+
+    const { fingerprint: storedAfterFailure } =
+        await StorageManager.getSigner(signerId);
+
+    console.log(
+        "    Legacy fingerprint kept after the failure:",
+        storedAfterFailure === legacyFingerprint,
+    );
+
+    assert.equal(storedAfterFailure, legacyFingerprint);
+    assert.equal(walletManager.getAll().length, 0);
+
+    await walletManager.open(signerId, passwordProvider);
+
+    assert.equal(
+        (await StorageManager.getSigner(signerId)).fingerprint,
+        wallet.getSigner().getFingerprint(),
+    );
+});
+
+test("a legacy HD wallet without its first account is matched by its lowest account index", async () => {
+    console.log("\n=== LEGACY HD FINGERPRINT WITHOUT THE FIRST ACCOUNT ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet: Wallet = await walletManager.createHD(
+        { accountName: "First" },
+        hdSecretProvider,
+    );
+
+    const [firstAccount] = wallet.getAccounts();
+
+    await walletManager.deriveAccount(wallet.getId(), "Second", passwordProvider);
+    await walletManager.deriveAccount(wallet.getId(), "Third", passwordProvider);
+    await walletManager.removeAccount(wallet.getId(), firstAccount.getId());
+
+    await storeLegacyFingerprint(wallet);
+
+    const storedIndexes = (await StorageManager.getAccounts())
+        .map((account) => account.index)
+        .sort((a, b) => a! - b!);
+
+    console.log("    Stored account indexes:", storedIndexes);
+
+    assert.deepEqual(storedIndexes, [1, 2]);
+
+    await assert.rejects(
+        () =>
+            new WalletManager().createHD(
+                { accountName: "Duplicate" },
+                hdSecretProvider,
+            ),
+        DuplicateWalletError,
+    );
+
+    assert.equal((await StorageManager.getSigners()).length, 1);
 });
 
 test.afterEach(async () => {
