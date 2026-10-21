@@ -7,29 +7,51 @@ const UNTERMINATED_QUOTES_COUNT = 100_000;
 const ESCAPED_QUOTES_COUNT = 3_500_000;
 const LINEAR_PARSE_BUDGET_MS = 1000;
 
+const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
+const FIRST_UNSAFE_INTEGER = String(MAX_SAFE_INTEGER + 1n);
+const UNSAFE_INTEGER = String(MAX_SAFE_INTEGER + 2n);
+const NEGATIVE_UNSAFE_INTEGER = `-${UNSAFE_INTEGER}`;
+const NODE_BALANCE = "49985999997359719";
+const TWENTY_DIGIT_INTEGER = "12345678901234567890";
+const MAX_UINT64 = "18446744073709551615";
+
 const parse = (data: unknown): unknown =>
     HttpResponseParser.parseWithBigIntegersAsStrings(data);
 
 test("unsafe integers from a node response are returned as strings", () => {
     const response = parse(
-        '{"expr":[{"ExprInt":{"data":49985999997359719}}],"debt":-9007199254740993,"edge":9007199254740992}',
+        `{"expr":[{"ExprInt":{"data":${NODE_BALANCE}}}],"debt":${NEGATIVE_UNSAFE_INTEGER},"edge":${FIRST_UNSAFE_INTEGER}}`,
     );
 
     assert.deepEqual(response, {
-        expr: [{ ExprInt: { data: "49985999997359719" } }],
-        debt: "-9007199254740993",
-        edge: "9007199254740992",
+        expr: [{ ExprInt: { data: NODE_BALANCE } }],
+        debt: NEGATIVE_UNSAFE_INTEGER,
+        edge: FIRST_UNSAFE_INTEGER,
     });
+});
+
+test("a bare unsafe integer and unsafe integers in nested arrays are returned as strings", () => {
+    assert.equal(parse(TWENTY_DIGIT_INTEGER), TWENTY_DIGIT_INTEGER);
+
+    assert.deepEqual(
+        parse(
+            `[[${UNSAFE_INTEGER},${NEGATIVE_UNSAFE_INTEGER}],[1,[${MAX_UINT64}]]]`,
+        ),
+        [
+            [UNSAFE_INTEGER, NEGATIVE_UNSAFE_INTEGER],
+            [1, [MAX_UINT64]],
+        ],
+    );
 });
 
 test("safe integers and non-integer numbers stay numbers", () => {
     const response = parse(
-        '{"seqNum":18397,"max":9007199254740991,"faultTolerance":0.9999934,"huge":1.5e300}',
+        `{"seqNum":18397,"max":${Number.MAX_SAFE_INTEGER},"faultTolerance":0.9999934,"huge":1.5e300}`,
     );
 
     assert.deepEqual(response, {
         seqNum: 18397,
-        max: 9007199254740991,
+        max: Number.MAX_SAFE_INTEGER,
         faultTolerance: 0.9999934,
         huge: 1.5e300,
     });
@@ -37,13 +59,13 @@ test("safe integers and non-integer numbers stay numbers", () => {
 
 test("digits inside strings are left untouched, including after escaped quotes", () => {
     const response = parse(
-        '{"blockSize":"103284","note":"x\\"9007199254740993","path":"C:\\\\12345678901234567890"}',
+        `{"blockSize":"103284","note":"x\\"${UNSAFE_INTEGER}","path":"C:\\\\${TWENTY_DIGIT_INTEGER}"}`,
     );
 
     assert.deepEqual(response, {
         blockSize: "103284",
-        note: 'x"9007199254740993',
-        path: "C:\\12345678901234567890",
+        note: `x"${UNSAFE_INTEGER}`,
+        path: `C:\\${TWENTY_DIGIT_INTEGER}`,
     });
 });
 
