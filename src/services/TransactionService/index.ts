@@ -133,7 +133,7 @@ export default class TransactionService {
         };
     }
 
-    private async submitSignedDeploy(
+    public async submitSignedDeploy(
         signedDeploy: SignedResult,
     ): Promise<string> {
         const submittedDeployId: string | undefined =
@@ -148,19 +148,13 @@ export default class TransactionService {
         return submittedDeployId;
     }
 
-    private async signAndSubmit(payload: IDeployPayload): Promise<string> {
-        const signedDeploy: SignedResult = await this.signDeploy(payload);
-
-        return this.submitSignedDeploy(signedDeploy);
-    }
-
-    public async transfer({
+    public async signTransfer({
         walletType,
         account,
         signer,
         details,
         passwordProvider,
-    }: ITransferPayload): Promise<string> {
+    }: ITransferPayload): Promise<SignedResult> {
         const fromAddress: Address = account.getAddress();
 
         const validation: AddressValidationResult = validateAddress(details.to);
@@ -181,7 +175,7 @@ export default class TransactionService {
             details.amount,
         );
 
-        return this.signAndSubmit({
+        return this.signDeploy({
             walletType,
             account,
             signer,
@@ -193,7 +187,15 @@ export default class TransactionService {
         });
     }
 
+    public async transfer(payload: ITransferPayload): Promise<string> {
+        const signedDeploy: SignedResult = await this.signTransfer(payload);
+
+        return this.submitSignedDeploy(signedDeploy);
+    }
+
     public async deploy(payload: IDeployPayload): Promise<string> {
-        return this.signAndSubmit(payload);
+        const signedDeploy: SignedResult = await this.signDeploy(payload);
+
+        return this.submitSignedDeploy(signedDeploy);
     }
 }

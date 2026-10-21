@@ -1,5 +1,6 @@
-import Wallet, { ACCOUNT_KEY_PREFIX } from "@domains/Wallet";
+import Wallet from "@domains/Wallet";
 import { SIGNER_KEY_PREFIX } from "@domains/Signer";
+import { ACCOUNT_KEY_PREFIX } from "@utils/constants";
 import {
     DuplicateAccountError,
     DuplicateWalletError,
