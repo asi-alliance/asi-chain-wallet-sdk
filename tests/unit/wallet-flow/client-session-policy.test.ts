@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { RequirePassword } from "@config/index";
 import Client from "@domains/Client";
 import Wallet from "@domains/Wallet";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
@@ -22,12 +23,15 @@ const NETWORKS_CONFIG: TNetworksConfig = {
     },
 };
 
-const createClient = (autoLockMs: number): Promise<Client> =>
+const createClient = (
+    autoLockMs: number,
+    requirePassword?: RequirePassword,
+): Promise<Client> =>
     Client.create({
         networksConfig: NETWORKS_CONFIG,
         defaultNetwork: NETWORK_NAME,
         storageOptions: STORAGE_OPTIONS,
-        security: { autoLockMs },
+        security: { autoLockMs, requirePassword },
     });
 
 const createWallet = (client: Client): Promise<Wallet> =>
@@ -68,6 +72,24 @@ test("a negative autoLockMs opens a wallet without holding a signing session", a
         () => client.unlockWallet(openedWallet.getId(), PASSWORD),
         /Session policy requires a password for every signature/,
     );
+
+    await client.clearPersistence();
+    await client.close();
+});
+
+test("a zero autoLockMs overrides an explicit once-per-session password policy", async () => {
+    const client: Client = await createClient(
+        0,
+        RequirePassword.ONCE_PER_SESSION,
+    );
+    const wallet: Wallet = await createWallet(client);
+
+    await assert.rejects(
+        () => client.unlockWallet(wallet.getId(), PASSWORD),
+        /Session policy requires a password for every signature/,
+    );
+
+    assert.equal(wallet.isUnlocked(), false);
 
     await client.clearPersistence();
     await client.close();
