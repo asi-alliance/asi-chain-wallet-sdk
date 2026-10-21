@@ -48,6 +48,21 @@ export * from "./KeysManager";
 export { default as KeysManager } from "./KeysManager";
 export * from "./Mnemonic";
 export { default as Mnemonic } from "./Mnemonic";
+export {
+    OwnerOfferError,
+    createOwnerDirectOffer,
+    decodeResourcePolicyHex,
+} from "./OwnerOffer";
+export type {
+    OwnerDirectOffer,
+    OwnerOfferBody,
+    OwnerOfferHashing,
+    OwnerOfferRequest,
+    OwnerOfferSigner,
+    PhloGenesisPolicy,
+    PhloResourceClassV1,
+    PhloScheduleV1,
+} from "./OwnerOffer";
 export * from "./Signer";
 export { default as SignerService } from "./Signer";
 export * from "./StorageBootstrap";

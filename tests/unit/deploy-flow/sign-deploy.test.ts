@@ -19,6 +19,7 @@ import { createSigner } from "@fabrics/signer";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { encodeBase16 } from "@utils/index";
 import { ASI_COIN_TYPE } from "@utils/constants";
+import { envelopeSigningHashOf, hex } from "./offered-deploy-reader";
 
 const { blake2bHex } = blakejs;
 
@@ -115,12 +116,35 @@ const createTransactionService = (
 ): TransactionService =>
     new TransactionService(deployService, new StubBlockService());
 
-const hashSignedData = (signed: SignedResult): string =>
-    blake2bHex(
-        SignerService.deployDataProtobufSerialize(signed.data),
-        undefined,
-        DEPLOY_HASH_LENGTH,
+// The cost-accounted node takes an offered deploy, whose signature covers the
+// envelope signing hash. The envelope must carry the reported data and key.
+// const hashSignedData = (signed: SignedResult): string =>
+//     blake2bHex(
+//         SignerService.deployDataProtobufSerialize(signed.data),
+//         undefined,
+//         DEPLOY_HASH_LENGTH,
+//     );
+const hashSignedData = (signed: SignedResult): string => {
+    const { deploy, signingHash } = envelopeSigningHashOf(
+        new Uint8Array(Buffer.from(signed.deployDataProtoBase64, "base64")),
     );
+
+    assert.deepEqual(
+        {
+            term: deploy.term,
+            timestamp: Number(deploy.timestamp),
+            phloLimit: Number(deploy.phloLimit),
+            phloPrice: Number(deploy.phloPrice),
+            validAfterBlockNumber: Number(deploy.validAfterBlockNumber),
+            shardId: deploy.shardId,
+        },
+        signed.data,
+    );
+    assert.equal(hex(deploy.publicKey), signed.deployer);
+    assert.equal(hex(deploy.deployId), signed.deployId);
+
+    return hex(signingHash);
+};
 
 test("signDeploy signs exactly the deploy data it reports", async () => {
     console.log("\n=== SIGNATURE COVERS THE RETURNED DATA ===");

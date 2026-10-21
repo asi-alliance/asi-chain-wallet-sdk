@@ -10,6 +10,7 @@ export interface DeployData {
 export interface IDeployInfo {
     blockHash?: string;
     faultTolerance?: number;
+    isFinalized?: boolean;
 }
 
 export enum DeployStatus {

@@ -1,5 +1,10 @@
 import blakejs from "blakejs";
-import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
+import sha3 from "js-sha3";
+import {
+    ASI_RESOURCE_POLICY_HEX,
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+} from "@config/index";
 import Asset from "@domains/Asset";
 import { DeployData } from "@domains/Deploy";
 import { IDeployTermFactory } from "@domains/Deploy/factory";
@@ -16,12 +21,26 @@ import {
 } from "@utils/index";
 import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import SignerService, { SignedResult } from "@services/Signer";
+import {
+    decodeResourcePolicyHex,
+    finishOwnerDirectOffer,
+    OwnerOfferHashing,
+    PreparedOwnerDirectOffer,
+    prepareOwnerDirectOffer,
+} from "@services/OwnerOffer";
 import Account from "@domains/Account";
 import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 
 const { blake2bHex } = blakejs;
+
+const OWNER_OFFER_HASHING: OwnerOfferHashing = {
+    blake2b256: (data: Uint8Array): Uint8Array =>
+        blakejs.blake2b(data, undefined, 32),
+    keccak256: (data: Uint8Array): Uint8Array =>
+        new Uint8Array(sha3.keccak256.arrayBuffer(data)),
+};
 
 export interface ITransferDetails {
     to: Address;
@@ -113,15 +132,39 @@ export default class TransactionService {
             term,
             phloLimit: phloLimit ?? DEFAULT_PHLO_LIMIT,
             phloPrice: phloPrice ?? DEFAULT_PHLO_PRICE,
-            validAfterBlockNumber: latestBlockNumber - 1,
+            // Protocol v6 refuses a negative valid-after block. Without user
+            // blocks, -1 and 0 admit the same blocks.
+            // validAfterBlockNumber: latestBlockNumber - 1,
+            validAfterBlockNumber: Math.max(latestBlockNumber - 1, 0),
             timestamp: Date.now(),
             shardId: shardId ?? "root",
         };
 
-        const serialized: Uint8Array =
-            SignerService.deployDataProtobufSerialize(deployData);
+        // The cost-accounted node refuses this body-only deploy. The signer
+        // signs the signing hash of an owner-direct offer of the ASI policy.
+        // const serialized: Uint8Array =
+        //     SignerService.deployDataProtobufSerialize(deployData);
+        //
+        // const hash: string = blake2bHex(serialized, undefined, 32);
+        const offer: PreparedOwnerDirectOffer = prepareOwnerDirectOffer(
+            {
+                body: {
+                    term: deployData.term,
+                    timestamp: deployData.timestamp,
+                    validAfterBlockNumber: deployData.validAfterBlockNumber,
+                    shardId: deployData.shardId ?? "root",
+                },
+                phloLimit: deployData.phloLimit,
+                phloPrice: deployData.phloPrice,
+                genesisSchedule: decodeResourcePolicyHex(
+                    ASI_RESOURCE_POLICY_HEX,
+                ).schedule,
+            },
+            account.getPublicKey(),
+            OWNER_OFFER_HASHING,
+        );
 
-        const hash: string = blake2bHex(serialized, undefined, 32);
+        const hash: string = encodeBase16(offer.signingHash);
 
         const signed = await signer.sign(hash, signingContext);
 
@@ -130,6 +173,11 @@ export default class TransactionService {
             deployer: encodeBase16(signed.publicKey),
             signature: encodeBase16(signed.signature),
             sigAlgorithm: "secp256k1",
+            deployDataProtoBase64: finishOwnerDirectOffer(
+                offer,
+                signed.signature,
+            ).deployDataProtoBase64,
+            deployId: encodeBase16(offer.deployId),
         };
     }
 

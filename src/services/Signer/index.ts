@@ -13,6 +13,8 @@ export interface SignedResult {
     deployer: string;
     signature: string;
     sigAlgorithm: string;
+    deployDataProtoBase64: string;
+    deployId: string;
 }
 
 export default class SignerService {
