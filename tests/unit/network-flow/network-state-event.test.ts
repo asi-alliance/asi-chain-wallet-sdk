@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import Client, { ISignDeployRequest } from "@domains/Client";
+import ApiClientManager from "@domains/ApiClientManager";
 import StorageManager from "@services/StorageManager";
 import {
+    NetworkBusyError,
     ReservationAction,
     ReservationActionInProgressError,
 } from "@domains/CustomError";
@@ -123,6 +125,29 @@ const isNetworkCleanupError = (error: unknown, networkId: NetworkId): boolean =>
     error.action === ReservationAction.NETWORK_CLEANUP &&
     error.networkId === networkId;
 
+const isNetworkBusyError = (error: unknown, networkId: NetworkId): boolean =>
+    error instanceof NetworkBusyError && error.networkId === networkId;
+
+interface IBusyNetwork {
+    done: Promise<void>;
+    release: () => void;
+}
+
+const keepNetworkBusy = (networkId: NetworkId): IBusyNetwork => {
+    let release!: () => void;
+
+    const gate: Promise<void> = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+
+    const done: Promise<void> =
+        ApiClientManager.getInstance().runNetworkOperation(() => gate, {
+            networkId,
+        });
+
+    return { done, release };
+};
+
 console.log("\n[TEST NETWORKS]");
 console.log("    Default networks:", SCALA_NETWORK, RUST_NETWORK);
 
@@ -223,6 +248,129 @@ test("removing the selected network reports the new list and the new selection",
     assert.notEqual(selectedId, custom.id);
     assert.equal(client.getCurrentNetworkId(), selectedId);
 
+    await client.close();
+});
+
+test("adding, renaming and selecting a network each report the full networks state", async () => {
+    console.log("\n=== NETWORKS STATE EVENTS ===");
+
+    const { client, events }: INetworkStateContext = await createContext();
+
+    const initialState: INetworksState = client.getNetworksState();
+
+    console.log("    Initial networks:", names(initialState));
+
+    assert.deepEqual(names(initialState).sort(), [RUST_NETWORK, SCALA_NETWORK].sort());
+    assert.equal(initialState.selectedNetwork.name, SCALA_NETWORK);
+    assert.equal(events.length, 0);
+
+    const custom: INetworkRecord = await client.addNetwork(
+        CUSTOM_NETWORK,
+        CUSTOM_NETWORK_CONFIG,
+    );
+
+    await client.updateNetwork(custom.id, { name: "Renamed network" });
+
+    client.setNetwork(custom.id);
+
+    const [added, renamed, selected]: INetworksState[] = events;
+
+    console.log("    Networks after add:", names(added));
+    console.log("    Networks after rename:", names(renamed));
+    console.log("    Selected after switch:", selected.selectedNetwork.name);
+
+    assert.equal(events.length, 3);
+
+    assert.ok(names(added).includes(CUSTOM_NETWORK));
+    assert.equal(added.selectedNetwork.name, SCALA_NETWORK);
+
+    assert.ok(names(renamed).includes("Renamed network"));
+    assert.equal(names(renamed).includes(CUSTOM_NETWORK), false);
+    assert.equal(renamed.selectedNetwork.name, SCALA_NETWORK);
+
+    assert.equal(selected.selectedNetwork.id, custom.id);
+    assert.deepEqual(client.getNetworksState(), selected);
+
+    client.setNetwork(initialState.selectedNetwork.id);
+
+    await client.removeNetwork(custom.id);
+    await client.close();
+});
+
+test("a busy network is refused at once without waiting for the queued network writes", async () => {
+    console.log("\n=== BUSY NETWORK UPDATE AND REMOVAL ===");
+
+    const { client, events }: INetworkStateContext = await createContext();
+
+    const custom: INetworkRecord = await client.addNetwork(
+        CUSTOM_NETWORK,
+        CUSTOM_NETWORK_CONFIG,
+    );
+
+    const busyNetwork: IBusyNetwork = keepNetworkBusy(custom.id);
+
+    const { write, release }: IHeldWrite<[INetworkRecord]> = holdWrite(
+        originalWrites.save,
+    );
+
+    StorageManager.saveCustomNetwork = write;
+
+    let isQueuedWriteSettled: boolean = false;
+
+    const queuedAdd: Promise<INetworkRecord> = client
+        .addNetwork("Queued network", OTHER_NETWORK_CONFIG)
+        .finally(() => {
+            isQueuedWriteSettled = true;
+        });
+
+    events.length = 0;
+
+    let updateError: unknown = null;
+    let removeError: unknown = null;
+    let isQueuedWriteSettledOnRefusal: boolean = true;
+
+    try {
+        updateError = await client
+            .updateNetwork(custom.id, { name: "Busy rename" })
+            .catch((error: unknown) => error);
+        removeError = await client
+            .removeNetwork(custom.id)
+            .catch((error: unknown) => error);
+
+        isQueuedWriteSettledOnRefusal = isQueuedWriteSettled;
+    } finally {
+        release();
+        StorageManager.saveCustomNetwork = originalWrites.save;
+    }
+
+    const queued: INetworkRecord = await queuedAdd;
+
+    busyNetwork.release();
+    await busyNetwork.done;
+
+    const storedCustom: IPersistedNetworkRecord | undefined = (
+        await StorageManager.getCustomNetworks()
+    ).find((record: IPersistedNetworkRecord) => record.id === custom.id);
+
+    console.log("    Update refused:", (updateError as Error).constructor.name);
+    console.log("    Remove refused:", (removeError as Error).constructor.name);
+    console.log(
+        "    Queued write settled at the refusal:",
+        isQueuedWriteSettledOnRefusal,
+    );
+
+    assert.ok(isNetworkBusyError(updateError, custom.id));
+    assert.ok(isNetworkBusyError(removeError, custom.id));
+    assert.equal(isQueuedWriteSettledOnRefusal, false);
+    assert.equal(client.getNetwork(custom.id).name, CUSTOM_NETWORK);
+    assert.equal(storedCustom?.name, CUSTOM_NETWORK);
+    assert.deepEqual(
+        events.map((networksState: INetworksState) => names(networksState).length),
+        [4],
+    );
+
+    await client.removeNetwork(queued.id);
+    await client.removeNetwork(custom.id);
     await client.close();
 });
 
