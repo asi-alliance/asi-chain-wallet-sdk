@@ -1,6 +1,8 @@
 export const NATIVE_TOKEN_DECIMALS_AMOUNT: number = 8;
 
-export const DEFAULT_PHLO_LIMIT: number = 500000;
+// A transfer to a new address costs 683,747 phlo on the cost-accounted node.
+// export const DEFAULT_PHLO_LIMIT: number = 500000;
+export const DEFAULT_PHLO_LIMIT: number = 760000;
 export const DEFAULT_PHLO_PRICE: number = 1;
 
 export const ASI_RESOURCE_POLICY_HEX: string =
