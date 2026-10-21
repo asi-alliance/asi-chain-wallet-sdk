@@ -1,15 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import Client from "@domains/Client";
+import Client, { TTransactionReservationRequest } from "@domains/Client";
 import Wallet from "@domains/Wallet";
 import Account from "@domains/Account";
 import StorageManager from "@services/StorageManager";
 import TransactionReservationsManager from "@services/TransactionReservationsManager";
 import { ITransactionReservation } from "@domains/Transaction";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import { NetworkId } from "@domains/Network";
-import { FAKE_NETWORK, IFakeNode, startFakeNode } from "./fakeNode";
+import { INetworkConfig, INetworkRecord, NetworkId } from "@domains/Network";
+import {
+    DomainClosedError,
+    OperationsSuspendedError,
+} from "@domains/CustomError";
+import { FAKE_NETWORK, IFakeNode, IHeldStep, startFakeNode } from "./fakeNode";
 
 const PRIVATE_KEY_HEX =
     "7e4c2412f4694ea426d7f7adbfdfdec46fb0396b491d530a740cfa4761851d35";
@@ -91,6 +95,31 @@ const createReservation = (
     },
 });
 
+const captureError = async (operation: () => Promise<unknown>) => {
+    try {
+        await operation();
+    } catch (error: unknown) {
+        return error;
+    }
+
+    return null;
+};
+
+const nextTurn = (): Promise<void> =>
+    new Promise<void>((resolve) => setImmediate(resolve));
+
+const createExternalReservationRequest = (
+    walletId: string,
+    accountId: string,
+): TTransactionReservationRequest => ({
+    walletId,
+    accountId,
+    kind: "deploy",
+    deployId: "external-deploy",
+    pendingAmount: 1_000n,
+    gasCost: 0n,
+});
+
 test.before(async () => {
     fakeNode = await startFakeNode();
 });
@@ -102,6 +131,7 @@ test.after(async () => {
 test.beforeEach(() => {
     fakeNode.setBalance(BALANCE);
     fakeNode.setSubmitOutcome({ kind: "accepted" });
+    fakeNode.onBeforeSubmitResponse(async () => {});
 });
 
 test.afterEach(async () => {
@@ -182,5 +212,197 @@ test("a closed reservations manager stops tracking new reservations", async () =
 
     manager.close();
 
+    await client.close();
+});
+
+test("subscribing to a closed reservations manager reports the closure", () => {
+    console.log("\n=== LATE SUBSCRIBER OF A CLOSED MANAGER ===");
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([]);
+
+    manager.close();
+
+    const errors: Error[] = [];
+
+    const unsubscribe: () => void = manager.subscribe("late-subscriber", {
+        onError: (error: Error) => {
+            errors.push(error);
+        },
+    });
+
+    unsubscribe();
+
+    console.log("    Reported errors:", errors.map((error) => error.name));
+
+    assert.equal(errors.length, 1);
+    assert.ok(errors[0] instanceof DomainClosedError);
+});
+
+test("new operations are rejected while the persistence is being cleared", async () => {
+    console.log("\n=== OPERATIONS SUSPENDED DURING CLEAR ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    const heldSubmit: IHeldStep = fakeNode.holdSubmitResponse();
+    const transferring: Promise<unknown> = captureError(funded.transfer);
+
+    await heldSubmit.reached;
+
+    const clearing: Promise<void> = funded.client.clearPersistence();
+
+    const createError: unknown = await captureError(() =>
+        funded.client.createPrivateKeyWallet(
+            { privateKey, accountName: "Created while clearing" },
+            PASSWORD,
+        ),
+    );
+    const openError: unknown = await captureError(() =>
+        funded.client.openWallet(funded.signerId, PASSWORD),
+    );
+
+    heldSubmit.release();
+
+    await transferring;
+    await clearing;
+
+    console.log("    Create error:", (createError as Error).constructor.name);
+    console.log("    Open error:", (openError as Error).constructor.name);
+
+    assert.ok(createError instanceof OperationsSuspendedError);
+    assert.ok(openError instanceof OperationsSuspendedError);
+
+    const recreated: Wallet = await funded.client.createPrivateKeyWallet(
+        { privateKey, accountName: "Created after clearing" },
+        PASSWORD,
+    );
+
+    assert.equal(funded.client.isWalletOpen(recreated.getId()), true);
+    assert.equal((await StorageManager.getSigners()).length, 1);
+
+    await funded.client.close();
+});
+
+test("removing a wallet detaches it at once and deletes it after its in-flight submission", async () => {
+    console.log("\n=== WALLET REMOVAL DURING A SUBMISSION ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    const heldSubmit: IHeldStep = fakeNode.holdSubmitResponse();
+    const transferring: Promise<unknown> = captureError(funded.transfer);
+
+    await heldSubmit.reached;
+
+    let isRemoved: boolean = false;
+
+    const removing: Promise<void> = funded.client
+        .removeWallet(funded.walletId)
+        .then(() => {
+            isRemoved = true;
+        });
+
+    await nextTurn();
+
+    const isOpenWhileRemoving: boolean = funded.client.isWalletOpen(
+        funded.walletId,
+    );
+    const transferError: unknown = await captureError(funded.transfer);
+    const signersWhileRemoving: number = (await StorageManager.getSigners())
+        .length;
+    const isRemovedBeforeSettle: boolean = isRemoved;
+
+    heldSubmit.release();
+
+    await transferring;
+    await removing;
+
+    const storedReservations: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+
+    console.log("    Open while removing:", isOpenWhileRemoving);
+    console.log("    Transfer error:", (transferError as Error).constructor.name);
+    console.log("    Signers while removing:", signersWhileRemoving);
+
+    assert.equal(isOpenWhileRemoving, false);
+    assert.ok(transferError instanceof OperationsSuspendedError);
+    assert.equal(signersWhileRemoving, 1);
+    assert.equal(isRemovedBeforeSettle, false);
+    assert.equal((await StorageManager.getSigners()).length, 0);
+    assert.equal(storedReservations.length, 0);
+
+    await funded.client.close();
+});
+
+test("an external reservation cannot be moved to another account or network", async () => {
+    console.log("\n=== EXTERNAL RESERVATION UPDATE TARGET ===");
+
+    const client: Client = await createClient();
+
+    const wallet: Wallet = await client.createHDWallet(
+        { mnemonic: client.generateMnemonic(), accountName: "First" },
+        PASSWORD,
+    );
+
+    const walletId: string = wallet.getId();
+    const [firstAccount] = wallet.getAccounts();
+
+    const { account: secondAccount } = await client.deriveAccount(
+        walletId,
+        "Second",
+        PASSWORD,
+    );
+
+    await client.unlockWallet(walletId, PASSWORD);
+
+    const reservation: ITransactionReservation =
+        await client.addTransactionReservation(
+            createExternalReservationRequest(walletId, firstAccount.getId()),
+        );
+
+    await assert.rejects(
+        () =>
+            client.updateTransactionReservation(
+                reservation.id,
+                createExternalReservationRequest(
+                    walletId,
+                    secondAccount.getId(),
+                ),
+            ),
+        /cannot be moved to another account/,
+    );
+
+    const fakeNetworkConfig: INetworkConfig =
+        fakeNode.networksConfig[FAKE_NETWORK];
+
+    const otherNetwork: INetworkRecord = await client.addNetwork(
+        "Other fake network",
+        {
+            ...fakeNetworkConfig,
+            IndexerURL: `${fakeNetworkConfig.ValidatorURL}/other/v1/graphql`,
+        },
+    );
+
+    client.setNetwork(otherNetwork.id);
+
+    await assert.rejects(
+        () =>
+            client.updateTransactionReservation(
+                reservation.id,
+                createExternalReservationRequest(walletId, firstAccount.getId()),
+            ),
+        /cannot be moved to another network/,
+    );
+
+    client.setNetwork(reservation.networkId);
+
+    const [kept] = await client.getReservations(walletId);
+
+    console.log("    Kept account:", kept.accountId === firstAccount.getId());
+    console.log("    Kept network:", kept.networkId);
+
+    assert.equal(kept.accountId, firstAccount.getId());
+    assert.equal(kept.networkId, reservation.networkId);
+
+    await client.removeNetwork(otherNetwork.id);
     await client.close();
 });

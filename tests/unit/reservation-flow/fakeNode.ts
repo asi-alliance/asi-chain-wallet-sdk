@@ -15,11 +15,40 @@ export type TSubmitOutcome =
     | { kind: "unavailable"; status: number }
     | { kind: "dropped" };
 
+export interface IHeldStep {
+    reached: Promise<void>;
+    wait: () => Promise<void>;
+    release: () => void;
+}
+
+export const createHeldStep = (): IHeldStep => {
+    let markReached!: () => void;
+    let release!: () => void;
+
+    const reached: Promise<void> = new Promise<void>((resolve) => {
+        markReached = resolve;
+    });
+
+    const gate: Promise<void> = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+
+    return {
+        reached,
+        wait: async () => {
+            markReached();
+            await gate;
+        },
+        release,
+    };
+};
+
 export interface IFakeNode {
     networksConfig: TNetworksConfig;
     setBalance: (amount: bigint) => void;
     setSubmitOutcome: (outcome: TSubmitOutcome) => void;
     onBeforeSubmitResponse: (listener: () => Promise<void>) => void;
+    holdSubmitResponse: () => IHeldStep;
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
@@ -154,6 +183,13 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
         },
         onBeforeSubmitResponse: (listener: () => Promise<void>) => {
             beforeSubmitResponse = listener;
+        },
+        holdSubmitResponse: () => {
+            const step: IHeldStep = createHeldStep();
+
+            beforeSubmitResponse = step.wait;
+
+            return step;
         },
         getSubmittedDeploys: () => submittedDeploys,
         close: () =>

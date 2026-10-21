@@ -12,10 +12,20 @@ import {
     ApiRequestError,
     CustomErrorCode,
     DeploySubmissionRejectedError,
+    DomainClosedError,
+    WalletAction,
+    WalletActionInProgressError,
 } from "@domains/CustomError";
+import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { SignedResult } from "@services/Signer";
 import { isRejectedByServer } from "@utils/index";
-import { FAKE_NETWORK, IFakeNode, startFakeNode } from "./fakeNode";
+import {
+    createHeldStep,
+    FAKE_NETWORK,
+    IFakeNode,
+    IHeldStep,
+    startFakeNode,
+} from "./fakeNode";
 
 const PRIVATE_KEY_HEX =
     "7e4c2412f4694ea426d7f7adbfdfdec46fb0396b491d530a740cfa4761851d35";
@@ -28,6 +38,9 @@ const BALANCE: bigint = 1_000_000_000n;
 const TRANSFER_AMOUNT: bigint = 100_000_000n;
 const GAS_MAX: bigint = 250_000n;
 const RESERVED: bigint = TRANSFER_AMOUNT + GAS_MAX;
+
+const RESTORE_GRACE_MS = 500;
+const SETTLE_WAIT_LIMIT_MS = 15_000;
 
 const privateKey: Uint8Array = Uint8Array.from(
     Buffer.from(PRIVATE_KEY_HEX, "hex"),
@@ -91,6 +104,38 @@ const captureError = async (operation: () => Promise<unknown>) => {
     return null;
 };
 
+const originalSaveReservation = StorageManager.saveTransactionReservation;
+
+const holdReservationSave = (): IHeldStep => {
+    const step: IHeldStep = createHeldStep();
+
+    StorageManager.saveTransactionReservation = async (
+        ...args: Parameters<typeof originalSaveReservation>
+    ) => {
+        await step.wait();
+
+        return originalSaveReservation(...args);
+    };
+
+    return step;
+};
+
+const nextTurn = (): Promise<void> =>
+    new Promise<void>((resolve) => setImmediate(resolve));
+
+const wait = (ms: number): Promise<void> =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const waitUntilOpening = async (
+    funded: IFundedWallet,
+): Promise<void> => {
+    while (
+        !funded.client.getWalletManager().getBySignerId(funded.signerId)
+    ) {
+        await nextTurn();
+    }
+};
+
 test.before(async () => {
     fakeNode = await startFakeNode();
 });
@@ -106,6 +151,8 @@ test.beforeEach(() => {
 });
 
 test.afterEach(async () => {
+    StorageManager.saveTransactionReservation = originalSaveReservation;
+
     await StorageManager.clear();
 });
 
@@ -259,6 +306,173 @@ test("a node failure without a verdict keeps the reservation", async () => {
     assert.ok(!(error instanceof DeploySubmissionRejectedError));
     assert.equal(reservations.length, 1);
     assert.equal(stored.length, 1);
+
+    await funded.client.close();
+});
+
+test("an explicit node refusal of a deploy rolls its reservation back", async () => {
+    console.log("\n=== EXPLICIT DEPLOY REFUSAL ROLLS BACK ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({ kind: "refused", status: 400 });
+
+    const error: unknown = await captureError(() =>
+        funded.client.deploy({
+            walletId: funded.walletId,
+            accountId: funded.accountId,
+            term: "Nil",
+        }),
+    );
+
+    const reservations: ITransactionReservation[] =
+        await funded.client.getReservations(funded.walletId);
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+    const available: bigint = await funded.client.getAvailableBalance(
+        funded.walletId,
+        funded.accountId,
+    );
+
+    console.log("    Error:", (error as Error).constructor.name);
+    console.log("    Reservations left:", reservations.length);
+    console.log("    Available balance:", available);
+
+    assert.ok(error instanceof DeploySubmissionRejectedError);
+    assert.equal(reservations.length, 0);
+    assert.equal(stored.length, 0);
+    assert.equal(available, BALANCE);
+
+    await funded.client.close();
+});
+
+test("closing the wallet before the deploy reaches the node cancels the submission", async () => {
+    console.log("\n=== WALLET CLOSED BEFORE THE SUBMIT ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    const submittedBefore: number = fakeNode.getSubmittedDeploys().length;
+
+    const heldSave: IHeldStep = holdReservationSave();
+    const transferring: Promise<unknown> = captureError(funded.transfer);
+
+    await heldSave.reached;
+
+    funded.client.closeWallet(funded.walletId);
+    heldSave.release();
+
+    const error: unknown = await transferring;
+
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+    const submittedAfter: number = fakeNode.getSubmittedDeploys().length;
+
+    console.log("    Error:", (error as Error).constructor.name);
+    console.log("    Deploys sent to the node:", submittedAfter - submittedBefore);
+    console.log("    Stored reservations:", stored.length);
+
+    assert.ok(error instanceof DomainClosedError);
+    assert.equal(submittedAfter, submittedBefore);
+    assert.equal(stored.length, 0);
+
+    await funded.client.close();
+});
+
+test("reopening a wallet waits for its in-flight submission before restoring reservations", async () => {
+    console.log("\n=== REOPEN WAITS FOR THE IN-FLIGHT SUBMISSION ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({ kind: "refused", status: 400 });
+
+    const heldSubmit: IHeldStep = fakeNode.holdSubmitResponse();
+    const transferring: Promise<unknown> = captureError(funded.transfer);
+
+    await heldSubmit.reached;
+
+    funded.client.closeWallet(funded.walletId);
+
+    const reopening: Promise<Wallet> = funded.client.openWallet(
+        funded.signerId,
+        PASSWORD,
+    );
+
+    await waitUntilOpening(funded);
+    await wait(RESTORE_GRACE_MS);
+
+    heldSubmit.release();
+
+    const transferError: unknown = await transferring;
+    const reopened: Wallet = await reopening;
+
+    const reservations: ITransactionReservation[] =
+        await funded.client.getReservations(reopened.getId());
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+
+    console.log("    Transfer error:", (transferError as Error).constructor.name);
+    console.log("    Restored reservations:", reservations.length);
+
+    assert.ok(transferError instanceof DeploySubmissionRejectedError);
+    assert.equal(reservations.length, 0);
+    assert.equal(stored.length, 0);
+
+    await funded.client.close();
+});
+
+test("reopening a wallet is refused while its submission stays unsettled past the timeout", async (t) => {
+    console.log("\n=== REOPEN REFUSED FOR AN UNSETTLED SUBMISSION ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    const heldSave: IHeldStep = holdReservationSave();
+    const transferring: Promise<unknown> = captureError(funded.transfer);
+
+    await heldSave.reached;
+
+    funded.client.closeWallet(funded.walletId);
+
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    let isSettled: boolean = false;
+
+    const reopening: Promise<unknown> = captureError(() =>
+        funded.client.openWallet(funded.signerId, PASSWORD),
+    ).finally(() => {
+        isSettled = true;
+    });
+
+    const startedAt: number = performance.now();
+
+    while (!isSettled && performance.now() - startedAt < SETTLE_WAIT_LIMIT_MS) {
+        await nextTurn();
+        t.mock.timers.tick(SUBMISSION_SETTLE_TIMEOUT_MS);
+    }
+
+    t.mock.timers.reset();
+
+    const openError: unknown = await reopening;
+
+    heldSave.release();
+
+    const transferError: unknown = await transferring;
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+
+    console.log("    Open error:", (openError as Error)?.constructor.name);
+    console.log("    Transfer error:", (transferError as Error).constructor.name);
+
+    assert.ok(openError instanceof WalletActionInProgressError);
+    assert.equal(
+        (openError as WalletActionInProgressError).action,
+        WalletAction.SUBMIT_DEPLOY,
+    );
+    assert.equal(
+        funded.client.getWalletManager().getBySignerId(funded.signerId),
+        null,
+    );
+    assert.ok(transferError instanceof DomainClosedError);
+    assert.equal(stored.length, 0);
 
     await funded.client.close();
 });
