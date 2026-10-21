@@ -28,6 +28,7 @@ import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import KeyFingerprintService from "@services/KeyFingerprint";
 import {
     AccountBusyError,
     LastAccountRemovalError,
@@ -343,13 +344,19 @@ export default class Wallet {
     ): Promise<Wallet> {
         const { signerRecord, accountRecords } = payload;
 
-        const signer: Signer = restoreSigner(signerRecord);
-
         const secretData: IPrivateKeyCredentials | IHDSecret =
             await CryptoService.decryptSignerData(
-                signer.getEncryptedSecret(),
+                signerRecord.encryptedData,
                 passwordProvider,
             );
+
+        // TODO(next-major): Restore the signer with signerRecord.fingerprint once
+        // every stored HD signer carries the root-path-aware fingerprint.
+        const signer: Signer = restoreSigner({
+            ...signerRecord,
+            fingerprint: await KeyFingerprintService.fromSecret(secretData),
+        });
+
         const secretProvider = new SecretsProvider(() => secretData);
 
         const accountsMap: Map<string, Account> = new Map();

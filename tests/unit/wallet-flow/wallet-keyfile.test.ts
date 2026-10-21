@@ -32,6 +32,7 @@ import ImportKeyfileService, {
     IImportWalletKeyfileOptions,
 } from "@services/ImportKeyfileService";
 import { IKeyfileWalletAccount } from "@services/KeyfileSerializer";
+import KeyFingerprintService from "@services/KeyFingerprint";
 import KeysManager from "@services/KeysManager";
 import StorageManager from "@services/StorageManager";
 import WalletImportService, {
@@ -43,6 +44,7 @@ import WalletImportService, {
 import WalletManager from "@services/WalletManager";
 import WalletPersistenceService from "@services/WalletPersistence";
 import { encodeBase16 } from "@utils/codec";
+import { ASI_COIN_TYPE } from "@utils/constants";
 import MnemonicService from "@services/Mnemonic";
 
 const MNEMONIC = MnemonicService.generateMnemonic();
@@ -206,6 +208,41 @@ const createHDWalletWithIndexGap = async (
     await walletManager.removeAccount(wallet.getId(), accountId);
 
     return wallet;
+};
+
+const exportCustomPathKeyfile = async (): Promise<IWalletKeyfile> =>
+    exportKeyfile(
+        await Wallet.createHD(
+            {
+                pathOptions: {
+                    customHDPath: new Bip44Path({
+                        coinType: ASI_COIN_TYPE,
+                        account: 1,
+                        change: 0,
+                        index: 0,
+                    }),
+                },
+                accountOptions: { name: "Custom path" },
+            },
+            hdSecretProvider,
+        ),
+    );
+
+const storeLegacyFingerprint = async (wallet: Wallet): Promise<void> =>
+    StorageManager.updateSigner(wallet.getSigner().getId(), {
+        fingerprint: await KeyFingerprintService.fromMnemonic(MNEMONIC),
+    });
+
+const isSignedByShownKey = async (
+    wallet: Wallet,
+    account: Account,
+): Promise<boolean> => {
+    const { publicKey } = await wallet.getSigner().sign("00".repeat(32), {
+        passwordProvider,
+        index: account.getIndex() as number,
+    });
+
+    return encodeBase16(publicKey) === encodeBase16(account.getPublicKey());
 };
 
 test.before(async () => {
@@ -937,6 +974,148 @@ test("importing an already stored keyfile is rejected as a duplicate", async () 
 
     assert.equal((await StorageManager.getSigners()).length, 1);
     assert.equal((await StorageManager.getAccounts()).length, 1);
+});
+
+test("keyfile accounts are not merged into a wallet with a different root HD path", async () => {
+    console.log("\n=== KEYFILE ACCOUNTS WITH A DIFFERENT ROOT HD PATH ===");
+
+    const walletManager = new WalletManager();
+
+    await walletManager.createHD({ accountName: "Main" }, hdSecretProvider);
+
+    const keyfile: IWalletKeyfile = await exportCustomPathKeyfile();
+
+    const preview = await previewKeyfileImport(keyfile);
+
+    console.log("    Preview existing signer:", preview.existingSignerId);
+
+    assert.equal(preview.existingSignerId, null);
+
+    await assert.rejects(
+        () => createKeyfileAccounts(keyfile),
+        KeyfileWalletNotFoundError,
+    );
+
+    assert.equal((await StorageManager.getAccounts()).length, 1);
+});
+
+test("a keyfile with a different root HD path is imported as a separate wallet that signs for its addresses", async () => {
+    console.log("\n=== KEYFILE WITH A DIFFERENT ROOT HD PATH AS A NEW WALLET ===");
+
+    const walletManager = new WalletManager();
+
+    await walletManager.createHD({ accountName: "Main" }, hdSecretProvider);
+
+    const imported: Wallet = await importKeyfile(
+        walletManager,
+        await exportCustomPathKeyfile(),
+    );
+
+    const [importedAccount] = imported.getAccounts();
+
+    assert.equal((await StorageManager.getSigners()).length, 2);
+    assert.equal(await isSignedByShownKey(imported, importedAccount), true);
+
+    const reopened: Wallet = await new WalletManager().open(
+        imported.getSigner().getId(),
+        passwordProvider,
+    );
+
+    const [reopenedAccount] = reopened.getAccounts();
+
+    console.log("    Address before reopen:", importedAccount.getAddress());
+    console.log("    Address after reopen:", reopenedAccount.getAddress());
+
+    assert.equal(reopenedAccount.getAddress(), importedAccount.getAddress());
+    assert.equal(await isSignedByShownKey(reopened, reopenedAccount), true);
+});
+
+test("a legacy fingerprint still points a same-path keyfile to the stored wallet", async () => {
+    console.log("\n=== LEGACY FINGERPRINT WITH THE SAME ROOT HD PATH ===");
+
+    const walletManager = new WalletManager();
+
+    const { wallet, keyfile } =
+        await createHDWalletWithMissingAccount(walletManager);
+
+    await storeLegacyFingerprint(wallet);
+
+    const preview = await previewKeyfileImport(keyfile);
+
+    assert.equal(preview.existingSignerId, wallet.getSigner().getId());
+
+    const importedAccounts: Account[] = await createKeyfileAccounts(keyfile, {
+        accountIndexes: [1],
+    });
+
+    assert.deepEqual(accountIndexes(importedAccounts), [1]);
+});
+
+test("a legacy fingerprint does not merge a keyfile with a different root HD path", async () => {
+    console.log("\n=== LEGACY FINGERPRINT WITH A DIFFERENT ROOT HD PATH ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet: Wallet = await walletManager.createHD(
+        { accountName: "Main" },
+        hdSecretProvider,
+    );
+
+    await storeLegacyFingerprint(wallet);
+
+    const keyfile: IWalletKeyfile = await exportCustomPathKeyfile();
+
+    const preview = await previewKeyfileImport(keyfile);
+
+    assert.equal(preview.existingSignerId, null);
+
+    await assert.rejects(
+        () => createKeyfileAccounts(keyfile),
+        KeyfileWalletNotFoundError,
+    );
+
+    assert.equal((await StorageManager.getAccounts()).length, 1);
+});
+
+test("opening a legacy HD wallet through the client reports the fingerprint upgrade once", async () => {
+    console.log("\n=== LEGACY FINGERPRINT UPGRADE EVENT ===");
+
+    const upgradedWalletIds: string[] = [];
+
+    const client: Client = await Client.create({
+        networksConfig: NETWORKS_CONFIG,
+        defaultNetwork: NETWORK_NAME,
+        storageOptions: STORAGE_OPTIONS,
+        eventDispatcher: {
+            onWalletFingerprintUpgraded: (walletId: string) => {
+                upgradedWalletIds.push(walletId);
+            },
+        },
+    });
+
+    const created: Wallet = await client.createHDWallet(
+        { mnemonic: MNEMONIC, accountName: "Main" },
+        PASSWORD,
+    );
+
+    const signerId: string = created.getSigner().getId();
+
+    await storeLegacyFingerprint(created);
+    client.closeWallet(created.getId());
+
+    const upgraded: Wallet = await client.openWallet(signerId, PASSWORD);
+    client.closeWallet(upgraded.getId());
+
+    const reopened: Wallet = await client.openWallet(signerId, PASSWORD);
+    client.closeWallet(reopened.getId());
+
+    console.log("    Upgrade events:", upgradedWalletIds.length);
+
+    assert.deepEqual(upgradedWalletIds, [upgraded.getId()]);
+    assert.equal(
+        (await StorageManager.getSigner(signerId)).fingerprint,
+        upgraded.getSigner().getFingerprint(),
+    );
 });
 
 test.afterEach(async () => {

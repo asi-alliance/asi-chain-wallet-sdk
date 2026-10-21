@@ -422,7 +422,7 @@ export class InvalidKeyfilePasswordError extends CustomError {
 
 export class KeyfileWalletNotFoundError extends CustomError {
     constructor(
-        message: string = "Keyfile secret does not belong to any stored wallet, its accounts have no wallet to be imported into",
+        message: string = "No stored wallet matches the keyfile secret and root HD path, its accounts have no wallet to be imported into",
     ) {
         super(CustomErrorCode.KEYFILE_WALLET_NOT_FOUND, message, 404);
     }

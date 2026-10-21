@@ -28,6 +28,7 @@ import Account from "@domains/Account";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
+import type { ISignerRecord } from "@domains/Signer";
 import ReservationAdapter, {
     IReservedOperationResult,
 } from "@domains/ReservationAdapter";
@@ -155,6 +156,8 @@ export interface IClientEventDispatcher {
         isBusy: boolean,
     ): void | Promise<void>;
     onWalletLocked?(walletId: string): void | Promise<void>;
+    // TODO(next-major): Remove together with LegacyFingerprintService.
+    onWalletFingerprintUpgraded?(walletId: string): void | Promise<void>;
 }
 
 export interface ISessionPolicy {
@@ -492,19 +495,32 @@ export default class Client extends ClosableDomain {
         signerId: string,
         password: string,
     ): Promise<Wallet> {
-        if (
-            this.walletManager.hasByFilter(
-                (wallet: Wallet) => wallet.getSigner().getId() === signerId,
-            )
-        ) {
-            throw new Error("Client.openWallet: This wallet already open");
-        }
-
         const passwordProvider: SecretsProvider =
             this.createPasswordProvider(password);
 
+        // TODO(next-major): Remove together with LegacyFingerprintService.
+        let storedFingerprint: string | undefined;
+
         const wallet: Wallet = await this.lifecycleGuard.runWalletPublication(
-            () => this.walletManager.open(signerId, passwordProvider),
+            async () => {
+                const signerRecord: ISignerRecord =
+                    await StorageManager.getSigner(signerId);
+
+                storedFingerprint = signerRecord.fingerprint;
+
+                if (
+                    this.walletManager.hasByFilter(
+                        (openWallet: Wallet) =>
+                            openWallet.getSigner().getId() === signerId,
+                    )
+                ) {
+                    throw new Error(
+                        "Client.openWallet: This wallet already open",
+                    );
+                }
+
+                return this.walletManager.open(signerId, passwordProvider);
+            },
             async (openedWallet: Wallet) => {
                 if (this.shouldHoldSession()) {
                     await this.holdSession(openedWallet, passwordProvider);
@@ -518,6 +534,13 @@ export default class Client extends ClosableDomain {
         );
 
         this.emitWalletsChanged();
+
+        if (wallet.getSigner().getFingerprint() !== storedFingerprint) {
+            this.eventBus.emit(
+                ClientEvent.WALLET_FINGERPRINT_UPGRADED,
+                wallet.getId(),
+            );
+        }
 
         return wallet;
     }
