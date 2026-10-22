@@ -45,7 +45,7 @@ const eventBus = client.getEventBus();
 const unsubscribes: TUnsubscribe[] = [
     eventBus.on(ClientEvent.WALLETS_CHANGED, () => void refresh()),
     eventBus.on(ClientEvent.ACCOUNTS_CHANGED, () => void refresh()),
-    eventBus.on(ClientEvent.NETWORK_CHANGED, setCurrentNetwork),
+    eventBus.on(ClientEvent.NETWORKS_CHANGED, applyNetworksState),
     eventBus.on(ClientEvent.RESERVATIONS_CHANGED, setReservationsByWallet),
     eventBus.on(ClientEvent.NETWORK_BUSY_CHANGED, updateBusyNetworkIds),
     eventBus.on(ClientEvent.WALLET_LOCKED, trackLockedWallet),
@@ -70,12 +70,14 @@ Returned value (`UseSdkValue`):
 - Network: `setNetwork(id)`, `addNetwork(name, config): INetworkRecord`,
   `updateNetwork(id, update)`, `removeNetwork(id)`. Networks are identified by a
   stable `id` (`INetworkRecord = { id, name, config, isDefault }`); `name` is
-  editable data, not the key. `networkRecords` comes straight from
-  `client.getNetworks()` and is refreshed after every CRUD call.
-  `updateNetwork`/`removeNetwork` also re-sync `currentNetwork` from
-  `getCurrentNetwork()`, since the SDK switches the active network internally
-  without emitting `NETWORK_CHANGED`. The `NETWORK_CHANGED` event itself delivers
-  the full active-network record.
+  editable data, not the key. `networkRecords` and `currentNetwork` are driven by
+  one source: `applyNetworksState` writes both from an `INetworksState`, once
+  from `client.getNetworksState()` right after the client is created and then
+  from every `NETWORKS_CHANGED` event. The network methods therefore do not
+  re-read anything after the call: an add, an edit, a removal that moves the
+  selection to another network, and `setNetwork` all arrive through the event,
+  and a failed write emits nothing, so the list never shows a network that was
+  not stored.
 - Key generation: `generateMnemonic(strength?)`, `generatePrivateKey()`.
 - Wallet lifecycle: `createHDWallet(input, password)`,
   `createPrivateKeyWallet(input, password)`, `openWallet(signerId, password)`,
@@ -437,7 +439,13 @@ surface via `alert`).
 `helpers.ts` builds `NetworksPageHandlers`: `addNetwork`, `editNetwork(record)`,
 `removeNetwork(record)`, `switchNetwork(id)`. They open `NetworkModal` (add/edit)
 or confirm removal and call the matching `useSdk` methods through `withLoader`
-(`updateNetwork(id, { name, config })`).
+(`updateNetwork(id, { name, config })`). The page never updates its own list: the
+cards and the active badge follow `NETWORKS_CHANGED`, so a successful write shows
+up on its own and a rejected one (a duplicate name or config, a busy network, a
+failed storage write) leaves the page as it was and is reported through `alert`.
+Removing or changing the endpoints of a network that still has pending
+reservations asks for confirmation first, because those reservations lose their
+tracking.
 
 ### DeployPage (`pages/DeployPage/index.tsx`)
 
