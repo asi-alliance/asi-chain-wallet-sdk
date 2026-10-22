@@ -94,6 +94,13 @@ operations reuse the in-memory secret until it auto-locks. With
 `"every-signature"`, no session is held and every signature requires the
 password again.
 
+A non-positive `autoLockMs` (`0` or negative) cannot describe a session, so the
+client switches to `"every-signature"` regardless of `requirePassword`: no
+session is ever held and `unlockWallet` throws. Earlier releases accepted such a
+value and kept the session alive forever. The value is not rejected yet, to keep
+existing configurations starting; the next major release will validate the
+policy in `Client.create` and throw instead (marked `TODO(next-major)`).
+
 Wallet & account lifecycle:
 
 ```ts
@@ -154,7 +161,19 @@ a wallet always locks it first.
 
 Opening the same signer twice throws: `openWallet` rejects a signer that is
 already open, and `WalletManager` serializes concurrent `open` calls for one
-signer through `WalletActionInProgressError` (status `409`).
+signer through `WalletActionInProgressError` (status `409`). The "already open"
+check runs inside the guarded publication, right before the wallet is loaded, so
+an `openWallet` that was waiting on storage still sees a twin that finished
+opening in the meantime.
+
+Opening also waits for the wallet's own deploy submissions. If a `transfer` or
+`deploy` of the same signer is still in flight (for example the wallet was closed
+and reopened while the node had not answered yet), `openWallet` waits for it to
+settle before it restores reservations, so it never restores a reservation that
+the submission is about to roll back. The wait is bounded by
+`SUBMISSION_SETTLE_TIMEOUT_MS` (request timeout plus drain timeout, 40 s by
+default); a submission still running after that makes `openWallet` throw
+`WalletActionInProgressError` with the action `SUBMIT_DEPLOY`.
 
 Signing sessions:
 
@@ -184,6 +203,14 @@ rather than leaking it into the post-logout state. See
 [SigningSession](#signingsession-srcdomainssigningsessionindexts) and
 [LifecycleGuard](#lifecycleguard-srcdomainslifecycleguardindexts).
 
+Publication is also rolled back when the wallet's setup fails. After
+`openWallet`, `createHDWallet`, `createPrivateKeyWallet`, or `importWalletKeyfile`
+has loaded the wallet, the client restores its reservations (and, for
+`openWallet`, holds its signing session first); if that setup throws, the wallet is locked and dropped from the
+client again, no `walletsChanged` is emitted, and the call can simply be retried.
+The rollback is runtime-only: a wallet that was created or imported stays in
+storage and can be opened afterwards.
+
 Duplicate protection is enforced at creation time, not at the UI layer:
 `createHDWallet` and `createPrivateKeyWallet` reject a secret that is already
 stored with `DuplicateWalletError`, and a key that already belongs to a stored
@@ -192,14 +219,27 @@ the existing owner). Matching is done on a non-reversible key fingerprint, so it
 works while every wallet is locked. `createPrivateKeyWallet` additionally
 validates the raw key against the secp256k1 range before doing any work.
 
+An HD wallet is identified by its mnemonic **and** its root HD path
+(`m/44'/coin'/account'/change`), not by the mnemonic alone: the same mnemonic on
+another root path derives different keys and is a different wallet. Signers
+stored by `v2.0.0` and earlier carry the older, mnemonic-only fingerprint
+(the _legacy_ fingerprint). They are still recognized — the uniqueness check
+falls back to the legacy formula and confirms the root path through the stored
+account with the lowest index — and `openWallet` rewrites a legacy fingerprint
+in the new format the first time the wallet is opened, then emits
+`walletFingerprintUpgraded` once. See
+[KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts)
+and [LegacyFingerprintService](SERVICES.md#legacyfingerprintservice-srcserviceslegacyfingerprintindexts).
+
 Network (runtime registry — see `NetworkManager` / `ApiClientManager`):
 
 ```ts
 getNetworks(): INetworkRecord[]
+getNetworksState(): INetworksState                         // { networks, selectedNetwork } in one read
 getNetwork(id: NetworkId): INetworkRecord
 getCurrentNetwork(): INetworkRecord
 getCurrentNetworkId(): NetworkId
-setNetwork(networkId: NetworkId): void                     // switch active network by id, fires onNetworkChanged
+setNetwork(networkId: NetworkId): void                     // switch active network by id, fires networksChanged
 
 addNetwork(name: NetworkName, config: INetworkConfig): Promise<INetworkRecord> // custom network
 updateNetwork(id: NetworkId, update: INetworkUpdate): Promise<void>            // custom only
@@ -233,7 +273,29 @@ a network wipe cannot start while a reservation is being written, and a
 reservation cannot be added to a network whose reservations are being cleared.
 The loser gets `ReservationActionInProgressError`. `removeNetworkReservations` is
 itself decorated with `@EnsureExclusiveNetwork` and throws if it is ever reached
-outside that scope, so the invariant cannot be bypassed by a new call site.
+outside that scope, so the invariant cannot be bypassed by a new call site. The
+same scope also stops network operations: a `transfer`, `deploy`, or
+`signDeploy` on a network that is being updated or removed is rejected with
+`ReservationActionInProgressError` (action `NETWORK_CLEANUP`) instead of running
+against a configuration that is about to change.
+
+Network writes are transactional and serialized:
+
+- **Storage first.** `addNetwork`, `updateNetwork`, and `removeNetwork` write to
+  storage before they touch the in-memory registry. A failed write leaves the
+  networks, the selection, and the listeners exactly as they were.
+- **One write at a time.** All three go through one write queue, so concurrent
+  calls cannot both pass the duplicate check: two adds with one name, or two
+  renames to one name, store a single record and the second call is rejected.
+- **Busy is checked first.** `updateNetwork` and `removeNetwork` check that the
+  network is idle **before** queueing, so a busy network is refused with
+  `NetworkBusyError` at once instead of after the queued writes ahead of it.
+
+Every change of the network list or the selection — add, update, remove,
+`setNetwork` — emits `networksChanged` with the full `INetworksState`
+(`{ networks, selectedNetwork }`). A UI can render the list and the selector from
+that one event instead of re-reading after each call. `networkChanged` (the
+selection only) is still emitted but deprecated in favour of `networksChanged`.
 
 Balances, reservations & transfers:
 
@@ -340,6 +402,23 @@ lock funds (`phloLimit * phloPrice` for a deploy) and both return an
 deploy-watch callbacks to that reservation. Both also run inside
 `ApiClientManager.runNetworkOperation`, which marks the network busy for the
 duration and reports it through `onNetworkBusyChanged`.
+
+The reservation is written to storage **before** the deploy is submitted, and the
+`deployId` is the local deploy signature, known before the node answers. A crash
+or a reload while the request is in flight therefore cannot lose the lock on the
+funds. What happens next depends on how the submission ends:
+
+| Submission outcome | Reservation | Error |
+| --- | --- | --- |
+| Accepted by the node | kept live, funds held until confirmation or expiry | — |
+| Refused by the node (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`) |
+| Outcome unknown (dropped connection, timeout, HTTP `5xx`) | kept, funds held | `ApiRequestError` (`502`) |
+| Wallet closed or removed before the deploy left | removed from storage, nothing is sent | `DomainClosedError` (`410`) |
+
+Only an explicit refusal releases the funds. A deploy whose outcome is unknown may
+still land on chain, so its reservation stays and is settled by the deploy
+watcher or by expiry. `DeploySubmissionRejectedError` extends `ApiRequestError`,
+so code that already handled `ApiRequestError` keeps working.
 
 `signDeploy` stops one step earlier: it builds the `DeployData`, signs it, and
 returns the signed envelope for the caller to submit. Nothing is sent to the
@@ -549,6 +628,30 @@ Private-key keyfiles never take the second path: a private-key wallet holds
 exactly one account, so a keyfile whose secret is already stored is a plain
 duplicate and `DuplicateWalletError` is raised during preparation.
 
+For HD keyfiles "the secret is already stored" means the same mnemonic **on the
+same root HD path**. A keyfile exported from a wallet on another root path is a
+different wallet: the preview reports `existingSignerId: null`,
+`importKeyfileAccounts` throws `KeyfileWalletNotFoundError`, and
+`importWalletKeyfile` stores it as a separate wallet that signs with the keys of
+its own addresses. Wallets stored with a legacy fingerprint are matched the same
+way.
+
+The decrypted account list is validated before anything is derived, and a
+keyfile that breaks a rule is rejected with `InvalidKeyfileError`:
+
+- 1 to `MAX_KEYFILE_ACCOUNTS` (1000) accounts, and a private-key keyfile holds
+  exactly one;
+- every name is non-blank and at most `MAX_KEYFILE_ACCOUNT_NAME_LENGTH` (128)
+  characters;
+- every HD account has an integer index between `0` and
+  `Bip44Path.MAX_COMPONENT_VALUE` (`2^31 - 1`), and a private-key account has
+  `index: null`;
+- no two accounts share an index.
+
+Account names are not validated when an account is created or renamed through
+the SDK, so a wallet can hold a name that its own exported keyfile cannot carry
+back in. Keep account names within the keyfile limits.
+
 `options.accountIndexes` narrows the import to the listed derivation indexes.
 An empty array is rejected, and an index the keyfile does not declare is
 rejected by name (`InvalidKeyfileError`) rather than silently skipped.
@@ -592,10 +695,24 @@ Pure reads that cannot corrupt anything (`isWalletOpen`, `isWalletUnlocked`,
 `getNetworks`, `getCurrentNetwork`, `isNetworkBusy`, `hasNetworkReservations`,
 `getEventBus`, the amount helpers) stay callable.
 
-Both `close()` and `clearPersistence()` first invalidate the lifecycle guard and
-lock every open wallet, then **drain** the operations still in flight (bounded by
-`DEFAULT_DRAIN_TIMEOUT_MS`, 10s) before touching storage, so a transfer running
-concurrently with a logout cannot write after the wipe.
+Both `close()` and `clearPersistence()` first invalidate the lifecycle guard,
+lock every open wallet, and close every reservation adapter, then **drain** the
+operations still in flight (bounded by `DEFAULT_DRAIN_TIMEOUT_MS`, 10s) before
+touching storage, so a transfer running concurrently with a logout cannot write
+after the wipe. A deploy that has not left yet when its adapter closes is not
+sent at all (see the submission table above).
+
+`clearPersistence()` and `removeWallet()` are **exclusive** lifecycle actions:
+while one of them runs, any new tracked operation — creating, opening, or
+importing a wallet, deriving an account, a transfer, a deploy, a reservation
+change — is rejected at once with `OperationsSuspendedError` (status `409`)
+instead of starting against state that is being torn down. Operations that were
+already running are drained, not cancelled.
+
+`removeWallet()` detaches the wallet first — it disappears from the client and
+its reservation adapter is closed immediately — then waits for the operations
+still in flight, and only then deletes the signer, its accounts, and its
+persisted reservations from storage.
 
 ### Events
 
@@ -614,12 +731,21 @@ interface IClientEventSource {
 enum ClientEvent {
     WALLETS_CHANGED = "walletsChanged",         // (wallets: Wallet[])
     ACCOUNTS_CHANGED = "accountsChanged",       // (walletId: string, accounts: Account[])
-    NETWORK_CHANGED = "networkChanged",         // (network: INetworkRecord)
+    NETWORK_CHANGED = "networkChanged",         // (network: INetworkRecord) deprecated, use NETWORKS_CHANGED
+    NETWORKS_CHANGED = "networksChanged",       // (networksState: INetworksState) list or selection changed
     RESERVATIONS_CHANGED = "reservationsChanged", // (reservationsByWallet: TReservationsByWallet)
     NETWORK_BUSY_CHANGED = "networkBusyChanged",  // (networkId: NetworkId, isBusy: boolean)
     WALLET_LOCKED = "walletLocked",             // (walletId: string) manual lock and auto-lock expiry
+    WALLET_FINGERPRINT_UPGRADED = "walletFingerprintUpgraded", // (walletId: string) legacy fingerprint rewritten on open
 }
 ```
+
+`walletFingerprintUpgraded` is transitional: it exists only while signers with a
+legacy fingerprint can still be found in storage, and it will be removed in the
+next major release together with the legacy lookup. It is emitted once per wallet,
+by `Client.openWallet` only — opening through `WalletManager` directly upgrades
+the record silently. If the client is closed while such an open is still running,
+the record is upgraded but the event is not emitted, and it will not come later.
 
 `on` returns its own unsubscribe, so a caller never has to keep the listener
 reference around. Subscriptions can be added and dropped at any point in the
@@ -642,10 +768,12 @@ bus:
 interface IClientEventDispatcher {
     onWalletsChanged?(wallets: Wallet[]): void | Promise<void>;
     onAccountsChanged?(walletId: string, accounts: Account[]): void | Promise<void>;
-    onNetworkChanged?(network: INetworkRecord): void | Promise<void>;
+    onNetworkChanged?(network: INetworkRecord): void | Promise<void>; // deprecated, use onNetworksChanged
+    onNetworksChanged?(networksState: INetworksState): void | Promise<void>;
     onReservationsChanged?(reservationsByWallet: TReservationsByWallet): void | Promise<void>;
     onNetworkBusyChanged?(networkId: NetworkId, isBusy: boolean): void | Promise<void>;
     onWalletLocked?(walletId: string): void | Promise<void>;
+    onWalletFingerprintUpgraded?(walletId: string): void | Promise<void>; // transitional, see above
 }
 ```
 
@@ -729,6 +857,14 @@ keyfile secret, mints a **new** signer for it through `createImportedSigner`
 and recreates the declared accounts. Importing the same secret twice is prevented
 above this layer, not here.
 
+`restore` rebuilds a stored wallet. It decrypts the stored secret first and
+recomputes the signer fingerprint from it instead of trusting the stored one, so
+a wallet restored from a record with a legacy HD fingerprint already carries the
+current, root-path-aware fingerprint in memory. `WalletManager.open` then writes
+that value back to storage. Once every stored HD signer carries the new
+fingerprint, the next major release will restore the stored value again (marked
+`TODO(next-major)`).
+
 Account access:
 
 ```ts
@@ -777,6 +913,7 @@ Signing / transfer:
 transfer(accountId: string, payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<string>
 deploy(accountId: string, payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<string>
 signDeploy(accountId: string, payload: TDeployDetails, passwordProvider?: SecretsProvider): Promise<SignedResult>
+signTransfer(accountId: string, payload: ITransferDetails, passwordProvider?: SecretsProvider): Promise<SignedResult>
 ```
 
 Behavior notes:
@@ -810,6 +947,11 @@ Behavior notes:
 - `signDeploy` returns the signed `SignedResult` instead of a deploy id: it signs
   and stops, leaving submission to the caller. `deploy` is the same pipeline plus
   the node submission.
+- `signTransfer` is the same split for transfers: it validates the recipient,
+  builds and signs the transfer deploy, and returns it without submitting.
+  `ReservationAdapter` uses `signTransfer` and `signDeploy` so that it knows the
+  deploy id (the signature) and can persist the reservation **before** the deploy
+  is sent to the node.
 
 ---
 
@@ -929,7 +1071,7 @@ type THDSigningContext = { passwordProvider?: SecretsProvider; index: number };
 type TSigningContext = TPKSigningContext | THDSigningContext;
 
 interface ISigningSessionOptions {
-    autoLockMs?: number; // 0 / omitted -> no auto-lock timer
+    autoLockMs?: number; // omitted -> DEFAULT_AUTO_LOCK_MS (15 min); <= 0 -> no session
     onAutoLock?: () => void;
 }
 
@@ -973,11 +1115,17 @@ Fingerprint:
   [KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts)
   when the signer fabric builds it. The fabric calls the single entry point
   `fromSecret(secret)`, which dispatches on the secret shape: `sha256(publicKey)`
-  for a private-key signer, `sha256(masterPublicKey || chainCode)` for an HD one.
+  for a private-key signer, `sha256(publicKey || chainCode)` of the node at the
+  root HD path (`m/44'/coin'/account'/change`) for an HD one.
 - It is stored in plaintext next to the encrypted secret, which is what allows
   duplicate detection across locked wallets. It reveals no key material and,
-  because the HD variant hashes the master node rather than the seed, two wallets
-  restored from the same mnemonic collide as intended.
+  because the HD variant hashes the root-path node rather than the seed, two
+  wallets restored from the same mnemonic on the same root path collide as
+  intended, while the same mnemonic on another root path does not.
+- Signers stored by `v2.0.0` and earlier hold the legacy HD fingerprint (the
+  master node, without the root path). They are upgraded on the next open; see
+  [Open vs unlocked](#open-vs-unlocked) and
+  [LegacyFingerprintService](SERVICES.md#legacyfingerprintservice-srcserviceslegacyfingerprintindexts).
 
 Data key:
 
@@ -1026,10 +1174,18 @@ interface ISigningSessionSecrets {
 }
 
 interface ISigningSessionOptions {
-    autoLockMs?: number; // 0 / omitted -> no auto-lock timer
+    autoLockMs?: number; // omitted -> DEFAULT_AUTO_LOCK_MS (15 min); <= 0 -> no session
     onAutoLock?: () => void;
 }
 ```
+
+Every session is bounded. An omitted `autoLockMs` means
+`DEFAULT_AUTO_LOCK_MS`, and a non-positive one means that no session is held at
+all: `hold` releases the previous session, zeroizes the secret it was given, and
+returns without installing it, so the signer stays locked. Before 2.1.0 both cases
+produced a session that never auto-locked. A non-positive value is still accepted
+rather than rejected for compatibility; the next major release will validate the
+options and throw (marked `TODO(next-major)`).
 
 The **generation counter** is what makes a lock beat a slow unlock. `release`
 increments it unconditionally, even when there is nothing to release, so a caller
@@ -1071,12 +1227,27 @@ as the drain timeout.
 Base class for domains with a terminal teardown. Implemented by `Client`.
 
 ```ts
-abstract class ClosableDomain {
+interface IClosable {      // synchronous teardown, e.g. TransactionReservationsManager
+    isActive(): boolean;
+    close(): void;
+}
+
+interface IAsyncClosable { // asynchronous teardown
+    isActive(): boolean;
+    close(): Promise<void>;
+}
+
+abstract class ClosableDomain implements IAsyncClosable {
     isActive(): boolean;
     close(): Promise<void>;
     protected abstract onClose(): Promise<void>;
 }
 ```
+
+The two interfaces describe the same contract for objects that are not
+`ClosableDomain` subclasses. `TransactionReservationsManager` implements
+`IClosable`, and `ReservationAdapter` checks its manager through that interface
+(`@EnsureReservationsManagerActive`) instead of depending on the concrete class.
 
 `close()` flips the flag **before** awaiting `onClose()` and returns early on a
 second call, so teardown runs exactly once and anything racing it already sees an
@@ -1097,14 +1268,22 @@ wallet publication.
 class LifecycleGuard {
     invalidate(): void;                                     // bump the generation
     drain(timeoutMs?: number): Promise<void>;               // wait out pending work
+    hasPendingOperations(): boolean;                        // anything still tracked
     track<T>(operation: () => Promise<T>): Promise<T>;
     run<T>(operation: () => Promise<T>, onInvalidated: (result: T) => Error): Promise<T>;
+    runExclusive<T>(operation: () => Promise<T>): Promise<T>; // suspend new tracked work while it runs
 }
 ```
 
 - `track` registers the promise and always deregisters it, so `drain` knows what
-  is still running. `Client.transfer` / `Client.deploy` are tracked through the
-  `@TrackOperation` decorator.
+  is still running. `Client.transfer`, `Client.deploy`, `Client.signDeploy`, and
+  the reservation methods are tracked through the `@TrackOperation` decorator.
+- `runExclusive` marks the guard as suspended for the duration of the operation:
+  any `track` (and therefore any `run`) started meanwhile throws
+  `OperationsSuspendedError` (`409`) at once, while work tracked earlier keeps
+  running and can still be drained. `Client.clearPersistence` and
+  `Client.removeWallet` run through it. A second exclusive action started during
+  the first is refused the same way.
 - `run` is `track` plus a generation check: the operation runs, and if
   `invalidate()` was called meanwhile, `onInvalidated(result)` turns the finished
   result into the error to throw. The callback receives the result so it can
@@ -1118,6 +1297,11 @@ class LifecycleGuard {
 `Client` calls `invalidate()` first and `drain()` second in both
 `clearPersistence` and `close`, so in-flight operations are marked stale before
 the wait and cannot commit after it.
+
+`KeyedLifecycleGuardService` (`src/services/KeyedLifecycleGuard`) keeps one
+`LifecycleGuard` per key. `ReservationAdapter` uses it, keyed by signer id, to
+track deploy submissions: reopening a wallet drains that signer's submissions,
+and `hasPendingOperations(key)` tells whether one outlived the drain timeout.
 
 ---
 
@@ -1180,10 +1364,12 @@ Runtime and network errors:
 | Class | Code | Status | Extra fields |
 | --- | --- | --- | --- |
 | `DomainClosedError` | `DOMAIN_CLOSED` | `410` | `domainName` |
+| `OperationsSuspendedError` | `OPERATIONS_SUSPENDED` | `409` | — |
 | `NetworkBusyError` | `NETWORK_BUSY` | `409` | `networkId` |
 | `StorageOperationError` | `STORAGE_OPERATION_FAILED` | `500` | `operation`, `target`, `reason` |
 | `DeployTimeoutError` | `DEPLOY_TIMEOUT` | `408` | `deployId`, `timeoutMs` |
 | `ApiRequestError` | `API_REQUEST_FAILED` | `502` | `source`, `operation`, `reason` |
+| `DeploySubmissionRejectedError` | `DEPLOY_SUBMISSION_REJECTED` | `400` | `source`, `operation`, `reason` (extends `ApiRequestError`) |
 | `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
 
 Supporting enums:
@@ -1193,6 +1379,7 @@ enum WalletAction {
     OPEN = "OPEN",
     DERIVE_ACCOUNT = "DERIVE_ACCOUNT",
     SAVE_ACCOUNTS = "SAVE_ACCOUNTS",
+    SUBMIT_DEPLOY = "SUBMIT_DEPLOY", // a deploy submission still in flight blocks reopening
 }
 
 enum ReservationAction {
@@ -1254,18 +1441,23 @@ password, distinct from a transport/server error.
 `NetworkBusyError` is thrown when a network is switched, updated, or removed
 while it still has an operation in flight; it carries the offending `networkId`,
 and its `409` status marks it as a conflict the caller can retry once the network
-goes idle. See
+goes idle. Updates and removals are refused before they join the network write
+queue, so the error is immediate. See
 [NetworkBusyRegistry](#networkbusyregistry-srcdomainsnetworkbusyregistryindexts).
 
 `DuplicateWalletError` and `DuplicateAccountError` are thrown while creating a
 wallet whose key fingerprint is already stored. They name the existing owner
 (`existingSignerId`, and for accounts `existingAccountId`) so a UI can point at
 it instead of just refusing. Because matching runs on fingerprints, the check
-works without opening or decrypting anything.
+works without opening or decrypting anything. For HD wallets the fingerprint
+covers the root HD path, so the same mnemonic on another root path is not a
+duplicate.
 
 `WalletActionInProgressError` marks a second concurrent attempt at the same
 guarded action on the same signer — opening the same wallet twice, or deriving
-two accounts at once. `action` says which one. See
+two accounts at once. `action` says which one. `SUBMIT_DEPLOY` is the case where
+a wallet is reopened while one of its deploy submissions is still unsettled after
+`SUBMISSION_SETTLE_TIMEOUT_MS`. See
 [WalletOperationGuardService](SERVICES.md#walletoperationguardservice-srcserviceswalletoperationguardindexts).
 
 `ReservationActionInProgressError` is its equivalent for reservations, keyed by
@@ -1306,7 +1498,14 @@ carry `walletId` and `accountId`, and `409` is the retryable one.
 
 `DomainClosedError` is thrown by `@EnsureActive` on a domain that has already
 been closed. Its `410` status says the resource is permanently gone: build a new
-`Client` rather than retry.
+`Client` rather than retry. The reservation side raises it too: a deploy whose
+wallet was closed before the deploy left is not submitted, and a deploy-watch
+subscription opened on a closed reservations manager receives it through
+`onError` straight away instead of waiting for events that will never come.
+
+`OperationsSuspendedError` (`409`) is thrown while `clearPersistence` or
+`removeWallet` is running: new operations are refused until the exclusive action
+ends. It is retryable once that action has finished.
 
 `BalanceUnavailableError` replaces the old "unreadable balance reads as zero"
 behaviour. It carries the `address` and a human-readable `reason` (transport
@@ -1360,6 +1559,14 @@ underlying request reported. An aborted transaction reports
 `errors` array is joined into one `reason` rather than being stringified as raw
 JSON.
 
+`DeploySubmissionRejectedError` (`400`) is the one `ApiRequestError` that is
+known to be final: the node answered a deploy submission with a client-error
+status (`4xx`). The deploy did not and will not land, so the reservation behind
+it is released. Every other submission failure stays a plain `ApiRequestError`
+and keeps the reservation, because the deploy may still have been accepted.
+`isRejectedByServer(error)` (see [Guards](UTILS.md#guards-srcutilsguardsindexts))
+is the classification rule.
+
 `DeployTimeoutError` (`408`) is raised by `DeployStatusPoller` when a deploy is
 not finalized within the watch timeout. Its message says explicitly that the
 deploy may still be processed by the network, because a timeout here is not proof
@@ -1380,10 +1587,13 @@ the method it came from. See [Validators](UTILS.md#validators-srcutilsvalidators
 
 `InvalidKeyfileError` (`400`) covers everything structurally wrong with a
 keyfile: not JSON, not an object, the wrong `type` tag, an unsupported `version`,
-a missing or malformed encrypted section, an account list that fails validation,
-duplicate account indexes, a secret that does not match the declared wallet type,
-or a requested account index the keyfile does not declare. Its message names the
-specific problem.
+a missing or malformed encrypted section, an account list that fails validation
+(too many accounts, a blank or over-long name, an HD index that is missing or
+outside the BIP-32 range, an index on a private-key account), duplicate account
+indexes, a secret that does not match the declared wallet type, or a requested
+account index the keyfile does not declare. Its message names the specific
+problem. The limits are listed in
+[Importing a wallet keyfile](#importing-a-wallet-keyfile).
 
 `InvalidKeyfilePasswordError` (`401`) is separate on purpose: the keyfile is
 well-formed but the password does not decrypt it. Splitting it from
@@ -1392,8 +1602,8 @@ user their file is broken. It is also what `exportWalletKeyfile` throws when the
 password does not match the wallet being exported.
 
 `KeyfileWalletNotFoundError` (`404`) is raised by `importKeyfileAccounts` when
-the keyfile's secret belongs to no stored wallet, so there is nothing to add the
-accounts to. The caller should use `importWalletKeyfile` instead;
+no stored wallet matches the keyfile's secret and, for HD keyfiles, its root HD
+path, so there is nothing to add the accounts to. The caller should use `importWalletKeyfile` instead;
 `previewWalletKeyfileImport` tells the two cases apart before either is called.
 
 ### Storage schema errors
@@ -1514,14 +1724,15 @@ getCoinType() / setCoinType(value)
 getAccount()  / setAccount(value)
 getChange()   / setChange(value)   // 0 or 1
 getIndex()    / setIndex(value)
-toString(): string
+toString(): string         // full path, m/44'/coinType'/account'/change/index
+toRootPathString(): string // without the index, m/44'/coinType'/account'/change
 toOptions(): IBip44PathOptions
 clone(): Bip44Path
 nextIndex(): Bip44Path // clone with index + 1
 ```
 
-Every component is an integer in `0 … 2^31 - 1`, the BIP-32 non-hardened range;
-`change` is further restricted to `0` or `1`. The upper bound matters because a
+Every component is an integer in `0 … 2^31 - 1` (`Bip44Path.MAX_COMPONENT_VALUE`),
+the BIP-32 non-hardened range; `change` is further restricted to `0` or `1`. The upper bound matters because a
 value above it silently overflows into the hardened space when the path is
 converted to indexes, which would derive a different key than the string says.
 Both the constructor and the mutators enforce it, so an existing path cannot be
@@ -1540,6 +1751,13 @@ mutated out of range after construction.
 
 `isValid` is the non-throwing form, used by the stored-secret guard to check a
 persisted `rootHDPath` before deriving anything from it.
+
+`toRootPathString` is the part of the path shared by every account of one HD
+wallet. `KeyFingerprintService.fromHDSecret` derives the wallet fingerprint from
+the node at that path, which is why two wallets with one mnemonic but different
+root paths are told apart, while accounts of one wallet are not.
+`MAX_COMPONENT_VALUE` is also the upper bound for account indexes in a wallet
+keyfile.
 
 ---
 
@@ -1582,6 +1800,11 @@ interface INetworkUpdate {
     name?: NetworkName;
     config?: Partial<INetworkConfig>;
 }
+
+interface INetworksState {
+    networks: INetworkRecord[];
+    selectedNetwork: INetworkRecord;
+} // payload of networksChanged and the result of getNetworksState()
 
 interface INetworkContext {
     networkId: NetworkId;
@@ -1636,10 +1859,18 @@ get(id: NetworkId): INetworkRecord                  // @EnsureNetworkExist
 getIds(): NetworkId[]
 
 add(name: NetworkName, config: INetworkConfig): INetworkRecord // generates id, isDefault: false
+set(record: INetworkRecord): void                              // insert or replace a prepared custom record
 update(id: NetworkId, update: INetworkUpdate): void            // @EnsureNetworkNotDefault
 remove(id: NetworkId): INetworkRecord                          // @EnsureNetworkNotDefault
 isReady(): boolean
 ```
+
+`set` is the write path used by `NetworkManager`: the record is built and
+validated first by the network fabric (`createNetworkRecord` /
+`createUpdatedNetworkRecord`, see [Fabrics](UTILS.md#fabrics)), persisted, and
+only then applied here. `set` validates it once more (URLs, profile, and name and
+config uniqueness against the other networks) and refuses built-in records through
+`@EnsureNetworkRecordNotDefault`.
 
 `initialize`/`add` validate URLs with `validateUrl` over `NETWORK_URL_FIELDS`
 (must be non-empty http/https for custom networks; built-in seed config may
@@ -1681,7 +1912,9 @@ getCurrentNetworkId(): NetworkId
 getCurrentNetwork(): INetworkRecord
 getNetworkIds(): NetworkId[]
 getNetworks(): INetworkRecord[]
+getNetworksState(): INetworksState                          // list + selected network in one read
 getNetwork(id: NetworkId): INetworkRecord
+applyNetwork(record: INetworkRecord): void                  // insert/replace a prepared record, re-switches if active
 addNetwork(name: NetworkName, config: INetworkConfig): INetworkRecord
 updateNetwork(id: NetworkId, update: INetworkUpdate): void  // re-switches clients if it's the active network
 removeNetwork(id: NetworkId): void                          // falls back to the first network if the active one is removed
@@ -1725,6 +1958,17 @@ While a network is busy, `switchNetwork`
 (`@EnsureCurrentNetworkNotBusy`), `updateNetwork` and `removeNetwork`
 (`@EnsureTargetNetworkNotBusy`) throw `NetworkBusyError` instead of rebuilding
 clients under an in-flight deploy.
+
+The reverse direction is guarded too. `runNetworkOperation` is decorated with
+`@EnsureNetworkNotReconfiguring`: while `Client.updateNetwork` or
+`Client.removeNetwork` holds the exclusive reservation scope of a network, a new
+operation on that network throws `ReservationActionInProgressError` with the
+action `NETWORK_CLEANUP` instead of starting.
+
+`Client` writes networks through `NetworkManager` and `applyNetwork`, not through
+`addNetwork` / `updateNetwork`: the record is prepared and stored first, then
+applied, so a failed storage write never leaves the registry ahead of storage.
+`addNetwork` and `updateNetwork` remain for direct callers of the manager.
 
 `createNetworkContext` returns an `INetworkContext` pinned to one network id, so
 a consumer holding it is unaffected by later network switches. Reservations use
@@ -2152,7 +2396,9 @@ network (plus deploy id or reservation id where one applies). A second concurren
 action on the same key is rejected with `ReservationActionInProgressError`, so
 two parallel transfers cannot both pass the balance check against the same funds.
 `add` and `update` additionally validate their payload before taking the guard
-and reject a duplicate `deployId` on the same network.
+and reject a duplicate `deployId` on the same network. `update` also refuses to
+move a reservation to another account or network
+(`validateReservationUpdateTarget`).
 
 Both reading and writing reservations need the signer's data key, resolved
 through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
@@ -2164,16 +2410,41 @@ decrypt, or that decrypts into something that is not a reservation, rejects the
 whole `create` call with `CorruptedDataError` rather than being skipped — a vault
 that cannot be read in full is not a vault with fewer reservations in it.
 Reserved amounts are keyed by `accountId` and network id. `transfer` and `deploy`
-validate the balance, perform the on-chain operation (forwarding the optional
-`passwordProvider` to the signer), build the reservation through
-`TransactionReservationFabric.createTransfer` or `createDeploy`, persist it
-encrypted (expiring after `RESERVATION_EXPIRATION_TIME`), and track it until
-confirmation or expiry. Both return an `IReservedOperationResult`: the `deployId`
-plus a `subscribe` that attaches deploy-watch callbacks to that reservation's
-poller. Only confirmation and expiry delete the stored record — a failed deploy
-watch leaves the reservation to its expiration timer, so memory and storage never
-disagree. Implements `IDisposable`, so it is owned by `ReservationAdapterManager`
-(a `DisposableItemManager`).
+run in this order:
+
+1. validate the balance;
+2. **sign** the deploy without submitting it (`Wallet.signTransfer` /
+   `Wallet.signDeploy`, forwarding the optional `passwordProvider`); the
+   signature becomes the `deployId`;
+3. build the reservation through `TransactionReservationFabric.createTransfer`
+   or `createDeploy` and **persist** it encrypted (expiring after
+   `RESERVATION_EXPIRATION_TIME`);
+4. **submit** the signed deploy, refusing with `DomainClosedError` if the
+   adapter was closed meanwhile (`@EnsureReservationsManagerActive`);
+5. on success, track the reservation until confirmation or expiry.
+
+When step 4 fails, `settleFailedSubmission` decides what to keep: a
+`DeploySubmissionRejectedError` (the node refused the deploy) or a
+`DomainClosedError` (nothing was sent) deletes the stored record; any other error
+keeps the reservation in memory and storage, because the deploy may still land.
+The original error is rethrown either way. See the submission table under
+[Client](#client-srcdomainsclientindexts).
+
+Both return an `IReservedOperationResult`: the `deployId` plus a `subscribe` that
+attaches deploy-watch callbacks to that reservation's poller. Apart from a refused
+or cancelled submission, only confirmation and expiry delete the stored record —
+a failed deploy watch leaves the reservation to its expiration timer, so memory
+and storage never disagree. Implements `IDisposable`, so it is owned by
+`ReservationAdapterManager` (a `DisposableItemManager`); `dispose()` closes its
+reservations manager, which is what turns a later submission into a
+`DomainClosedError`.
+
+Steps 3 to 4 are tracked per signer by a shared `KeyedLifecycleGuardService`.
+`create` drains that signer's submissions (bounded by
+`SUBMISSION_SETTLE_TIMEOUT_MS`) before it reads storage, so a reopened wallet
+restores the reservations as the submissions left them; if one is still running
+after the timeout, `create` throws `WalletActionInProgressError` with the action
+`SUBMIT_DEPLOY`.
 
 One adapter holds the reservations of every network at once, so the reads narrow
 to the current network id: `getReservations`, `getOutgoingPendingTransactions`,
@@ -2333,7 +2604,9 @@ caller.
   (`{ id, networkId, signerId, encryptedData, createdAt }`), where `encryptedData`
   is the JSON of `ISerializedTransactionReservationPrivateData` encrypted with the
   signer's data key. Reads are scoped through
-  `getTransactionReservationsBySignerId(signerId)`.
+  `getTransactionReservationsBySignerId(signerId)`, and
+  `deleteTransactionReservationsBySignerId(signerId)` removes them together with
+  the signer when a wallet is deleted.
 - **CustomNetworksStorageRepository** (`CUSTOM_NETWORKS` table) — persists
   `ICustomNetworkStorageRecord` (`{ id, name, config, createdAt, updatedAt }`) so
   runtime-registered custom networks survive a reload. `config` is a full

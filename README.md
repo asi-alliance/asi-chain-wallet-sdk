@@ -44,13 +44,13 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Client Facade** - Single entry point for wallet lifecycle, networks, balances, and transfers via [Client](docs/DOMAINS.md)
 - **Multi-Account HD Wallets** - Private-key and BIP-39/BIP-44 HD wallets with on-demand account derivation via [Wallet](docs/DOMAINS.md) and [Account](docs/DOMAINS.md)
 - **Separate Open and Unlocked States** - Wallets are loaded into memory independently of the signing session that holds the decrypted secret, via [Client](docs/DOMAINS.md#open-vs-unlocked) and [SigningSession](docs/DOMAINS.md)
-- **Event Subscriptions** - Typed, isolated listeners attachable at any time through `client.getEventBus()` via [ClientEventBus](docs/SERVICES.md)
-- **Duplicate Protection** - Wallets and accounts are matched on non-reversible key fingerprints, so re-importing the same secret is refused even while everything is locked, via [KeyFingerprintService](docs/SERVICES.md)
+- **Event Subscriptions** - Typed, isolated listeners attachable at any time through `client.getEventBus()`, including a single `networksChanged` event that carries the whole network list and selection, via [ClientEventBus](docs/SERVICES.md)
+- **Duplicate Protection** - Wallets and accounts are matched on non-reversible key fingerprints, so re-importing the same secret is refused even while everything is locked; an HD wallet is identified by its mnemonic together with its root HD path, via [KeyFingerprintService](docs/SERVICES.md)
 - **Encrypted Wallet Keyfiles** - Password-protected export and import of a whole wallet, with a preview that reports which accounts are new before anything is written, via [Client](docs/DOMAINS.md#keyfile-export--import)
 - **Versioned Storage with Migrations** - Persisted data carries a schema version; incompatible or interrupted state is refused up front instead of being silently rewritten, via [StorageMigrationRunner](docs/SERVICES.md)
 - **Secure Key Handling** - PBKDF2 + AES-GCM encryption with key zeroization and a no-raw-export signing boundary via [CryptoService](docs/SERVICES.md) and [Signer](docs/DOMAINS.md)
 - **Cross-Environment Storage** - IndexedDB (browser) and node-persist (Node.js) behind a shared table abstraction via [storage layer](docs/DOMAINS.md)
-- **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling via [ReservationAdapter](docs/DOMAINS.md)
+- **Pending-Transaction Reservations** - Persistent, reservation-aware available balance with deploy-status polling; a reservation is stored before its deploy is sent and is released on failure only when the node explicitly refused the deploy, via [ReservationAdapter](docs/DOMAINS.md)
 - **External Reservation Management** - Deploys submitted outside the SDK can lock funds too: reservations can be added, updated, and removed directly, with validation and concurrency guards, via [Client](docs/DOMAINS.md#external-reservations)
 - **Detached Deploy Signing** - `signDeploy` builds and signs a deploy and returns the signed envelope for callers that submit it themselves, via [Client](docs/DOMAINS.md)
 - **Explicit Account Targeting** - No active-account state: every call names its wallet and account, so concurrent operations on one wallet cannot sign for the wrong account, via [Client](docs/DOMAINS.md#no-active-account)
@@ -167,6 +167,12 @@ and one whose key already belongs to a stored account throws
 while every wallet is closed, because the match runs on a key fingerprint rather
 than on decrypted material.
 
+For HD wallets "the same secret" means the same mnemonic **on the same root HD
+path** (`m/44'/coin'/account'/change`). The same mnemonic on another root path
+derives different keys and is a different wallet. Wallets stored by `v2.0.0` and
+earlier are still recognized, and their fingerprint is upgraded the first time
+they are opened (see [Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked)).
+
 ### Open, Unlock, and Close Wallets
 
 A wallet being **open** (present in memory) and a wallet being **unlocked** (able
@@ -196,8 +202,16 @@ await client.removeWallet(wallet.getId());
 Sessions are fixed-duration: they auto-lock `autoLockMs` after unlock (15 min by
 default) and are not extended by activity. Signing after expiry without a
 password throws `WalletLockedError` with an HTTP-style status `403`, so a UI can
-treat it like an expired token and re-prompt. See
-[Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
+treat it like an expired token and re-prompt. A non-positive `autoLockMs`
+switches the client to a password on every signature; it never means "no
+timeout". See [Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
+
+`removeWallet` and `clearPersistence` are exclusive: while one of them runs, new
+operations are refused with `OperationsSuspendedError` (`409`), and operations
+already in flight are allowed to finish before storage is touched. If loading a
+wallet succeeds but its setup fails (for example its reservations cannot be
+restored), the wallet is taken out of the client again and the call can be
+retried.
 
 ### Export and Import a Wallet Keyfile
 
@@ -231,6 +245,14 @@ every account it declares, and reports each one as `"new"` or
 `"already-imported"`, so a UI can show what an import would actually do and let
 the user choose. `source` accepts either the object or its JSON string.
 
+A keyfile is matched to a stored wallet by its secret and, for HD wallets, its
+root HD path, so accounts are never merged into a wallet that would derive other
+keys. The decrypted account list is validated before anything is derived: at
+most `MAX_KEYFILE_ACCOUNTS` (1000) accounts, non-blank names of at most
+`MAX_KEYFILE_ACCOUNT_NAME_LENGTH` (128) characters, and HD indexes within the
+BIP-32 range. The SDK does not apply these limits when an account is created or
+renamed, so keep account names within them if the wallet is meant to be exported.
+
 Note that `getExportedAccountData` is a different thing: a public, passwordless
 descriptor of one account (name, address, index). It carries no key material and
 cannot restore anything. See [keyfile export & import](docs/DOMAINS.md#keyfile-export--import).
@@ -257,6 +279,22 @@ unsubscribe();
 Listeners are isolated: one that throws or rejects never breaks the emit loop or
 the SDK operation behind it. Route those failures somewhere visible with the
 `onListenerError` option on `Client.create`.
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `walletsChanged` | `Wallet[]` | a wallet was opened, closed, created, imported, or removed |
+| `accountsChanged` | `walletId, Account[]` | accounts of an open wallet changed |
+| `networksChanged` | `INetworksState` (`{ networks, selectedNetwork }`) | a network was added, updated, removed, or selected |
+| `networkChanged` | `INetworkRecord` | deprecated, use `networksChanged` |
+| `reservationsChanged` | `TReservationsByWallet` | a reservation was added, replaced, removed, confirmed, or expired |
+| `networkBusyChanged` | `networkId, isBusy` | an operation started or finished on a network |
+| `walletLocked` | `walletId` | a signing session ended (manual lock or auto-lock) |
+| `walletFingerprintUpgraded` | `walletId` | a wallet stored by `v2.0.0` or earlier got its fingerprint upgraded on open; transitional, removed in the next major |
+
+`client.getNetworksState()` returns the same `INetworksState` synchronously, so
+a UI can render the network list once at start-up and then follow
+`networksChanged`. Network writes are atomic: a failed storage write changes
+nothing and emits nothing.
 
 ### Check Balance and Transfer
 
@@ -290,6 +328,22 @@ const unsubscribe = reserved.subscribe({
     onConfirmed: () => console.log("Confirmed"),
 });
 ```
+
+`transfer` and `deploy` store the reservation **before** they send the deploy,
+and `deployId` is the deploy signature, known before the node answers. If the
+submission fails, what happens to the locked funds depends on the error:
+
+- `DeploySubmissionRejectedError` (`400`): the node refused the deploy, the
+  reservation is released;
+- `ApiRequestError` (`502`): the outcome is unknown (dropped connection,
+  timeout, `5xx`), the reservation is kept until the deploy is confirmed or the
+  reservation expires;
+- `DomainClosedError` (`410`): the wallet was closed before the deploy was sent,
+  nothing reached the node and the reservation is released.
+
+`DeploySubmissionRejectedError` extends `ApiRequestError`, so existing
+`ApiRequestError` handling keeps working. See
+[Client](docs/DOMAINS.md#client-srcdomainsclientindexts).
 
 A balance read that cannot be trusted now throws `BalanceUnavailableError`
 (status `502`) carrying the address and a reason, instead of resolving to `0n`.
@@ -472,9 +526,15 @@ asi-chain-wallet-sdk/
 │   ├── src/
 │   │   ├── sdk-react-kit/    # SDK ↔ React integration layer (hooks, context)
 │   │   ├── components/       # UI components
-│   │   ├── pages/            # WalletsPage, TxHistoryPage
+│   │   ├── pages/            # Wallets, TxHistory, Networks, Deploy, DeployUtils, Reservations
 │   │   └── router/           # Client-side routing
 │   └── package.json
+│
+├── tests/
+│   ├── unit/                  # node:test suites by area (wallet-flow, network-flow, reservation-flow, ...)
+│   └── security/              # key and secret handling suites
+│
+├── scripts/security/          # test runners and the secret-log scan used by the gate
 │
 ├── docs/                      # API reference
 │   ├── DOMAINS.md            # Domain models & transport
@@ -551,6 +611,91 @@ The gate was `npm run security:gate` and covered security checks only; it now
 also runs `npm run test:unit`, so the same command CI runs is the one that has to
 pass locally. The GitHub workflow is `.github/workflows/gate.yml`.
 
+### Testing
+
+Tests use the built-in `node:test` runner through `tsx`, so the TypeScript path
+aliases (`@domains/...`, `@services/...`) work without a build.
+
+```bash
+npm run test:unit      # every *.test.ts under tests/unit
+npm run test:security  # every *.test.ts under tests/security
+```
+
+Running only some files or some tests:
+
+```bash
+npx tsx --test --test-concurrency=1 --test-timeout=60000 tests/unit/wallet-flow/wallet-keyfile.test.ts
+npx tsx --test --test-concurrency=1 --test-timeout=60000 --test-name-pattern="legacy" tests/unit/wallet-flow/wallet-keyfile.test.ts
+```
+
+- `--test-concurrency=1` is required. Test files share the storage singletons and
+  write into `.tmp/<suite>`, so files running in parallel interfere.
+- `--test-timeout` is recommended for manual runs. A test that fails before it
+  closes its `Client` can keep the process alive (open pollers and timers).
+- `npm run test:unit` removes `.tmp/` and `.persist-test/` before and after the
+  run; `npm run test:security` and a direct `npx tsx` run do not, so delete them
+  yourself between runs.
+
+Where tests go:
+
+- `tests/unit/<area>/` for behavior: `wallet-flow`, `network-flow`,
+  `reservation-flow`, `deploy-flow`, `storage`, `transactions-history`. Add a
+  case to an existing file of the area (or a row to an existing table-driven
+  test) before creating a new file.
+- `tests/security/` only for key and secret handling: key derivation and
+  management, the signing session, `SecretsProvider`, keyfile crypto.
+- Flows that talk to a node use the local fake node in
+  `tests/unit/reservation-flow/fakeNode.ts`. It can accept, refuse (`4xx`),
+  fail (`5xx`), or drop a submission, and `holdSubmitResponse()` pauses one so a
+  test can act while the deploy is in flight.
+
+### Backward Compatibility
+
+When a public API has to change before the next major release, keep the old
+behavior working:
+
+- **Replaced API** — mark the old member with a JSDoc `@deprecated` tag that
+  names the replacement, and keep it fully functional until the next major. Example:
+  `ClientEvent.NETWORK_CHANGED` and `onNetworkChanged` are deprecated in favour of
+  `NETWORKS_CHANGED` / `onNetworksChanged`, and are still emitted.
+- **Lenient behavior** — when a method should reject input but cannot yet
+  without breaking callers, keep it lenient and mark the place with
+  `TODO(next-major)` (see below).
+
+### `TODO(next-major)` Markers
+
+New code is written without comments: names, types, and structure carry the
+meaning. There are two exceptions, JSDoc `@deprecated` tags and
+`TODO(next-major)` markers. (A few older comments remain, such as the
+`TODO(Issue #173)` block in `Client` that keeps a disabled method until its
+ticket is resolved; they are not a pattern for new code.) A `TODO(next-major)`
+marker records a change that belongs to the next major release and cannot ship
+earlier without breaking someone:
+
+```ts
+// TODO(next-major): Validate the security config in Client.create and
+// throw on a non-positive autoLockMs instead of mapping it to every-signature.
+```
+
+Rules:
+
+- Write the marker at the exact place that has to change, and describe the
+  target behavior, not the history: what the major release must do.
+- Use `TODO(next-major, Issue #N)` when a ticket already exists.
+- Mark every piece of a change that has to go together, and name the anchor:
+  `// TODO(next-major): Remove together with LegacyFingerprintService.`
+- Tests that pin the lenient behavior are part of the change; they are
+  rewritten in the same major ticket.
+- `@deprecated` is for an old API kept next to its replacement;
+  `TODO(next-major)` is for behavior inside an API that stays.
+
+Open marker groups as of 2.1.0:
+
+| Group | Where | Major release change |
+| --- | --- | --- |
+| Legacy HD fingerprints | `LegacyFingerprintService`, `KeyFingerprintService.fromMnemonic`, `WalletUniquenessService`, `WalletManager.persist`, `Wallet.restore`, `Client.openWallet`, `ClientEvent.WALLET_FINGERPRINT_UPGRADED`, `onWalletFingerprintUpgraded` | remove the legacy lookup, the upgrade on open, and the transitional event |
+| Non-positive `autoLockMs` | `Client` constructor, `SigningSession.hold` | validate the policy and throw instead of silently disabling the session; both must change together |
+
 ### Before a Major Release
 
 Minor and patch releases keep the public API backward compatible, so some
@@ -564,12 +709,19 @@ Before cutting a major release:
    describes before the release.
 3. Remove the marker once its ticket is done, and list the change in the
    release notes as breaking.
+4. Remove the members marked `@deprecated` and list those removals as breaking
+   too.
 
 ### Playground
 
-The [playground](playground) provides a React-based demo application for testing SDK functionality:
+The [playground](playground) provides a React-based demo application for testing SDK functionality.
+It depends on the SDK as `"asi-wallet-sdk": "file:.."`, which resolves to the
+built `dist/` of this repository, so build the SDK first and rebuild it after
+every SDK change:
 
 ```bash
+npm run build
+
 cd playground
 npm install
 
@@ -582,7 +734,9 @@ npm install
 npm run dev
 ```
 
-Playground available at `http://localhost:5173`. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
+Playground available at `http://localhost:3000`. Browser storage is per origin,
+so wallets created in the playground survive an SDK rebuild as long as it runs on
+the same address. See [docs/PLAYGROUND.md](docs/PLAYGROUND.md) for component details.
 
 ### Dependencies
 

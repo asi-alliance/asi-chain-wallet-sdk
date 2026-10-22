@@ -101,9 +101,17 @@ A failure raises `CorruptedDataError`, never `InvalidPasswordError`.
   is closed.
 - Hash function: `sha256` (from `@noble/hashes`), hex-encoded.
 - Private-key / account input: the `secp256k1` public key.
-- HD signer input: the BIP-32 master node's `publicKey || chainCode`. Hashing the
-  master node rather than the seed keeps the value stable per mnemonic while
-  nothing recoverable is derived from it; the seed is zeroized in a `finally`.
+- HD signer input: `publicKey || chainCode` of the BIP-32 node at the wallet's
+  **root HD path** (`m/44'/coinType'/account'/change`, without the account index).
+  Hashing a derived node rather than the seed keeps nothing recoverable in the
+  value; the seed is zeroized in a `finally`. Including the root path keeps one
+  mnemonic on two root paths from colliding, while all accounts of one wallet
+  share the value.
+- Legacy HD input (`v2.0.0` and earlier): the BIP-32 **master** node's
+  `publicKey || chainCode`, independent of the root path. Still computed to
+  recognize signers stored by those versions, and replaced with the current value
+  the next time such a wallet is opened. Scheduled for removal in the next major
+  release.
 - Storage: plaintext field on the signer and account records, next to the
   encrypted payload. It is public-material-derived and one-way, so it discloses
   nothing the chain does not already expose.
@@ -111,6 +119,7 @@ A failure raises `CorruptedDataError`, never `InvalidPasswordError`.
   key derivation.
 - Source of truth:
   - `src/services/KeyFingerprint/index.ts`
+  - `src/services/LegacyFingerprint/index.ts`
   - `src/fabrics/signer.ts`
   - `src/domains/Account/index.ts`
 
@@ -155,7 +164,9 @@ would not be the one the path string names.
   - Signing uses scoped decrypted-key callbacks with post-use zeroization.
   - Decrypted-key lifetime is either ephemeral (per-signature, when no session is
     held) or bounded by an in-memory signing session with a fixed, configurable
-    auto-lock window; locking/expiry clears and zeroizes the session secret.
+    auto-lock window; locking/expiry clears and zeroizes the session secret. The
+    window is always finite: an omitted `autoLockMs` means 15 minutes, and a
+    non-positive one disables the session instead of making it unbounded.
   - The session is a distinct object with a generation counter, so an unlock that
     completes after a concurrent lock zeroizes its secret and is cancelled rather
     than installed.
