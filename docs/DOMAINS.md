@@ -206,10 +206,17 @@ rather than leaking it into the post-logout state. See
 Publication is also rolled back when the wallet's setup fails. After
 `openWallet`, `createHDWallet`, `createPrivateKeyWallet`, or `importWalletKeyfile`
 has loaded the wallet, the client restores its reservations (and, for
-`openWallet`, holds its signing session first); if that setup throws, the wallet is locked and dropped from the
-client again, no `walletsChanged` is emitted, and the call can simply be retried.
-The rollback is runtime-only: a wallet that was created or imported stays in
-storage and can be opened afterwards.
+`openWallet`, holds its signing session first); if that setup throws, the wallet
+is locked and dropped from the client again and no `walletsChanged` is emitted.
+
+The rollback is runtime-only, so what to do next depends on the call:
+
+- `openWallet` changed nothing in storage and can simply be retried.
+- `createHDWallet`, `createPrivateKeyWallet`, and `importWalletKeyfile` had
+  already stored the wallet when the setup failed. Repeating the same call fails
+  with `DuplicateWalletError`; instead, open the stored wallet with
+  `openWallet(signerId, password)` (`DuplicateWalletError.existingSignerId` and
+  `WalletManager.getPublicWalletsMetadata()` both give the `signerId`).
 
 Duplicate protection is enforced at creation time, not at the UI layer:
 `createHDWallet` and `createPrivateKeyWallet` reject a secret that is already
@@ -706,8 +713,19 @@ sent at all (see the submission table above).
 while one of them runs, any new tracked operation — creating, opening, or
 importing a wallet, deriving an account, a transfer, a deploy, a reservation
 change — is rejected at once with `OperationsSuspendedError` (status `409`)
-instead of starting against state that is being torn down. Operations that were
-already running are drained, not cancelled.
+instead of starting against state that is being torn down. What happens to the
+operations that were already running differs between the two:
+
+- `clearPersistence()` invalidates the lifecycle guard before it drains (see
+  above). Operations that were already running are waited for, but a wallet
+  publication among them — an `openWallet`, a create, or an import that was still
+  loading — is cancelled when it finishes: the loaded wallet is discarded and
+  the call rejects with `WalletOperationCancelledError`. A keyfile accounts import
+  is reported as cancelled the same way.
+- `removeWallet()` does not invalidate the guard. Operations that were already
+  running are drained, not cancelled; only a deploy of the removed wallet that
+  has not been sent yet is cancelled, because its reservation adapter is closed
+  first.
 
 `removeWallet()` detaches the wallet first — it disappears from the client and
 its reservation adapter is closed immediately — then waits for the operations

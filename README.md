@@ -208,10 +208,16 @@ timeout". See [Open vs unlocked](docs/DOMAINS.md#open-vs-unlocked).
 
 `removeWallet` and `clearPersistence` are exclusive: while one of them runs, new
 operations are refused with `OperationsSuspendedError` (`409`), and operations
-already in flight are allowed to finish before storage is touched. If loading a
-wallet succeeds but its setup fails (for example its reservations cannot be
-restored), the wallet is taken out of the client again and the call can be
-retried.
+already in flight are waited for before storage is touched. `clearPersistence`
+also invalidates them first, so a wallet that was still being opened, created,
+or imported is discarded and that call rejects with
+`WalletOperationCancelledError`.
+
+If loading a wallet succeeds but its setup fails (for example its reservations
+cannot be restored), the wallet is taken out of the client again. A failed
+`openWallet` can be retried as is. A failed create or import has already stored
+the wallet, so repeating it throws `DuplicateWalletError`; open the stored wallet
+with `openWallet(signerId, password)` instead.
 
 ### Export and Import a Wallet Keyfile
 
