@@ -21,6 +21,7 @@ export interface IBalanceData {
 
 interface IExploreExprItem {
     ExprInt?: { data?: unknown };
+    ExprBigInt?: { data?: unknown };
     ExprString?: { data?: unknown };
 }
 
@@ -70,15 +71,16 @@ export default class AssetsService {
 
         const firstExpr: IExploreExprItem | undefined = expr?.[0];
 
-        if (firstExpr?.ExprInt !== undefined) {
+        const integerExpr = firstExpr?.ExprInt ?? firstExpr?.ExprBigInt;
+        if (integerExpr !== undefined) {
             const amount: bigint | null = parseAtomicAmount(
-                firstExpr.ExprInt.data,
+                integerExpr.data,
             );
 
             if (amount === null) {
                 throw new BalanceUnavailableError(
                     address,
-                    `the node returned an unexpected balance value: ${JSON.stringify(firstExpr.ExprInt.data)}`,
+                    `the node returned an unexpected balance value: ${JSON.stringify(integerExpr.data)}`,
                 );
             }
 
