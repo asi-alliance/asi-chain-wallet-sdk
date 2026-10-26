@@ -214,16 +214,18 @@ export default class NodeStorage implements ITableService<ITableRecord> {
 
     @EnsureDatabaseInitialized
     @EnsureTableExists
-    async dropTable(tableName: string): Promise<void> {
-        await this.writeQueue.run(this.getTableKey(tableName), async () => {
-            await this.storageInterface!.removeItem(
-                this.getTableKey(tableName),
-            );
+    private async removeTable(tableName: string): Promise<void> {
+        await this.storageInterface!.removeItem(this.getTableKey(tableName));
 
-            await this.modifyTableNames((tableNames: string[]) =>
-                tableNames.filter((name: string) => name !== tableName),
-            );
-        });
+        await this.modifyTableNames((tableNames: string[]) =>
+            tableNames.filter((name: string) => name !== tableName),
+        );
+    }
+
+    async dropTable(tableName: string): Promise<void> {
+        await this.writeQueue.run(this.getTableKey(tableName), () =>
+            this.removeTable(tableName),
+        );
     }
 
     public isInitialized(): boolean {

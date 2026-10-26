@@ -9,11 +9,14 @@ import {
     UnknownErrorReason,
 } from "@domains/CustomError";
 import { getErrorMessage } from "@utils/index";
+import SerialOperationQueue from "@services/SerialOperationQueue";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private static instance: BrowserStorage | null = null;
 
     private readonly name: string;
+    private readonly schemaQueue: SerialOperationQueue =
+        new SerialOperationQueue();
     private storageInterface: IDBDatabase | null = null;
 
     public constructor(name: string = "AppDatabase") {
@@ -68,10 +71,19 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         });
     }
 
-    @EnsureDatabaseInitialized
-    public async createTable(
+    public createTable(
         tableName: string,
         keyPath: string = "id",
+    ): Promise<void> {
+        return this.schemaQueue.run(() =>
+            this.addObjectStore(tableName, keyPath),
+        );
+    }
+
+    @EnsureDatabaseInitialized
+    private async addObjectStore(
+        tableName: string,
+        keyPath: string,
     ): Promise<void> {
         const currentVersion: number = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
@@ -238,9 +250,13 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         });
     }
 
+    public dropTable(tableName: string): Promise<void> {
+        return this.schemaQueue.run(() => this.removeObjectStore(tableName));
+    }
+
     @EnsureDatabaseInitialized
     @EnsureTableExists
-    public async dropTable(tableName: string): Promise<void> {
+    private async removeObjectStore(tableName: string): Promise<void> {
         const currentVersion = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
 

@@ -175,4 +175,92 @@ export const runStorageContract = (
 
         await assert.rejects(() => storage.getAll("unknown"));
     });
+
+    test("concurrent inserts into one table keep every record", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+
+        await Promise.all(
+            Array.from({ length: 20 }, (_, index: number) =>
+                storage.insert("users", { id: String(index) }),
+            ),
+        );
+
+        const records = await storage.getAll("users");
+
+        assert.equal(records.length, 20);
+    });
+
+    test("concurrent updates of one record keep every change", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+
+        await storage.insert("users", {
+            id: "1",
+            name: "Ivan",
+            role: "user",
+        });
+
+        await Promise.all([
+            storage.update("users", "1", { name: "Alex" }),
+            storage.update("users", "1", { role: "admin" }),
+        ]);
+
+        const record = await storage.getById("users", "1");
+
+        assert.equal(record?.name, "Alex");
+        assert.equal(record?.role, "admin");
+    });
+
+    test("concurrent table creation creates every table", async () => {
+        const storage = createStorage();
+
+        await storage.init();
+
+        await Promise.all([
+            storage.createTable("users"),
+            storage.createTable("accounts"),
+            storage.createTable("users"),
+        ]);
+
+        const tableNames = await storage.getTableNames();
+
+        assert.deepEqual([...tableNames].sort(), ["accounts", "users"]);
+    });
+
+    test("concurrent table drops remove every table", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+        await storage.createTable("accounts");
+
+        await Promise.all([
+            storage.dropTable("users"),
+            storage.dropTable("accounts"),
+        ]);
+
+        assert.deepEqual(await storage.getTableNames(), []);
+    });
+
+    test("update racing a delete does not restore the record", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+
+        await storage.insert("users", {
+            id: "1",
+            name: "Ivan",
+        });
+
+        await Promise.allSettled([
+            storage.update("users", "1", { name: "Alex" }),
+            storage.delete("users", "1"),
+        ]);
+
+        const record = await storage.getById("users", "1");
+
+        assert.equal(record, null);
+    });
 };
