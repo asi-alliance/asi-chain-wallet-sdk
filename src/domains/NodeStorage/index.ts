@@ -4,9 +4,9 @@ import {
     EnsureDatabaseInitialized,
     EnsureTableExists,
     SkipIfDatabaseNotInitialized,
-    SkipIfTableExists,
 } from "@utils/decorators";
 import { DEFAULT_NODE_STORAGE_DIR } from "@config/index";
+import KeyedSerialOperationQueue from "@services/KeyedSerialOperationQueue";
 
 const TABLES_FOLDER_KEY: string = "__tables__";
 const TABLES_KEY_PREFIX: string = "table";
@@ -15,6 +15,8 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     private static instance: NodeStorage | null = null;
 
     private readonly storageDir: string;
+    private readonly writeQueue: KeyedSerialOperationQueue =
+        new KeyedSerialOperationQueue();
     private storageInterface: LocalStorage | null = null;
 
     public constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
@@ -64,51 +66,85 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         );
     }
 
+    private modifyTable(
+        tableName: string,
+        modify: (
+            table: Record<string, ITableRecord>,
+        ) => Record<string, ITableRecord>,
+    ): Promise<void> {
+        return this.writeQueue.run(this.getTableKey(tableName), async () => {
+            const table: Record<string, ITableRecord> =
+                await this.getTable(tableName);
+
+            await this.saveTable(tableName, modify(table));
+        });
+    }
+
+    private modifyTableNames(
+        modify: (tableNames: string[]) => string[],
+    ): Promise<void> {
+        return this.writeQueue.run(TABLES_FOLDER_KEY, async () => {
+            const tableNames: string[] =
+                (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ??
+                [];
+
+            await this.storageInterface!.setItem(
+                TABLES_FOLDER_KEY,
+                modify(tableNames),
+            );
+        });
+    }
+
     @EnsureDatabaseInitialized
-    @SkipIfTableExists
     async createTable(tableName: string, _keyPath: string): Promise<void> {
-        await this.storageInterface!.setItem(this.getTableKey(tableName), {});
+        await this.writeQueue.run(this.getTableKey(tableName), async () => {
+            if (await this.tableExists(tableName)) {
+                return;
+            }
 
-        const tables =
-            (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ?? [];
+            await this.storageInterface!.setItem(
+                this.getTableKey(tableName),
+                {},
+            );
 
-        tables.push(tableName);
-
-        await this.storageInterface!.setItem(TABLES_FOLDER_KEY, tables);
+            await this.modifyTableNames((tableNames: string[]) => [
+                ...tableNames,
+                tableName,
+            ]);
+        });
     }
 
     async insert(tableName: string, record: ITableRecord): Promise<void> {
-        const table = await this.getTable(tableName);
+        await this.modifyTable(tableName, (table) => {
+            if (table[String(record.id)]) {
+                throw new Error(`Record with id '${record.id}' already exists`);
+            }
 
-        if (table[String(record.id)]) {
-            throw new Error(`Record with id '${record.id}' already exists`);
-        }
+            table[String(record.id)] = {
+                ...record,
+                createdAt: record.createdAt || Date.now(),
+                updatedAt: Date.now(),
+            };
 
-        table[String(record.id)] = {
-            ...record,
-            createdAt: record.createdAt || Date.now(),
-            updatedAt: Date.now(),
-        };
-
-        await this.saveTable(tableName, table);
+            return table;
+        });
     }
 
     async insertMany(
         tableName: string,
         records: ITableRecord[],
     ): Promise<void> {
-        const table: Record<string, ITableRecord> =
-            await this.getTable(tableName);
+        await this.modifyTable(tableName, (table) => {
+            for (const record of records) {
+                table[String(record.id)] = {
+                    ...record,
+                    createdAt: record.createdAt || Date.now(),
+                    updatedAt: Date.now(),
+                };
+            }
 
-        for (const record of records) {
-            table[String(record.id)] = {
-                ...record,
-                createdAt: record.createdAt || Date.now(),
-                updatedAt: Date.now(),
-            };
-        }
-
-        await this.saveTable(tableName, table);
+            return table;
+        });
     }
 
     async getById(
@@ -131,64 +167,63 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         id: string | number,
         data: Partial<ITableRecord>,
     ): Promise<void> {
-        const table = await this.getTable(tableName);
+        await this.modifyTable(tableName, (table) => {
+            const existing = table[String(id)];
 
-        const existing = table[String(id)];
+            if (!existing) {
+                throw new Error(
+                    `Record with id '${id}' not found in table '${tableName}'`,
+                );
+            }
 
-        if (!existing) {
-            throw new Error(
-                `Record with id '${id}' not found in table '${tableName}'`,
-            );
-        }
+            table[String(id)] = {
+                ...existing,
+                ...data,
+                id: existing.id,
+                updatedAt: Date.now(),
+            };
 
-        table[String(id)] = {
-            ...existing,
-            ...data,
-            id: existing.id,
-            updatedAt: Date.now(),
-        };
-
-        await this.saveTable(tableName, table);
+            return table;
+        });
     }
 
     async delete(tableName: string, id: string | number): Promise<void> {
-        const table = await this.getTable(tableName);
+        await this.modifyTable(tableName, (table) => {
+            delete table[String(id)];
 
-        delete table[String(id)];
-
-        await this.saveTable(tableName, table);
+            return table;
+        });
     }
 
     async deleteMany(
         tableName: string,
         ids: (string | number)[],
     ): Promise<void> {
-        const table = await this.getTable(tableName);
+        await this.modifyTable(tableName, (table) => {
+            for (const id of ids) {
+                delete table[String(id)];
+            }
 
-        for (const id of ids) {
-            delete table[String(id)];
-        }
-
-        await this.saveTable(tableName, table);
+            return table;
+        });
     }
 
-    @EnsureTableExists
     async clearTable(tableName: string): Promise<void> {
-        await this.saveTable(tableName, {});
+        await this.modifyTable(tableName, () => ({}));
     }
 
     @EnsureDatabaseInitialized
     @EnsureTableExists
     async dropTable(tableName: string): Promise<void> {
-        await this.storageInterface!.removeItem(this.getTableKey(tableName));
+        await this.writeQueue.run(this.getTableKey(tableName), async () => {
+            await this.storageInterface!.removeItem(
+                this.getTableKey(tableName),
+            );
 
-        const tables: any[] =
-            await this.storageInterface!.getItem(TABLES_FOLDER_KEY);
-
-        await this.storageInterface!.setItem(
-            TABLES_FOLDER_KEY,
-            tables.filter((name) => name !== tableName),
-        );
+            await this.modifyTableNames((tableNames: string[]) =>
+                tableNames.filter((name: string) => name !== tableName),
+            );
+        });
     }
 
     public isInitialized(): boolean {

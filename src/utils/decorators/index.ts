@@ -68,31 +68,6 @@ export function SkipIfDatabaseNotInitialized<
     };
 }
 
-export function SkipIfTableExists<
-    This extends ITableService<ITableRecord>,
-    Args extends any[],
-    Return,
->(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
-    return async function (
-        this: This,
-        ...args: Args
-    ): Promise<Awaited<Return> | undefined> {
-        const tableName = args[0];
-
-        if (typeof tableName !== "string") {
-            throw new Error(
-                `Table name must be a string and should be the first argument of the method. Received: ${typeof args[0]}`,
-            );
-        }
-
-        if (!!(await this.tableExists(tableName))) {
-            return;
-        }
-
-        return await target.apply(this, args);
-    };
-}
-
 interface IWalletContext {
     getType(): WalletTypes;
 }

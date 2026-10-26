@@ -184,24 +184,35 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         id: string | number,
         data: Partial<ITableRecord>,
     ): Promise<void> {
-        const existing = await this.getById(tableName, id);
+        const existing = await this.executeTransaction(
+            tableName,
+            "readwrite",
+            (store) => {
+                const request: IDBRequest<ITableRecord | undefined> =
+                    store.get(id);
+
+                request.onsuccess = () => {
+                    if (!request.result) {
+                        return;
+                    }
+
+                    store.put({
+                        ...request.result,
+                        ...data,
+                        id: request.result.id,
+                        updatedAt: Date.now(),
+                    });
+                };
+
+                return request;
+            },
+        );
 
         if (!existing) {
             throw new Error(
                 `Record with id '${id}' not found in table '${tableName}'`,
             );
         }
-
-        const updated = {
-            ...existing,
-            ...data,
-            id: existing.id,
-            updatedAt: Date.now(),
-        };
-
-        await this.executeTransaction(tableName, "readwrite", (store) => {
-            return store.put(updated);
-        });
     }
 
     public async delete(tableName: string, id: string | number): Promise<void> {
