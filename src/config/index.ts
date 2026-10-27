@@ -12,6 +12,9 @@ export enum KeyfileTypes {
 export const CURRENT_STORAGE_VERSION: number = 1;
 export const BASELINE_STORAGE_VERSION: number = 1;
 
+export const PERSISTED_STORAGE_DUMP_TYPE: string = "asi-wallet-storage-dump";
+export const PERSISTED_STORAGE_DUMP_VERSION: number = 1;
+
 export const ASI_WALLET_KEYFILE_VERSION: number = 1;
 export const MAX_KEYFILE_ACCOUNTS: number = 1000;
 export const MAX_KEYFILE_ACCOUNT_NAME_LENGTH: number = 128;

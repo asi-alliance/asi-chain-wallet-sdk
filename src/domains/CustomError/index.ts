@@ -9,6 +9,7 @@ export enum CustomErrorCode {
     STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
     STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
     STORAGE_MIGRATION_CHAIN_INVALID = "STORAGE_MIGRATION_CHAIN_INVALID",
+    PERSISTED_STORAGE_EXPORT_FAILED = "PERSISTED_STORAGE_EXPORT_FAILED",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
@@ -552,6 +553,27 @@ export class StorageMigrationRollbackError extends StorageSchemaError {
         this.failedVersion = failedVersion;
         this.failures = failures;
         this.migrationError = migrationError;
+    }
+}
+
+export class PersistedStorageExportError extends StorageSchemaError {
+    public readonly reason: string;
+    public readonly exportError: unknown;
+
+    constructor(
+        reason: string,
+        exportError: unknown,
+        message: string = `Persisted storage could not be exported: ${reason}. Storage was only read and is left untouched`,
+    ) {
+        super(
+            CustomErrorCode.PERSISTED_STORAGE_EXPORT_FAILED,
+            message,
+            500,
+            true,
+        );
+
+        this.reason = reason;
+        this.exportError = exportError;
     }
 }
 

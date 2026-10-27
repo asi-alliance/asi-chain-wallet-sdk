@@ -56,6 +56,8 @@ export * from "./StorageManager";
 export { default as StorageManager } from "./StorageManager";
 export * from "./StorageMigrationRunner";
 export { default as StorageMigrationRunner } from "./StorageMigrationRunner";
+export * from "./PersistedStorageTransfer";
+export { default as PersistedStorageTransfer } from "./PersistedStorageTransfer";
 export * from "./TransactionService";
 export { default as TransactionService } from "./TransactionService";
 export * from "./Wallets";
