@@ -24,6 +24,9 @@ export function EnsureDatabaseInitialized<
     };
 }
 
+export const createMissingTableError = (tableName: string): Error =>
+    new Error(`Table '${tableName}' does not exist. Use createTable() first.`);
+
 export function EnsureTableExists<
     This extends ITableService<ITableRecord>,
     Args extends any[],
@@ -42,9 +45,7 @@ export function EnsureTableExists<
         }
 
         if (!(await this.tableExists(tableName))) {
-            throw new Error(
-                `Table '${tableName}' does not exist. Use createTable() first.`,
-            );
+            throw createMissingTableError(tableName);
         }
 
         return await target.apply(this, args);

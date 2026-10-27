@@ -217,8 +217,6 @@ export const runStorageContract = (
     test("concurrent table creation creates every table", async () => {
         const storage = createStorage();
 
-        await storage.init();
-
         await Promise.all([
             storage.createTable("users"),
             storage.createTable("accounts"),
@@ -242,6 +240,23 @@ export const runStorageContract = (
         ]);
 
         assert.deepEqual(await storage.getTableNames(), []);
+    });
+
+    test("operations issued during a schema change succeed", async () => {
+        const storage = createStorage();
+
+        await storage.createTable("users");
+
+        await Promise.all([
+            storage.createTable("accounts"),
+            storage.insert("users", { id: "1" }),
+            storage.getAll("users"),
+            storage.dropTable("accounts"),
+            storage.insert("users", { id: "2" }),
+        ]);
+
+        assert.equal((await storage.getAll("users")).length, 2);
+        assert.deepEqual(await storage.getTableNames(), ["users"]);
     });
 
     test("update racing a delete does not restore the record", async () => {

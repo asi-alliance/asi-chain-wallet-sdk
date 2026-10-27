@@ -1,12 +1,12 @@
 import storage, { LocalStorage } from "node-persist";
 import { ITableRecord, ITableService } from "@domains/TableService";
 import {
+    createMissingTableError,
     EnsureDatabaseInitialized,
-    EnsureTableExists,
     SkipIfDatabaseNotInitialized,
 } from "@utils/decorators";
 import { DEFAULT_NODE_STORAGE_DIR } from "@config/index";
-import KeyedSerialOperationQueue from "@services/KeyedSerialOperationQueue";
+import KeyedReadWriteLock from "@services/KeyedReadWriteLock";
 
 const TABLES_FOLDER_KEY: string = "__tables__";
 const TABLES_KEY_PREFIX: string = "table";
@@ -15,9 +15,9 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     private static instance: NodeStorage | null = null;
 
     private readonly storageDir: string;
-    private readonly writeQueue: KeyedSerialOperationQueue =
-        new KeyedSerialOperationQueue();
+    private readonly tablesLock: KeyedReadWriteLock = new KeyedReadWriteLock();
     private storageInterface: LocalStorage | null = null;
+    private pendingInit: Promise<void> | null = null;
 
     public constructor(storageDir: string = DEFAULT_NODE_STORAGE_DIR) {
         this.storageDir = storageDir;
@@ -36,11 +36,22 @@ export default class NodeStorage implements ITableService<ITableRecord> {
             return;
         }
 
-        this.storageInterface = storage.create({
-            dir: this.storageDir,
+        this.pendingInit ??= this.initialize().finally(() => {
+            this.pendingInit = null;
         });
 
-        await this.storageInterface.init();
+        await this.pendingInit;
+    }
+
+    private async initialize(): Promise<void> {
+        const storageInterface: LocalStorage = storage.create({
+            dir: this.storageDir,
+            writeQueue: false,
+        });
+
+        await storageInterface.init();
+
+        this.storageInterface = storageInterface;
     }
 
     private getTableKey(tableName: string): string {
@@ -48,11 +59,23 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     }
 
     @EnsureDatabaseInitialized
-    @EnsureTableExists
+    private async readTable(
+        tableName: string,
+    ): Promise<Record<string, ITableRecord> | undefined> {
+        return this.storageInterface!.getItem(this.getTableKey(tableName));
+    }
+
     private async getTable(
         tableName: string,
     ): Promise<Record<string, ITableRecord>> {
-        return this.storageInterface!.getItem(this.getTableKey(tableName));
+        const table: Record<string, ITableRecord> | undefined =
+            await this.readTable(tableName);
+
+        if (!table) {
+            throw createMissingTableError(tableName);
+        }
+
+        return table;
     }
 
     @EnsureDatabaseInitialized
@@ -66,27 +89,43 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         );
     }
 
+    @EnsureDatabaseInitialized
+    private async readTableNames(): Promise<string[]> {
+        return (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ?? [];
+    }
+
+    private readFromTable<T>(
+        tableName: string,
+        read: (table: Record<string, ITableRecord>) => T,
+    ): Promise<T> {
+        return this.tablesLock.runShared(
+            this.getTableKey(tableName),
+            async () => read(await this.getTable(tableName)),
+        );
+    }
+
     private modifyTable(
         tableName: string,
         modify: (
             table: Record<string, ITableRecord>,
         ) => Record<string, ITableRecord>,
     ): Promise<void> {
-        return this.writeQueue.run(this.getTableKey(tableName), async () => {
-            const table: Record<string, ITableRecord> =
-                await this.getTable(tableName);
+        return this.tablesLock.runExclusive(
+            this.getTableKey(tableName),
+            async () => {
+                const table: Record<string, ITableRecord> =
+                    await this.getTable(tableName);
 
-            await this.saveTable(tableName, modify(table));
-        });
+                await this.saveTable(tableName, modify(table));
+            },
+        );
     }
 
     private modifyTableNames(
         modify: (tableNames: string[]) => string[],
     ): Promise<void> {
-        return this.writeQueue.run(TABLES_FOLDER_KEY, async () => {
-            const tableNames: string[] =
-                (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ??
-                [];
+        return this.tablesLock.runExclusive(TABLES_FOLDER_KEY, async () => {
+            const tableNames: string[] = await this.readTableNames();
 
             await this.storageInterface!.setItem(
                 TABLES_FOLDER_KEY,
@@ -95,23 +134,23 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         });
     }
 
-    @EnsureDatabaseInitialized
+    private async addTable(tableName: string): Promise<void> {
+        if (await this.readTable(tableName)) {
+            return;
+        }
+
+        await this.saveTable(tableName, {});
+
+        await this.modifyTableNames((tableNames: string[]) => [
+            ...tableNames,
+            tableName,
+        ]);
+    }
+
     async createTable(tableName: string, _keyPath: string): Promise<void> {
-        await this.writeQueue.run(this.getTableKey(tableName), async () => {
-            if (await this.tableExists(tableName)) {
-                return;
-            }
-
-            await this.storageInterface!.setItem(
-                this.getTableKey(tableName),
-                {},
-            );
-
-            await this.modifyTableNames((tableNames: string[]) => [
-                ...tableNames,
-                tableName,
-            ]);
-        });
+        await this.tablesLock.runExclusive(this.getTableKey(tableName), () =>
+            this.addTable(tableName),
+        );
     }
 
     async insert(tableName: string, record: ITableRecord): Promise<void> {
@@ -151,15 +190,14 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         tableName: string,
         id: string | number,
     ): Promise<ITableRecord | null> {
-        const table = await this.getTable(tableName);
-
-        return table[String(id)] || null;
+        return this.readFromTable(
+            tableName,
+            (table) => table[String(id)] || null,
+        );
     }
 
     async getAll(tableName: string): Promise<ITableRecord[]> {
-        const table = await this.getTable(tableName);
-
-        return Object.values(table);
+        return this.readFromTable(tableName, (table) => Object.values(table));
     }
 
     async update(
@@ -212,9 +250,9 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         await this.modifyTable(tableName, () => ({}));
     }
 
-    @EnsureDatabaseInitialized
-    @EnsureTableExists
     private async removeTable(tableName: string): Promise<void> {
+        await this.getTable(tableName);
+
         await this.storageInterface!.removeItem(this.getTableKey(tableName));
 
         await this.modifyTableNames((tableNames: string[]) =>
@@ -223,7 +261,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
     }
 
     async dropTable(tableName: string): Promise<void> {
-        await this.writeQueue.run(this.getTableKey(tableName), () =>
+        await this.tablesLock.runExclusive(this.getTableKey(tableName), () =>
             this.removeTable(tableName),
         );
     }
@@ -237,18 +275,17 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         return this.storageInterface!.keys();
     }
 
-    @EnsureDatabaseInitialized
-    public async getTableNames(): Promise<string[]> {
-        return (await this.storageInterface!.getItem(TABLES_FOLDER_KEY)) ?? [];
+    public getTableNames(): Promise<string[]> {
+        return this.tablesLock.runShared(TABLES_FOLDER_KEY, () =>
+            this.readTableNames(),
+        );
     }
 
-    @EnsureDatabaseInitialized
     async tableExists(tableName: string): Promise<boolean> {
-        const tableKeys = await this.storageInterface!.keys(
-            (item) => item.key === this.getTableKey(tableName),
+        return this.tablesLock.runShared(
+            this.getTableKey(tableName),
+            async () => !!(await this.readTable(tableName)),
         );
-
-        return tableKeys.length > 0;
     }
 
     @SkipIfDatabaseNotInitialized

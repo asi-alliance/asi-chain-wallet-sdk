@@ -9,15 +9,15 @@ import {
     UnknownErrorReason,
 } from "@domains/CustomError";
 import { getErrorMessage } from "@utils/index";
-import SerialOperationQueue from "@services/SerialOperationQueue";
+import ReadWriteLock from "@services/ReadWriteLock";
 
 export default class BrowserStorage implements ITableService<ITableRecord> {
     private static instance: BrowserStorage | null = null;
 
     private readonly name: string;
-    private readonly schemaQueue: SerialOperationQueue =
-        new SerialOperationQueue();
+    private readonly connectionLock: ReadWriteLock = new ReadWriteLock();
     private storageInterface: IDBDatabase | null = null;
+    private pendingConnection: Promise<IDBDatabase> | null = null;
 
     public constructor(name: string = "AppDatabase") {
         this.name = name;
@@ -31,29 +31,47 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         return BrowserStorage.instance;
     }
 
+    private connect(open: () => Promise<IDBDatabase>): Promise<IDBDatabase> {
+        this.pendingConnection = open().finally(() => {
+            this.pendingConnection = null;
+        });
+
+        return this.pendingConnection;
+    }
+
     public async init(): Promise<IDBDatabase> {
         if (this.storageInterface) {
             return this.storageInterface;
         }
 
+        return (
+            this.pendingConnection ?? this.connect(() => this.openDatabase())
+        );
+    }
+
+    private attachConnection(storageInterface: IDBDatabase): IDBDatabase {
+        this.storageInterface = storageInterface;
+
+        this.storageInterface.onclose = () => {
+            this.storageInterface = null;
+        };
+
+        this.storageInterface.onversionchange = () => {
+            this.storageInterface?.close();
+            this.storageInterface = null;
+        };
+
+        return this.storageInterface;
+    }
+
+    private openDatabase(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
                 this.name,
             );
 
             openDatabaseRequest.onsuccess = () => {
-                this.storageInterface = openDatabaseRequest.result;
-
-                this.storageInterface.onclose = () => {
-                    this.storageInterface = null;
-                };
-
-                this.storageInterface.onversionchange = () => {
-                    this.storageInterface?.close();
-                    this.storageInterface = null;
-                };
-
-                resolve(this.storageInterface);
+                resolve(this.attachConnection(openDatabaseRequest.result));
             };
 
             openDatabaseRequest.onerror = () => {
@@ -75,7 +93,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         tableName: string,
         keyPath: string = "id",
     ): Promise<void> {
-        return this.schemaQueue.run(() =>
+        return this.connectionLock.runExclusive(() =>
             this.addObjectStore(tableName, keyPath),
         );
     }
@@ -88,8 +106,22 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         const currentVersion: number = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
 
-        await this.close();
+        await this.connect(async () => {
+            await this.close();
 
+            return this.openDatabaseWithNewTable(
+                tableName,
+                keyPath,
+                newVersion,
+            );
+        });
+    }
+
+    private openDatabaseWithNewTable(
+        tableName: string,
+        keyPath: string,
+        newVersion: number,
+    ): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
                 this.name,
@@ -113,8 +145,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             };
 
             openDatabaseRequest.onsuccess = () => {
-                this.storageInterface = openDatabaseRequest.result;
-                resolve();
+                resolve(this.attachConnection(openDatabaseRequest.result));
             };
 
             openDatabaseRequest.onerror = () => {
@@ -251,7 +282,9 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
     }
 
     public dropTable(tableName: string): Promise<void> {
-        return this.schemaQueue.run(() => this.removeObjectStore(tableName));
+        return this.connectionLock.runExclusive(() =>
+            this.removeObjectStore(tableName),
+        );
     }
 
     @EnsureDatabaseInitialized
@@ -260,8 +293,17 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         const currentVersion = this.storageInterface!.version;
         const newVersion: number = currentVersion + 1;
 
-        await this.close();
+        await this.connect(async () => {
+            await this.close();
 
+            return this.openDatabaseWithoutTable(tableName, newVersion);
+        });
+    }
+
+    private openDatabaseWithoutTable(
+        tableName: string,
+        newVersion: number,
+    ): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const openDatabaseRequest: IDBOpenDBRequest = indexedDB.open(
                 this.name,
@@ -278,9 +320,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
             };
 
             openDatabaseRequest.onsuccess = () => {
-                this.storageInterface = openDatabaseRequest.result;
-
-                resolve();
+                resolve(this.attachConnection(openDatabaseRequest.result));
             };
 
             openDatabaseRequest.onerror = () => {
@@ -328,7 +368,17 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
 
     @EnsureDatabaseInitialized
     @EnsureTableExists
-    private async executeTransaction<T>(
+    private executeTransaction<T>(
+        tableName: string,
+        mode: IDBTransactionMode,
+        operation: (store: IDBObjectStore) => IDBRequest<T> | void,
+    ): Promise<T> {
+        return this.connectionLock.runShared(() =>
+            this.runTransaction(tableName, mode, operation),
+        );
+    }
+
+    private runTransaction<T>(
         tableName: string,
         mode: IDBTransactionMode,
         operation: (store: IDBObjectStore) => IDBRequest<T> | void,
