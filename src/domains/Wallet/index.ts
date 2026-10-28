@@ -28,6 +28,7 @@ import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import KeyFingerprintService from "@services/KeyFingerprint";
 import {
     AccountBusyError,
     LastAccountRemovalError,
@@ -37,8 +38,6 @@ import ImportKeyfileService from "@services/ImportKeyfileService";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
-
-export const ACCOUNT_KEY_PREFIX: string = "ACCOUNT";
 
 export interface IWalletOptions {
     id?: string;
@@ -345,13 +344,19 @@ export default class Wallet {
     ): Promise<Wallet> {
         const { signerRecord, accountRecords } = payload;
 
-        const signer: Signer = restoreSigner(signerRecord);
-
         const secretData: IPrivateKeyCredentials | IHDSecret =
             await CryptoService.decryptSignerData(
-                signer.getEncryptedSecret(),
+                signerRecord.encryptedData,
                 passwordProvider,
             );
+
+        // TODO(next-major): Restore the signer with signerRecord.fingerprint once
+        // every stored HD signer carries the root-path-aware fingerprint.
+        const signer: Signer = restoreSigner({
+            ...signerRecord,
+            fingerprint: await KeyFingerprintService.fromSecret(secretData),
+        });
+
         const secretProvider = new SecretsProvider(() => secretData);
 
         const accountsMap: Map<string, Account> = new Map();
@@ -424,6 +429,24 @@ export default class Wallet {
                     account,
                     signer: this.signer,
                     ...payload,
+                    passwordProvider,
+                }),
+            ),
+        );
+    }
+
+    public async signTransfer(
+        accountId: string,
+        payload: ITransferDetails,
+        passwordProvider?: SecretsProvider,
+    ): Promise<SignedResult> {
+        return this.runAccountOperation(accountId, (account: Account) =>
+            ApiClientManager.getInstance().runNetworkOperation(() =>
+                ApiServiceRegistry.getInstance().transactions.signTransfer({
+                    walletType: this.type,
+                    account,
+                    signer: this.signer,
+                    details: payload,
                     passwordProvider,
                 }),
             ),

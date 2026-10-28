@@ -75,6 +75,15 @@ Date: 2026-03-19
     derives keys the user did not intend.
 14. Failure-mode confusion: a damaged vault being reported as a wrong password,
     which sends the user into an endless retry instead of a restore.
+15. Wallet identity confusion: keyfile accounts from one root HD path being
+    merged into a stored wallet on another, so the UI shows addresses the wallet
+    does not sign for.
+16. Lost or stale reservations around a submission: a crash or a reload while a
+    deploy is in flight dropping the lock on funds that may already be spent, or
+    a reopened wallet restoring reservations that a running submission is about to
+    change.
+17. Algorithmic complexity in response handling: a crafted node response that
+    drives a backtracking regex into quadratic time and stalls the client.
 
 ## 6. Out-of-Scope / Assumptions
 
@@ -91,7 +100,9 @@ Current controls:
 3. Vault lock/unlock flow with encrypted-at-rest storage.
 4. Bounded in-memory signing sessions: the decrypted secret is held only for a
    fixed, configurable auto-lock window and is zeroized on lock/expiry; the
-   signing path fails closed (`WalletLockedError`) when locked.
+   signing path fails closed (`WalletLockedError`) when locked. No setting
+   produces an unbounded session: a non-positive `autoLockMs` disables sessions
+   instead.
 5. Key separation for stored user data: transaction reservations are encrypted
    with a per-signer data key rather than the signing secret, so persistence code
    never touches key material that can sign.
@@ -100,22 +111,27 @@ Current controls:
    `WalletOperationCancelledError` instead of silently reopening the wallet.
 7. Bounded teardown: `close()` and `clearPersistence()` invalidate in-flight work
    and drain it under a timeout before clearing storage, and a wallet published
-   after that point is discarded rather than exposed.
+   after that point is discarded rather than exposed. `clearPersistence()` and
+   `removeWallet()` also refuse new operations while they run.
 8. Fail-closed reads: unreadable or unparsable balances raise
    `BalanceUnavailableError` instead of collapsing to zero, so a hostile or
    unreachable node cannot present an account as empty.
 9. Duplicate rejection without decryption: wallets and accounts are matched on
    one-way key fingerprints, so re-importing a stored secret is refused while
-   everything remains locked.
+   everything remains locked. The HD fingerprint covers the root HD path, so
+   keyfile accounts are only merged into a wallet that derives the same keys.
 10. Keyfile boundary validation: structure, envelope type, and version are
     checked before decryption, and the decrypted secret is cross-checked against
-    the declared wallet type. Export never decrypts the secret, and import
-    re-encrypts it locally with a fresh data key.
+    the declared wallet type. The decrypted account list is bounded in size and
+    checked account by account (name, index range, index per wallet type) before
+    any key is derived. Export never decrypts the secret, and import re-encrypts
+    it locally with a fresh data key.
 11. Version-gated storage: compatibility is asserted before any table is opened,
     migrations run under backup and rollback, and an unrecoverable state is
     reported with `isStorageIntact: false` rather than being migrated on a guess.
 12. Precision-preserving response parsing: unsafe integer literals are quoted
     before `JSON.parse`, so chain amounts are never silently rounded in transit.
+    The scan is linear in the response length, so no response can stall it.
 13. Validation after decryption: a decrypted secret must be usable key material
     (secp256k1 range, or a valid mnemonic with a canonical BIP-44 root path) and
     a decrypted reservation must match its declared structure, or the record is
@@ -132,7 +148,9 @@ Current controls:
     cover the transfer plus gas, recipients are checksum-validated, one deploy
     holds at most one reservation per network, and a per-network reader/writer
     lock serializes reservation writes against each other and against network
-    cleanup.
+    cleanup. A reservation is persisted before its deploy is submitted and is
+    released on a failed submission only when the node explicitly refused it;
+    reopening a wallet waits for its in-flight submissions before restoring.
 17. Typed failures: decryption, storage, and API errors carry machine-readable
     codes and structured fields, and a password check reports `false` only for an
     actual password failure.

@@ -8,6 +8,7 @@ import { WalletTypes } from "@domains/Signer";
 import { WalletAction } from "@domains/CustomError";
 import WalletOperationGuardService from "@services/WalletOperationGuard";
 import WalletUniquenessService from "@services/WalletUniqueness";
+import LegacyFingerprintService from "@services/LegacyFingerprint";
 
 export interface IAccountMetadata {
     id: string;
@@ -47,7 +48,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             secretProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, secretProvider);
 
         return wallet;
     }
@@ -61,7 +62,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             secretProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, secretProvider);
 
         return wallet;
     }
@@ -83,7 +84,7 @@ export default class WalletManager extends ItemManager<Wallet> {
             passwordProvider,
         );
 
-        await this.persist(wallet);
+        await this.persist(wallet, passwordProvider);
 
         return wallet;
     }
@@ -101,6 +102,8 @@ export default class WalletManager extends ItemManager<Wallet> {
                     passwordProvider,
                 });
 
+                await LegacyFingerprintService.upgradeSignerFingerprint(wallet);
+
                 this.add(wallet.getId(), wallet);
 
                 return wallet;
@@ -108,18 +111,23 @@ export default class WalletManager extends ItemManager<Wallet> {
         );
     }
 
-    public async delete(id: string): Promise<Wallet> {
-        const currentWallet: Wallet = super.remove(id);
+    public async deletePersisted(wallet: Wallet): Promise<void> {
+        const signerId: string = wallet.getSigner().getId();
 
-        const accountIds: string[] = Array.from(
-            currentWallet.getAccountsMap().keys(),
-        );
+        const accountIds: string[] = Array.from(wallet.getAccountsMap().keys());
 
         if (accountIds.length) {
             await StorageManager.deleteMultipleAccounts(accountIds);
         }
 
-        await StorageManager.deleteSigner(currentWallet.getSigner().getId());
+        await StorageManager.deleteTransactionReservationsBySignerId(signerId);
+        await StorageManager.deleteSigner(signerId);
+    }
+
+    public async delete(id: string): Promise<Wallet> {
+        const currentWallet: Wallet = super.remove(id);
+
+        await this.deletePersisted(currentWallet);
 
         return currentWallet;
     }
@@ -230,12 +238,21 @@ export default class WalletManager extends ItemManager<Wallet> {
         return (await StorageManager.getSigners()).length;
     }
 
-    private async persist(wallet: Wallet): Promise<void> {
+    private async persist(
+        wallet: Wallet,
+        passwordProvider: SecretsProvider,
+    ): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
         return WalletManager.operationsGuard.runWalletCreation(
             wallet,
             async () => {
+                // TODO(next-major): Remove together with LegacyFingerprintService.
+                await LegacyFingerprintService.assertWalletIsNotLegacyDuplicate(
+                    wallet,
+                    passwordProvider,
+                );
+
                 await WalletUniquenessService.assertWalletIsNotDuplicate(
                     wallet,
                 );

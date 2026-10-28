@@ -23,13 +23,19 @@ Signing-session policy:
 
 - `RequirePassword` — string enum-like const: `"once-per-session"` (default) |
   `"every-signature"`. Controls whether the client holds an unlocked session.
-- `DEFAULT_AUTO_LOCK_MS: number` — default session auto-lock delay (15 min).
+- `DEFAULT_AUTO_LOCK_MS: number` — default session auto-lock delay (15 min). It
+  applies both to `Client` and to a `SigningSession` held without an explicit
+  `autoLockMs`; a non-positive value disables the session instead.
 
 Teardown:
 
 - `DEFAULT_DRAIN_TIMEOUT_MS: number` — how long `LifecycleGuard.drain` waits for
   in-flight operations before giving up (10s). It bounds `Client.close` and
   `Client.clearPersistence` so a hung request cannot block a logout forever.
+- `SUBMISSION_SETTLE_TIMEOUT_MS: number` — how long reopening a wallet waits for
+  its in-flight deploy submissions: `DEFAULT_REQUEST_TIMEOUT` (30s) plus
+  `DEFAULT_DRAIN_TIMEOUT_MS`, 40s in total. A submission still running after it
+  makes the open fail with `WalletActionInProgressError` (`SUBMIT_DEPLOY`).
 
 Storage schema:
 
@@ -47,6 +53,10 @@ Data export:
   interchangeable.
 - `ASI_WALLET_KEYFILE_VERSION: number` — keyfile envelope version (`1`); import
   refuses anything else.
+- `MAX_KEYFILE_ACCOUNTS: number` — the most accounts a wallet keyfile may carry
+  (`1000`).
+- `MAX_KEYFILE_ACCOUNT_NAME_LENGTH: number` — the longest account name a wallet
+  keyfile may carry (`128`).
 - `TRANSACTIONS_CSV_HEADERS: string[]` — column order for CSV transaction export.
 
 ---
@@ -64,6 +74,11 @@ Data export:
 - `SCALA_FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
 - `INVALID_BLOCK_NUMBER: number` — sentinel for a failed block-number read (-1).
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
+- `HTTP_CLIENT_ERROR_MIN_STATUS` / `HTTP_CLIENT_ERROR_MAX_STATUS` — `400` and
+  `499`, the status range `isRejectedByServer` treats as a final refusal.
+- `ACCOUNT_KEY_PREFIX: string` — `"ACCOUNT"`, namespaces account fingerprints in
+  the wallet operation guard. It lives here rather than in `Wallet` so that the
+  guards can import it without importing `Wallet`.
 
 Numeric-format patterns, shared so the same rule is not re-typed per call site:
 
@@ -272,7 +287,17 @@ isPrivateKeyValid(privateKey: Uint8Array): boolean              // boolean short
 validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
 isValidUrl(url: string): boolean                               // boolean shorthand
 validateNodeApiProfile(profile: unknown): { isValid: boolean; error?: string } // membership in NodeApiProfile
+validateNetworkConfigUrls(config: Partial<INetworkConfig>, options: { allowEmpty: boolean }): { isValid: boolean; error?: string }
+validateNetworkUniqueness(name: NetworkName, config: INetworkConfig, otherRecords: INetworkRecord[]): { isValid: boolean; error?: string }
 ```
+
+`validateNetworkConfigUrls` runs `validateUrl` over every endpoint field present
+in the config (`NETWORK_URL_FIELDS`); `allowEmpty` lets the built-in seed config
+keep empty placeholder URLs. `validateNetworkUniqueness` rejects a network whose
+endpoints and profile equal another network's ("Network with the same config
+already exists") or whose name is taken ("Network with the same name already
+exists"); callers pass the other networks, excluding the one being updated. Both
+are used by the network fabric and by `NetworkConfigProvider.set`.
 
 `validatePrivateKey` checks both things a raw key can get wrong: the byte length
 (`PRIVATE_KEY_LENGTH`, 32) and membership in the secp256k1 scalar range, via
@@ -281,12 +306,29 @@ curve order are rejected. `Client.createPrivateKeyWallet` runs `isPrivateKeyVali
 before touching storage, so an imported key that could never sign is refused up
 front instead of failing later at signing time.
 
-Keyfile validation used to live here as `validateWalletKeyfile` and
-`validateWalletKeyfileAccounts`. Both are now private to
-[ImportKeyfileService](SERVICES.md#importkeyfileservice-srcservicesimportkeyfileserviceindexts):
-they knew about keyfile envelopes and wallet types, which made a leaf utils
-module depend on the domain layer. The shape guards they call
-(`isEncryptedData`, `isKeyfileWalletAccount`) stayed in `@utils/guards`.
+Keyfile validation:
+
+```ts
+validateWalletKeyfile(source: unknown): { isValid: boolean; error?: string }
+validateWalletKeyfileAccounts(source: unknown, walletType: WalletTypes): { isValid: boolean; error?: string }
+```
+
+`validateWalletKeyfile` checks the envelope: an object with the wallet keyfile
+`type`, the supported `version`, a known `walletType`, and both encrypted
+sections. `validateWalletKeyfileAccounts` checks the decrypted account list, in
+order: a non-empty array of `{ name, index }` records; at most
+`MAX_KEYFILE_ACCOUNTS`; a single account for a private-key keyfile; for each
+account a non-blank name of at most `MAX_KEYFILE_ACCOUNT_NAME_LENGTH` characters
+and an index that fits the wallet type (an integer in
+`0 … Bip44Path.MAX_COMPONENT_VALUE` for HD, `null` for private key); and no
+duplicate indexes. The first failing rule is reported.
+[ImportKeyfileService](SERVICES.md#importkeyfileservice-srcservicesimportkeyfileserviceindexts)
+turns a failure into `InvalidKeyfileError`.
+
+They were private to `ImportKeyfileService` for one release, to break an import
+cycle through the domain layer, and are back here now that they import only
+types and leaf modules. The shape guards they call (`isEncryptedData`,
+`isKeyfileWalletAccount`) stay in `@utils/guards`.
 
 Amount, reservation, and deploy validation:
 
@@ -294,8 +336,12 @@ Amount, reservation, and deploy validation:
 ensureValid(result: { isValid: boolean; error?: string }, context: IErrorContext): void
 validatePositiveAmount(amount: bigint): { isValid: boolean; error?: string }
 validateReservationPayload(payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
+validateReservationUpdateTarget(currentReservation: ITransactionReservation, payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
 validateDeployPayload(payload: TDeployDetails): { isValid: boolean; error?: string }
 ```
+
+`validateReservationUpdateTarget` is the update-only rule: the new payload must
+name the same account and the same network as the reservation it replaces.
 
 `ensureValid` turns any `{ isValid, error }` result into a throw prefixed with
 the caller's `context`, so a validator can be written once and used both as a
@@ -364,6 +410,7 @@ isSerializedDecimal(value: unknown): value is string    // digits with an option
 isRecordWithMessage(value: unknown): value is { message: string }
 isErrorWithMessage(value: unknown): value is Error
 isPromiseLike(value: unknown): value is PromiseLike<unknown>
+isRejectedByServer(value: unknown): boolean             // axios error with a 4xx response
 ```
 
 Domain:
@@ -374,6 +421,7 @@ isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretDa
 isNodeApiProfile(value: unknown): value is NodeApiProfile
 isStoredSecret(value: unknown): value is TStoredSecret
 isSerializedReservationPrivateData(value: unknown): value is ISerializedTransactionReservationPrivateData
+isRestorableReservationData(value: unknown, networkId: NetworkId, knownNetworkIds: Set<NetworkId>): value is ISerializedTransactionReservationPrivateData
 
 isEncryptedData(value: unknown): value is EncryptedData
 isKeyfileAccount(value: unknown): value is IKeyfileAccount
@@ -413,6 +461,19 @@ rethrown as-is or has to be wrapped.
 `isPromiseLike` is a structural check (`then` is callable) rather than an
 `instanceof Promise`, so `runProtected` also catches rejections from async
 listeners returning a foreign thenable.
+
+`isRejectedByServer` decides whether a failed deploy submission is final. It is
+`true` only for an axios error that carries a response with a status between
+`HTTP_CLIENT_ERROR_MIN_STATUS` and `HTTP_CLIENT_ERROR_MAX_STATUS`: the node read
+the deploy and refused it. A missing response (dropped connection, timeout), a
+`5xx`, or a non-axios error is `false`, because the deploy may still have been
+accepted. `DeployService.submitSignedDeploy` maps `true` to
+`DeploySubmissionRejectedError`.
+
+`isRestorableReservationData` is the restore-time filter for a stored
+reservation: well-formed private data (`isSerializedReservationPrivateData`), not
+expired yet, and on a network the client still knows. A record that fails it is
+deleted instead of restored.
 
 `isNodeApiProfile` narrows untyped values at the storage boundary
 (`restoreCustomNetworks`), mirroring how `isValidUrl` sits on top of
@@ -468,6 +529,8 @@ Lifecycle guards:
 ```ts
 EnsureActive; // throws DomainClosedError once the domain has been closed
 TrackOperation; // registers the returned promise with this.lifecycleGuard
+SkipWhenInactive; // turns a void method into a no-op once isActive() is false
+EnsureNotSuspended; // throws OperationsSuspendedError while an exclusive lifecycle action runs
 ```
 
 `EnsureActive` works on anything satisfying `IClosableContext` (`isActive()`), so
@@ -477,9 +540,16 @@ method and leaves pure reads unguarded.
 
 `TrackOperation` expects an `ITrackedOperationContext` (a `lifecycleGuard` field)
 and wraps the call in `lifecycleGuard.track`, so the operation is counted among
-the pending ones that `drain` waits for. `Client.transfer` and `Client.deploy`
-carry it, which is what makes a logout wait for an in-flight deploy instead of
-tearing storage out from under it.
+the pending ones that `drain` waits for. `Client.transfer`, `Client.deploy`,
+`Client.signDeploy`, and the reservation methods carry it, which is what makes a
+logout wait for an in-flight deploy instead of tearing storage out from under it.
+
+`SkipWhenInactive` is for teardown-tolerant writes: on a closed object the call
+silently does nothing. `TransactionReservationsManager.add` and `close` use it, so
+a submission that finishes after its wallet was closed cannot re-arm a watcher,
+and a second `close` is harmless. `EnsureNotSuspended`
+(`src/utils/decorators/lifecycleGuard`) sits on `LifecycleGuard.track` and reads
+the guard's `LifecycleOperationGuardService`.
 
 Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 
@@ -487,6 +557,7 @@ Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 EnsureNetworkConfigProviderReady; // throws before the registry is initialized
 EnsureNetworkExist; // throws when the network id is unknown
 EnsureNetworkNotDefault; // throws when mutating/removing a built-in network
+EnsureNetworkRecordNotDefault; // same, for a whole record passed as the first argument (set)
 ```
 
 Network-busy guards (`src/utils/decorators/apiClientManager`):
@@ -494,12 +565,28 @@ Network-busy guards (`src/utils/decorators/apiClientManager`):
 ```ts
 EnsureCurrentNetworkNotBusy; // throws NetworkBusyError when the active network has work in flight
 EnsureTargetNetworkNotBusy; // same check against the network id in the first argument
+EnsureNetworkNotReconfiguring; // throws ReservationActionInProgressError (NETWORK_CLEANUP) while the target network is being updated or removed
 ```
 
-Both read `ApiClientManager`'s `NetworkBusyRegistry` and protect
+The first two read `ApiClientManager`'s `NetworkBusyRegistry` and protect
 `switchNetwork` / `updateNetwork` / `removeNetwork`.
 `EnsureCurrentNetworkNotBusy` passes through untouched while the manager is not
 ready yet, because there is no active network to protect at that point.
+`EnsureNetworkNotReconfiguring` guards the opposite direction on
+`runNetworkOperation`: it resolves the target network from the
+`INetworkOperationOptions` argument (or the active network) and refuses to start
+an operation while that network holds an exclusive reservation scope.
+
+Network-write guards (`src/utils/decorators/networkManager`):
+
+```ts
+SerializeNetworkWrite; // runs the call through one module-level SerialOperationQueue
+EnsureNetworkIsIdle;   // throws NetworkBusyError when the network id in the first argument is busy
+```
+
+`NetworkManager.updateNetwork` and `removeNetwork` apply `EnsureNetworkIsIdle`
+**outside** `SerializeNetworkWrite`, so the busy check runs before the call joins
+the queue and a busy network is refused at once.
 
 Reservation-scope guards
 (`src/utils/decorators/reservationAdapterManager`,
@@ -508,7 +595,14 @@ Reservation-scope guards
 ```ts
 EnsureExclusiveNetwork;     // the first argument's network must be under an exclusive scope
 EnsureExclusiveReservation; // the first argument's reservation must be under runExclusive
+FailSubscriptionWhenInactive; // on a closed manager, calls the subscriber's onError(DomainClosedError) and returns a no-op unsubscribe
+EnsureReservationsManagerActive; // (src/utils/decorators/reservationAdapter) throws DomainClosedError when the adapter's manager is closed
 ```
+
+`FailSubscriptionWhenInactive` guards `TransactionReservationsManager.subscribe`,
+and `EnsureReservationsManagerActive` guards the private submission step of
+`ReservationAdapter`, which is what cancels a deploy whose wallet was closed
+before it left.
 
 These are structural assertions, not access control. Both guard a method that is
 only safe inside a lock its caller is supposed to be holding:
@@ -538,7 +632,7 @@ missing. No-op outside the browser. Called by `MnemonicService` and
 
 All fabrics live under `src/fabrics`, a top-level folder next to `src/utils`. Its
 `index.ts` re-exports the signer, storage, and client fabrics; the transaction
-reservation fabric is imported by its own path. The folder is internal —
+reservation and network fabrics are imported by their own paths. The folder is internal —
 `src/index.ts` does not re-export it, so fabrics are not part of the package
 public surface; SDK code reaches them through the `@fabrics/*` alias.
 
@@ -564,7 +658,10 @@ otherwise the password decrypts it.
 plaintext secret in hand, through the single `KeyFingerprintService.fromSecret`
 entry point. It travels on `ISignerRecord` as a plaintext field and
 `restoreSigner` passes it straight back, so it is available for duplicate
-detection without decrypting anything.
+detection without decrypting anything. `Wallet.restore` is the one caller that
+does not pass the stored value as is: it recomputes the fingerprint from the
+decrypted secret, so that a legacy HD fingerprint is replaced in memory before
+`WalletManager.open` writes it back (transitional, `TODO(next-major)`).
 
 `createImportedSigner` builds a signer from an already-decrypted secret, which is
 what wallet keyfile import has. It generates a fresh signer id, re-wraps the
@@ -616,6 +713,27 @@ storage section of `DOMAINS.md`.
 ```ts
 storageFabric(options?: IStorageFabricOptions): ITableService<ITableRecord>
 ```
+
+### Network fabric (`src/fabrics/network.ts`)
+
+Builds a validated `INetworkRecord` for a network write, without touching the
+registry or storage.
+
+```ts
+createNetworkRecord(payload: ICreateNetworkRecordPayload): INetworkRecord        // { name, config, networks }
+createUpdatedNetworkRecord(payload: IUpdateNetworkRecordPayload): INetworkRecord // { record, update, networks }
+```
+
+`createNetworkRecord` validates the endpoint URLs (`allowEmpty: false`), the
+`nodeApiProfile`, and name and config uniqueness against `networks`, then returns
+a custom record with a generated id. `createUpdatedNetworkRecord` refuses a
+built-in record, validates whatever the update carries, merges it into the
+current record (an absent `nodeApiProfile` keeps the stored one), and checks
+uniqueness against every other network.
+
+The fabric is what makes `NetworkManager` writes transactional: the full record
+exists and is valid before anything is written, so the storage write is the only
+step that can still fail, and the registry is updated only after it succeeded.
 
 ### Transaction reservation fabric (`src/fabrics/transactionReservation.ts`)
 

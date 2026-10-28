@@ -317,6 +317,14 @@ class StorageManager {
         );
     };
 
+    public static deleteTransactionReservationsBySignerId = async (
+        signerId: string,
+    ): Promise<void> => {
+        await TransactionReservationsStorageRepository.getInstance().deleteTransactionReservationsBySignerId(
+            signerId,
+        );
+    };
+
     public static updateTransactionReservation = async (
         id: string,
         updates: Partial<ITransactionReservationsStorageRecord>,

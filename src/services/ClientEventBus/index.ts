@@ -1,5 +1,5 @@
 import Account from "@domains/Account";
-import { INetworkRecord, NetworkId } from "@domains/Network";
+import { INetworkRecord, INetworksState, NetworkId } from "@domains/Network";
 import { TReservationsByWallet } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import { runProtected } from "@utils/functions";
@@ -7,21 +7,27 @@ import { runProtected } from "@utils/functions";
 export enum ClientEvent {
     WALLETS_CHANGED = "walletsChanged",
     ACCOUNTS_CHANGED = "accountsChanged",
+    /** @deprecated Use {@link ClientEvent.NETWORKS_CHANGED} instead. */
     NETWORK_CHANGED = "networkChanged",
+    NETWORKS_CHANGED = "networksChanged",
     RESERVATIONS_CHANGED = "reservationsChanged",
     NETWORK_BUSY_CHANGED = "networkBusyChanged",
     WALLET_LOCKED = "walletLocked",
+    // TODO(next-major): Remove together with LegacyFingerprintService.
+    WALLET_FINGERPRINT_UPGRADED = "walletFingerprintUpgraded",
 }
 
 export interface IClientEventMap {
     [ClientEvent.WALLETS_CHANGED]: [wallets: Wallet[]];
     [ClientEvent.ACCOUNTS_CHANGED]: [walletId: string, accounts: Account[]];
     [ClientEvent.NETWORK_CHANGED]: [network: INetworkRecord];
+    [ClientEvent.NETWORKS_CHANGED]: [networksState: INetworksState];
     [ClientEvent.RESERVATIONS_CHANGED]: [
         reservationsByWallet: TReservationsByWallet,
     ];
     [ClientEvent.NETWORK_BUSY_CHANGED]: [networkId: NetworkId, isBusy: boolean];
     [ClientEvent.WALLET_LOCKED]: [walletId: string];
+    [ClientEvent.WALLET_FINGERPRINT_UPGRADED]: [walletId: string];
 }
 
 export type TClientEventName = keyof IClientEventMap;

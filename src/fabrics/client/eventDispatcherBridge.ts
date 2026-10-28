@@ -37,6 +37,10 @@ export const registerEventDispatcher = (
         eventDispatcher.onNetworkChanged?.bind(eventDispatcher),
     );
     register(
+        ClientEvent.NETWORKS_CHANGED,
+        eventDispatcher.onNetworksChanged?.bind(eventDispatcher),
+    );
+    register(
         ClientEvent.RESERVATIONS_CHANGED,
         eventDispatcher.onReservationsChanged?.bind(eventDispatcher),
     );
@@ -47,6 +51,10 @@ export const registerEventDispatcher = (
     register(
         ClientEvent.WALLET_LOCKED,
         eventDispatcher.onWalletLocked?.bind(eventDispatcher),
+    );
+    register(
+        ClientEvent.WALLET_FINGERPRINT_UPGRADED,
+        eventDispatcher.onWalletFingerprintUpgraded?.bind(eventDispatcher),
     );
 
     return () => {

@@ -14,6 +14,7 @@ import {
     WalletOperationCancelledError,
 } from "@domains/CustomError";
 import { createSigner } from "@fabrics/signer";
+import { DEFAULT_AUTO_LOCK_MS } from "@config/index";
 import { ASI_COIN_TYPE } from "@utils/constants";
 
 const SEED = MnemonicService.generateMnemonic();
@@ -101,6 +102,8 @@ test("holding a new secret wipes the previously held one", () => {
     assert.deepEqual(Array.from(firstKey), zeroedKey());
     assert.deepEqual(Array.from(secondKey), new Array(KEY_LENGTH).fill(2));
     assert.equal(session.getDataKey(), DATA_KEY);
+
+    session.release();
 });
 
 test("hold rejects a stale generation and wipes the secret it was given", () => {
@@ -150,19 +153,75 @@ test("auto lock releases the session and wipes the key after the delay", async (
     assert.deepEqual(Array.from(privateKey), zeroedKey());
 });
 
-test("a session without an auto lock delay stays held", async () => {
-    const session = new SigningSession("signer-no-autolock");
+test("a session without an explicit auto lock delay locks after the default delay", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    const session = new SigningSession("signer-default-autolock");
+    const privateKey = createPrivateKey(3);
 
     session.hold(session.getSessionGeneration(), {
-        secret: { privateKey: createPrivateKey(3) },
+        secret: { privateKey },
         dataKeySecret: DATA_KEY,
     });
 
-    await wait(40);
+    t.mock.timers.tick(DEFAULT_AUTO_LOCK_MS - 1);
 
     assert.equal(session.isActive(), true);
 
-    session.release();
+    t.mock.timers.tick(1);
+
+    assert.equal(session.isActive(), false);
+    assert.equal(session.getSecret(), null);
+    assert.deepEqual(Array.from(privateKey), zeroedKey());
+});
+
+test("hold with a zero auto lock delay installs no session and wipes the key", () => {
+    const session = new SigningSession("signer-zero-autolock");
+    const privateKey = createPrivateKey(4);
+
+    session.hold(
+        session.getSessionGeneration(),
+        { secret: { privateKey }, dataKeySecret: DATA_KEY },
+        { autoLockMs: 0 },
+    );
+
+    assert.equal(session.isActive(), false);
+    assert.equal(session.getSecret(), null);
+    assert.equal(session.getDataKey(), null);
+    assert.deepEqual(Array.from(privateKey), zeroedKey());
+});
+
+test("hold with a negative auto lock delay releases the previous session", () => {
+    const session = new SigningSession("signer-negative-autolock");
+    const previousKey = createPrivateKey(6);
+    const nextKey = createPrivateKey(8);
+
+    session.hold(session.getSessionGeneration(), {
+        secret: { privateKey: previousKey },
+        dataKeySecret: DATA_KEY,
+    });
+
+    session.hold(
+        session.getSessionGeneration(),
+        { secret: { privateKey: nextKey }, dataKeySecret: DATA_KEY },
+        { autoLockMs: -1 },
+    );
+
+    assert.equal(session.isActive(), false);
+    assert.equal(session.getSecret(), null);
+    assert.deepEqual(Array.from(previousKey), zeroedKey());
+    assert.deepEqual(Array.from(nextKey), zeroedKey());
+});
+
+test("unlocking a signer with a non-positive auto lock delay keeps it locked", async () => {
+    const { privateKey } = KeysManager.generateKeyPair();
+    const signer = await createPkSigner(privateKey);
+
+    await signer.unlock(createPasswordProvider(PASSWORD), { autoLockMs: 0 });
+
+    assert.equal(signer.isUnlocked(), false);
+
+    await assert.rejects(signer.sign(DIGEST, {}), WalletLockedError);
 });
 
 test("release accepts hd secrets that carry no wipeable key material", () => {
@@ -276,6 +335,8 @@ test("hd signer derives the key for the requested account index", async () => {
         Array.from(KeysManager.getPublicKeyFromPrivateKey(expectedKey)),
     );
     assert.equal(verify(signed.signature, DIGEST, signed.publicKey), true);
+
+    signer.lock();
 });
 
 test("hd signer keeps account indexes on separate keys", async () => {
@@ -295,4 +356,6 @@ test("hd signer keeps account indexes on separate keys", async () => {
     );
     assert.equal(verify(first.signature, DIGEST, first.publicKey), true);
     assert.equal(verify(second.signature, DIGEST, second.publicKey), true);
+
+    signer.lock();
 });

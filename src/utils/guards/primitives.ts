@@ -1,4 +1,7 @@
+import axios from "axios";
 import {
+    HTTP_CLIENT_ERROR_MAX_STATUS,
+    HTTP_CLIENT_ERROR_MIN_STATUS,
     NON_NEGATIVE_DECIMAL_REGEX,
     NON_NEGATIVE_INTEGER_REGEX,
 } from "@utils/constants";
@@ -60,5 +63,22 @@ export const isPromiseLike = (
 ): value is PromiseLike<unknown> => {
     return (
         isRecord(value) && "then" in value && typeof value.then === "function"
+    );
+};
+
+export const isRejectedByServer = (value: unknown): boolean => {
+    if (!axios.isAxiosError(value)) {
+        return false;
+    }
+
+    const status: number | undefined = value.response?.status;
+
+    if (status === undefined) {
+        return false;
+    }
+
+    return (
+        status >= HTTP_CLIENT_ERROR_MIN_STATUS &&
+        status <= HTTP_CLIENT_ERROR_MAX_STATUS
     );
 };

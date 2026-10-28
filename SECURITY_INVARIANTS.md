@@ -15,7 +15,10 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 1. An unlocked signing session holds the decrypted secret only in volatile
    in-memory state; it is never persisted.
 2. Session lifetime is bounded and fixed: it is set at unlock time
-   (`autoLockMs`, default 15 min) and is not extended by later activity.
+   (`autoLockMs`, default 15 min) and is not extended by later activity. No
+   configuration may produce an unbounded session: a non-positive `autoLockMs`
+   must disable session holding (password on every signature), never disable the
+   timer.
 3. Auto-lock and explicit `lock()` must clear the session timer, zeroize
    in-memory key bytes, and drop the resolved data key held by the session.
 4. When there is no active session and no password is supplied, the signing
@@ -45,7 +48,10 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    become the local at-rest ciphertext.
 5. A keyfile must be validated before use: envelope type, version, wallet type,
    and both encrypted sections. A decrypted secret whose shape contradicts the
-   declared wallet type must be rejected.
+   declared wallet type must be rejected. The decrypted account list must be
+   bounded and semantically valid before any key is derived from it: a limited
+   number of accounts, bounded non-blank names, HD indexes inside the BIP-32
+   non-hardened range, and no index on a private-key account.
 6. A failed decryption and a malformed file must surface as distinct errors, so a
    wrong password is never reported as a corrupt file or the reverse.
 7. Account keyfiles must contain no key material and must never be accepted as a
@@ -54,8 +60,9 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 ### 1b. Key Fingerprint Invariants
 
 1. A key fingerprint must be derived only from public material: `sha256` of the
-   public key for a private-key signer, `sha256(masterPublicKey || chainCode)`
-   for an HD signer.
+   public key for a private-key signer, `sha256(publicKey || chainCode)` of the
+   node at the root HD path for an HD signer. The legacy HD formula over the
+   master node is kept only to recognize signers stored by `v2.0.0` and earlier.
 2. A fingerprint must never be reversible to key material and must never be
    derived from, or stored alongside, a plaintext secret or seed. Any seed
    materialized to compute one must be zeroized before returning.
@@ -63,6 +70,10 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    run while every wallet is closed. Nothing else may be inferred from them.
 4. Duplicate detection must reject a wallet or account whose fingerprint already
    exists, and must do so without decrypting stored secrets.
+5. An HD wallet's identity must include its root HD path. Accounts from a keyfile
+   must never be merged into a stored wallet whose root path differs, because
+   that wallet would derive, show, and sign for different keys than the keyfile
+   declares.
 
 ## 2. Storage Invariants
 
@@ -84,6 +95,14 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    discarded and locked instead of being published into post-teardown state.
 9. A closed `Client` must stay closed: state-changing methods must fail with
    `DomainClosedError` rather than partially operate on released resources.
+10. Destructive lifecycle actions (`clearPersistence`, `removeWallet`) must be
+    exclusive: new operations are refused (`OperationsSuspendedError`) while
+    they run, and operations already in flight are drained before storage is
+    touched.
+11. Removing a wallet must remove everything persisted for its signer, including
+    its transaction reservations.
+12. A wallet whose setup fails after it was loaded (session hold, reservation
+    restore) must be locked and removed from the client, not left half-published.
 
 ### 2a. Storage Schema Invariants
 
@@ -152,6 +171,8 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    unreachable node is never mistaken for an empty account.
 6. Integer values in node and indexer responses must survive JSON parsing without
    precision loss, so an amount is never silently rounded before it is used.
+   Response pre-processing must run in linear time, so a crafted response cannot
+   stall the client through regex backtracking.
 7. A derivation path must be canonical and in range before it is used to derive a
    key: the BIP-44 purpose fixed, `coinType` and `account` hardened, `change` and
    `index` not hardened, every component an integer within the BIP-32 range and
@@ -193,6 +214,16 @@ rather than merely displaying the wrong number.
    update; identity is fixed at creation.
 9. Reserving the entire available balance must be permitted; reserving beyond it
    must not.
+10. A reservation for a deploy the SDK submits must be persisted before the
+    deploy is sent, so a crash during submission cannot unlock funds that may
+    already be spent.
+11. A reservation may be released on a failed submission only when the deploy
+    provably did not land: an explicit refusal by the node, or a submission
+    cancelled before anything was sent. An unknown outcome must keep the funds
+    locked until confirmation or expiry.
+12. A wallet must not restore its reservations while one of its own submissions
+    is still in flight; reopening must wait for it, and refuse after a bounded
+    timeout rather than restore a stale picture.
 
 ## 4. Recovery Invariants
 

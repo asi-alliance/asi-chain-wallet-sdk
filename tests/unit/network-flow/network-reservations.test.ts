@@ -13,6 +13,7 @@ import {
 import { INetworkRecord, NetworkId } from "@domains/Network";
 import SecretsProvider from "@domains/SecretsProvider";
 import CryptoService, { EncryptedData } from "@services/Crypto";
+import { IWalletKeyfile } from "@services/ExportKeyfileService";
 import {
     CUSTOM_NETWORK_CONFIG,
     NETWORKS_CONFIG,
@@ -138,6 +139,35 @@ const saveReservationRecord = async (
     });
 };
 
+const saveCorruptedReservationRecord = async (
+    { signerId, dataKeySecret }: IStoredSigner,
+    id: string,
+): Promise<void> => {
+    const encryptedData: EncryptedData =
+        await CryptoService.encryptWithPassword("not-json", dataKeySecret);
+
+    await StorageManager.saveTransactionReservation({
+        id,
+        networkId: SCALA_NETWORK,
+        signerId,
+        encryptedData,
+    });
+};
+
+const createClientWithWalletEvents = (
+    walletEvents: Wallet[][],
+): Promise<Client> =>
+    Client.create({
+        networksConfig: NETWORKS_CONFIG,
+        defaultNetwork: SCALA_NETWORK,
+        storageOptions: STORAGE_OPTIONS,
+        eventDispatcher: {
+            onWalletsChanged: (wallets: Wallet[]) => {
+                walletEvents.push(wallets);
+            },
+        },
+    });
+
 const readStoredIds = async (signerId: string): Promise<string[]> => {
     const records: ITransactionReservationsStorageRecord[] =
         await StorageManager.getTransactionReservationsBySignerId(signerId);
@@ -151,6 +181,32 @@ const toIds = (reservations: ITransactionReservation[]): string[] =>
     reservations
         .map((reservation: ITransactionReservation) => reservation.id)
         .sort();
+
+const RESERVATIONS_READ_FAILURE: RegExp = /reservations storage is unavailable/;
+
+const originalReservationsRead =
+    StorageManager.getTransactionReservationsBySignerId;
+
+const whileReservationsReadFails = async (
+    action: () => Promise<unknown>,
+): Promise<void> => {
+    StorageManager.getTransactionReservationsBySignerId = async () => {
+        throw new Error("reservations storage is unavailable");
+    };
+
+    try {
+        await assert.rejects(action, RESERVATIONS_READ_FAILURE);
+    } finally {
+        StorageManager.getTransactionReservationsBySignerId =
+            originalReservationsRead;
+    }
+};
+
+const openStoredWallet = async (client: Client): Promise<Wallet> => {
+    const [storedSigner] = await StorageManager.getSigners();
+
+    return client.openWallet(storedSigner.id, PASSWORD);
+};
 
 test.afterEach(async () => {
     await StorageManager.clear();
@@ -320,4 +376,121 @@ test("an idle network is never reported as busy", async () => {
     assert.equal(restored.client.isNetworkBusy(RUST_NETWORK), false);
 
     await restored.client.close();
+});
+
+test("a failed reservations restore rolls the opened wallet back out of the client", async () => {
+    console.log("\n=== FAILED OPEN ROLLS BACK THE WALLET ===");
+
+    const signer: IStoredSigner = await createStoredSigner();
+
+    await saveCorruptedReservationRecord(signer, "corrupted");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    await assert.rejects(() => client.openWallet(signer.signerId, PASSWORD));
+
+    console.log(
+        "    Open wallets after the failure:",
+        client.getWalletManager().getAll().length,
+    );
+
+    assert.equal(client.getWalletManager().getBySignerId(signer.signerId), null);
+    assert.equal(walletEvents.length, 0);
+
+    await client.close();
+});
+
+test("opening a wallet can be retried after a failed reservations restore", async () => {
+    console.log("\n=== OPEN IS RETRIED AFTER A FAILURE ===");
+
+    const signer: IStoredSigner = await createStoredSigner();
+
+    await saveCorruptedReservationRecord(signer, "corrupted");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    await assert.rejects(() => client.openWallet(signer.signerId, PASSWORD));
+
+    await StorageManager.deleteTransactionReservation("corrupted");
+
+    const wallet: Wallet = await client.openWallet(signer.signerId, PASSWORD);
+
+    console.log("    Reopened wallet unlocked:", wallet.isUnlocked());
+
+    assert.equal(client.isWalletOpen(wallet.getId()), true);
+    assert.equal(wallet.isUnlocked(), true);
+    assert.equal(walletEvents.length, 1);
+
+    await client.close();
+});
+
+test("a failed setup of a created wallet keeps it out of the client but stored", async () => {
+    console.log("\n=== FAILED CREATE ROLLS BACK THE WALLET ===");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    await whileReservationsReadFails(() =>
+        client.createPrivateKeyWallet(
+            { privateKey, accountName: "Funded account" },
+            PASSWORD,
+        ),
+    );
+
+    console.log(
+        "    Open wallets after the failure:",
+        client.getWalletManager().getAll().length,
+    );
+
+    assert.equal(client.getWalletManager().getAll().length, 0);
+    assert.equal(walletEvents.length, 0);
+
+    const wallet: Wallet = await openStoredWallet(client);
+
+    assert.equal(client.isWalletOpen(wallet.getId()), true);
+    assert.equal(walletEvents.length, 1);
+
+    await client.close();
+});
+
+test("a failed setup of an imported keyfile wallet keeps it out of the client but stored", async () => {
+    console.log("\n=== FAILED KEYFILE IMPORT ROLLS BACK THE WALLET ===");
+
+    const walletEvents: Wallet[][] = [];
+    const client: Client = await createClientWithWalletEvents(walletEvents);
+
+    const exported: Wallet = await client.createPrivateKeyWallet(
+        { privateKey, accountName: "Funded account" },
+        PASSWORD,
+    );
+
+    const keyfile: IWalletKeyfile = await client.exportWalletKeyfile(
+        exported.getId(),
+        PASSWORD,
+    );
+
+    await client.removeWallet(exported.getId());
+
+    walletEvents.length = 0;
+
+    await whileReservationsReadFails(() =>
+        client.importWalletKeyfile(keyfile, PASSWORD),
+    );
+
+    console.log(
+        "    Open wallets after the failure:",
+        client.getWalletManager().getAll().length,
+    );
+
+    assert.equal(client.getWalletManager().getAll().length, 0);
+    assert.equal(walletEvents.length, 0);
+
+    const wallet: Wallet = await openStoredWallet(client);
+
+    assert.equal(client.isWalletOpen(wallet.getId()), true);
+    assert.equal(walletEvents.length, 1);
+
+    await client.close();
 });
