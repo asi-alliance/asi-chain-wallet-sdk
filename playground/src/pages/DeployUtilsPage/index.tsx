@@ -501,7 +501,9 @@ const DeployUtilsPage = (): ReactElement => {
                                 type="button"
                                 className="deploy-utils-page__action deploy-utils-page__action--ghost"
                                 onClick={() =>
-                                    setWatchedDeployId(signedResult.signature)
+                                    // Under protocol v6 the deploy ID is not the signature.
+                                    // setWatchedDeployId(signedResult.signature)
+                                    setWatchedDeployId(signedResult.deployId)
                                 }
                             >
                                 Use signature as deploy id

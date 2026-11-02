@@ -37,7 +37,14 @@ export default class BlockService {
         try {
             const block: IBlockDto = await this.getLatestBlock();
 
-            return block.blockNumber ?? INVALID_BLOCK_NUMBER;
+            // The cost-accounted node returns the block summary in `blockInfo`.
+            // return block.blockNumber ?? INVALID_BLOCK_NUMBER;
+            return (
+                block.blockNumber ??
+                (block.blockInfo as unknown as { blockNumber?: number })
+                    ?.blockNumber ??
+                INVALID_BLOCK_NUMBER
+            );
         } catch {
             return INVALID_BLOCK_NUMBER;
         }

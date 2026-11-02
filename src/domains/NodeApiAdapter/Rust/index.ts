@@ -19,6 +19,10 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
     }
 
     public isDeployFinalized(deploy: IDeployInfo): boolean {
-        return (deploy.faultTolerance ?? 0) >= RUST_FAULT_TOLERANCE_THRESHOLD;
+        // Changed for the cost-accounted f1r3node (S-5): `/api/deploy/{id}`
+        // returns `isFinalized` and no `faultTolerance`, so this threshold
+        // check never reported a finalized deploy.
+        // return (deploy.faultTolerance ?? 0) >= RUST_FAULT_TOLERANCE_THRESHOLD;
+        return deploy.isFinalized === true;
     }
 }
