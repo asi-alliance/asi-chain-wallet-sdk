@@ -35,10 +35,14 @@ export const createRustTransferDeploy = (
     if (amount <= 0n) {
         throw new Error("Transfer amount must be greater than zero");
     }
+    if (amount >= 1n << 256n) {
+        throw new Error("Transfer amount exceeds uint256");
+    }
 
     const escapedFromAddress = escapeRholangString(fromAddress);
     const escapedToAddress = escapeRholangString(toAddress);
-    const amountString: string = amount.toString();
+    const amountString: string =
+        amount > (1n << 63n) - 1n ? `${amount}n` : amount.toString();
 
     return `
         new
