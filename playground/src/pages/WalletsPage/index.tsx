@@ -12,9 +12,46 @@ import type { UseSdkValue } from "../../sdk-react-kit";
 import { createWalletPageHandlers, type WalletPageHandlers } from "./helpers";
 import "./style.css";
 import NetworkSelector from "@components/NetworkSelector";
-import { WalletTypes, type IWalletMetadata, type Wallet } from "asi-wallet-sdk";
+import {
+    WalletTypes,
+    type Account,
+    type IWalletMetadata,
+    type Wallet,
+} from "asi-wallet-sdk";
 
 type WalletColumn = "privateKey" | "mnemonic";
+
+interface HiddenAccountsListProps {
+    walletId: string;
+    accounts: Account[];
+    handlers: WalletPageHandlers;
+}
+
+const HiddenAccountsList = ({
+    walletId,
+    accounts,
+    handlers,
+}: HiddenAccountsListProps): ReactElement => (
+    <div className="wallets-page__hidden">
+        <div className="wallets-page__hidden-title">Hidden accounts</div>
+        {accounts.map((account) => (
+            <div key={account.getId()} className="wallets-page__hidden-row">
+                <span className="wallets-page__hidden-name">
+                    {account.getName()} · index {account.getIndex()}
+                </span>
+                <button
+                    className="wallets-page__action"
+                    type="button"
+                    onClick={() =>
+                        handlers.unhideAccount(walletId, account.getId())
+                    }
+                >
+                    Unhide
+                </button>
+            </div>
+        ))}
+    </div>
+);
 
 interface WalletRowProps {
     meta: IWalletMetadata;
@@ -38,8 +75,8 @@ const WalletRow = ({
                             <div className="wallet-card-name">{"Wallet"}</div>
                         </div>
                         <div className="wallet-card-address">
-                            {meta.type} · {meta.accounts.length} account(s) ·
-                            closed
+                            {meta.type} · {meta.accounts.length} account(s) ·{" "}
+                            {meta.hiddenAccounts?.length ?? 0} hidden · closed
                         </div>
                         <div className="buttons">
                             <button
@@ -60,7 +97,8 @@ const WalletRow = ({
 
     const walletId = openWallet.getId();
     const accounts = openWallet.getAccounts();
-    const canRemoveAccount =
+    const hiddenAccounts = openWallet.getHiddenAccounts();
+    const canHideAccount =
         openWallet.getType() === WalletTypes.HD && accounts.length > 1;
     const isLocked = sdk.isWalletLocked(walletId);
 
@@ -133,10 +171,10 @@ const WalletRow = ({
                     onRename={() =>
                         handlers.renameAccount(walletId, account.getId())
                     }
-                    onRemove={
-                        canRemoveAccount
+                    onHide={
+                        canHideAccount
                             ? () =>
-                                  handlers.removeAccount(
+                                  handlers.hideAccount(
                                       walletId,
                                       account.getId(),
                                   )
@@ -144,6 +182,14 @@ const WalletRow = ({
                     }
                 />
             ))}
+
+            {hiddenAccounts.length > 0 && (
+                <HiddenAccountsList
+                    walletId={walletId}
+                    accounts={hiddenAccounts}
+                    handlers={handlers}
+                />
+            )}
         </div>
     );
 };

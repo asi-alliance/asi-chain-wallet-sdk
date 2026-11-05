@@ -345,9 +345,18 @@ const useSdk = () => {
         [requireClient, refresh],
     );
 
-    const removeAccount = useCallback(
+    const hideAccount = useCallback(
         async (walletId: string, accountId: string): Promise<void> => {
-            await requireClient().removeAccount(walletId, accountId);
+            await requireClient().hideAccount(walletId, accountId);
+
+            await refresh();
+        },
+        [requireClient, refresh],
+    );
+
+    const unhideAccount = useCallback(
+        async (walletId: string, accountId: string): Promise<void> => {
+            await requireClient().unhideAccount(walletId, accountId);
 
             await refresh();
         },
@@ -596,7 +605,8 @@ const useSdk = () => {
         removeWallet,
         deriveAccount,
         renameAccount,
-        removeAccount,
+        hideAccount,
+        unhideAccount,
         transfer,
         deploy,
         signDeploy,

@@ -117,6 +117,37 @@
 	min-width: 0;
 }
 
+.wallets-page__hidden {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-top: var(--space-3);
+	padding-top: var(--space-3);
+	border-top: 1px solid var(--border-subtle);
+}
+
+.wallets-page__hidden-title {
+	font-size: var(--text-xs);
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.wallets-page__hidden-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-width: 0;
+}
+
+.wallets-page__hidden-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-strong);
+}
+
 .wallets-page__tabs {
 	display: none;
 }
