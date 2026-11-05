@@ -8,6 +8,7 @@ import { PersistedStorageImportRejection } from "@domains/CustomError";
 import Bip44Path from "@domains/Bip44Path";
 import { WalletTypes } from "@domains/Signer";
 import type { INetworkConfig, INetworkRecord } from "@domains/Network";
+import CryptoService, { EncryptedData } from "@services/Crypto";
 import {
     isEncryptedData,
     isFiniteNumber,
@@ -62,6 +63,9 @@ const WALLET_TYPES: WalletTypes[] = Object.values(WalletTypes);
 const HEX_STRING_REGEX: RegExp = /^(?:[0-9a-fA-F]{2})+$/;
 
 const VALID_DUMP: TPersistedStorageDumpValidation = { isValid: true };
+
+const isDecodableEncryptedData = (value: unknown): value is EncryptedData =>
+    isEncryptedData(value) && CryptoService.isDecodableEncryptedData(value);
 
 const rejectDump = (
     rejection: PersistedStorageImportRejection,
@@ -243,19 +247,19 @@ const readDumpSigners = (
             );
         }
 
-        if (!isEncryptedData(signer.encryptedData)) {
+        if (!isDecodableEncryptedData(signer.encryptedData)) {
             return rejectDumpRecord(
                 tableName,
                 signer.id,
-                "has no encrypted secret",
+                "has no valid encrypted secret",
             );
         }
 
-        if (!isEncryptedData(signer.encryptedDataKey)) {
+        if (!isDecodableEncryptedData(signer.encryptedDataKey)) {
             return rejectDumpRecord(
                 tableName,
                 signer.id,
-                "has no encrypted data key",
+                "has no valid encrypted data key",
             );
         }
 
@@ -432,11 +436,11 @@ const validateDumpTransactionReservations = (
             );
         }
 
-        if (!isEncryptedData(reservation.encryptedData)) {
+        if (!isDecodableEncryptedData(reservation.encryptedData)) {
             return rejectDumpRecord(
                 tableName,
                 reservation.id,
-                "has no encrypted reservation data",
+                "has no valid encrypted reservation data",
             );
         }
     }
@@ -613,10 +617,10 @@ export const validatePersistedStorageDump = (
         return envelopeValidation;
     }
 
-    if (!isEncryptedData(source.encryptedTables)) {
+    if (!isDecodableEncryptedData(source.encryptedTables)) {
         return rejectDump(
             PersistedStorageImportRejection.INVALID_FORMAT,
-            "Dump has no encrypted tables",
+            "Dump has no valid encrypted tables",
         );
     }
 

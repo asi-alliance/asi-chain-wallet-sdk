@@ -14,7 +14,7 @@ import {
     PERSISTED_STORAGE_DUMP_VERSION,
     CURRENT_STORAGE_VERSION,
 } from "@config/index";
-import { encodeBase16 } from "@utils/codec";
+import { arrayBufferToBase64, encodeBase16 } from "@utils/codec";
 import {
     TPersistedStorageDumpValidation,
     validatePersistedStorageDump,
@@ -25,11 +25,19 @@ type TDumpTableRecord = Record<string, ITableRecord[string]>;
 
 type TDumpTables = Record<string, TDumpTableRecord[]>;
 
+const ENCRYPTION_VERSION: number = 2;
+const SALT_LENGTH: number = 16;
+const IV_LENGTH: number = 12;
+const CONTENT_LENGTH: number = 32;
+
+const encodeBytes = (length: number): string =>
+    arrayBufferToBase64(new Uint8Array(length).buffer);
+
 const ENCRYPTED_DATA = {
-    data: "ZW5jcnlwdGVk",
-    salt: "c2FsdA==",
-    iv: "aXY=",
-    version: 2,
+    data: encodeBytes(CONTENT_LENGTH),
+    salt: encodeBytes(SALT_LENGTH),
+    iv: encodeBytes(IV_LENGTH),
+    version: ENCRYPTION_VERSION,
 };
 
 const CREATED_AT: number = 1_700_000_000_000;
@@ -215,6 +223,36 @@ test("malformed dump headers are rejected with their reason", () => {
             { ...createDump(), encryptedTables: createTables() },
             PersistedStorageImportRejection.INVALID_FORMAT,
         ],
+        [
+            "tables encrypted with an unsupported version",
+            {
+                ...createDump(),
+                encryptedTables: {
+                    ...ENCRYPTED_DATA,
+                    version: ENCRYPTION_VERSION - 1,
+                },
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "tables with an iv of a wrong length",
+            {
+                ...createDump(),
+                encryptedTables: {
+                    ...ENCRYPTED_DATA,
+                    iv: encodeBytes(IV_LENGTH - 1),
+                },
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "tables with content shorter than the auth tag",
+            {
+                ...createDump(),
+                encryptedTables: { ...ENCRYPTED_DATA, data: encodeBytes(4) },
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
     ];
 
     for (const [reason, dump, rejection] of malformedHeaders) {
@@ -338,6 +376,30 @@ test("malformed decrypted tables are rejected with their reason", () => {
             (tables) => {
                 findRecord(tables, "SIGNERS", "hd-wallet").encryptedDataKey = {
                     data: 1,
+                };
+
+                return tables;
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "wallet secret with a salt that is not base64",
+            (tables) => {
+                findRecord(tables, "SIGNERS", "hd-wallet").encryptedData = {
+                    ...ENCRYPTED_DATA,
+                    salt: "not base64!",
+                };
+
+                return tables;
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "wallet data key with a salt of a wrong length",
+            (tables) => {
+                findRecord(tables, "SIGNERS", "pk-wallet").encryptedDataKey = {
+                    ...ENCRYPTED_DATA,
+                    salt: encodeBytes(SALT_LENGTH + 1),
                 };
 
                 return tables;
@@ -486,6 +548,22 @@ test("malformed decrypted tables are rejected with their reason", () => {
                     "TRANSACTION_RESERVATIONS",
                     "reservation",
                 ).encryptedData;
+
+                return tables;
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "reservation data encrypted with an unsupported version",
+            (tables) => {
+                findRecord(
+                    tables,
+                    "TRANSACTION_RESERVATIONS",
+                    "reservation",
+                ).encryptedData = {
+                    ...ENCRYPTED_DATA,
+                    version: ENCRYPTION_VERSION + 1,
+                };
 
                 return tables;
             },
