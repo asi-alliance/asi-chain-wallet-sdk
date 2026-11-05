@@ -1,4 +1,4 @@
-import Account from "@domains/Account";
+import Account, { IAccountRecord } from "@domains/Account";
 import ItemManager from "@services/ItemManager";
 import KeyDerivationService from "@services/KeyDerivation";
 import Wallet, { IImportKeyfileWalletPayload } from "@domains/Wallet";
@@ -20,6 +20,8 @@ export interface IWalletMetadata {
     signerId: string;
     type: WalletTypes;
     accounts: IAccountMetadata[];
+    // TODO(next-major): Make hiddenAccounts required.
+    hiddenAccounts?: IAccountMetadata[];
 }
 
 export interface ICreateHDWalletParams {
@@ -114,7 +116,9 @@ export default class WalletManager extends ItemManager<Wallet> {
     public async deletePersisted(wallet: Wallet): Promise<void> {
         const signerId: string = wallet.getSigner().getId();
 
-        const accountIds: string[] = Array.from(wallet.getAccountsMap().keys());
+        const accountIds: string[] = (
+            await StorageManager.getAccountsBySignerId(signerId)
+        ).map((accountRecord: IAccountRecord) => accountRecord.id);
 
         if (accountIds.length) {
             await StorageManager.deleteMultipleAccounts(accountIds);
@@ -208,6 +212,20 @@ export default class WalletManager extends ItemManager<Wallet> {
         return currentWallet.getAccount(accountId);
     }
 
+    private static toAccountsMetadata(
+        accounts: IAccountRecord[],
+    ): IAccountMetadata[] {
+        return accounts
+            .map((account: IAccountRecord) => ({
+                id: account.id,
+                name: account.name,
+                index: account.index,
+            }))
+            .sort((first: IAccountMetadata, second: IAccountMetadata) =>
+                KeyDerivationService.compareIndexes(first.index, second.index),
+            );
+    }
+
     public async getPublicWalletsMetadata(): Promise<IWalletMetadata[]> {
         const walletsData: IWalletStorageData[] =
             await StorageManager.getWallets();
@@ -215,18 +233,12 @@ export default class WalletManager extends ItemManager<Wallet> {
         return walletsData.map(({ signer, accounts }: IWalletStorageData) => ({
             signerId: signer.id,
             type: signer.type,
-            accounts: accounts
-                .map((account) => ({
-                    id: account.id,
-                    name: account.name,
-                    index: account.index,
-                }))
-                .sort((first: IAccountMetadata, second: IAccountMetadata) =>
-                    KeyDerivationService.compareIndexes(
-                        first.index,
-                        second.index,
-                    ),
-                ),
+            accounts: WalletManager.toAccountsMetadata(
+                accounts.filter((account: IAccountRecord) => !account.hidden),
+            ),
+            hiddenAccounts: WalletManager.toAccountsMetadata(
+                accounts.filter((account: IAccountRecord) => account.hidden),
+            ),
         }));
     }
 

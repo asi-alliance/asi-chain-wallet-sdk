@@ -126,6 +126,10 @@ export default class Wallet {
         return this.accountManager.getAccountsMap();
     }
 
+    public getHiddenAccounts(): Account[] {
+        return this.accountManager.getHiddenAccounts();
+    }
+
     public getAccount(id: string): Account {
         const account: Account | null = this.accountManager.getAccount(id);
 
@@ -157,7 +161,8 @@ export default class Wallet {
     private getDerivationIndex(initialHDPath: Bip44Path): number | null {
         const initialAccountIndex = initialHDPath.getIndex();
 
-        const indexes = this.getAccounts()
+        const indexes = this.accountManager
+            .getAllAccounts()
             .map((account: Account) => account.getIndex())
             .filter((index: number | null): index is number => index !== null);
 
@@ -370,6 +375,10 @@ export default class Wallet {
                 },
                 secretProvider,
             );
+
+            if (record.hidden) {
+                account.setHidden(true);
+            }
 
             accountsMap.set(account.getId(), account);
         }

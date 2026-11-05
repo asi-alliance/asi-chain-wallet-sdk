@@ -68,7 +68,7 @@ export default class AccountManager extends ItemManager<Account> {
     }
 
     public update(id: string, payload: TEditableAccountOptions): void {
-        const account: Account | null = this.get(id);
+        const account: Account | null = this.getAccount(id);
 
         if (!account) {
             console.error("Cannot update missing account");
@@ -80,14 +80,33 @@ export default class AccountManager extends ItemManager<Account> {
     }
 
     public getAccounts(): Account[] {
+        return this.getByFilter((account: Account) => !account.isHidden());
+    }
+
+    public getHiddenAccounts(): Account[] {
+        return this.getByFilter((account: Account) => account.isHidden());
+    }
+
+    public getAllAccounts(): Account[] {
         return this.getAll();
     }
 
     public getAccountsMap(): Map<string, Account> {
-        return this.getMap();
+        return new Map(
+            this.getAccounts().map((account: Account) => [
+                account.getId(),
+                account,
+            ]),
+        );
     }
 
     public getAccount(id: string): Account | null {
-        return this.get(id);
+        const account: Account | null = this.get(id);
+
+        if (account?.isHidden()) {
+            return null;
+        }
+
+        return account;
     }
 }
