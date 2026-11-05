@@ -4,18 +4,27 @@ import {
     StorageMetadataStorageRepository,
 } from "@domains/StorageMetadataStorageRepository";
 import {
+    CorruptedDataError,
+    InvalidPasswordError,
     PersistedStorageImportError,
     PersistedStorageImportRejectedError,
     PersistedStorageImportRejection,
     UnknownErrorReason,
+    UnsupportedEncryptionVersionError,
 } from "@domains/CustomError";
+import SecretsProvider from "@domains/SecretsProvider";
 import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
-import { IPersistedStorageDump } from "@services/ExportPersistedStorageService";
+import CryptoService from "@services/Crypto";
+import {
+    IPersistedStorageDump,
+    TPersistedStorageTables,
+} from "@services/ExportPersistedStorageService";
 import { PERSISTED_STORAGE_TABLES } from "@services/StorageBootstrap";
 import {
     getErrorMessage,
     TPersistedStorageDumpValidation,
     validatePersistedStorageDump,
+    validatePersistedStorageTables,
 } from "@utils/index";
 
 export default class ImportPersistedStorageService {
@@ -39,7 +48,7 @@ export default class ImportPersistedStorageService {
                 : source;
 
         const validation: TPersistedStorageDumpValidation =
-            validatePersistedStorageDump(dumpSource, PERSISTED_STORAGE_TABLES);
+            validatePersistedStorageDump(dumpSource);
 
         if (!validation.isValid) {
             throw new PersistedStorageImportRejectedError(
@@ -49,6 +58,68 @@ export default class ImportPersistedStorageService {
         }
 
         return dumpSource as IPersistedStorageDump;
+    }
+
+    private static async decryptTablesSource(
+        dump: IPersistedStorageDump,
+        passwordProvider: SecretsProvider,
+    ): Promise<string> {
+        try {
+            return await CryptoService.decryptWithPassword(
+                dump.encryptedTables,
+                passwordProvider.getSecret().password,
+            );
+        } catch (error: unknown) {
+            if (error instanceof InvalidPasswordError) {
+                throw new PersistedStorageImportRejectedError(
+                    PersistedStorageImportRejection.INVALID_PASSWORD,
+                    "The backup password does not match the dump",
+                );
+            }
+
+            if (
+                error instanceof CorruptedDataError ||
+                error instanceof UnsupportedEncryptionVersionError
+            ) {
+                throw new PersistedStorageImportRejectedError(
+                    PersistedStorageImportRejection.INVALID_FORMAT,
+                    `Dump tables cannot be decrypted: ${error.message}`,
+                );
+            }
+
+            throw new PersistedStorageImportError(
+                getErrorMessage(error, UnknownErrorReason.CRYPTO),
+                error,
+                [],
+            );
+        }
+    }
+
+    public static async decryptPersistedStorageTables(
+        dump: IPersistedStorageDump,
+        passwordProvider: SecretsProvider,
+    ): Promise<TPersistedStorageTables> {
+        const tablesSource: unknown = ImportPersistedStorageService.fromJSON(
+            await ImportPersistedStorageService.decryptTablesSource(
+                dump,
+                passwordProvider,
+            ),
+        );
+
+        const validation: TPersistedStorageDumpValidation =
+            validatePersistedStorageTables(
+                tablesSource,
+                PERSISTED_STORAGE_TABLES,
+            );
+
+        if (!validation.isValid) {
+            throw new PersistedStorageImportRejectedError(
+                validation.rejection,
+                validation.error,
+            );
+        }
+
+        return tablesSource as TPersistedStorageTables;
     }
 
     private static async assertStorageIsEmpty(
@@ -69,7 +140,7 @@ export default class ImportPersistedStorageService {
 
     private static async writeTables(
         storage: ITableService<ITableRecord>,
-        tables: Record<string, ITableRecord[]>,
+        tables: TPersistedStorageTables,
     ): Promise<void> {
         for (const [tableName, records] of Object.entries(tables)) {
             if (!(await storage.tableExists(tableName))) {
@@ -125,10 +196,17 @@ export default class ImportPersistedStorageService {
 
     public static async importPersistedStorage(
         source: unknown,
+        passwordProvider: SecretsProvider,
         options?: IStorageFabricOptions,
     ): Promise<void> {
         const dump: IPersistedStorageDump =
             ImportPersistedStorageService.parsePersistedStorageDump(source);
+
+        const tables: TPersistedStorageTables =
+            await ImportPersistedStorageService.decryptPersistedStorageTables(
+                dump,
+                passwordProvider,
+            );
 
         const storage: ITableService<ITableRecord> = storageFabric(options);
 
@@ -147,7 +225,7 @@ export default class ImportPersistedStorageService {
             async () => {
                 await ImportPersistedStorageService.writeTables(
                     storage,
-                    dump.tables,
+                    tables,
                 );
 
                 await StorageMetadataStorageRepository.getInstance(
@@ -157,7 +235,7 @@ export default class ImportPersistedStorageService {
             () =>
                 ImportPersistedStorageService.clearTables(
                     storage,
-                    Object.keys(dump.tables),
+                    Object.keys(tables),
                 ),
         );
     }

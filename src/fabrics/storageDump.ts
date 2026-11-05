@@ -1,8 +1,10 @@
-import { ITableRecord } from "@domains/TableService";
 import { IStorageMetadataRecord } from "@domains/StorageMetadataStorageRepository";
+import SecretsProvider from "@domains/SecretsProvider";
+import CryptoService from "@services/Crypto";
 import type {
     IPersistedStorageDump,
     IPersistedStorageInterruptedMigration,
+    TPersistedStorageTables,
 } from "@services/ExportPersistedStorageService";
 import {
     BASELINE_STORAGE_VERSION,
@@ -12,7 +14,8 @@ import {
 
 export interface ICreatePersistedStorageDumpPayload {
     schemaRecord: IStorageMetadataRecord | null;
-    tables: Record<string, ITableRecord[]>;
+    tables: TPersistedStorageTables;
+    passwordProvider: SecretsProvider;
 }
 
 const resolveInterruptedMigration = (
@@ -30,14 +33,18 @@ const resolveInterruptedMigration = (
     };
 };
 
-export const createPersistedStorageDump = ({
+export const createPersistedStorageDump = async ({
     schemaRecord,
     tables,
-}: ICreatePersistedStorageDumpPayload): IPersistedStorageDump => ({
+    passwordProvider,
+}: ICreatePersistedStorageDumpPayload): Promise<IPersistedStorageDump> => ({
     type: PERSISTED_STORAGE_DUMP_TYPE,
     version: PERSISTED_STORAGE_DUMP_VERSION,
     schemaVersion: schemaRecord?.version ?? BASELINE_STORAGE_VERSION,
     interruptedMigration: resolveInterruptedMigration(schemaRecord),
     createdAt: new Date().toISOString(),
-    tables,
+    encryptedTables: await CryptoService.encryptWithPassword(
+        JSON.stringify(tables),
+        passwordProvider.getSecret().password,
+    ),
 });

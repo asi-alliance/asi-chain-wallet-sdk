@@ -598,7 +598,6 @@ const validateDumpTablesContent = (
 
 export const validatePersistedStorageDump = (
     source: unknown,
-    tableNames: IPersistedStorageTableNames,
 ): TPersistedStorageDumpValidation => {
     if (!isRecord(source)) {
         return rejectDump(
@@ -614,8 +613,22 @@ export const validatePersistedStorageDump = (
         return envelopeValidation;
     }
 
+    if (!isEncryptedData(source.encryptedTables)) {
+        return rejectDump(
+            PersistedStorageImportRejection.INVALID_FORMAT,
+            "Dump has no encrypted tables",
+        );
+    }
+
+    return VALID_DUMP;
+};
+
+export const validatePersistedStorageTables = (
+    source: unknown,
+    tableNames: IPersistedStorageTableNames,
+): TPersistedStorageDumpValidation => {
     const tablesReading: TDumpTablesReading = readDumpTables(
-        source.tables,
+        source,
         Object.values(tableNames),
     );
 

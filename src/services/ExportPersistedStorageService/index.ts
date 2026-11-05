@@ -8,14 +8,18 @@ import {
     PersistedStorageExportError,
     UnknownErrorReason,
 } from "@domains/CustomError";
+import SecretsProvider from "@domains/SecretsProvider";
 import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
 import { createPersistedStorageDump } from "@fabrics/storageDump";
-import { getErrorMessage } from "@utils/index";
+import { EncryptedData } from "@services/Crypto";
+import { getErrorMessage, isNonEmptyString } from "@utils/index";
 
 export interface IPersistedStorageInterruptedMigration {
     pendingVersion: number;
     rollbackFailed: boolean;
 }
+
+export type TPersistedStorageTables = Record<string, ITableRecord[]>;
 
 export interface IPersistedStorageDump {
     type: string;
@@ -23,7 +27,7 @@ export interface IPersistedStorageDump {
     schemaVersion: number;
     interruptedMigration: IPersistedStorageInterruptedMigration | null;
     createdAt: string;
-    tables: Record<string, ITableRecord[]>;
+    encryptedTables: EncryptedData;
 }
 
 export default class ExportPersistedStorageService {
@@ -44,8 +48,8 @@ export default class ExportPersistedStorageService {
     private static async readDataTables(
         storage: ITableService<ITableRecord>,
         tableNames: string[],
-    ): Promise<Record<string, ITableRecord[]>> {
-        const tables: Record<string, ITableRecord[]> = {};
+    ): Promise<TPersistedStorageTables> {
+        const tables: TPersistedStorageTables = {};
 
         for (const tableName of tableNames) {
             if (tableName !== STORAGE_METADATA_DATA_KEY) {
@@ -57,6 +61,7 @@ export default class ExportPersistedStorageService {
     }
 
     private static async readDump(
+        passwordProvider: SecretsProvider,
         options?: IStorageFabricOptions,
     ): Promise<IPersistedStorageDump> {
         const storage: ITableService<ITableRecord> = storageFabric(options);
@@ -74,14 +79,26 @@ export default class ExportPersistedStorageService {
                 storage,
                 tableNames,
             ),
+            passwordProvider,
         });
     }
 
     public static async exportPersistedStorage(
+        passwordProvider: SecretsProvider,
         options?: IStorageFabricOptions,
     ): Promise<IPersistedStorageDump> {
+        if (!isNonEmptyString(passwordProvider.getSecret().password)) {
+            throw new PersistedStorageExportError(
+                "the backup password is empty",
+                null,
+            );
+        }
+
         try {
-            return await ExportPersistedStorageService.readDump(options);
+            return await ExportPersistedStorageService.readDump(
+                passwordProvider,
+                options,
+            );
         } catch (error: unknown) {
             throw new PersistedStorageExportError(
                 getErrorMessage(error, UnknownErrorReason.STORAGE),
