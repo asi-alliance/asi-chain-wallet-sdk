@@ -27,6 +27,8 @@ export enum CustomErrorCode {
     STORAGE_OPERATION_FAILED = "STORAGE_OPERATION_FAILED",
     API_REQUEST_FAILED = "API_REQUEST_FAILED",
     DEPLOY_SUBMISSION_REJECTED = "DEPLOY_SUBMISSION_REJECTED",
+    DEPLOY_ADMISSION_REFUSED = "DEPLOY_ADMISSION_REFUSED",
+    DEPLOY_SUBMISSION_UNKNOWN = "DEPLOY_SUBMISSION_UNKNOWN",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
@@ -229,13 +231,36 @@ export class ApiRequestError extends CustomError {
 }
 
 export class DeploySubmissionRejectedError extends ApiRequestError {
-    constructor(operation: string, reason: string) {
-        super(
-            ApiSource.NODE,
-            operation,
-            reason,
-            CustomErrorCode.DEPLOY_SUBMISSION_REJECTED,
-            400,
+    constructor(
+        operation: string,
+        reason: string,
+        code: CustomErrorCode = CustomErrorCode.DEPLOY_SUBMISSION_REJECTED,
+        status: number = 400,
+    ) {
+        super(ApiSource.NODE, operation, reason, code, status);
+    }
+}
+
+export type DeployAdmissionCode = "deploy_pool_busy" | "deploy_admission_busy";
+
+export class DeployAdmissionRefusedError extends DeploySubmissionRejectedError {
+    public readonly retryable = true;
+
+    constructor(
+        operation: string,
+        reason: string,
+        public readonly admissionCode: DeployAdmissionCode,
+        public readonly deployId: string,
+    ) {
+        super(operation, reason, CustomErrorCode.DEPLOY_ADMISSION_REFUSED, 503);
+    }
+}
+
+export class DeploySubmissionUnknownError extends ApiRequestError {
+    constructor(operation: string, reason: string, public readonly deployId: string) {
+        super(ApiSource.NODE, operation,
+            `Submission outcome for deploy ${deployId} is unknown: ${reason}. Check its status before retrying.`,
+            CustomErrorCode.DEPLOY_SUBMISSION_UNKNOWN,
         );
     }
 }

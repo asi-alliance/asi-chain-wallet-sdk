@@ -777,3 +777,11 @@ This project is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) fi
 ---
 
 ASI Alliance founding members: Fetch.ai, SingularityNET, and CUDOS
+
+## Rust deploy admission outcomes
+
+For [node #789](https://github.com/F1R3FLY-io/f1r3node-rust/pull/789), the SDK retries only HTTP 503 responses whose JSON `error` is exactly `deploy_pool_busy` or `deploy_admission_busy`. It sends the same signed payload to the same captured node, for at most three attempts with 250 ms and 500 ms delays. Submission uses the configured HTTP timeout, or 30 seconds by default.
+
+After exhausted explicit refusals, `DeployAdmissionRefusedError` carries `admissionCode`, `deployId` and `retryable=true`. It extends `DeploySubmissionRejectedError`, so reservation-aware operations release the unaccepted reservation. Finalization watching starts only after accepted submission.
+
+A timeout, dropped response, unrelated 503, or unexpected acceptance ID produces `DeploySubmissionUnknownError`, without automatic resubmission. Its signed deploy ID and reservation are retained for reconciliation. Callers must distinguish this state from a known refusal before creating a new transfer.
