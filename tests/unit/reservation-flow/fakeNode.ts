@@ -11,6 +11,7 @@ const LATEST_BLOCK_NUMBER: number = 100;
 
 export type TSubmitOutcome =
     | { kind: "accepted" }
+    | { kind: "admission"; code: "deploy_pool_busy" | "deploy_admission_busy" }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }
     | { kind: "dropped" };
@@ -98,6 +99,12 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
             response.writeHead(200, { "content-type": "text/plain" });
             response.end(`Success! DeployId is: ${deploy.signature}`);
 
+            return;
+        }
+
+        if (submitOutcome.kind === "admission") {
+            response.writeHead(503, { "content-type": "application/json" });
+            response.end(JSON.stringify({ error: submitOutcome.code, message: "deploy not accepted" }));
             return;
         }
 

@@ -12,6 +12,7 @@ import {
     ApiRequestError,
     CustomErrorCode,
     DeploySubmissionRejectedError,
+    DeployAdmissionRefusedError,
     DomainClosedError,
     WalletAction,
     WalletActionInProgressError,
@@ -254,6 +255,23 @@ test("an explicit node refusal rolls the reservation back", async () => {
 
     await funded.client.close();
 });
+
+for (const code of ["deploy_pool_busy", "deploy_admission_busy"] as const) {
+    test(`explicit ${code} releases persisted and in-memory reservations after bounded retries`, async () => {
+        const funded = await createFundedWallet();
+        fakeNode.setSubmitOutcome({ kind: "admission", code });
+        const error = await captureError(funded.transfer);
+        assert.ok(error instanceof DeployAdmissionRefusedError);
+        assert.equal(error.admissionCode, code);
+        const submitted = fakeNode.getSubmittedDeploys().filter((deploy) => deploy.signature === error.deployId);
+        assert.equal(submitted.length, 3);
+        assert.equal(new Set(submitted.map((deploy) => deploy.signature)).size, 1);
+        assert.equal((await funded.client.getReservations(funded.walletId)).length, 0);
+        assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+        assert.equal(await funded.client.getAvailableBalance(funded.walletId, funded.accountId), BALANCE);
+        await funded.client.close();
+    });
+}
 
 test("a dropped connection keeps the reservation and the held funds", async () => {
     console.log("\n=== DROPPED CONNECTION KEEPS THE RESERVATION ===");
