@@ -186,6 +186,40 @@ export default class WalletManager extends ItemManager<Wallet> {
         return removedAccount;
     }
 
+    public async hideAccount(
+        walletId: string,
+        accountId: string,
+    ): Promise<Account> {
+        const currentWallet: Wallet | null = this.get(walletId);
+
+        if (!currentWallet) {
+            throw new Error("WalletManager.hideAccount: unknown wallet id");
+        }
+
+        const hiddenAccount: Account = currentWallet.hideAccount(accountId);
+
+        await StorageManager.updateAccount(accountId, { hidden: true });
+
+        return hiddenAccount;
+    }
+
+    public async unhideAccount(
+        walletId: string,
+        accountId: string,
+    ): Promise<Account> {
+        const currentWallet: Wallet | null = this.get(walletId);
+
+        if (!currentWallet) {
+            throw new Error("WalletManager.unhideAccount: unknown wallet id");
+        }
+
+        const restoredAccount: Account = currentWallet.unhideAccount(accountId);
+
+        await StorageManager.updateAccount(accountId, { hidden: false });
+
+        return restoredAccount;
+    }
+
     public async renameAccount(
         walletId: string,
         accountId: string,
