@@ -100,6 +100,16 @@ export default class AccountManager extends ItemManager<Account> {
         );
     }
 
+    public getHiddenAccount(id: string): Account | null {
+        const account: Account | null = this.get(id);
+
+        if (!account?.isHidden()) {
+            return null;
+        }
+
+        return account;
+    }
+
     public getAccount(id: string): Account | null {
         const account: Account | null = this.get(id);
 

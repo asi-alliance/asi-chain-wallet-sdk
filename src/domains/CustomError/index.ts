@@ -32,6 +32,7 @@ export enum CustomErrorCode {
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
     UNKNOWN_ACCOUNT = "UNKNOWN_ACCOUNT",
     ACCOUNT_BUSY = "ACCOUNT_BUSY",
+    ACCOUNT_HIDE_REJECTED = "ACCOUNT_HIDE_REJECTED",
 }
 
 export enum WalletAction {
@@ -60,6 +61,11 @@ export enum StorageMigrationInterruptionReason {
     ROLLBACK_FAILED = "ROLLBACK_FAILED",
     MIGRATION_NOT_RESUMABLE = "MIGRATION_NOT_RESUMABLE",
     MIGRATION_NOT_FOUND = "MIGRATION_NOT_FOUND",
+}
+
+export enum AccountHideRejectionReason {
+    LAST_VISIBLE_ACCOUNT = "LAST_VISIBLE_ACCOUNT",
+    ROOT_ACCOUNT = "ROOT_ACCOUNT",
 }
 
 export enum UnknownErrorReason {
@@ -385,6 +391,25 @@ export class AccountBusyError extends CustomError {
 
         this.walletId = walletId;
         this.accountId = accountId;
+    }
+}
+
+export class AccountHideRejectedError extends CustomError {
+    public readonly walletId: string;
+    public readonly accountId: string;
+    public readonly reason: AccountHideRejectionReason;
+
+    constructor(
+        walletId: string,
+        accountId: string,
+        reason: AccountHideRejectionReason,
+        message: string = `Account ${accountId} of the wallet ${walletId} cannot be hidden (${reason})`,
+    ) {
+        super(CustomErrorCode.ACCOUNT_HIDE_REJECTED, message, 409);
+
+        this.walletId = walletId;
+        this.accountId = accountId;
+        this.reason = reason;
     }
 }
 
