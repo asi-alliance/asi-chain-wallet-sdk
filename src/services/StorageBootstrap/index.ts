@@ -8,14 +8,17 @@ import { IStorageFabricOptions } from "@fabrics/storage";
 import StorageManager from "@services/StorageManager";
 import InsensitiveCacheStorageManager from "@services/InsensitiveCacheStorageManager";
 import StorageMigrationRunner from "@services/StorageMigrationRunner";
+import type { IPersistedStorageTableNames } from "@utils/validators";
 
-const MIGRATABLE_TABLES: string[] = [
-    SIGNERS_DATA_KEY,
-    ACCOUNTS_DATA_KEY,
-    TRANSACTION_RESERVATIONS_DATA_KEY,
-    CUSTOM_NETWORKS_DATA_KEY,
-    INSENSITIVE_CACHE_TABLE_KEY,
-];
+export const PERSISTED_STORAGE_TABLES: IPersistedStorageTableNames = {
+    signers: SIGNERS_DATA_KEY,
+    accounts: ACCOUNTS_DATA_KEY,
+    transactionReservations: TRANSACTION_RESERVATIONS_DATA_KEY,
+    customNetworks: CUSTOM_NETWORKS_DATA_KEY,
+    insensitiveCache: INSENSITIVE_CACHE_TABLE_KEY,
+};
+
+const MIGRATABLE_TABLES: string[] = Object.values(PERSISTED_STORAGE_TABLES);
 
 export interface IStorageBootstrapOptions {
     storageOptions?: IStorageFabricOptions;

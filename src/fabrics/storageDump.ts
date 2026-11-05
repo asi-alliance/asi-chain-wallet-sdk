@@ -3,7 +3,7 @@ import { IStorageMetadataRecord } from "@domains/StorageMetadataStorageRepositor
 import type {
     IPersistedStorageDump,
     IPersistedStorageInterruptedMigration,
-} from "@services/PersistedStorageTransfer";
+} from "@services/ExportPersistedStorageService";
 import {
     BASELINE_STORAGE_VERSION,
     PERSISTED_STORAGE_DUMP_TYPE,

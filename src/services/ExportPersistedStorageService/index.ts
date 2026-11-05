@@ -26,7 +26,7 @@ export interface IPersistedStorageDump {
     tables: Record<string, ITableRecord[]>;
 }
 
-export default class PersistedStorageTransfer {
+export default class ExportPersistedStorageService {
     private static async readSchemaRecord(
         storage: ITableService<ITableRecord>,
         tableNames: string[],
@@ -66,22 +66,22 @@ export default class PersistedStorageTransfer {
         const tableNames: string[] = await storage.getTableNames();
 
         return createPersistedStorageDump({
-            schemaRecord: await PersistedStorageTransfer.readSchemaRecord(
+            schemaRecord: await ExportPersistedStorageService.readSchemaRecord(
                 storage,
                 tableNames,
             ),
-            tables: await PersistedStorageTransfer.readDataTables(
+            tables: await ExportPersistedStorageService.readDataTables(
                 storage,
                 tableNames,
             ),
         });
     }
 
-    public static async export(
+    public static async exportPersistedStorage(
         options?: IStorageFabricOptions,
     ): Promise<IPersistedStorageDump> {
         try {
-            return await PersistedStorageTransfer.readDump(options);
+            return await ExportPersistedStorageService.readDump(options);
         } catch (error: unknown) {
             throw new PersistedStorageExportError(
                 getErrorMessage(error, UnknownErrorReason.STORAGE),
