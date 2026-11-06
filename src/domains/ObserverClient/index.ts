@@ -6,8 +6,8 @@ export interface IBalanceResponse {
 }
 
 export interface IBlockDto {
-    blockInfo: string;
-    blockNumber: number;
+    blockInfo: string | { blockNumber: number | string; blockHash?: string };
+    blockNumber?: number | string;
 }
 
 export type TBlocksView = "summary" | "full";
