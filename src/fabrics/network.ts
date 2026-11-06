@@ -4,6 +4,7 @@ import {
     INetworkUpdate,
     NetworkName,
 } from "@domains/Network";
+import { snapshotNetworkConfig } from "@utils/nativeToken";
 import {
     ensureValid,
     generateRandomId,
@@ -35,6 +36,7 @@ export const createNetworkRecord = ({
     config,
     networks,
 }: ICreateNetworkRecordPayload): INetworkRecord => {
+    config = snapshotNetworkConfig(config);
     ensureValid(validateNetworkConfigUrls(config, { allowEmpty: false }), {
         context: "createNetworkRecord",
     });
@@ -77,14 +79,14 @@ export const createUpdatedNetworkRecord = ({
 
     const name: NetworkName = update.name ?? record.name;
 
-    const config: INetworkConfig = update.config
+    const config: INetworkConfig = snapshotNetworkConfig(update.config
         ? {
               ...record.config,
               ...update.config,
               nodeApiProfile:
                   update.config.nodeApiProfile ?? record.config.nodeApiProfile,
           }
-        : record.config;
+        : record.config);
 
     ensureValid(
         validateNetworkUniqueness(

@@ -1,5 +1,7 @@
 import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import { generateRandomId } from "@utils/index";
+import { getNativeTokenDecimals } from "@utils/nativeToken";
+import type { INetworkConfig } from "@domains/Network";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;
@@ -46,4 +48,11 @@ export default class Asset {
 export const DEFAULT_ASSET: Asset = new Asset({
     id: generateRandomId(),
     name: "ASI",
+});
+
+// A new descriptor avoids mutating DEFAULT_ASSET when the selected network changes.
+export const getNativeAsset = (config: INetworkConfig): Asset => new Asset({
+    id: DEFAULT_ASSET.getId(),
+    name: DEFAULT_ASSET.getName(),
+    decimals: getNativeTokenDecimals(config),
 });

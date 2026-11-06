@@ -34,6 +34,8 @@ export interface Transaction {
     contractCode?: string;
     networkId: NetworkId;
     detectedBy?: TransactionDetectedBy;
+    /** Precision recorded with this operation, when known. Never inferred from the active network. */
+    nativeTokenDecimals?: number;
 }
 
 export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
@@ -58,6 +60,7 @@ export type TSerializedTransactionReservationDetails = Omit<
 };
 
 export interface ITransactionReservationPrivateData {
+    nativeTokenDecimals?: number;
     accountId: string;
     pendingAmount: string;
     expirationTime: number;

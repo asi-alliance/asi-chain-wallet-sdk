@@ -64,7 +64,11 @@ export function mapRawDeploymentToTransaction(
 function toOptionalString(
     value: number | string | undefined,
 ): string | undefined {
-    return value === undefined ? undefined : String(value);
+    if (typeof value === "string") {
+        return /^-?(0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? value : undefined;
+    }
+    return typeof value === "number" && Number.isSafeInteger(value)
+        ? String(value) : undefined;
 }
 
 function toDate(value: number | string | undefined): Date {
