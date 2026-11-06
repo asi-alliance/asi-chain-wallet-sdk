@@ -20,6 +20,7 @@ import {
     TPersistedStorageTables,
 } from "@services/ExportPersistedStorageService";
 import { PERSISTED_STORAGE_TABLES } from "@services/StorageBootstrap";
+import SerialOperationQueue from "@services/SerialOperationQueue";
 import {
     getErrorMessage,
     TPersistedStorageDumpValidation,
@@ -28,6 +29,9 @@ import {
 } from "@utils/index";
 
 export default class ImportPersistedStorageService {
+    private static readonly importQueue: SerialOperationQueue =
+        new SerialOperationQueue();
+
     public static fromJSON(source: string): unknown {
         try {
             return JSON.parse(source);
@@ -210,33 +214,35 @@ export default class ImportPersistedStorageService {
 
         const storage: ITableService<ITableRecord> = storageFabric(options);
 
-        await ImportPersistedStorageService.runImportStep(
-            async () => {
-                await storage.init();
+        await ImportPersistedStorageService.importQueue.run(async () => {
+            await ImportPersistedStorageService.runImportStep(
+                async () => {
+                    await storage.init();
 
-                await ImportPersistedStorageService.assertStorageIsEmpty(
-                    storage,
-                );
-            },
-            async () => [],
-        );
+                    await ImportPersistedStorageService.assertStorageIsEmpty(
+                        storage,
+                    );
+                },
+                async () => [],
+            );
 
-        await ImportPersistedStorageService.runImportStep(
-            async () => {
-                await ImportPersistedStorageService.writeTables(
-                    storage,
-                    tables,
-                );
+            await ImportPersistedStorageService.runImportStep(
+                async () => {
+                    await ImportPersistedStorageService.writeTables(
+                        storage,
+                        tables,
+                    );
 
-                await StorageMetadataStorageRepository.getInstance(
-                    options,
-                ).restoreVersion(dump.schemaVersion);
-            },
-            () =>
-                ImportPersistedStorageService.clearTables(
-                    storage,
-                    Object.keys(tables),
-                ),
-        );
+                    await StorageMetadataStorageRepository.getInstance(
+                        options,
+                    ).restoreVersion(dump.schemaVersion);
+                },
+                () =>
+                    ImportPersistedStorageService.clearTables(
+                        storage,
+                        Object.keys(tables),
+                    ),
+            );
+        });
     }
 }
