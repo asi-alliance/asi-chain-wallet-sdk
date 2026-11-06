@@ -5,6 +5,7 @@ import NetworksPage from "@pages/NetworksPage";
 import DeployPage from "@pages/DeployPage";
 import ReservationsPage from "@pages/ReservationsPage";
 import DeployUtilsPage from "@pages/DeployUtilsPage";
+import StoragePage from "@pages/StoragePage";
 export const PAGE_ROUTES = [
     {
         path: PATHS.WALLETS_PATH,
@@ -35,5 +36,10 @@ export const PAGE_ROUTES = [
         path: PATHS.RESERVATIONS_PATH,
         label: "Reservations",
         Page: ReservationsPage,
+    },
+    {
+        path: PATHS.STORAGE_PATH,
+        label: "Storage",
+        Page: StoragePage,
     },
 ] as const;
