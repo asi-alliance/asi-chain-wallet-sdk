@@ -48,9 +48,19 @@ const WALLET_PASSWORD: string = "wallet-password";
 const BACKUP_PASSWORD: string = "backup-password";
 const CUSTOM_NETWORK_NAME: string = "Custom backup network";
 const ACCOUNT_NAMES: string[] = ["Imported account", "Main account", "Second account"];
+const SEEDED_WALLETS_COUNT: number = 2;
+const FOREIGN_SIGNER_ID: string = "foreign-signer";
 
 const createPasswordProvider = (password: string): SecretsProvider =>
     new SecretsProvider(() => ({ password }));
+
+const selectRejections = (
+    results: PromiseSettledResult<void>[],
+): PromiseRejectedResult[] =>
+    results.filter(
+        (result: PromiseSettledResult<void>): result is PromiseRejectedResult =>
+            result.status === "rejected",
+    );
 
 const isRejectedWith =
     (rejection: PersistedStorageImportRejection) =>
@@ -135,6 +145,18 @@ export const runPersistedStorageDumpContract = (
 
     const countRecords = async (tableName: string): Promise<number> =>
         (await storage.getAll(tableName)).length;
+
+    const removeImportedAccount = async (): Promise<void> => {
+        const importedAccount: ITableRecord | undefined = (
+            await storage.getAll(ACCOUNTS_DATA_KEY)
+        ).find(
+            (account: ITableRecord) => account.name === "Imported account",
+        );
+
+        assert.ok(importedAccount);
+
+        await storage.delete(ACCOUNTS_DATA_KEY, importedAccount.id);
+    };
 
     test("export reads a storage that a client refuses as newer", async () => {
         await seedStorage();
@@ -415,5 +437,114 @@ export const runPersistedStorageDumpContract = (
         ]) {
             assert.equal(await countRecords(tableName), 0, tableName);
         }
+    });
+
+    test("a failed import removes only the records it wrote", async () => {
+        await seedStorage();
+
+        const dump: IPersistedStorageDump = await exportStorage();
+
+        await clearTables(true);
+
+        const insertMany: ITableService<ITableRecord>["insertMany"] =
+            storage.insertMany;
+
+        storage.insertMany = async (
+            tableName: string,
+            records: ITableRecord[],
+        ): Promise<void> => {
+            if (tableName === ACCOUNTS_DATA_KEY) {
+                await storage.insert(SIGNERS_DATA_KEY, {
+                    id: FOREIGN_SIGNER_ID,
+                });
+
+                throw new Error("disk is full");
+            }
+
+            await insertMany.call(storage, tableName, records);
+        };
+
+        try {
+            await assert.rejects(
+                () => importStorage(dump),
+                PersistedStorageImportError,
+            );
+        } finally {
+            storage.insertMany = insertMany;
+        }
+
+        assert.deepEqual(
+            (await storage.getAll(SIGNERS_DATA_KEY)).map(
+                (signer: ITableRecord) => signer.id,
+            ),
+            [FOREIGN_SIGNER_ID],
+        );
+    });
+
+    test("concurrent imports of one dump keep the first import", async () => {
+        await seedStorage();
+
+        const dump: IPersistedStorageDump = await exportStorage();
+
+        await clearTables(true);
+
+        const rejections: PromiseRejectedResult[] = selectRejections(
+            await Promise.allSettled([importStorage(dump), importStorage(dump)]),
+        );
+
+        assert.equal(rejections.length, 1);
+        assert.ok(
+            isRejectedWith(PersistedStorageImportRejection.STORAGE_NOT_EMPTY)(
+                rejections[0].reason,
+            ),
+        );
+        assert.equal(await countRecords(ACCOUNTS_DATA_KEY), ACCOUNT_NAMES.length);
+    });
+
+    test("concurrent imports of two dumps never merge them", async () => {
+        await seedStorage();
+
+        const firstDump: IPersistedStorageDump = await exportStorage();
+
+        await seedStorage();
+
+        const secondDump: IPersistedStorageDump = await exportStorage();
+
+        await clearTables(true);
+
+        const rejections: PromiseRejectedResult[] = selectRejections(
+            await Promise.allSettled([
+                importStorage(firstDump),
+                importStorage(secondDump),
+            ]),
+        );
+
+        assert.equal(rejections.length, 1);
+        assert.ok(
+            isRejectedWith(PersistedStorageImportRejection.STORAGE_NOT_EMPTY)(
+                rejections[0].reason,
+            ),
+        );
+        assert.equal(await countRecords(SIGNERS_DATA_KEY), SEEDED_WALLETS_COUNT);
+        assert.equal(await countRecords(ACCOUNTS_DATA_KEY), ACCOUNT_NAMES.length);
+    });
+
+    test("export refuses a storage that cannot be imported back", async () => {
+        await seedStorage();
+
+        await removeImportedAccount();
+
+        await assert.rejects(() => exportStorage(), PersistedStorageExportError);
+    });
+
+    test("export of a newer storage skips the import check", async () => {
+        await seedStorage();
+
+        await removeImportedAccount();
+        await metadataRepository.saveVersion(CURRENT_STORAGE_VERSION + 10);
+
+        const dump: IPersistedStorageDump = await exportStorage();
+
+        assert.equal(dump.schemaVersion, CURRENT_STORAGE_VERSION + 10);
     });
 };
