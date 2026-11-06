@@ -35,6 +35,7 @@ import {
     encodeBase58,
 } from "@utils/codec";
 import { isSameNetworkConfig } from "@utils/functions";
+import { getNativeTokenDecimals, isNativeTokenDecimals } from "@utils/nativeToken";
 import { isIntegerInRange } from "./primitives";
 
 const { blake2bHex } = blakejs;
@@ -283,6 +284,9 @@ export const validatePositiveAmount = (
 export const validateReservationPayload = (
     payload: TCreateTransactionReservationPayload,
 ): { isValid: boolean; error?: string } => {
+    if ("nativeTokenDecimals" in payload && !isNativeTokenDecimals(payload.nativeTokenDecimals)) {
+        return { isValid: false, error: "Invalid reservation native token decimals" };
+    }
     if (!payload.deployId.trim()) {
         return { isValid: false, error: "Deploy id is required" };
     }
@@ -360,6 +364,9 @@ export const validateReservationUpdateTarget = (
         };
     }
 
+    if (getNativeTokenDecimals(currentReservation) !== getNativeTokenDecimals(payload)) {
+        return { isValid: false, error: "Reservation precision cannot be changed" };
+    }
     return { isValid: true };
 };
 

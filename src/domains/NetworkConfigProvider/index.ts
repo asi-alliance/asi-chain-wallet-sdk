@@ -15,6 +15,7 @@ import {
     validateNodeApiProfile,
 } from "@utils/index";
 import { isNodeApiProfile } from "@utils/guards";
+import { getNativeTokenDecimals, snapshotNetworkConfig } from "@utils/nativeToken";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -27,6 +28,7 @@ export default class NetworkConfigProvider {
 
     public initialize(config: TNetworksConfig): void {
         Object.values(config).forEach((networkConfig: INetworkConfig) => {
+            getNativeTokenDecimals(networkConfig);
             ensureValid(
                 validateNetworkConfigUrls(networkConfig, { allowEmpty: true }),
                 { context: "NetworkConfigProvider.initialize" },
@@ -42,7 +44,7 @@ export default class NetworkConfigProvider {
                 {
                     id: name,
                     name,
-                    config: networkConfig,
+                    config: snapshotNetworkConfig(networkConfig),
                     isDefault: true,
                 },
             ]),
@@ -60,10 +62,11 @@ export default class NetworkConfigProvider {
                 return;
             }
 
+            getNativeTokenDecimals(record.config);
             this.networksRecords!.set(record.id, {
                 id: record.id,
                 name: record.name,
-                config: record.config,
+                config: snapshotNetworkConfig(record.config),
                 isDefault: false,
             });
         });
@@ -71,13 +74,16 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     public getAll(): INetworkRecord[] {
-        return Array.from(this.networksRecords!.values());
+        return Array.from(this.networksRecords!.values()).map((record) => ({
+            ...record, config: snapshotNetworkConfig(record.config),
+        }));
     }
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkExist
     public get(id: NetworkId): INetworkRecord {
-        return this.networksRecords!.get(id)!;
+        const record = this.networksRecords!.get(id)!;
+        return { ...record, config: snapshotNetworkConfig(record.config) };
     }
 
     @EnsureNetworkConfigProviderReady
@@ -88,6 +94,7 @@ export default class NetworkConfigProvider {
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
     public set(record: INetworkRecord): void {
+        getNativeTokenDecimals(record.config);
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },
@@ -107,7 +114,7 @@ export default class NetworkConfigProvider {
             { context: "NetworkConfigProvider.set" },
         );
 
-        this.networksRecords!.set(record.id, record);
+        this.networksRecords!.set(record.id, { ...record, config: snapshotNetworkConfig(record.config) });
     }
 
     @EnsureNetworkConfigProviderReady
@@ -115,6 +122,7 @@ export default class NetworkConfigProvider {
         name: NetworkName,
         networkConfig: INetworkConfig,
     ): INetworkRecord {
+        getNativeTokenDecimals(networkConfig);
         ensureValid(
             validateNetworkConfigUrls(networkConfig, { allowEmpty: false }),
             { context: "NetworkConfigProvider.add" },
@@ -130,11 +138,11 @@ export default class NetworkConfigProvider {
         const record: INetworkRecord = {
             id: generateRandomId(),
             name,
-            config: networkConfig,
+            config: snapshotNetworkConfig(networkConfig),
             isDefault: false,
         };
 
-        this.networksRecords!.set(record.id, record);
+        this.networksRecords!.set(record.id, { ...record, config: snapshotNetworkConfig(record.config) });
 
         return record;
     }
@@ -181,6 +189,7 @@ export default class NetworkConfigProvider {
               }
             : record.config;
 
+        getNativeTokenDecimals(config);
         ensureValid(
             validateNetworkUniqueness(
                 name,
@@ -193,7 +202,7 @@ export default class NetworkConfigProvider {
         );
 
         record.name = name;
-        record.config = config;
+        record.config = snapshotNetworkConfig(config);
     }
 
     public isReady(): boolean {

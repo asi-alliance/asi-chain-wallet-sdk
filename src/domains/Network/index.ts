@@ -14,6 +14,8 @@ export interface INetworkEndpoints {
 
 export interface INetworkConfig extends INetworkEndpoints {
     nodeApiProfile: NodeApiProfile;
+    /** Missing on legacy configurations means 8; explicit values must be 0..18. */
+    nativeTokenDecimals?: number;
 }
 
 export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
@@ -67,4 +69,5 @@ export const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[] = Object.keys(
 export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
     ...NETWORK_URL_FIELDS,
     "nodeApiProfile",
+    "nativeTokenDecimals",
 ];

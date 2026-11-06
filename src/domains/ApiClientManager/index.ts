@@ -22,6 +22,7 @@ import {
     EnsureNetworkNotReconfiguring,
     EnsureTargetNetworkNotBusy,
 } from "@utils/decorators/apiClientManager";
+import { snapshotNetworkConfig } from "@utils/nativeToken";
 import { createApiClients } from "@fabrics/apiClients";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 
@@ -47,6 +48,7 @@ export default class ApiClientManager {
     private indexerClient: IndexerClient | null = null;
 
     private currentNetworkId: NetworkId | null = null;
+    private currentNetworkRevision = 0;
 
     private isInitialized: boolean = false;
 
@@ -99,6 +101,7 @@ export default class ApiClientManager {
         this.indexerClient = indexer;
 
         this.currentNetworkId = networkId;
+        this.currentNetworkRevision += 1;
     }
 
     @EnsureApiClientManagerInitialized
@@ -123,6 +126,11 @@ export default class ApiClientManager {
             observer: this.observerClient!,
             indexer: this.indexerClient!,
         };
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getCurrentNetworkRevision(): number {
+        return this.currentNetworkRevision;
     }
 
     @EnsureApiClientManagerInitialized
@@ -184,14 +192,15 @@ export default class ApiClientManager {
         const { id, name, config }: INetworkRecord =
             this.networkConfigProvider.get(networkId ?? this.currentNetworkId!);
 
-        const clients: IApiClients = createApiClients(config);
+        const snapshot = snapshotNetworkConfig(config);
+        const clients: IApiClients = createApiClients(snapshot);
 
         return {
             networkId: id,
             name,
-            config,
+            config: snapshot,
             clients,
-            api: createNodeApiAdapter(config.nodeApiProfile, clients),
+            api: createNodeApiAdapter(snapshot.nodeApiProfile, clients),
         };
     }
 
@@ -255,6 +264,7 @@ export default class ApiClientManager {
         this.indexerClient = null;
 
         this.currentNetworkId = null;
+        this.currentNetworkRevision += 1;
 
         this.networkBusyRegistry.clear();
 

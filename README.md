@@ -131,6 +131,62 @@ default: an omitted or unknown profile throws at `Client.create`, because guessi
 it would silently send legacy-shaped requests to a new node. Custom networks added
 at runtime through `client.addNetwork` must supply it too.
 
+### Native-token precision
+
+Set `nativeTokenDecimals` on each network configuration. It must match that
+chain's denomination and be an integer from 0 through 18:
+
+```typescript
+const networksConfig: TNetworksConfig = {
+    Testnet: {
+        ValidatorURL: "http://validator-node:40403",
+        ReadOnlyURL: "http://observer-node:40403",
+        IndexerURL: "http://indexer-node:8080/v1/graphql",
+        nodeApiProfile: NodeApiProfile.RUST,
+        nativeTokenDecimals: 18,
+    },
+};
+```
+
+An omitted field retains the legacy 8-decimal configuration. An explicitly
+invalid value, including `undefined`, is rejected. The SDK uses this explicit
+configuration; it does not discover a scale from HTTP status or fall back to a
+different scale when a node is unavailable. Changing this setting does not
+migrate a chain's denomination.
+
+Use the client facade for the currently selected network:
+
+```typescript
+client.getNativeTokenDecimals(); // 18 on the network above
+client.getNativeAsset().getDecimals(); // 18
+client.toAtomicAmount("10.000000000000000001"); // 10000000000000000001n
+client.toDisplayAmount(250000n); // "0.00000000000025"
+```
+
+Raw balances, transfer amounts and fee budgets remain atomic `bigint` values.
+Reservations record their precision with their display amount/fee strings, so
+restoring them does not reinterpret the values using another network's scale.
+Legacy reservations retain 8 decimals. Precision changes are refused while any
+reservation for that network remains in memory or storage, including closed
+wallets. Resolve those reservations before changing the configuration.
+
+Network contexts use immutable configuration snapshots. Balance reads reject a
+response if the selected network was switched or reconfigured while it was in
+flight, even if selection returned to the original network. Executed history
+keeps the indexer's recorded decimal amount strings without rescaling them.
+The indexer must return exact numeric strings; unsafe/fractional JSON numbers
+are exposed as unknown amounts rather than made to look exact.
+
+`DEFAULT_ASSET` and the legacy exported decimal constants retain their existing
+8-decimal meanings. Use `client.getNativeAsset()` and the facade conversions for
+network-aware operations. Applications must preserve `nativeTokenDecimals` when
+copying network configurations and adopt a compatible SDK version; older SDK
+versions do not implement this configuration field.
+
+This feature does not change deploy signing/protobufs or implement the separate
+node uint256 signing migration. Package publication and application adoption
+remain separate release steps.
+
 ### Create Wallets
 
 ```typescript

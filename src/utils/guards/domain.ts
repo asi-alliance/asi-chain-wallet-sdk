@@ -1,4 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
+import { isNativeTokenDecimals } from "@utils/nativeToken";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -113,6 +114,9 @@ export const isSerializedReservationPrivateData = (
     }
 
     const { accountId, pendingAmount, expirationTime, kind, details } = value;
+    if ("nativeTokenDecimals" in value && !isNativeTokenDecimals(value.nativeTokenDecimals)) {
+        return false;
+    }
 
     return (
         typeof accountId === "string" &&

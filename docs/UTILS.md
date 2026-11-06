@@ -138,9 +138,16 @@ generateRandomId(): string  // `res_${Date.now()}_${genRandomHex(8)}`
 ### Amount conversion
 
 The amount helpers use the explicitly supplied token precision for both whole and
-fractional parts. `Client.toAtomicAmount` / `toDisplayAmount` still pass the global
-`NATIVE_TOKEN_DECIMALS_AMOUNT` (currently 8). Configurable native-network precision
-is separate work tracked in [#219](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/219).
+fractional parts. `Client.toAtomicAmount` / `toDisplayAmount` pass the selected
+network's validated `nativeTokenDecimals`. An omitted configuration field retains
+the legacy 8-decimal scale; an explicitly invalid value is an error.
+
+`getNativeTokenDecimals(config)` resolves this configuration contract, and
+`isNativeTokenDecimals(value)` checks the supported integer range 0..18.
+`snapshotNetworkConfig(config)` validates precision and returns an immutable copy
+for network configuration and in-flight contexts. Native precision changes take
+part in configuration identity and reconfiguration checks; omitted precision and
+explicit 8 describe the same legacy scale.
 
 ```ts
 toAtomicAmount(amount: number | string, decimals: number): bigint

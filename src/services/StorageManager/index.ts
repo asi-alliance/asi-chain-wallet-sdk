@@ -309,6 +309,11 @@ class StorageManager {
         );
     };
 
+    public static hasNetworkTransactionReservations = async (networkId: NetworkId): Promise<boolean> => {
+        const records = await TransactionReservationsStorageRepository.getInstance().getAllTransactionReservations();
+        return records.some((record) => record.networkId === networkId);
+    };
+
     public static getTransactionReservationsBySignerId = async (
         signerId: string,
     ): Promise<ITransactionReservationsStorageRecord[]> => {
