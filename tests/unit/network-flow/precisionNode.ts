@@ -28,7 +28,7 @@ export const startPrecisionNode = async (precision: number) => {
                 if (step) await step.wait();
                 json({ expr: [{ ExprBigInt: { data: observed.toString() } }] });
             } else if (url.startsWith("/api/blocks")) {
-                json([{ blockNumber: 100 }]);
+                json([{ blockInfo: { blockNumber: "100" } }]);
             } else if (url.startsWith("/api/deploy/")) {
                 response.writeHead(404); response.end("Not found");
             } else if (url.startsWith("/api/deploy")) {
