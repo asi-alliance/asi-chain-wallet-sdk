@@ -12,7 +12,14 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
 import { createPersistedStorageDump } from "@fabrics/storageDump";
 import { EncryptedData } from "@services/Crypto";
-import { getErrorMessage, isNonEmptyString } from "@utils/index";
+import { PERSISTED_STORAGE_TABLES } from "@services/StorageBootstrap";
+import { CURRENT_STORAGE_VERSION } from "@config/index";
+import {
+    getErrorMessage,
+    isNonEmptyString,
+    TPersistedStorageDumpValidation,
+    validatePersistedStorageTables,
+} from "@utils/index";
 
 export interface IPersistedStorageInterruptedMigration {
     pendingVersion: number;
@@ -60,6 +67,28 @@ export default class ExportPersistedStorageService {
         return tables;
     }
 
+    private static assertTablesAreImportable(
+        dump: IPersistedStorageDump,
+        tables: TPersistedStorageTables,
+    ): void {
+        if (
+            dump.schemaVersion > CURRENT_STORAGE_VERSION ||
+            dump.interruptedMigration !== null
+        ) {
+            return;
+        }
+
+        const validation: TPersistedStorageDumpValidation =
+            validatePersistedStorageTables(tables, PERSISTED_STORAGE_TABLES);
+
+        if (!validation.isValid) {
+            throw new PersistedStorageExportError(
+                `the storage holds a state that cannot be imported back (${validation.error})`,
+                null,
+            );
+        }
+    }
+
     private static async readDump(
         passwordProvider: SecretsProvider,
         options?: IStorageFabricOptions,
@@ -70,17 +99,24 @@ export default class ExportPersistedStorageService {
 
         const tableNames: string[] = await storage.getTableNames();
 
-        return createPersistedStorageDump({
+        const tables: TPersistedStorageTables =
+            await ExportPersistedStorageService.readDataTables(
+                storage,
+                tableNames,
+            );
+
+        const dump: IPersistedStorageDump = await createPersistedStorageDump({
             schemaRecord: await ExportPersistedStorageService.readSchemaRecord(
                 storage,
                 tableNames,
             ),
-            tables: await ExportPersistedStorageService.readDataTables(
-                storage,
-                tableNames,
-            ),
+            tables,
             passwordProvider,
         });
+
+        ExportPersistedStorageService.assertTablesAreImportable(dump, tables);
+
+        return dump;
     }
 
     public static async exportPersistedStorage(
@@ -100,6 +136,10 @@ export default class ExportPersistedStorageService {
                 options,
             );
         } catch (error: unknown) {
+            if (error instanceof PersistedStorageExportError) {
+                throw error;
+            }
+
             throw new PersistedStorageExportError(
                 getErrorMessage(error, UnknownErrorReason.STORAGE),
                 error,
