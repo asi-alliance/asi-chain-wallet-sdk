@@ -45,6 +45,7 @@ export interface ICreatePkWalletInput {
 
 const useSdk = () => {
     const [client, setClient] = useState<Client | null>(null);
+    const [initError, setInitError] = useState<unknown>(null);
     const [walletsMetadata, setWalletsMetadata] = useState<IWalletMetadata[]>(
         [],
     );
@@ -88,7 +89,19 @@ const useSdk = () => {
         let disposed = false;
 
         const initialize = async (): Promise<void> => {
-            const createdClient = await init();
+            let createdClient: Client;
+
+            try {
+                createdClient = await init();
+            } catch (error) {
+                console.error(error);
+
+                if (!disposed) {
+                    setInitError(error);
+                }
+
+                return;
+            }
 
             if (disposed) {
                 await createdClient.close();
@@ -574,6 +587,7 @@ const useSdk = () => {
     return {
         client,
         isReady: client !== null,
+        initError,
         walletsMetadata,
         openWallets,
         reservationsByWallet,

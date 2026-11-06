@@ -5,5 +5,6 @@ export const PATHS = {
   DEPLOY_PATH: "/deploy",
   DEPLOY_UTILS_PATH: "/deploy-utils",
   RESERVATIONS_PATH: "/reservations",
+  STORAGE_PATH: "/storage",
   DEFAULT_PAGE_PATH: "/wallets",
 } as const;

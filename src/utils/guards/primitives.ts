@@ -19,6 +19,12 @@ export const isValidByte = (value: unknown): value is number => {
     );
 };
 
+export const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value.trim().length > 0;
+
+export const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
 export const isByteIndexedRecord = (
     value: object,
 ): value is Record<string, number> => {
