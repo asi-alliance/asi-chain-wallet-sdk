@@ -247,14 +247,16 @@
 }
 
 .networks-page__action--danger,
-.reservations-page__action--danger {
+.reservations-page__action--danger,
+.storage-page__action--danger {
     background: var(--danger-surface);
     border-color: var(--danger-border);
     color: var(--danger);
 }
 
 .networks-page__action--danger:hover:not(:disabled),
-.reservations-page__action--danger:hover:not(:disabled) {
+.reservations-page__action--danger:hover:not(:disabled),
+.storage-page__action--danger:hover:not(:disabled) {
     background: var(--danger);
     border-color: var(--danger);
     color: var(--text-on-accent);

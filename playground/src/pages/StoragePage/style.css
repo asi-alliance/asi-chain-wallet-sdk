@@ -12,6 +12,7 @@
     margin-bottom: var(--space-3);
 }
 
-.storage-page__success .storage-page__actions {
+.storage-page__success .storage-page__actions,
+.storage-page__error .storage-page__actions {
     margin-top: var(--space-3);
 }

@@ -4,11 +4,14 @@ import {
     ExportKeyfileService,
     ExportPersistedStorageService,
     ImportPersistedStorageService,
+    PersistedStorageImportRejectedError,
+    PersistedStorageImportRejection,
     SecretsProvider,
     type IPersistedStorageDump,
     type TPersistedStorageTables,
 } from "asi-wallet-sdk";
 import { toErrorText, useSdkContext } from "../../sdk-react-kit";
+import { useAppContext } from "@components/Application/context";
 import { downloadTextFile } from "@utils/functions";
 
 interface ISelectedDump {
@@ -53,6 +56,10 @@ const toRecordCounts = (
         ]),
     );
 
+const isStorageNotEmptyError = (error: unknown): boolean =>
+    error instanceof PersistedStorageImportRejectedError &&
+    error.rejection === PersistedStorageImportRejection.STORAGE_NOT_EMPTY;
+
 const toBackupPasswordError = (
     password: string,
     confirmation: string,
@@ -69,7 +76,8 @@ const toBackupPasswordError = (
 };
 
 const StoragePage = (): ReactElement => {
-    const { initError } = useSdkContext();
+    const { initError, isReady, clearPersistence } = useSdkContext();
+    const { withLoader } = useAppContext();
 
     const [backupPassword, setBackupPassword] = useState<string>("");
     const [backupPasswordConfirmation, setBackupPasswordConfirmation] =
@@ -87,6 +95,8 @@ const StoragePage = (): ReactElement => {
     const [preview, setPreview] = useState<IDumpPreview | null>(null);
     const [isImported, setIsImported] = useState<boolean>(false);
     const [importError, setImportError] = useState<string | null>(null);
+    const [isStorageNotEmpty, setIsStorageNotEmpty] = useState<boolean>(false);
+    const [isStorageCleared, setIsStorageCleared] = useState<boolean>(false);
 
     const backupPasswordError: string | null = toBackupPasswordError(
         backupPassword,
@@ -97,6 +107,8 @@ const StoragePage = (): ReactElement => {
         setPreview(null);
         setIsImported(false);
         setImportError(null);
+        setIsStorageNotEmpty(false);
+        setIsStorageCleared(false);
     };
 
     const handleExport = async (): Promise<void> => {
@@ -186,18 +198,47 @@ const StoragePage = (): ReactElement => {
         resetImportResult();
 
         try {
-            await ImportPersistedStorageService.importPersistedStorage(
-                selectedDump.content,
-                createPasswordProvider(importPassword),
+            await withLoader(() =>
+                ImportPersistedStorageService.importPersistedStorage(
+                    selectedDump.content,
+                    createPasswordProvider(importPassword),
+                ),
             );
 
             setIsImported(true);
         } catch (error) {
             console.error(error);
 
+            if (isStorageNotEmptyError(error)) {
+                setIsStorageNotEmpty(true);
+
+                return;
+            }
+
             setImportError(toErrorText(error, "Storage import failed"));
         } finally {
             setIsImporting(false);
+        }
+    };
+
+    const handleClearStorage = async (): Promise<void> => {
+        if (
+            !window.confirm(
+                "Clear the whole SDK storage? Every stored wallet will be deleted, export the storage first if you need it.",
+            )
+        ) {
+            return;
+        }
+
+        try {
+            await withLoader(() => clearPersistence());
+
+            setIsStorageNotEmpty(false);
+            setIsStorageCleared(true);
+        } catch (error) {
+            console.error(error);
+
+            setImportError(toErrorText(error, "Storage cannot be cleared"));
         }
     };
 
@@ -316,9 +357,9 @@ const StoragePage = (): ReactElement => {
                 <p className="storage-page__hint">
                     <code>ImportPersistedStorageService.importPersistedStorage</code>{" "}
                     writes a dump only into an empty storage and never merges
-                    it into existing wallets: clear the storage first with
-                    "CLEAR SDK LS". Preview decrypts and validates the dump
-                    without writing anything.
+                    it into existing wallets. A rejected import of a non-empty
+                    storage offers to clear it. Preview decrypts and validates
+                    the dump without writing anything.
                 </p>
 
                 <div className="storage-page__controls">
@@ -372,6 +413,33 @@ const StoragePage = (): ReactElement => {
 
                 {importError && (
                     <div className="storage-page__error">{importError}</div>
+                )}
+
+                {isStorageNotEmpty && (
+                    <div className="storage-page__error">
+                        The storage already holds data, and a dump is imported
+                        only into an empty storage. Export the current storage
+                        first if you need it, then clear the storage and run
+                        the import again.
+                        {!isReady &&
+                            " The client failed to start, so the storage cannot be cleared from here."}
+                        <div className="storage-page__actions">
+                            <button
+                                type="button"
+                                className="storage-page__action storage-page__action--danger"
+                                onClick={() => void handleClearStorage()}
+                                disabled={!isReady}
+                            >
+                                Clear storage
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {isStorageCleared && (
+                    <div className="storage-page__success">
+                        The storage was cleared. Run the import again.
+                    </div>
                 )}
 
                 {isImported && (
