@@ -187,6 +187,12 @@ This feature does not change deploy signing/protobufs or implement the separate
 node uint256 signing migration. Package publication and application adoption
 remain separate release steps.
 
+For development against an unreleased change, pin the full reviewed Git commit
+in the application's dependency declaration. Git installation runs `prepare`
+to build the CJS/ESM bundles and declarations; do not use `--ignore-scripts` for
+that dependency. A Git pin is not an npm release. Replace it with the selected
+published version when release and consumer validation are complete.
+
 ### Create Wallets
 
 ```typescript
