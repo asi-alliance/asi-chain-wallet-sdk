@@ -155,20 +155,23 @@ export default class ImportPersistedStorageService {
         }
     }
 
-    private static async clearTables(
+    private static async removeImportedRecords(
         storage: ITableService<ITableRecord>,
-        tableNames: string[],
+        tables: TPersistedStorageTables,
     ): Promise<string[]> {
         const failures: string[] = [];
 
-        for (const tableName of tableNames) {
+        for (const [tableName, records] of Object.entries(tables)) {
             try {
                 if (await storage.tableExists(tableName)) {
-                    await storage.clearTable(tableName);
+                    await storage.deleteMany(
+                        tableName,
+                        records.map((record: ITableRecord) => record.id),
+                    );
                 }
             } catch (error: unknown) {
                 failures.push(
-                    `clearing ${tableName}: ${getErrorMessage(
+                    `removing imported ${tableName} records: ${getErrorMessage(
                         error,
                         UnknownErrorReason.STORAGE,
                     )}`,
@@ -238,9 +241,9 @@ export default class ImportPersistedStorageService {
                     ).restoreVersion(dump.schemaVersion);
                 },
                 () =>
-                    ImportPersistedStorageService.clearTables(
+                    ImportPersistedStorageService.removeImportedRecords(
                         storage,
-                        Object.keys(tables),
+                        tables,
                     ),
             );
         });
