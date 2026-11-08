@@ -7,6 +7,7 @@ import { createHeldStep, type IHeldStep } from "../reservation-flow/fakeNode";
 
 export const startPrecisionNode = async (precision: number, profile = NodeApiProfile.RUST) => {
     let balance = 100000000000000000000n;
+    let balanceResponse: unknown;
     let heldBalance: IHeldStep | undefined;
     const requests: string[] = [];
     const submitted: SignedResult[] = [];
@@ -26,7 +27,7 @@ export const startPrecisionNode = async (precision: number, profile = NodeApiPro
                 heldBalance = undefined;
                 const observed = balance;
                 if (step) await step.wait();
-                json({ expr: [{ ExprBigInt: { data: observed.toString() } }] });
+                json({ expr: [{ ExprBigInt: { data: balanceResponse === undefined ? observed.toString() : balanceResponse } }] });
             } else if (url.startsWith("/api/blocks")) {
                 json([{ blockInfo: { blockNumber: "100" } }]);
             } else if (url.startsWith("/api/deploy/")) {
@@ -55,7 +56,8 @@ export const startPrecisionNode = async (precision: number, profile = NodeApiPro
     };
     return {
         config, requests, submitted,
-        setBalance: (amount: bigint) => { balance = amount; },
+        setBalance: (amount: bigint) => { balance = amount; balanceResponse = undefined; },
+        setBalanceResponse: (value: unknown) => { balanceResponse = value; },
         holdBalance: () => (heldBalance = createHeldStep()),
         close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     };
