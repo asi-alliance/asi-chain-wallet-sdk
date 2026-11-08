@@ -5,7 +5,7 @@ import type { INetworkConfig } from "@domains/Network";
 import type { SignedResult } from "@services/Signer";
 import { createHeldStep, type IHeldStep } from "../reservation-flow/fakeNode";
 
-export const startPrecisionNode = async (precision: number) => {
+export const startPrecisionNode = async (precision: number, profile = NodeApiProfile.RUST) => {
     let balance = 100000000000000000000n;
     let heldBalance: IHeldStep | undefined;
     const requests: string[] = [];
@@ -51,7 +51,7 @@ export const startPrecisionNode = async (precision: number) => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const config: INetworkConfig = {
         ValidatorURL: base, ReadOnlyURL: base, IndexerURL: `${base}/v1/graphql`,
-        nodeApiProfile: NodeApiProfile.RUST, nativeTokenDecimals: precision,
+        nodeApiProfile: profile, nativeTokenDecimals: precision,
     };
     return {
         config, requests, submitted,

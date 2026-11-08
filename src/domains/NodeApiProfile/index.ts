@@ -1,6 +1,7 @@
 export enum NodeApiProfile {
     SCALA = "scala",
     RUST = "rust",
+    RUST_UINT256 = "rust-uint256",
 }
 
 export enum NodeApiProfileStability {
@@ -24,6 +25,12 @@ export const NODE_API_PROFILE_DESCRIPTORS: Record<
     NodeApiProfile,
     INodeApiProfileDescriptor
 > = {
+    [NodeApiProfile.RUST_UINT256]: {
+        profile: NodeApiProfile.RUST_UINT256,
+        label: "Rust node (uint256)",
+        description: "Explicit uint256 monetary APIs and field-15 deploy signing.",
+        stability: NodeApiProfileStability.EXPERIMENTAL,
+    },
     [NodeApiProfile.SCALA]: {
         profile: NodeApiProfile.SCALA,
         label: "Scala node",

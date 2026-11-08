@@ -13,7 +13,8 @@ import {
     MAX_KEYFILE_ACCOUNTS,
 } from "@config/index";
 import Bip44Path from "@domains/Bip44Path";
-import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
+import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
+import { resolveDeployPhlo } from "@utils/monetary";
 import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
 import {
@@ -378,8 +379,8 @@ export const validateDeployPayload = ({
     phloLimit,
     phloPrice,
     shardId,
-}: TDeployDetails): { isValid: boolean; error?: string } => {
-    if (!term.trim()) {
+}: TDeployDetails, profile: NodeApiProfile = NodeApiProfile.RUST): { isValid: boolean; error?: string } => {
+    if (typeof term !== "string" || !term.trim()) {
         return { isValid: false, error: "Deploy term must not be empty" };
     }
 
@@ -393,17 +394,13 @@ export const validateDeployPayload = ({
         };
     }
 
-    if (
-        phloPrice !== undefined &&
-        !isIntegerInRange(phloPrice, MIN_PHLO_VALUE, MAX_PHLO_VALUE)
-    ) {
-        return {
-            isValid: false,
-            error: "Phlo price must be a positive safe integer",
-        };
+    try {
+        resolveDeployPhlo({ phloLimit, phloPrice }, profile);
+    } catch (error) {
+        return { isValid: false, error: (error as Error).message };
     }
 
-    if (shardId !== undefined && !shardId.trim()) {
+    if (shardId !== undefined && (typeof shardId !== "string" || !shardId.trim())) {
         return { isValid: false, error: "Shard id must not be empty" };
     }
 

@@ -1,3 +1,5 @@
+import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { resolveDeployPhlo } from "@utils/monetary";
 import StorageManager from "@services/StorageManager";
 import TransactionReservationsManager, {
     ITransactionReservationsManagerOptions,
@@ -15,8 +17,6 @@ import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import {
-    DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
     GasFee,
     SUBMISSION_SETTLE_TIMEOUT_MS,
 } from "@config/index";
@@ -537,7 +537,10 @@ export default class ReservationAdapter {
         const nativeTokenDecimals = getNativeTokenDecimals(
             ApiClientManager.getInstance().getNetwork(networkId).config,
         );
-        const pendingAmount: bigint = details.amount + GasFee.MAX;
+        const profile = ApiClientManager.getInstance().getNetwork(networkId).config.nodeApiProfile;
+        const gasCost = profile === NodeApiProfile.RUST_UINT256
+            ? resolveDeployPhlo(details, profile).charge : GasFee.MAX;
+        const pendingAmount: bigint = details.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.transfer",
@@ -572,6 +575,7 @@ export default class ReservationAdapter {
                                     account,
                                     pendingAmount,
                                     details,
+                                    gasCost,
                                 });
 
                             return this.reserveAndSubmit(
@@ -599,9 +603,9 @@ export default class ReservationAdapter {
         const nativeTokenDecimals = getNativeTokenDecimals(
             ApiClientManager.getInstance().getNetwork(networkId).config,
         );
-        const pendingAmount: bigint =
-            BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
-            BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+        const pendingAmount = resolveDeployPhlo(
+            details, ApiClientManager.getInstance().getNetwork(networkId).config.nodeApiProfile,
+        ).charge;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",

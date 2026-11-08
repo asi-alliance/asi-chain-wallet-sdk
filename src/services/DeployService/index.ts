@@ -48,6 +48,7 @@ export default class DeployService {
 
             return this.extractDeployId(result);
         } catch (error) {
+            if (error instanceof DeploySubmissionRejectedError) throw error;
             const reason: string = getErrorMessage(
                 error,
                 UnknownErrorReason.NODE_API,

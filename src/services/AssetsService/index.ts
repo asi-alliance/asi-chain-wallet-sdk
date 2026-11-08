@@ -1,3 +1,5 @@
+import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { parseTokenAmount } from "@utils/monetary";
 import Asset from "@domains/Asset";
 import { IDeployTermFactory } from "@domains/Deploy/factory";
 import NodeApiProvider from "@domains/NodeApiProvider";
@@ -55,6 +57,7 @@ export default class AssetsService {
             );
         }
 
+        const profile = this.nodeApiProvider.getApi().getProfile();
         const checkBalanceDeploy = this.terms.createCheckBalanceDeploy(address);
 
         let expr: IExploreExprItem[] | undefined;
@@ -73,9 +76,14 @@ export default class AssetsService {
 
         const integerExpr = firstExpr?.ExprInt ?? firstExpr?.ExprBigInt;
         if (integerExpr !== undefined) {
-            const amount: bigint | null = parseAtomicAmount(
-                integerExpr.data,
-            );
+            let amount: bigint | null;
+            try {
+                amount = profile === NodeApiProfile.RUST_UINT256
+                    ? typeof integerExpr.data === "string" ? parseTokenAmount(integerExpr.data) : null
+                    : parseAtomicAmount(integerExpr.data);
+            } catch {
+                amount = null;
+            }
 
             if (amount === null) {
                 throw new BalanceUnavailableError(

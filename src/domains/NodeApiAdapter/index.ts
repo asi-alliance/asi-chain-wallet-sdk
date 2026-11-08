@@ -10,6 +10,8 @@ import {
     SCALA_FAULT_TOLERANCE_THRESHOLD,
 } from "@utils/index";
 import { UnknownErrorReason } from "@domains/CustomError";
+import { DeploySubmissionRejectedError } from "@domains/CustomError";
+import SignerService from "@services/Signer";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -29,7 +31,20 @@ export default abstract class NodeApiAdapter {
     public abstract getProfile(): NodeApiProfile;
 
     public submitDeploy(deploy: SignedResult): Promise<unknown> {
-        return this.clients.validator.submitDeploy(deploy);
+        const profile = this.getProfile();
+        const isUint256 = profile === NodeApiProfile.RUST_UINT256;
+        if ((deploy.nodeApiProfile !== undefined && deploy.nodeApiProfile !== profile) ||
+            (isUint256 && (deploy.nodeApiProfile !== profile || typeof deploy.data.phloPrice !== "string")) ||
+            (!isUint256 && typeof deploy.data.phloPrice !== "number")) {
+            throw new DeploySubmissionRejectedError("NodeApiAdapter.submitDeploy", "Deploy protocol profile mismatch");
+        }
+        try {
+            SignerService.deployDataProtobufSerialize(deploy.data, profile);
+        } catch {
+            throw new DeploySubmissionRejectedError("NodeApiAdapter.submitDeploy", "Invalid signed deploy payload");
+        }
+        const { nodeApiProfile, ...request } = deploy;
+        return this.clients.validator.submitDeploy(request);
     }
 
     protected getExploreDeployClient(): IExploratoryDeployClient {

@@ -5,3 +5,5 @@ export * from "./functions";
 export * from "./validators";
 export * from "./guards";
 export * from "./nativeToken";
+
+export * from "./monetary";

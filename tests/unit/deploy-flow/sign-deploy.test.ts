@@ -1,3 +1,5 @@
+import NodeApiProvider from "@domains/NodeApiProvider";
+import { NodeApiProfile } from "@domains/NodeApiProfile";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { verify } from "@noble/secp256k1";
@@ -113,7 +115,9 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
 const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
 ): TransactionService =>
-    new TransactionService(deployService, new StubBlockService());
+    new TransactionService(deployService, new StubBlockService(), {
+        getApi: () => ({ getProfile: () => NodeApiProfile.RUST }),
+    } as unknown as NodeApiProvider);
 
 const hashSignedData = (signed: SignedResult): string =>
     blake2bHex(

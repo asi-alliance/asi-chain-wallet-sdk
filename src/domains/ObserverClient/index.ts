@@ -2,7 +2,7 @@ import BaseHttpClient from "@domains/BaseHttpClient";
 import { buildUrl } from "@utils/index";
 
 export interface IBalanceResponse {
-    balance: number;
+    balance: number | string;
 }
 
 export interface IBlockDto {
