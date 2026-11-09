@@ -1,4 +1,4 @@
-import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { TransactionType } from "@domains/Transaction";
@@ -24,7 +24,7 @@ export const toAtomicAmount = (
     amount: number | string,
     decimals: number,
 ): bigint => {
-    const baseUnit: BigInt = BigInt(POWER_BASE) ** BigInt(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
     const currentDecimals: number = baseUnit.toString().length - 1;
 
     if (typeof amount === "number") {
@@ -70,7 +70,7 @@ export const toAtomicAmount = (
     fraction = fraction.padEnd(currentDecimals, "0");
 
     const result: bigint =
-        BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
+        BigInt(integerPart) * baseUnit + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
 };
