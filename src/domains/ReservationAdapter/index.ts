@@ -33,6 +33,7 @@ import {
     DeploySubmissionRejectedError,
     DomainClosedError,
     IErrorContext,
+    InsufficientBalanceError,
     ReservationAction,
     WalletAction,
     WalletActionInProgressError,
@@ -106,7 +107,7 @@ export default class ReservationAdapter {
             await this.validateSufficientBalance(account, amount);
 
         if (!isSufficientBalance) {
-            throw new Error(`${context}: Insufficient balance`);
+            throw new InsufficientBalanceError(context);
         }
     }
 

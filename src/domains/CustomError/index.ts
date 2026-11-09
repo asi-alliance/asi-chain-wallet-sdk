@@ -10,6 +10,7 @@ export enum CustomErrorCode {
     STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
     STORAGE_MIGRATION_CHAIN_INVALID = "STORAGE_MIGRATION_CHAIN_INVALID",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
+    INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
     WALLET_ACTION_IN_PROGRESS = "WALLET_ACTION_IN_PROGRESS",
@@ -568,5 +569,18 @@ export class BalanceUnavailableError extends CustomError {
 
         this.address = address;
         this.reason = reason;
+    }
+}
+
+export class InsufficientBalanceError extends CustomError {
+    public readonly operation: string;
+
+    constructor(
+        operation: string,
+        message: string = `${operation}: Insufficient balance`,
+    ) {
+        super(CustomErrorCode.INSUFFICIENT_BALANCE, message, 402);
+
+        this.operation = operation;
     }
 }
