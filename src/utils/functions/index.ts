@@ -1,4 +1,4 @@
-import { POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
 import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
 import { TransactionType } from "@domains/Transaction";
@@ -21,34 +21,21 @@ const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 
-const getAmountScale = (decimals: number): bigint => {
-    if (!Number.isSafeInteger(decimals) || decimals < 0) {
-        throw new RangeError("Decimals must be a non-negative safe integer");
-    }
-
-    return BigInt(POWER_BASE) ** BigInt(decimals);
-};
-
 export const toAtomicAmount = (
     amount: number | string,
     decimals: number,
 ): bigint => {
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: BigInt = BigInt(POWER_BASE) ** BigInt(decimals);
+    const currentDecimals: number = baseUnit.toString().length - 1;
 
     if (typeof amount === "number") {
-        if (!Number.isSafeInteger(amount)) {
-            throw new TypeError(
-                "Amount number must be a safe integer; use a decimal string",
-            );
+        if (!Number.isFinite(amount)) {
+            throw new Error("Invalid number");
         }
         amount = String(amount);
     }
 
-    if (typeof amount !== "string") {
-        throw new TypeError("Amount must be a decimal string or safe integer");
-    }
-
-    let amountString: string = amount.trim();
+    let amountString: string = String(amount).trim();
 
     if (!amountString.length) {
         throw new Error("Cannot process empty amount");
@@ -73,17 +60,18 @@ export const toAtomicAmount = (
 
     let fraction: string = fractionRaw;
 
-    if (fraction.length > decimals) {
-        if (/[1-9]/.test(fraction.slice(decimals))) {
-            throw new RangeError(`Amount has more than ${decimals} decimal places`);
-        }
-        fraction = fraction.slice(0, decimals);
+    if (fraction.length > currentDecimals) {
+        console.warn(
+            `Fraction ${fraction} has more than allowed decimals; truncating`,
+        );
+
+        fraction = fraction.slice(0, currentDecimals);
     }
 
-    fraction = fraction.padEnd(decimals, "0");
+    fraction = fraction.padEnd(currentDecimals, "0");
 
     const result: bigint =
-        BigInt(integerPart) * baseUnit + BigInt(fraction || "0");
+        BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
 };
@@ -97,14 +85,17 @@ const fromAtomicAmountToString = (
         ? -atomicAmount
         : atomicAmount;
 
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
 
     const integerPart: bigint = normalizedAtomicAmount / baseUnit;
     const remainder: bigint = normalizedAtomicAmount % baseUnit;
 
+    const baseString: string = baseUnit.toString();
+    const currentDecimals: number = baseString.length - 1;
+
     const fraction: string = remainder
         .toString()
-        .padStart(decimals, "0");
+        .padStart(currentDecimals, "0");
     const sign: string = isNegative ? "-" : "";
     const resultSting: string = `${sign}${integerPart.toString()}.${fraction}`;
 
@@ -117,7 +108,7 @@ export const fromAtomicAmountToNumber = (
     atomicAmount: bigint,
     decimals: number,
 ): number => {
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
 
     const integerPart: bigint = atomicAmount / baseUnit;
     const remainder: bigint = atomicAmount % baseUnit;
