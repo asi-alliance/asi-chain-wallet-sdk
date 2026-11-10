@@ -58,6 +58,7 @@ import {
     isNetworkConfigChanged,
     isPrivateKeyValid,
     toAtomicAmount,
+    toExactAtomicAmount,
 } from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
@@ -1171,8 +1172,13 @@ export default class Client extends ClosableDomain {
         return fromAtomicAmount(atomicAmount, NATIVE_TOKEN_DECIMALS_AMOUNT);
     }
 
+    /** @deprecated Use {@link Client.toExactAtomicAmount} instead. */
     public toAtomicAmount(amount: number | string): bigint {
         return toAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+    }
+
+    public toExactAtomicAmount(amount: string): bigint {
+        return toExactAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
     }
 
     private getOpenWallet(walletId: string): Wallet {

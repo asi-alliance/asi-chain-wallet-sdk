@@ -19,7 +19,13 @@ const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
+const REGEX_EXACT_AMOUNT_FORMAT: RegExp = /^(-?)(\d+)(?:\.(\d+))?$/;
+const REGEX_NONZERO_DIGIT: RegExp = /[1-9]/;
 
+// TODO(next-major, Issue #218): make this function as strict as
+// toExactAtomicAmount (reject inexact numbers and nonzero digits beyond
+// decimals instead of truncating) or remove it in favor of toExactAtomicAmount.
+/** @deprecated Use {@link toExactAtomicAmount} instead. */
 export const toAtomicAmount = (
     amount: number | string,
     decimals: number,
@@ -73,6 +79,39 @@ export const toAtomicAmount = (
         BigInt(integerPart) * baseUnit + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
+};
+
+export const toExactAtomicAmount = (
+    amount: string,
+    decimals: number,
+): bigint => {
+    if (!Number.isSafeInteger(decimals) || decimals < 0) {
+        throw new RangeError("Decimals must be a non-negative safe integer");
+    }
+
+    const match: RegExpExecArray | null = REGEX_EXACT_AMOUNT_FORMAT.exec(
+        amount.trim(),
+    );
+
+    if (!match) {
+        throw new Error("Invalid amount format");
+    }
+
+    const [, sign, integerPart, fractionRaw = ""] = match;
+
+    if (REGEX_NONZERO_DIGIT.test(fractionRaw.slice(decimals))) {
+        throw new RangeError(`Amount has more than ${decimals} decimal places`);
+    }
+
+    const fraction: string = fractionRaw
+        .slice(0, decimals)
+        .padEnd(decimals, "0");
+
+    const result: bigint =
+        BigInt(integerPart) * BigInt(POWER_BASE) ** BigInt(decimals) +
+        BigInt(fraction || "0");
+
+    return sign ? -result : result;
 };
 
 const fromAtomicAmountToString = (
