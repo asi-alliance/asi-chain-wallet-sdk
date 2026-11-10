@@ -137,10 +137,9 @@ generateRandomId(): string  // `res_${Date.now()}_${genRandomHex(8)}`
 
 ### Amount conversion
 
-The amount helpers use the explicitly supplied token precision for both whole and
-fractional parts. `Client.toAtomicAmount` / `toDisplayAmount` still pass the global
-`NATIVE_TOKEN_DECIMALS_AMOUNT` (currently 8). Configurable native-network precision
-is separate work tracked in [#219](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/219).
+The amount helpers are now **decimals-parametric** — the token decimals are passed
+explicitly (previously hard-coded). `Client.toAtomicAmount` / `toDisplayAmount`
+pass `NATIVE_TOKEN_DECIMALS_AMOUNT` for you.
 
 ```ts
 toAtomicAmount(amount: number | string, decimals: number): bigint
@@ -156,30 +155,11 @@ only, and returns `null` for everything else — floats, negatives, values beyon
 node's balance expression so an unparsable value becomes
 `BalanceUnavailableError` rather than a silently wrong `BigInt`.
 
-`toAtomicAmount` handles signed decimal strings and the existing comma/whitespace
-separator normalization. It pads the fractional part to the supplied precision.
-For example, `toAtomicAmount("10.000000000000000001", 18)` returns
-`10000000000000000001n`. No intermediate `Number` conversion is used for strings.
-
-Excess fractional digits are accepted only when all of them are zero, so
-`toAtomicAmount("1.230000000", 8)` is exact. A nonzero digit beyond the precision
-throws `RangeError` instead of truncating the requested amount. All amount helpers
-require a non-negative safe-integer `decimals` argument and throw `RangeError`
-otherwise. The generic converters preserve signed/wide values; outgoing-transfer
-positivity and uint256 bounds remain the responsibility of transfer validation.
-
-Numeric amount inputs are supported only for safe integers. Fractional numbers,
-unsafe integers, NaN and infinities throw `TypeError`; use the original decimal
-string for fractional or large monetary values. Converting an already-rounded
-number to a string cannot recover lost digits. Other runtime input types also
-throw `TypeError`. Empty/malformed strings retain their format errors.
-
-**Compatibility:** rejecting lossy numeric inputs and nonzero excess precision is
-an intentional behavior change under [#218](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/218).
-Callers that relied on numeric fractions or silent truncation must supply exact,
-representable strings. Account for this change when selecting a package release.
-
-`fromAtomicAmount` trims trailing zeros and a bare trailing `.0`.
+`toAtomicAmount` handles negatives and thousands separators, validates format,
+truncates excess fractional digits, and pads to the allowed decimals. It throws
+`Error('Invalid number')` for non-finite numbers, `Error('Cannot process empty
+amount')` for empty input, and `Error('Invalid amount format')` for malformed
+input. `fromAtomicAmount` trims trailing zeros and a bare trailing `.0`.
 `fromAtomicAmountToNumber` warns and returns a possibly-imprecise `Number` when the
 integer part exceeds `Number.MAX_SAFE_INTEGER`.
 
