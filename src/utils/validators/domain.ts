@@ -18,6 +18,7 @@ import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
 import {
+    isBlockNumber,
     isEncryptedData,
     isKeyfileWalletAccount,
     isNativeTokenDecimals,
@@ -223,6 +224,19 @@ export const validateNativeTokenDecimals = (
         return {
             isValid: false,
             error: `Native token decimals must be an integer from 0 to ${MAX_NATIVE_TOKEN_DECIMALS}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateBlockNumber = (
+    blockNumber: unknown,
+): { isValid: boolean; error?: string } => {
+    if (!isBlockNumber(blockNumber)) {
+        return {
+            isValid: false,
+            error: "Block number must be a non-negative safe integer",
         };
     }
 
