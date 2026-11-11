@@ -36,7 +36,8 @@ test("wide transfer price survives signing, HTTP, reservations, reopening and pe
     const amount = 10000000000000000001n;
     const price = 9007199254740993n;
     const sent = await client.transfer({ ...request, to: account.getAddress(), amount, phloLimit: 3, phloPrice: price });
-    const submitted = node.submitted.at(-1)!;
+    const submittedDeploys = node.getSubmittedDeploys();
+    const submitted = submittedDeploys[submittedDeploys.length - 1];
     assert.equal(submitted.data.phloPrice, price.toString());
     assert.equal(submitted.data.phloLimit, 3);
     assert.equal("nodeApiProfile" in submitted, false);
@@ -59,11 +60,12 @@ test("deploy reserves exact wide fees and overflow never reaches HTTP or storage
     const { request } = await funded();
     const price = "9007199254740993";
     await client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: price });
-    assert.equal(node.submitted.at(-1)!.data.phloPrice, price);
+    const submittedDeploys = node.getSubmittedDeploys();
+    assert.equal(submittedDeploys[submittedDeploys.length - 1].data.phloPrice, price);
     assert.equal((await client.getReservations(request.walletId))[0].pendingAmount, (2n * BigInt(price)).toString());
-    const count = node.submitted.length;
+    const count = node.getSubmittedDeploys().length;
     await assert.rejects(client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: MAX_TOKEN_AMOUNT }), /charge exceeds/);
-    assert.equal(node.submitted.length, count);
+    assert.equal(node.getSubmittedDeploys().length, count);
     assert.equal((await client.getReservations(request.walletId)).length, 1);
 });
 
