@@ -679,34 +679,12 @@ contract is resolved (issue #173). To export the rows already loaded through
 `getTransactionsHistory`, pass them to `ExportKeyfileService.exportTransactions`
 (see SERVICES.md).
 
-Amount helpers (bound to the selected network's native token decimals):
+Amount helpers (bound to the native token decimals):
 
 ```ts
 toDisplayAmount(atomicAmount: bigint): string
 toAtomicAmount(amount: number | string): bigint
-getNativeTokenDecimals(networkId?: NetworkId): number
-getNativeAsset(networkId?: NetworkId): Asset
 ```
-
-`INetworkConfig.nativeTokenDecimals` is optional for legacy configurations
-(missing means 8); explicit values must be integers in 0..18. These values are
-configured, not fetched from the node. Native balance/transfer asset descriptors,
-amount conversion and reservation amount/fee formatting use the selected scale.
-The raw monetary values remain atomic integers. `DEFAULT_ASSET` stays a legacy
-8-decimal descriptor; the native asset returned by the client is a snapshot for
-the requested network.
-
-Reservations store their precision alongside display strings. Legacy records
-restore with their original 8-decimal meaning. Updating a reservation cannot
-change its precision, and changing network precision is refused while any
-reservation for that network is still stored or open. Executed history keeps
-the indexer's authoritative decimal strings rather than applying the current
-network scale; missing/inexact numeric amounts remain unknown.
-
-Selected-network balance methods reject responses after selection or endpoint
-reconfiguration changed during the read. History requests capture their own
-network context and retain that network id, including explicit reads of another
-network. No mutable precision or endpoint cache is shared between networks.
 
 Persistence & teardown:
 
@@ -722,8 +700,7 @@ close(): Promise<void>            // releases managers, listeners, and API clien
 call that survives a teardown fails loudly instead of resurrecting a dead client.
 Pure reads that cannot corrupt anything (`isWalletOpen`, `isWalletUnlocked`,
 `getNetworks`, `getCurrentNetwork`, `isNetworkBusy`, `hasNetworkReservations`,
-`getEventBus`) stay callable. Network-aware amount helpers require an active
-client because a closed client's selected network is no longer available.
+`getEventBus`, the amount helpers) stay callable.
 
 Both `close()` and `clearPersistence()` first invalidate the lifecycle guard,
 lock every open wallet, and close every reservation adapter, then **drain** the
