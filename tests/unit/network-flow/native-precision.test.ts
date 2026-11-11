@@ -340,7 +340,7 @@ test("legacy reservation display is not rescaled by the selected network", () =>
     );
 });
 
-test("history preserves recorded decimal strings and does not invent precise numeric amounts", () => {
+test("history preserves recorded decimal strings and legacy numeric amounts", () => {
     for (const value of [
         "1.50000000",
         "10.000000000000000001",
@@ -350,9 +350,9 @@ test("history preserves recorded decimal strings and does not invent precise num
     }
 
     assert.equal(mapHistoryAmount(12), "12");
+    assert.equal(mapHistoryAmount(1.5), "1.5");
 
     for (const value of [
-        0.1,
         Number.MAX_SAFE_INTEGER + 1,
         Number.POSITIVE_INFINITY,
         Number.NaN,

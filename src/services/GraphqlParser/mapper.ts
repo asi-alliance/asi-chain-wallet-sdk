@@ -2,6 +2,7 @@ import { NetworkId } from "@domains/Network";
 import { RawDeployment, RawTransfer } from ".";
 import { Transaction } from "@domains/Transaction";
 import { resolveTransferType } from "@utils/functions";
+import { DECIMAL_REGEX } from "@utils/constants";
 
 type RawTransferMappingContext = {
     accountAddress: string;
@@ -65,10 +66,17 @@ function toOptionalString(
     value: number | string | undefined,
 ): string | undefined {
     if (typeof value === "string") {
-        return /^-?(0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? value : undefined;
+        return DECIMAL_REGEX.test(value) ? value : undefined;
     }
-    return typeof value === "number" && Number.isSafeInteger(value)
-        ? String(value) : undefined;
+
+    // TODO: accept only decimal strings once the DevNet indexer stops
+    // returning amounts as JSON numbers.
+    const isExactNumber: boolean =
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        Math.abs(value) <= Number.MAX_SAFE_INTEGER;
+
+    return isExactNumber ? String(value) : undefined;
 }
 
 function toDate(value: number | string | undefined): Date {
