@@ -1,4 +1,5 @@
 export { useSdk } from "./hooks/useSdk";
+export { useNativeAsset } from "./hooks/useNativeAsset";
 export type {
     UseSdkValue,
     ICreateHDWalletInput,

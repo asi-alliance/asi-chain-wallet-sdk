@@ -10,7 +10,6 @@ import {
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
-import { getNativeTokenDecimals } from "@utils/nativeToken";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
@@ -534,9 +533,9 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const nativeTokenDecimals = getNativeTokenDecimals(
-            ApiClientManager.getInstance().getNetwork(networkId).config,
-        );
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
         const pendingAmount: bigint = details.amount + GasFee.MAX;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
@@ -596,9 +595,9 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const nativeTokenDecimals = getNativeTokenDecimals(
-            ApiClientManager.getInstance().getNetwork(networkId).config,
-        );
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
         const pendingAmount: bigint =
             BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
             BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);

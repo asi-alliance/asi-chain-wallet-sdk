@@ -55,11 +55,9 @@ import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
     isNetworkConfigChanged,
-    isSameNetworkConfig,
-    getNativeTokenDecimals,
-    snapshotNetworkConfig,
     isPrivateKeyValid,
     toAtomicAmount,
+    toExactAtomicAmount,
 } from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
@@ -73,7 +71,6 @@ import {
     TrackOperation,
 } from "@utils/decorators";
 import Asset, { getNativeAsset as createNativeAsset } from "@domains/Asset";
-import { BalanceUnavailableError } from "@domains/CustomError";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
@@ -822,15 +819,12 @@ export default class Client extends ClosableDomain {
 
     @EnsureActive
     public async getBalance(address: Address): Promise<bigint> {
-        const network = this.getCurrentNetwork();
-        const revision = ApiClientManager.getInstance().getCurrentNetworkRevision();
         const balance =
             await ApiServiceRegistry.getInstance().assets.getBalance(
                 address,
-                createNativeAsset(network.config),
+                this.getNativeAsset(),
             );
 
-        this.assertBalanceNetwork(network, address, revision);
         return balance.amount;
     }
 
@@ -840,8 +834,6 @@ export default class Client extends ClosableDomain {
         accountId: string,
     ): Promise<bigint> {
         const account: Account = this.getAccount(walletId, accountId);
-        const network = this.getCurrentNetwork();
-        const revision = ApiClientManager.getInstance().getCurrentNetworkRevision();
 
         const reservationAdapter: ReservationAdapter | null =
             this.reservationAdapterManager.get(walletId);
@@ -854,7 +846,6 @@ export default class Client extends ClosableDomain {
 
         const balance = await reservationAdapter.getBalance(account);
 
-        this.assertBalanceNetwork(network, account.getAddress(), revision);
         return balance.amount;
     }
 
@@ -906,7 +897,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
-                        this.getNativeTokenDecimals(),
+                        this.getNativeAsset().getDecimals(),
                     );
 
                 const reservation: ITransactionReservation =
@@ -955,7 +946,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
-                        this.getNativeTokenDecimals(),
+                        this.getNativeAsset().getDecimals(),
                     );
 
                 const reservation: ITransactionReservation =
@@ -1178,32 +1169,26 @@ export default class Client extends ClosableDomain {
         );
     }
 
-    @EnsureActive
-    public getNativeTokenDecimals(networkId?: NetworkId): number {
-        const manager = ApiClientManager.getInstance();
-        return getNativeTokenDecimals((networkId ? manager.getNetwork(networkId) : manager.getCurrentNetwork()).config);
-    }
-
-    @EnsureActive
-    public getNativeAsset(networkId?: NetworkId): Asset {
-        const manager = ApiClientManager.getInstance();
-        return createNativeAsset((networkId ? manager.getNetwork(networkId) : manager.getCurrentNetwork()).config);
-    }
-
-    private assertBalanceNetwork(network: INetworkRecord, address: Address, revision: number): void {
-        const current = this.getCurrentNetwork();
-        if (ApiClientManager.getInstance().getCurrentNetworkRevision() !== revision ||
-            current.id !== network.id || !isSameNetworkConfig(current.config, network.config)) {
-            throw new BalanceUnavailableError(address, "Network configuration changed while reading balance");
-        }
+    private getNativeAsset(): Asset {
+        return createNativeAsset(
+            ApiClientManager.getInstance().getCurrentNetwork().config,
+        );
     }
 
     public toDisplayAmount(atomicAmount: bigint): string {
-        return fromAtomicAmount(atomicAmount, this.getNativeTokenDecimals());
+        return fromAtomicAmount(
+            atomicAmount,
+            this.getNativeAsset().getDecimals(),
+        );
     }
 
+    /** @deprecated Use {@link Client.toExactAtomicAmount} instead. */
     public toAtomicAmount(amount: number | string): bigint {
-        return toAtomicAmount(amount, this.getNativeTokenDecimals());
+        return toAtomicAmount(amount, this.getNativeAsset().getDecimals());
+    }
+
+    public toExactAtomicAmount(amount: string): bigint {
+        return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
     }
 
     private getOpenWallet(walletId: string): Wallet {
@@ -1251,7 +1236,7 @@ export default class Client extends ClosableDomain {
     ): Promise<INetworkRecord> {
         const record: INetworkRecord = await NetworkManager.addNetwork(
             name,
-            snapshotNetworkConfig(config),
+            config,
         );
 
         this.emitNetworksChanged();
@@ -1270,17 +1255,9 @@ export default class Client extends ClosableDomain {
         id: NetworkId,
         update: INetworkUpdate,
     ): Promise<void> {
-        update = { ...update, ...(update.config ? { config: snapshotNetworkConfig(update.config) } : {}) };
         return this.reservationAdapterManager.runExclusiveNetworkAction(
             id,
             async () => {
-                const currentConfig = ApiClientManager.getInstance().getNetwork(id).config;
-                if (update.config && "nativeTokenDecimals" in update.config &&
-                    getNativeTokenDecimals(update.config) !== getNativeTokenDecimals(currentConfig) &&
-                    (this.hasNetworkReservations(id) ||
-                        await StorageManager.hasNetworkTransactionReservations(id))) {
-                    throw new Error("Cannot change native token decimals while reservations are pending");
-                }
                 const isConfigChanged: boolean = isNetworkConfigChanged(
                     ApiClientManager.getInstance().getNetwork(id).config,
                     update.config,

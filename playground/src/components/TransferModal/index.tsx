@@ -16,11 +16,12 @@ import {
     parseAmount,
     toAddressError,
 } from "../../sdk-react-kit";
-import { isAddress, type Address } from "asi-wallet-sdk";
+import { isAddress, type Address, type Asset } from "asi-wallet-sdk";
 
 export interface ITransferModalProps {
     fromAddress: Address;
     availableBalance: bigint;
+    asset: Asset;
     onConfirm: (toAddress: Address, amount: bigint) => void;
     onClose: () => void;
 }
@@ -28,6 +29,7 @@ export interface ITransferModalProps {
 const TransferModal = ({
     fromAddress,
     availableBalance,
+    asset,
     onConfirm,
     onClose,
 }: ITransferModalProps): ReactElement => {
@@ -42,7 +44,7 @@ const TransferModal = ({
         }
 
         try {
-            const parsed = parseAmount(amountInput);
+            const parsed = parseAmount(amountInput, asset);
 
             if (parsed <= 0n) {
                 return { amount: null, amountError: "Amount must be positive" };
@@ -65,7 +67,7 @@ const TransferModal = ({
                         : "Invalid amount format",
             };
         }
-    }, [amountInput, availableBalance]);
+    }, [amountInput, availableBalance, asset]);
 
     const recipientError = toAddressError(toAddress);
     const isValid = !recipientError && !amountError && amount !== null;
@@ -74,15 +76,15 @@ const TransferModal = ({
         () => [
             {
                 label: "Available:",
-                value: formatAssetAmount(availableBalance),
+                value: formatAssetAmount(availableBalance, asset),
             },
             {
                 label: "Amount to send:",
-                value: formatAssetAmount(amount),
+                value: formatAssetAmount(amount, asset),
                 accented: true,
             },
         ],
-        [availableBalance, amount],
+        [availableBalance, amount, asset],
     );
 
     const onToAddressChange = useCallback((event: ChangeEvent) => {

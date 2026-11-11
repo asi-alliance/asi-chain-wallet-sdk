@@ -5,7 +5,6 @@ import { TransactionType } from "@domains/Transaction";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
 import { BASELINE_STORAGE_VERSION } from "@config/index";
-import { getNativeTokenDecimals } from "@utils/nativeToken";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -20,35 +19,28 @@ const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
+const REGEX_EXACT_AMOUNT_FORMAT: RegExp = /^(-?)(\d+)(?:\.(\d+))?$/;
+const REGEX_NONZERO_DIGIT: RegExp = /[1-9]/;
 
-const getAmountScale = (decimals: number): bigint => {
-    if (!Number.isSafeInteger(decimals) || decimals < 0) {
-        throw new RangeError("Decimals must be a non-negative safe integer");
-    }
-
-    return BigInt(POWER_BASE) ** BigInt(decimals);
-};
-
+// TODO(next-major, Issue #218): make this function as strict as
+// toExactAtomicAmount (reject inexact numbers and nonzero digits beyond
+// decimals instead of truncating) or remove it in favor of toExactAtomicAmount.
+/** @deprecated Use {@link toExactAtomicAmount} instead. */
 export const toAtomicAmount = (
     amount: number | string,
     decimals: number,
 ): bigint => {
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
+    const currentDecimals: number = baseUnit.toString().length - 1;
 
     if (typeof amount === "number") {
-        if (!Number.isSafeInteger(amount)) {
-            throw new TypeError(
-                "Amount number must be a safe integer; use a decimal string",
-            );
+        if (!Number.isFinite(amount)) {
+            throw new Error("Invalid number");
         }
         amount = String(amount);
     }
 
-    if (typeof amount !== "string") {
-        throw new TypeError("Amount must be a decimal string or safe integer");
-    }
-
-    let amountString: string = amount.trim();
+    let amountString: string = String(amount).trim();
 
     if (!amountString.length) {
         throw new Error("Cannot process empty amount");
@@ -73,19 +65,53 @@ export const toAtomicAmount = (
 
     let fraction: string = fractionRaw;
 
-    if (fraction.length > decimals) {
-        if (/[1-9]/.test(fraction.slice(decimals))) {
-            throw new RangeError(`Amount has more than ${decimals} decimal places`);
-        }
-        fraction = fraction.slice(0, decimals);
+    if (fraction.length > currentDecimals) {
+        console.warn(
+            `Fraction ${fraction} has more than allowed decimals; truncating`,
+        );
+
+        fraction = fraction.slice(0, currentDecimals);
     }
 
-    fraction = fraction.padEnd(decimals, "0");
+    fraction = fraction.padEnd(currentDecimals, "0");
 
     const result: bigint =
         BigInt(integerPart) * baseUnit + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
+};
+
+export const toExactAtomicAmount = (
+    amount: string,
+    decimals: number,
+): bigint => {
+    if (!Number.isSafeInteger(decimals) || decimals < 0) {
+        throw new RangeError("Decimals must be a non-negative safe integer");
+    }
+
+    const match: RegExpExecArray | null = REGEX_EXACT_AMOUNT_FORMAT.exec(
+        amount.trim(),
+    );
+
+    if (!match) {
+        throw new Error("Invalid amount format");
+    }
+
+    const [, sign, integerPart, fractionRaw = ""] = match;
+
+    if (REGEX_NONZERO_DIGIT.test(fractionRaw.slice(decimals))) {
+        throw new RangeError(`Amount has more than ${decimals} decimal places`);
+    }
+
+    const fraction: string = fractionRaw
+        .slice(0, decimals)
+        .padEnd(decimals, "0");
+
+    const result: bigint =
+        BigInt(integerPart) * BigInt(POWER_BASE) ** BigInt(decimals) +
+        BigInt(fraction || "0");
+
+    return sign ? -result : result;
 };
 
 const fromAtomicAmountToString = (
@@ -97,14 +123,17 @@ const fromAtomicAmountToString = (
         ? -atomicAmount
         : atomicAmount;
 
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
 
     const integerPart: bigint = normalizedAtomicAmount / baseUnit;
     const remainder: bigint = normalizedAtomicAmount % baseUnit;
 
+    const baseString: string = baseUnit.toString();
+    const currentDecimals: number = baseString.length - 1;
+
     const fraction: string = remainder
         .toString()
-        .padStart(decimals, "0");
+        .padStart(currentDecimals, "0");
     const sign: string = isNegative ? "-" : "";
     const resultSting: string = `${sign}${integerPart.toString()}.${fraction}`;
 
@@ -117,7 +146,7 @@ export const fromAtomicAmountToNumber = (
     atomicAmount: bigint,
     decimals: number,
 ): number => {
-    const baseUnit: bigint = getAmountScale(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
 
     const integerPart: bigint = atomicAmount / baseUnit;
     const remainder: bigint = atomicAmount % baseUnit;
@@ -291,10 +320,7 @@ export const isNetworkConfigChanged = (
 
     return NETWORK_CONFIG_FIELDS.some(
         (field: keyof INetworkConfig) =>
-            field === "nativeTokenDecimals"
-                ? ("nativeTokenDecimals" in update &&
-                    getNativeTokenDecimals(update) !== getNativeTokenDecimals(current))
-                : update[field] !== undefined && update[field] !== current[field],
+            update[field] !== undefined && update[field] !== current[field],
     );
 };
 
@@ -303,9 +329,7 @@ export const isSameNetworkConfig = (
     second: INetworkConfig,
 ): boolean =>
     NETWORK_CONFIG_FIELDS.every(
-        (field: keyof INetworkConfig) => field === "nativeTokenDecimals"
-            ? getNativeTokenDecimals(first) === getNativeTokenDecimals(second)
-            : first[field] === second[field],
+        (field: keyof INetworkConfig) => first[field] === second[field],
     );
 
 export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({

@@ -5,8 +5,10 @@ on:
     branches:
       - main
       - dev
-      - development
   pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
   gate:

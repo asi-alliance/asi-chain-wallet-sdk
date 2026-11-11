@@ -1,5 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
-import { isNativeTokenDecimals } from "@utils/nativeToken";
+import { MAX_NATIVE_TOKEN_DECIMALS } from "@config/index";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -15,7 +15,10 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
-import { isPrivateKeyValid } from "@utils/validators/primitives";
+import {
+    isIntegerInRange,
+    isPrivateKeyValid,
+} from "@utils/validators/primitives";
 import {
     isRecord,
     isSerializedDecimal,
@@ -42,6 +45,13 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return isValueInConst(value, NODE_API_PROFILES);
+};
+
+export const isNativeTokenDecimals = (value: unknown): value is number => {
+    return (
+        typeof value === "number" &&
+        isIntegerInRange(value, 0, MAX_NATIVE_TOKEN_DECIMALS)
+    );
 };
 
 const isStoredPrivateKey = (value: unknown): boolean => {
@@ -114,7 +124,11 @@ export const isSerializedReservationPrivateData = (
     }
 
     const { accountId, pendingAmount, expirationTime, kind, details } = value;
-    if ("nativeTokenDecimals" in value && !isNativeTokenDecimals(value.nativeTokenDecimals)) {
+
+    if (
+        "nativeTokenDecimals" in value &&
+        !isNativeTokenDecimals(value.nativeTokenDecimals)
+    ) {
         return false;
     }
 

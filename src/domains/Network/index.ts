@@ -14,8 +14,13 @@ export interface INetworkEndpoints {
 
 export interface INetworkConfig extends INetworkEndpoints {
     nodeApiProfile: NodeApiProfile;
-    /** Missing on legacy configurations means 8; explicit values must be 0..18. */
+    // TODO(next-major): make nativeTokenDecimals required like nodeApiProfile
+    // and migrate stored custom networks that were saved without it.
     nativeTokenDecimals?: number;
+}
+
+export interface IResolvedNetworkConfig extends INetworkConfig {
+    nativeTokenDecimals: number;
 }
 
 export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
@@ -23,7 +28,7 @@ export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
 export interface INetworkRecord {
     id: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     isDefault: boolean;
 }
 
@@ -51,7 +56,7 @@ export type TNetworkBusyListener = (
 export interface INetworkContext {
     networkId: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     clients: IApiClients;
     api: NodeApiAdapter;
 }

@@ -34,7 +34,6 @@ export interface Transaction {
     contractCode?: string;
     networkId: NetworkId;
     detectedBy?: TransactionDetectedBy;
-    /** Precision recorded with this operation, when known. Never inferred from the active network. */
     nativeTokenDecimals?: number;
 }
 
@@ -76,6 +75,7 @@ export interface ISerializedTransactionReservationPrivateData
 export interface ITransactionReservation
     extends ITransactionReservationPrivateData, ITableRecord {
     networkId: NetworkId;
+    nativeTokenDecimals: number;
 }
 
 export type TReservationsByWallet = Record<string, ITransactionReservation[]>;

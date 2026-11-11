@@ -1,7 +1,6 @@
 import {
-    DEFAULT_ASSET,
     fromAtomicAmount,
-    toAtomicAmount,
+    toExactAtomicAmount,
     type Asset,
 } from "asi-wallet-sdk";
 
@@ -15,7 +14,7 @@ export const formatAddress = (address: string): string => {
 
 export const formatAmount = (
     amount: bigint | null | undefined,
-    asset: Asset = DEFAULT_ASSET,
+    asset: Asset,
 ): string => {
     if (typeof amount !== "bigint") {
         return "N/A";
@@ -26,7 +25,7 @@ export const formatAmount = (
 
 export const formatAssetAmount = (
     amount: bigint | null | undefined,
-    asset: Asset = DEFAULT_ASSET,
+    asset: Asset,
 ): string => {
     if (typeof amount !== "bigint") {
         return formatAmount(amount, asset);
@@ -35,10 +34,8 @@ export const formatAssetAmount = (
     return `${formatAmount(amount, asset)} ${asset.getName()}`;
 };
 
-export const parseAmount = (
-    amount: string | number,
-    asset: Asset = DEFAULT_ASSET,
-): bigint => toAtomicAmount(amount, asset.getDecimals());
+export const parseAmount = (amount: string, asset: Asset): bigint =>
+    toExactAtomicAmount(amount, asset.getDecimals());
 
 export const formatDate = (date: Date): string => {
     return new Date(date).toLocaleString();
