@@ -7,6 +7,7 @@ import blakejs from "blakejs";
 
 import Account from "@domains/Account";
 import Bip44Path from "@domains/Bip44Path";
+import { DeployData } from "@domains/Deploy";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { WalletTypes } from "@domains/Signer";
 import BlockService from "@services/BlockService";
@@ -41,6 +42,61 @@ interface IInvalidPayloadCase {
     details: TDeployDetails;
     error: RegExp;
 }
+
+interface IClassicSerializationCase {
+    name: string;
+    data: DeployData;
+    protobufHex: string;
+}
+
+const CLASSIC_TERM = "new return in { return!(42) }";
+const CLASSIC_TIMESTAMP = 1760000000123;
+
+const CLASSIC_TERM_HEX =
+    "121d6e65772072657475726e20696e207b2072657475726e2128343229207d";
+const CLASSIC_TIMESTAMP_HEX = "18fb80b3c19c33";
+const CLASSIC_ROOT_SHARD_HEX = "5a04726f6f74";
+
+const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
+    {
+        name: "minimal price and limit",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1,
+            phloLimit: 1,
+            validAfterBlockNumber: 99,
+            shardId: "root",
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}380140015063${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+    {
+        name: "multi byte price and limit",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1000,
+            phloLimit: 500000,
+            validAfterBlockNumber: 99,
+            shardId: "root",
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}38e80740a0c21e5063${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+    {
+        name: "genesis previous block",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1,
+            phloLimit: 1,
+            validAfterBlockNumber: -1,
+            shardId: "root",
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}3801400150ffffffffffffffffff01${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+];
+
+const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 class StubBlockService extends BlockService {
     public async getLatestBlockNumber(): Promise<number> {
@@ -245,6 +301,35 @@ test("signDeploy never submits the deploy", async () => {
     console.log("    Submitted deploys:", deployService.submitted.length);
 
     assert.equal(deployService.submitted.length, 0);
+});
+
+test("scala deploy data keeps the classic protobuf bytes", () => {
+    console.log("\n=== SCALA CLASSIC SERIALIZATION ===");
+
+    for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
+        const bytes: Uint8Array = SignerService.deployDataProtobufSerialize(
+            data,
+            NodeApiProfile.SCALA,
+        );
+
+        console.log("    Case:", name);
+        console.log("    Protobuf:", toHex(bytes));
+
+        assert.equal(toHex(bytes), protobufHex);
+    }
+});
+
+test("deploy data serialized without a profile keeps the classic protobuf bytes", () => {
+    console.log("\n=== DEFAULT CLASSIC SERIALIZATION ===");
+
+    for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
+        const bytes: Uint8Array =
+            SignerService.deployDataProtobufSerialize(data);
+
+        console.log("    Case:", name);
+
+        assert.equal(toHex(bytes), protobufHex);
+    }
 });
 
 test("signDeploy rejects an invalid payload", async () => {
