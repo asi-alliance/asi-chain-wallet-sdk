@@ -53,6 +53,12 @@ export interface IDecodeEncryptedFieldConfig {
     length?: number;
 }
 
+interface IDecodedEncryptedPayload {
+    salt: Uint8Array<ArrayBuffer>;
+    iv: Uint8Array<ArrayBuffer>;
+    content: Uint8Array<ArrayBuffer>;
+}
+
 const CryptoConfig: CryptoConfig = {
     VERSION: 2,
     IV_LENGTH: 12,
@@ -130,6 +136,48 @@ export default class CryptoService {
         return field;
     }
 
+    private static decodeEncryptedPayload(
+        payload: EncryptedData,
+    ): IDecodedEncryptedPayload {
+        return {
+            salt: this.decodeEncryptedField(
+                payload.salt,
+                CorruptedDataSource.ENCRYPTED_SALT,
+                {
+                    length: CryptoConfig.SALT_LENGTH,
+                },
+            ),
+            iv: this.decodeEncryptedField(
+                payload.iv,
+                CorruptedDataSource.ENCRYPTED_IV,
+                {
+                    length: CryptoConfig.IV_LENGTH,
+                },
+            ),
+            content: this.decodeEncryptedField(
+                payload.data,
+                CorruptedDataSource.ENCRYPTED_CONTENT,
+                {
+                    minimalLength: CryptoConfig.AUTH_TAG_LENGTH,
+                },
+            ),
+        };
+    }
+
+    public static isDecodableEncryptedData(payload: EncryptedData): boolean {
+        if (payload.version !== CryptoConfig.VERSION) {
+            return false;
+        }
+
+        try {
+            this.decodeEncryptedPayload(payload);
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     public static async decryptWithPassword(
         payload: EncryptedData,
         passphrase: string,
@@ -141,27 +189,8 @@ export default class CryptoService {
             );
         }
 
-        const salt = this.decodeEncryptedField(
-            payload.salt,
-            CorruptedDataSource.ENCRYPTED_SALT,
-            {
-                length: CryptoConfig.SALT_LENGTH,
-            },
-        );
-        const iv = this.decodeEncryptedField(
-            payload.iv,
-            CorruptedDataSource.ENCRYPTED_IV,
-            {
-                length: CryptoConfig.IV_LENGTH,
-            },
-        );
-        const content = this.decodeEncryptedField(
-            payload.data,
-            CorruptedDataSource.ENCRYPTED_CONTENT,
-            {
-                minimalLength: CryptoConfig.AUTH_TAG_LENGTH,
-            },
-        );
+        const { salt, iv, content }: IDecodedEncryptedPayload =
+            this.decodeEncryptedPayload(payload);
 
         const key: CryptoKey = await this.deriveKey(passphrase, salt);
 

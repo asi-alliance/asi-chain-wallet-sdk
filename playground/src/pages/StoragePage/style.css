@@ -1,0 +1,18 @@
+.storage-page__file {
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    background: var(--surface-sunken);
+    cursor: pointer;
+    max-width: 100%;
+}
+
+.storage-page__result h4 + pre {
+    margin-bottom: var(--space-3);
+}
+
+.storage-page__success .storage-page__actions,
+.storage-page__error .storage-page__actions {
+    margin-top: var(--space-3);
+}
