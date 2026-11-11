@@ -127,7 +127,7 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
 
         if (url.startsWith("/api/blocks")) {
             sendJson(response, [
-                { blockInfo: "", blockNumber: LATEST_BLOCK_NUMBER },
+                { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);
 
             return;
