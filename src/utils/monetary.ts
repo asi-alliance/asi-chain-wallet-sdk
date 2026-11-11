@@ -46,19 +46,19 @@ export const resolveDeployPhlo = (
         throw new RangeError("Phlo limit must be a positive safe integer");
     }
     const value = details.phloPrice === undefined ? DEFAULT_PHLO_PRICE : details.phloPrice;
-    if (profile !== NodeApiProfile.RUST_UINT256 &&
+    if (profile !== NodeApiProfile.RUST &&
         (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)) {
         throw new RangeError("Phlo price must be a positive safe integer for a classic profile");
     }
     const price = parseTokenAmount(value);
     if (price === 0n) throw new RangeError("Phlo price must be positive");
     const charge = BigInt(phloLimit) * price;
-    if (profile === NodeApiProfile.RUST_UINT256 && charge > MAX_TOKEN_AMOUNT) {
+    if (profile === NodeApiProfile.RUST && charge > MAX_TOKEN_AMOUNT) {
         throw new RangeError("Maximum phlo charge exceeds uint256");
     }
     return {
         phloLimit,
-        phloPrice: profile === NodeApiProfile.RUST_UINT256 ? price.toString() : value as number,
+        phloPrice: profile === NodeApiProfile.RUST ? price.toString() : value as number,
         charge,
     };
 };

@@ -27,7 +27,6 @@ export const createDeployTermFactory = (
             return SCALA_DEPLOY_TERMS;
 
         case NodeApiProfile.RUST:
-        case NodeApiProfile.RUST_UINT256:
             return RUST_DEPLOY_TERMS;
     }
 };

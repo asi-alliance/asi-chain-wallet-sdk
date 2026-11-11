@@ -33,7 +33,7 @@ export default abstract class NodeApiAdapter {
 
     public submitDeploy(deploy: SignedResult): Promise<unknown> {
         const profile = this.getProfile();
-        const isUint256 = profile === NodeApiProfile.RUST_UINT256;
+        const isUint256 = profile === NodeApiProfile.RUST;
         if ((deploy.nodeApiProfile !== undefined && deploy.nodeApiProfile !== profile) ||
             (isUint256 && (deploy.nodeApiProfile !== profile || typeof deploy.data.phloPrice !== "string")) ||
             (!isUint256 && typeof deploy.data.phloPrice !== "number")) {

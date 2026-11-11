@@ -14,9 +14,5 @@ export const createNodeApiAdapter = (
 
         case NodeApiProfile.RUST:
             return new RustNodeApiAdapter(clients);
-        case NodeApiProfile.RUST_UINT256:
-            return new RustNodeApiAdapter(clients, NodeApiProfile.RUST_UINT256);
-        default:
-            throw new Error("Unknown node API profile");
     }
 };

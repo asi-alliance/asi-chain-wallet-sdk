@@ -535,7 +535,7 @@ export default class ReservationAdapter {
 
         const { nativeTokenDecimals, nodeApiProfile }: IResolvedNetworkConfig =
             ApiClientManager.getInstance().getNetwork(networkId).config;
-        const gasCost = nodeApiProfile === NodeApiProfile.RUST_UINT256
+        const gasCost = nodeApiProfile === NodeApiProfile.RUST
             ? resolveDeployPhlo(details, nodeApiProfile).charge : GasFee.MAX;
         const pendingAmount: bigint = details.amount + gasCost;
 

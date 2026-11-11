@@ -12,8 +12,4 @@ export default class ValidatorClient extends BaseHttpClient {
     public getStatus() {
         return this.get("/status");
     }
-
-    public getRustStatus() {
-        return this.get("/api/status");
-    }
 }

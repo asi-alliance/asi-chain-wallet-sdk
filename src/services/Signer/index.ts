@@ -20,7 +20,7 @@ export interface SignedResult {
 export default class SignerService {
     public static readonly deployDataProtobufSerialize = (
         deployData: DeployData,
-        profile: NodeApiProfile = NodeApiProfile.RUST,
+        profile: NodeApiProfile = NodeApiProfile.SCALA,
     ): Uint8Array => {
         const {
             term,
@@ -38,7 +38,7 @@ export default class SignerService {
             !Number.isSafeInteger(validAfterBlockNumber) || validAfterBlockNumber < -1) {
             throw new RangeError("Invalid deploy signing fields");
         }
-        if (profile === NodeApiProfile.RUST_UINT256 &&
+        if (profile === NodeApiProfile.RUST &&
             Object.keys(deployData).some(key => ![
                 "term", "timestamp", "phloPrice", "phloLimit", "validAfterBlockNumber", "shardId",
             ].includes(key))) {
@@ -49,13 +49,13 @@ export default class SignerService {
 
         writer.writeString(2, term);
         writer.writeInt64(3, timestamp);
-        if (profile !== NodeApiProfile.RUST_UINT256) {
+        if (profile !== NodeApiProfile.RUST) {
             writer.writeInt64(7, phlo.phloPrice as number);
         }
         writer.writeInt64(8, phloLimit);
         writer.writeInt64(10, validAfterBlockNumber);
         writer.writeString(11, shardId);
-        if (profile === NodeApiProfile.RUST_UINT256) {
+        if (profile === NodeApiProfile.RUST) {
             writer.writeBytes(15, encodeTokenAmount(phloPrice));
         }
 

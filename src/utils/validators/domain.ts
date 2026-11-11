@@ -419,7 +419,7 @@ export const validateDeployPayload = ({
     phloLimit,
     phloPrice,
     shardId,
-}: TDeployDetails, profile: NodeApiProfile = NodeApiProfile.RUST): { isValid: boolean; error?: string } => {
+}: TDeployDetails, profile: NodeApiProfile = NodeApiProfile.SCALA): { isValid: boolean; error?: string } => {
     if (typeof term !== "string" || !term.trim()) {
         return { isValid: false, error: "Deploy term must not be empty" };
     }

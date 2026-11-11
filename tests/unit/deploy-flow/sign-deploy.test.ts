@@ -172,7 +172,7 @@ const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
 ): TransactionService =>
     new TransactionService(deployService, new StubBlockService(), {
-        getApi: () => ({ getProfile: () => NodeApiProfile.RUST }),
+        getApi: () => ({ getProfile: () => NodeApiProfile.SCALA }),
     } as unknown as NodeApiProvider);
 
 const hashSignedData = (signed: SignedResult): string =>

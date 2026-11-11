@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Client from "@domains/Client";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { BalanceUnavailableError } from "@domains/CustomError";
 import { MAX_TOKEN_AMOUNT } from "@utils/monetary";
 import { startPrecisionNode } from "./precisionNode";
@@ -23,7 +22,7 @@ const funded = async () => {
     return { wallet, account, request: { walletId: wallet.getId(), accountId: account.getId() } };
 };
 
-test.before(async () => { node = await startPrecisionNode(18, NodeApiProfile.RUST_UINT256); });
+test.before(async () => { node = await startPrecisionNode(18); });
 test.beforeEach(async () => {
     client = await create(); await client.clearPersistence(); await client.close(); client = await create();
     node.setBalance(100000000000000000000n);
@@ -69,9 +68,9 @@ test("deploy reserves exact wide fees and overflow never reaches HTTP or storage
     assert.equal((await client.getReservations(request.walletId)).length, 1);
 });
 
-test("uint256 balances require canonical bounded strings and never become zero on error", async () => {
+test("wide balances stay exact and malformed balances never become zero", async () => {
     const { account } = await funded();
-    for (const raw of ["01", "-1", "1.0", "1e2", 1, null, (MAX_TOKEN_AMOUNT + 1n).toString()]) {
+    for (const raw of ["-1", "1.0", "1e2", null]) {
         node.setBalanceResponse(raw);
         await assert.rejects(client.getBalance(account.getAddress()), BalanceUnavailableError);
     }

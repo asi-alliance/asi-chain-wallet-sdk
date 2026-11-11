@@ -10,7 +10,7 @@ import { encodeTokenAmount, parseTokenAmount, resolveDeployPhlo, MAX_TOKEN_AMOUN
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import type { IApiClients } from "@domains/ApiClientManager";
 
-const profile = NodeApiProfile.RUST_UINT256;
+const profile = NodeApiProfile.RUST;
 const fixture = JSON.parse(readFileSync(new URL("../../fixtures/uint256/node-vectors.json", import.meta.url), "utf8"));
 const syntheticKey = new Uint8Array(32).fill(1);
 
@@ -45,12 +45,12 @@ test("price codecs reject malformed, rounded and out-of-range monetary inputs", 
 
 test("classic and uint256 signing remain deliberately separate", () => {
     const data = { ...fixture.vectors[0].data, phloPrice: 1 } as DeployData;
-    const classic = SignerService.deployDataProtobufSerialize(data, NodeApiProfile.RUST);
+    const classic = SignerService.deployDataProtobufSerialize(data, NodeApiProfile.SCALA);
     const uint256 = SignerService.deployDataProtobufSerialize(data, profile);
     assert.notDeepEqual(classic, uint256);
     assert.equal(Buffer.from(classic).toString("hex"), "121d6e65772072657475726e20696e207b2072657475726e2128343229207d18fb80b3c19c333801400150ffffffffffffffffff015a04726f6f74");
     for (const price of ["1", 1n]) {
-        assert.throws(() => resolveDeployPhlo({ phloPrice: price }, NodeApiProfile.RUST), /classic profile/);
+        assert.throws(() => resolveDeployPhlo({ phloPrice: price }, NodeApiProfile.SCALA), /classic profile/);
     }
     for (const field of ["parameters", "expirationTimestamp", "language"]) {
         assert.throws(() => SignerService.deployDataProtobufSerialize({ ...data, [field]: [] }, profile), /Unsupported/);
@@ -66,9 +66,9 @@ test("submission sends canonical request strings and refuses profile mismatch be
     await adapter.submitDeploy(signed);
     assert.deepEqual(requests, [{ data: vector.data, signature: vector.signature, deployer: vector.publicKey, sigAlgorithm: "secp256k1" }]);
     assert.equal(JSON.parse(JSON.stringify(requests[0])).data.phloPrice, "9007199254740993");
-    assert.throws(() => adapter.submitDeploy({ ...signed, nodeApiProfile: NodeApiProfile.RUST }), /profile mismatch/);
+    assert.throws(() => adapter.submitDeploy({ ...signed, nodeApiProfile: NodeApiProfile.SCALA }), /profile mismatch/);
     assert.throws(() => adapter.submitDeploy({ ...signed, nodeApiProfile: undefined }), /profile mismatch/);
     assert.throws(() => adapter.submitDeploy({ ...signed, data: { ...signed.data, phloPrice: 1 } }), /profile mismatch/);
-    assert.throws(() => createNodeApiAdapter(NodeApiProfile.RUST, clients).submitDeploy(signed), /profile mismatch/);
+    assert.throws(() => createNodeApiAdapter(NodeApiProfile.SCALA, clients).submitDeploy(signed), /profile mismatch/);
     assert.equal(requests.length, 1);
 });
