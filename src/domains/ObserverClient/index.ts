@@ -27,7 +27,9 @@ export default class ObserverClient extends BaseHttpClient {
         return this.get(`/api/block/${blockHash}`);
     }
 
-    public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
+    public getBlocks<T = IBlockDto>(
+        params: IGetBlocksParams = {},
+    ): Promise<T[]> {
         const { start, end, view } = params;
 
         const path: string = buildUrl("api/blocks", {

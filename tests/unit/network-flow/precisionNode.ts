@@ -71,7 +71,9 @@ export const startPrecisionNode = async (
         }
 
         if (url.startsWith("/api/blocks")) {
-            sendJson(response, [{ blockNumber: LATEST_BLOCK_NUMBER }]);
+            sendJson(response, [
+                { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
+            ]);
 
             return;
         }
