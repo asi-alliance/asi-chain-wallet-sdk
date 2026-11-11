@@ -1,28 +1,32 @@
 import { type ReactElement } from "react";
+import type { Asset } from "asi-wallet-sdk";
 import { formatAssetAmount } from "../../sdk-react-kit";
 import type { WalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 
 export interface IReservationStatusProps {
     balance: WalletBalance;
     reservationCount: number;
+    asset: Asset;
     isFetching?: boolean;
     error?: string | null;
 }
 
 const getAmountLabel = (
     amount: bigint | null,
+    asset: Asset,
     error?: string | null,
 ): string => {
     if (error) {
         return "unavailable";
     }
 
-    return formatAssetAmount(amount);
+    return formatAssetAmount(amount, asset);
 };
 
 const ReservationStatus = ({
     balance,
     reservationCount,
+    asset,
     isFetching = false,
     error = null,
 }: IReservationStatusProps): ReactElement => {
@@ -47,7 +51,7 @@ const ReservationStatus = ({
                     <span className="reservation-status__value">
                         {isFetching
                             ? "updating..."
-                            : getAmountLabel(balance.total, error)}
+                            : getAmountLabel(balance.total, asset, error)}
                     </span>
                 </div>
 
@@ -57,7 +61,7 @@ const ReservationStatus = ({
                             Reserved:
                         </span>
                         <span className="reservation-status__value reserved">
-                            {formatAssetAmount(totalReserved)}
+                            {formatAssetAmount(totalReserved, asset)}
                         </span>
                     </div>
                 )}
@@ -67,7 +71,7 @@ const ReservationStatus = ({
                         Available:
                     </span>
                     <span className="reservation-status__value">
-                        {getAmountLabel(balance.available, error)}
+                        {getAmountLabel(balance.available, asset, error)}
                     </span>
                 </div>
 

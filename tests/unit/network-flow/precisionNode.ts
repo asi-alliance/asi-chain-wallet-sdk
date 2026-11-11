@@ -1,64 +1,172 @@
 import http from "node:http";
-import type { AddressInfo } from "node:net";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
-import type { INetworkConfig } from "@domains/Network";
-import type { SignedResult } from "@services/Signer";
-import { createHeldStep, type IHeldStep } from "../reservation-flow/fakeNode";
+import { AddressInfo } from "node:net";
 
-export const startPrecisionNode = async (precision: number, profile = NodeApiProfile.RUST) => {
-    let balance = 100000000000000000000n;
+import { INetworkConfig } from "@domains/Network";
+import { NodeApiProfile } from "@domains/NodeApiProfile";
+import { SignedResult } from "@services/Signer";
+import { readBody, sendJson } from "../reservation-flow/fakeNode";
+
+const LATEST_BLOCK_NUMBER: number = 100;
+
+const INITIAL_BALANCE: bigint = 100000000000000000000n;
+
+const NATIVE_18_HISTORY_AMOUNT: string = "10.000000000000000001";
+const NATIVE_8_HISTORY_AMOUNT: string = "1.50000000";
+
+export interface IPrecisionNode {
+    config: INetworkConfig;
+    requests: string[];
+    setBalance: (amount: bigint) => void;
+    setBalanceResponse: (value: unknown) => void;
+    getSubmittedDeploys: () => SignedResult[];
+    close: () => Promise<void>;
+}
+
+const sendNotFound = (response: http.ServerResponse): void => {
+    response.writeHead(404, { "content-type": "text/plain" });
+    response.end("Not found");
+};
+
+export const startPrecisionNode = async (
+    nativeTokenDecimals: number,
+    nodeApiProfile: NodeApiProfile = NodeApiProfile.RUST,
+): Promise<IPrecisionNode> => {
+    let balance: bigint = INITIAL_BALANCE;
     let balanceResponse: unknown;
-    let heldBalance: IHeldStep | undefined;
+
     const requests: string[] = [];
-    const submitted: SignedResult[] = [];
-    const server = http.createServer((request, response) => {
-        void (async () => {
-            const url = request.url ?? "";
-            requests.push(url);
-            const chunks: Buffer[] = [];
-            for await (const chunk of request) chunks.push(chunk as Buffer);
-            const body = Buffer.concat(chunks).toString("utf8");
-            const json = (value: unknown) => {
-                response.writeHead(200, { "content-type": "application/json" });
-                response.end(JSON.stringify(value));
-            };
-            if (url.startsWith("/api/explore-deploy")) {
-                const step = heldBalance;
-                heldBalance = undefined;
-                const observed = balance;
-                if (step) await step.wait();
-                json({ expr: [{ ExprBigInt: { data: balanceResponse === undefined ? observed.toString() : balanceResponse } }] });
-            } else if (url.startsWith("/api/blocks")) {
-                json([{ blockInfo: { blockNumber: "100" } }]);
-            } else if (url.startsWith("/api/deploy/")) {
-                response.writeHead(404); response.end("Not found");
-            } else if (url.startsWith("/api/deploy")) {
-                const signed = JSON.parse(body) as SignedResult;
-                submitted.push(signed);
-                response.writeHead(200, { "content-type": "text/plain" });
-                response.end(`Success! DeployId is: ${signed.signature}`);
-            } else if (url.startsWith("/v1/graphql")) {
-                json({ data: { transfers: [{
-                    deploy_id: `history-${precision}`, from_address: "sender", to_address: "recipient",
-                    amount_asi: precision === 18 ? "10.000000000000000001" : "1.50000000",
-                    timestamp: "2026-11-06T12:00:00Z",
-                }], deployments: [] } });
-            } else { response.writeHead(404); response.end("Not found"); }
-        })().catch((error) => {
-            response.writeHead(500); response.end(String(error));
-        });
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const config: INetworkConfig = {
-        ValidatorURL: base, ReadOnlyURL: base, IndexerURL: `${base}/v1/graphql`,
-        nodeApiProfile: profile, nativeTokenDecimals: precision,
+    const submittedDeploys: SignedResult[] = [];
+
+    const historyAmount: string =
+        nativeTokenDecimals === 18
+            ? NATIVE_18_HISTORY_AMOUNT
+            : NATIVE_8_HISTORY_AMOUNT;
+
+    const respondToSubmit = async (
+        request: http.IncomingMessage,
+        response: http.ServerResponse,
+    ): Promise<void> => {
+        const body: string = await readBody(request);
+        const deploy: SignedResult = JSON.parse(body) as SignedResult;
+
+        submittedDeploys.push(deploy);
+
+        response.writeHead(200, { "content-type": "text/plain" });
+        response.end(`Success! DeployId is: ${deploy.signature}`);
     };
+
+    const handle = async (
+        request: http.IncomingMessage,
+        response: http.ServerResponse,
+    ): Promise<void> => {
+        const url: string = request.url ?? "";
+
+        requests.push(url);
+
+        if (url.startsWith("/api/explore-deploy")) {
+            await readBody(request);
+
+            sendJson(response, {
+                expr: [
+                    {
+                        ExprBigInt: {
+                            data:
+                                balanceResponse === undefined
+                                    ? balance.toString()
+                                    : balanceResponse,
+                        },
+                    },
+                ],
+            });
+
+            return;
+        }
+
+        if (url.startsWith("/api/blocks")) {
+            sendJson(response, [
+                { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
+            ]);
+
+            return;
+        }
+
+        if (url.startsWith("/api/deploy/")) {
+            sendNotFound(response);
+
+            return;
+        }
+
+        if (url.startsWith("/api/deploy")) {
+            await respondToSubmit(request, response);
+
+            return;
+        }
+
+        if (url.startsWith("/v1/graphql")) {
+            await readBody(request);
+
+            sendJson(response, {
+                data: {
+                    transfers: [
+                        {
+                            deploy_id: `history-${nativeTokenDecimals}`,
+                            from_address: "sender",
+                            to_address: "recipient",
+                            amount_asi: historyAmount,
+                            timestamp: "2026-11-06T12:00:00Z",
+                        },
+                    ],
+                    deployments: [],
+                },
+            });
+
+            return;
+        }
+
+        sendNotFound(response);
+    };
+
+    const server: http.Server = http.createServer(
+        (request: http.IncomingMessage, response: http.ServerResponse) => {
+            void handle(request, response).catch(() => {
+                if (!response.headersSent) {
+                    response.writeHead(500);
+                    response.end();
+                }
+            });
+        },
+    );
+
+    await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const { port } = server.address() as AddressInfo;
+    const baseUrl: string = `http://127.0.0.1:${port}`;
+
+    const config: INetworkConfig = {
+        ValidatorURL: baseUrl,
+        ReadOnlyURL: baseUrl,
+        IndexerURL: `${baseUrl}/v1/graphql`,
+        nodeApiProfile,
+        nativeTokenDecimals,
+    };
+
     return {
-        config, requests, submitted,
-        setBalance: (amount: bigint) => { balance = amount; balanceResponse = undefined; },
-        setBalanceResponse: (value: unknown) => { balanceResponse = value; },
-        holdBalance: () => (heldBalance = createHeldStep()),
-        close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+        config,
+        requests,
+        setBalance: (amount: bigint) => {
+            balance = amount;
+            balanceResponse = undefined;
+        },
+        setBalanceResponse: (value: unknown) => {
+            balanceResponse = value;
+        },
+        getSubmittedDeploys: () => submittedDeploys,
+        close: () =>
+            new Promise<void>((resolve) => {
+                server.closeAllConnections();
+                server.close(() => resolve());
+            }),
     };
 };

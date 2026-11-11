@@ -11,8 +11,7 @@ import {
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
-import { NetworkId } from "@domains/Network";
-import { getNativeTokenDecimals } from "@utils/nativeToken";
+import { IResolvedNetworkConfig, NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
@@ -534,12 +533,10 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const nativeTokenDecimals = getNativeTokenDecimals(
-            ApiClientManager.getInstance().getNetwork(networkId).config,
-        );
-        const profile = ApiClientManager.getInstance().getNetwork(networkId).config.nodeApiProfile;
-        const gasCost = profile === NodeApiProfile.RUST_UINT256
-            ? resolveDeployPhlo(details, profile).charge : GasFee.MAX;
+        const { nativeTokenDecimals, nodeApiProfile }: IResolvedNetworkConfig =
+            ApiClientManager.getInstance().getNetwork(networkId).config;
+        const gasCost = nodeApiProfile === NodeApiProfile.RUST_UINT256
+            ? resolveDeployPhlo(details, nodeApiProfile).charge : GasFee.MAX;
         const pendingAmount: bigint = details.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
@@ -600,12 +597,9 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const nativeTokenDecimals = getNativeTokenDecimals(
-            ApiClientManager.getInstance().getNetwork(networkId).config,
-        );
-        const pendingAmount = resolveDeployPhlo(
-            details, ApiClientManager.getInstance().getNetwork(networkId).config.nodeApiProfile,
-        ).charge;
+        const { nativeTokenDecimals, nodeApiProfile }: IResolvedNetworkConfig =
+            ApiClientManager.getInstance().getNetwork(networkId).config;
+        const pendingAmount = resolveDeployPhlo(details, nodeApiProfile).charge;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",

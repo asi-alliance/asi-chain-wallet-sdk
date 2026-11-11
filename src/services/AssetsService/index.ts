@@ -74,7 +74,9 @@ export default class AssetsService {
 
         const firstExpr: IExploreExprItem | undefined = expr?.[0];
 
-        const integerExpr = firstExpr?.ExprInt ?? firstExpr?.ExprBigInt;
+        const integerExpr: { data?: unknown } | undefined =
+            firstExpr?.ExprInt ?? firstExpr?.ExprBigInt;
+
         if (integerExpr !== undefined) {
             let amount: bigint | null;
             try {

@@ -6,8 +6,8 @@ export interface IBalanceResponse {
 }
 
 export interface IBlockDto {
-    blockInfo: string | { blockNumber: number | string; blockHash?: string };
-    blockNumber?: number | string;
+    blockInfo: string;
+    blockNumber: number;
 }
 
 export type TBlocksView = "summary" | "full";
@@ -27,7 +27,9 @@ export default class ObserverClient extends BaseHttpClient {
         return this.get(`/api/block/${blockHash}`);
     }
 
-    public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
+    public getBlocks<T = IBlockDto>(
+        params: IGetBlocksParams = {},
+    ): Promise<T[]> {
         const { start, end, view } = params;
 
         const path: string = buildUrl("api/blocks", {

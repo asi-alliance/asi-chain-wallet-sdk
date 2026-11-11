@@ -1,10 +1,12 @@
 import { useState, type ReactElement } from "react";
+import type { Asset } from "asi-wallet-sdk";
 import { formatAssetAmount } from "../../sdk-react-kit";
 
 export interface ITransferCompletedModalProps {
     fromAddress: string;
     toAddress: string;
     amount: bigint;
+    asset: Asset;
     deployId: string;
     onClose: () => void;
 }
@@ -13,6 +15,7 @@ const TransferCompletedModal = ({
     fromAddress,
     toAddress,
     amount,
+    asset,
     deployId,
     onClose,
 }: ITransferCompletedModalProps): ReactElement => {
@@ -78,7 +81,7 @@ const TransferCompletedModal = ({
                         name="amount"
                         type="text"
                         readOnly
-                        value={formatAssetAmount(amount)}
+                        value={formatAssetAmount(amount, asset)}
                     />
                 </div>
 

@@ -8,6 +8,7 @@ import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
+import { IGetBlocksParams } from "@domains/ObserverClient";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
@@ -16,6 +17,36 @@ interface IExploreCall {
     client: string;
     body: unknown;
 }
+
+interface IRustBlockNumberCase {
+    blockNumber: unknown;
+    expected: number;
+}
+
+const LATEST_BLOCK_NUMBER: number = 42;
+
+const INVALID_BLOCK_NUMBER_ERROR: RegExp =
+    /Block number must be a non-negative safe integer/;
+
+const createBlocksClients = (
+    blocks: unknown[],
+    calls: (IGetBlocksParams | undefined)[],
+): IApiClients =>
+    ({
+        observer: {
+            getBlocks: async (params?: IGetBlocksParams) => {
+                calls.push(params);
+
+                return blocks;
+            },
+        },
+    }) as unknown as IApiClients;
+
+const readRustLatestBlockNumber = (blocks: unknown[]): Promise<number> =>
+    createNodeApiAdapter(
+        NodeApiProfile.RUST,
+        createBlocksClients(blocks, []),
+    ).getLatestBlockNumber();
 
 const createStubClients = (calls: IExploreCall[]): IApiClients => {
     const createStub = (name: string) => ({
@@ -108,6 +139,127 @@ test("rust profile sends exploratory deploy to the observer as a json term", asy
     assert.equal(calls.length, 1);
     assert.equal(calls[0].client, "observer");
     assert.deepEqual(calls[0].body, { term: "Nil" });
+});
+
+test("scala profile reads the flat latest block number with the default blocks request", async () => {
+    console.log("\n=== SCALA LATEST BLOCK NUMBER ===");
+
+    const calls: (IGetBlocksParams | undefined)[] = [];
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.SCALA,
+        createBlocksClients(
+            [{ blockInfo: "", blockNumber: LATEST_BLOCK_NUMBER }],
+            calls,
+        ),
+    );
+
+    const blockNumber: number = await adapter.getLatestBlockNumber();
+
+    console.log("    Blocks request params:", calls[0]);
+    console.log("    Latest block number:", blockNumber);
+
+    assert.equal(blockNumber, LATEST_BLOCK_NUMBER);
+    assert.deepEqual(calls, [undefined]);
+});
+
+test("rust profile reads the latest block number from the summary block envelope", async () => {
+    console.log("\n=== RUST LATEST BLOCK NUMBER ===");
+
+    const calls: (IGetBlocksParams | undefined)[] = [];
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.RUST,
+        createBlocksClients(
+            [{ blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } }],
+            calls,
+        ),
+    );
+
+    const blockNumber: number = await adapter.getLatestBlockNumber();
+
+    console.log("    Blocks request params:", JSON.stringify(calls[0]));
+    console.log("    Latest block number:", blockNumber);
+
+    assert.equal(blockNumber, LATEST_BLOCK_NUMBER);
+    assert.deepEqual(calls, [{ view: "summary" }]);
+});
+
+test("rust profile does not read the flat block number", async () => {
+    console.log("\n=== RUST FLAT BLOCK NUMBER ===");
+
+    await assert.rejects(
+        readRustLatestBlockNumber([
+            { blockInfo: "", blockNumber: LATEST_BLOCK_NUMBER },
+        ]),
+        INVALID_BLOCK_NUMBER_ERROR,
+    );
+
+    console.log("    Flat block number rejected");
+});
+
+test("rust profile accepts safe non-negative block numbers as numbers and strings", async () => {
+    console.log("\n=== RUST VALID BLOCK NUMBERS ===");
+
+    const cases: IRustBlockNumberCase[] = [
+        { blockNumber: LATEST_BLOCK_NUMBER, expected: LATEST_BLOCK_NUMBER },
+        {
+            blockNumber: String(LATEST_BLOCK_NUMBER),
+            expected: LATEST_BLOCK_NUMBER,
+        },
+        { blockNumber: 0, expected: 0 },
+        { blockNumber: "0", expected: 0 },
+        {
+            blockNumber: Number.MAX_SAFE_INTEGER,
+            expected: Number.MAX_SAFE_INTEGER,
+        },
+        {
+            blockNumber: String(Number.MAX_SAFE_INTEGER),
+            expected: Number.MAX_SAFE_INTEGER,
+        },
+    ];
+
+    for (const { blockNumber, expected } of cases) {
+        const latestBlockNumber: number = await readRustLatestBlockNumber([
+            { blockInfo: { blockNumber } },
+        ]);
+
+        console.log("    Accepted:", JSON.stringify(blockNumber));
+
+        assert.equal(latestBlockNumber, expected);
+    }
+});
+
+test("rust profile rejects block numbers that are not safe non-negative integers", async () => {
+    console.log("\n=== RUST INVALID BLOCK NUMBERS ===");
+
+    const invalidBlockNumbers: unknown[] = [
+        undefined,
+        null,
+        true,
+        -1,
+        1.5,
+        Number.MAX_SAFE_INTEGER + 1,
+        "",
+        "-1",
+        "1.5",
+        "1e3",
+        String(Number.MAX_SAFE_INTEGER + 1),
+    ];
+
+    for (const blockNumber of invalidBlockNumbers) {
+        console.log("    Rejecting:", JSON.stringify(blockNumber));
+
+        await assert.rejects(
+            readRustLatestBlockNumber([{ blockInfo: { blockNumber } }]),
+            INVALID_BLOCK_NUMBER_ERROR,
+        );
+    }
+
+    await assert.rejects(
+        readRustLatestBlockNumber([]),
+        INVALID_BLOCK_NUMBER_ERROR,
+    );
 });
 
 test("node api provider follows the active network profile", () => {

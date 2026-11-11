@@ -1,5 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
-import { isNativeTokenDecimals } from "@utils/nativeToken";
+import { MAX_NATIVE_TOKEN_DECIMALS } from "@config/index";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -15,7 +15,11 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
-import { isPrivateKeyValid } from "@utils/validators/primitives";
+import { DIGITS_ONLY_REGEX } from "@utils/constants";
+import {
+    isIntegerInRange,
+    isPrivateKeyValid,
+} from "@utils/validators/primitives";
 import {
     isRecord,
     isSerializedDecimal,
@@ -42,6 +46,25 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return isValueInConst(value, NODE_API_PROFILES);
+};
+
+export const isNativeTokenDecimals = (value: unknown): value is number => {
+    return (
+        typeof value === "number" &&
+        isIntegerInRange(value, 0, MAX_NATIVE_TOKEN_DECIMALS)
+    );
+};
+
+export const isBlockNumber = (value: unknown): value is number | string => {
+    const blockNumber: unknown =
+        typeof value === "string" && DIGITS_ONLY_REGEX.test(value)
+            ? Number(value)
+            : value;
+
+    return (
+        typeof blockNumber === "number" &&
+        isIntegerInRange(blockNumber, 0, Number.MAX_SAFE_INTEGER)
+    );
 };
 
 const isStoredPrivateKey = (value: unknown): boolean => {
@@ -114,7 +137,11 @@ export const isSerializedReservationPrivateData = (
     }
 
     const { accountId, pendingAmount, expirationTime, kind, details } = value;
-    if ("nativeTokenDecimals" in value && !isNativeTokenDecimals(value.nativeTokenDecimals)) {
+
+    if (
+        "nativeTokenDecimals" in value &&
+        !isNativeTokenDecimals(value.nativeTokenDecimals)
+    ) {
         return false;
     }
 

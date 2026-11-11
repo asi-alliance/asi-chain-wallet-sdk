@@ -7,6 +7,7 @@ import {
 } from "@domains/Deploy";
 import {
     getErrorMessage,
+    INVALID_BLOCK_NUMBER,
     SCALA_FAULT_TOLERANCE_THRESHOLD,
 } from "@utils/index";
 import { UnknownErrorReason } from "@domains/CustomError";
@@ -103,6 +104,12 @@ export default abstract class NodeApiAdapter {
 
     public getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> {
         return this.clients.observer.getBlocks(params);
+    }
+
+    public async getLatestBlockNumber(): Promise<number> {
+        const [latestBlock]: IBlockDto[] = await this.getBlocks();
+
+        return latestBlock?.blockNumber ?? INVALID_BLOCK_NUMBER;
     }
 
     public getValidatorStatus(): Promise<unknown> {

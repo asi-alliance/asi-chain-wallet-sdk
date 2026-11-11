@@ -3,6 +3,7 @@ import {
     INetworkRecord,
     INetworkUpdate,
     IPersistedNetworkRecord,
+    IResolvedNetworkConfig,
     NetworkId,
     NetworkName,
     TNetworksConfig,
@@ -10,12 +11,13 @@ import {
 import {
     ensureValid,
     generateRandomId,
+    validateNativeTokenDecimals,
     validateNetworkConfigUrls,
     validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
-import { isNodeApiProfile } from "@utils/guards";
-import { getNativeTokenDecimals, snapshotNetworkConfig } from "@utils/nativeToken";
+import { isNativeTokenDecimals, isNodeApiProfile } from "@utils/guards";
+import { createNetworkConfigSnapshot } from "@fabrics/network";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -28,7 +30,6 @@ export default class NetworkConfigProvider {
 
     public initialize(config: TNetworksConfig): void {
         Object.values(config).forEach((networkConfig: INetworkConfig) => {
-            getNativeTokenDecimals(networkConfig);
             ensureValid(
                 validateNetworkConfigUrls(networkConfig, { allowEmpty: true }),
                 { context: "NetworkConfigProvider.initialize" },
@@ -36,6 +37,10 @@ export default class NetworkConfigProvider {
             ensureValid(validateNodeApiProfile(networkConfig.nodeApiProfile), {
                 context: "NetworkConfigProvider.initialize",
             });
+            ensureValid(
+                validateNativeTokenDecimals(networkConfig.nativeTokenDecimals),
+                { context: "NetworkConfigProvider.initialize" },
+            );
         });
 
         this.networksRecords = new Map<NetworkId, INetworkRecord>(
@@ -44,7 +49,7 @@ export default class NetworkConfigProvider {
                 {
                     id: name,
                     name,
-                    config: snapshotNetworkConfig(networkConfig),
+                    config: createNetworkConfigSnapshot(networkConfig),
                     isDefault: true,
                 },
             ]),
@@ -62,11 +67,23 @@ export default class NetworkConfigProvider {
                 return;
             }
 
-            getNativeTokenDecimals(record.config);
+            const { nativeTokenDecimals } = record.config;
+
+            if (
+                nativeTokenDecimals !== undefined &&
+                !isNativeTokenDecimals(nativeTokenDecimals)
+            ) {
+                console.warn(
+                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals "${String(nativeTokenDecimals)}"`,
+                );
+
+                return;
+            }
+
             this.networksRecords!.set(record.id, {
                 id: record.id,
                 name: record.name,
-                config: snapshotNetworkConfig(record.config),
+                config: createNetworkConfigSnapshot(record.config),
                 isDefault: false,
             });
         });
@@ -74,16 +91,15 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     public getAll(): INetworkRecord[] {
-        return Array.from(this.networksRecords!.values()).map((record) => ({
-            ...record, config: snapshotNetworkConfig(record.config),
-        }));
+        return Array.from(this.networksRecords!.values()).map(
+            (record: INetworkRecord) => ({ ...record }),
+        );
     }
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkExist
     public get(id: NetworkId): INetworkRecord {
-        const record = this.networksRecords!.get(id)!;
-        return { ...record, config: snapshotNetworkConfig(record.config) };
+        return { ...this.networksRecords!.get(id)! };
     }
 
     @EnsureNetworkConfigProviderReady
@@ -94,7 +110,6 @@ export default class NetworkConfigProvider {
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
     public set(record: INetworkRecord): void {
-        getNativeTokenDecimals(record.config);
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },
@@ -102,6 +117,10 @@ export default class NetworkConfigProvider {
         ensureValid(validateNodeApiProfile(record.config.nodeApiProfile), {
             context: "NetworkConfigProvider.set",
         });
+        ensureValid(
+            validateNativeTokenDecimals(record.config.nativeTokenDecimals),
+            { context: "NetworkConfigProvider.set" },
+        );
         ensureValid(
             validateNetworkUniqueness(
                 record.name,
@@ -114,7 +133,10 @@ export default class NetworkConfigProvider {
             { context: "NetworkConfigProvider.set" },
         );
 
-        this.networksRecords!.set(record.id, { ...record, config: snapshotNetworkConfig(record.config) });
+        this.networksRecords!.set(record.id, {
+            ...record,
+            config: createNetworkConfigSnapshot(record.config),
+        });
     }
 
     @EnsureNetworkConfigProviderReady
@@ -122,7 +144,6 @@ export default class NetworkConfigProvider {
         name: NetworkName,
         networkConfig: INetworkConfig,
     ): INetworkRecord {
-        getNativeTokenDecimals(networkConfig);
         ensureValid(
             validateNetworkConfigUrls(networkConfig, { allowEmpty: false }),
             { context: "NetworkConfigProvider.add" },
@@ -131,18 +152,25 @@ export default class NetworkConfigProvider {
             context: "NetworkConfigProvider.add",
         });
         ensureValid(
-            validateNetworkUniqueness(name, networkConfig, this.getAll()),
+            validateNativeTokenDecimals(networkConfig.nativeTokenDecimals),
             { context: "NetworkConfigProvider.add" },
         );
+
+        const config: IResolvedNetworkConfig =
+            createNetworkConfigSnapshot(networkConfig);
+
+        ensureValid(validateNetworkUniqueness(name, config, this.getAll()), {
+            context: "NetworkConfigProvider.add",
+        });
 
         const record: INetworkRecord = {
             id: generateRandomId(),
             name,
-            config: snapshotNetworkConfig(networkConfig),
+            config,
             isDefault: false,
         };
 
-        this.networksRecords!.set(record.id, { ...record, config: snapshotNetworkConfig(record.config) });
+        this.networksRecords!.set(record.id, { ...record });
 
         return record;
     }
@@ -167,6 +195,10 @@ export default class NetworkConfigProvider {
                 validateNetworkConfigUrls(update.config, { allowEmpty: false }),
                 { context: "NetworkConfigProvider.update" },
             );
+            ensureValid(
+                validateNativeTokenDecimals(update.config.nativeTokenDecimals),
+                { context: "NetworkConfigProvider.update" },
+            );
         }
 
         if (update.config && update.config.nodeApiProfile !== undefined) {
@@ -179,17 +211,19 @@ export default class NetworkConfigProvider {
 
         const name: NetworkName = update.name ?? record.name;
 
-        const config: INetworkConfig = update.config
-            ? {
+        const config: IResolvedNetworkConfig = update.config
+            ? createNetworkConfigSnapshot({
                   ...record.config,
                   ...update.config,
                   nodeApiProfile:
                       update.config.nodeApiProfile ??
                       record.config.nodeApiProfile,
-              }
+                  nativeTokenDecimals:
+                      update.config.nativeTokenDecimals ??
+                      record.config.nativeTokenDecimals,
+              })
             : record.config;
 
-        getNativeTokenDecimals(config);
         ensureValid(
             validateNetworkUniqueness(
                 name,
@@ -202,7 +236,7 @@ export default class NetworkConfigProvider {
         );
 
         record.name = name;
-        record.config = snapshotNetworkConfig(config);
+        record.config = config;
     }
 
     public isReady(): boolean {

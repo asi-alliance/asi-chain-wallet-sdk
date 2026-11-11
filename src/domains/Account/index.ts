@@ -1,6 +1,5 @@
 import { encodeBase16 } from "./../../utils/codec/index";
-import Asset, { Assets, DEFAULT_ASSET, getNativeAsset } from "@domains/Asset";
-import ApiClientManager from "@domains/ApiClientManager";
+import Asset, { Assets, DEFAULT_ASSET } from "@domains/Asset";
 import SecretsProvider, {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -90,7 +89,7 @@ class Account {
     }
 
     public listAssets(): Asset[] {
-        return Array.from(this.assets.values()).map((asset) => this.resolveAsset(asset));
+        return Array.from(this.assets.values());
     }
 
     public getAddress(): Address {
@@ -106,8 +105,7 @@ class Account {
     }
 
     public getAsset(id: Asset["id"]): Asset | null {
-        const asset = this.assets.get(id);
-        return asset ? this.resolveAsset(asset) : null;
+        return this.assets.get(id) ?? null;
     }
 
     public registerAsset(asset: Asset): void {
@@ -181,16 +179,10 @@ class Account {
         this.name = options.name;
     }
 
-    private resolveAsset(asset: Asset): Asset {
-        const manager = ApiClientManager.getInstance();
-        return asset.getId() === DEFAULT_ASSET.getId() && manager.isReady()
-            ? getNativeAsset(manager.getCurrentNetwork().config) : asset;
-    }
-
     public async getBalance() {
         return ApiServiceRegistry.getInstance().assets.getBalance(
             this.address,
-            this.resolveAsset(this.primaryAsset),
+            this.primaryAsset,
         );
     }
 

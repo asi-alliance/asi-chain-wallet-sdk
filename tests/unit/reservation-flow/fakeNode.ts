@@ -53,7 +53,9 @@ export interface IFakeNode {
     close: () => Promise<void>;
 }
 
-const readBody = async (request: http.IncomingMessage): Promise<string> => {
+export const readBody = async (
+    request: http.IncomingMessage,
+): Promise<string> => {
     const chunks: Buffer[] = [];
 
     for await (const chunk of request) {
@@ -63,7 +65,10 @@ const readBody = async (request: http.IncomingMessage): Promise<string> => {
     return Buffer.concat(chunks).toString("utf8");
 };
 
-const sendJson = (response: http.ServerResponse, payload: unknown): void => {
+export const sendJson = (
+    response: http.ServerResponse,
+    payload: unknown,
+): void => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(payload));
 };
@@ -122,7 +127,7 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
 
         if (url.startsWith("/api/blocks")) {
             sendJson(response, [
-                { blockInfo: "", blockNumber: LATEST_BLOCK_NUMBER },
+                { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);
 
             return;
