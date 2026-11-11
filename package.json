@@ -22,7 +22,6 @@
     "scripts": {
         "dev": "tsc -p tsconfig.build.json && rollup -c -w",
         "build": "tsc -p tsconfig.build.json && rollup -c",
-        "prepare": "npm run build",
         "test:security": "node scripts/security/run-security-tests.mjs",
         "test:unit": "node scripts/security/run-unit-tests.mjs",
         "check:secret-logs": "node scripts/security/check-secret-logs.mjs",
