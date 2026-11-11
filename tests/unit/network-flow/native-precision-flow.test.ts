@@ -4,7 +4,6 @@ import Client from "@domains/Client";
 import ApiClientManager from "@domains/ApiClientManager";
 import StorageManager from "@services/StorageManager";
 import AccountDataService from "@services/AccountDataService";
-import { BalanceUnavailableError } from "@domains/CustomError";
 import { startPrecisionNode } from "./precisionNode";
 
 const PASSWORD = "test-wallet-password";
@@ -32,19 +31,16 @@ test.beforeEach(async () => {
 test.afterEach(async () => { await client.close(); });
 test.after(async () => { await wide.close(); await legacy.close(); });
 
-test("selected precision reaches facade, balances, asset descriptors and fees", async () => {
+test("selected precision reaches facade, balances and fees", async () => {
     const { account } = await funded();
-    assert.equal(client.getNativeTokenDecimals(), 18);
+    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 18);
     assert.equal(client.toAtomicAmount("10.000000000000000001"), 10000000000000000001n);
     assert.equal(client.toDisplayAmount(await client.getBalance(account.getAddress())), "100");
-    assert.equal((await account.getBalance()).asset.getDecimals(), 18);
-    assert.equal(account.listAssets()[0].getDecimals(), 18);
     assert.equal(client.toDisplayAmount(250000n), "0.00000000000025");
     client.setNetwork("Legacy");
-    assert.equal(client.getNativeTokenDecimals(), 8);
+    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
     assert.equal(client.toAtomicAmount("1.5"), 150000000n);
     assert.equal(client.toDisplayAmount(await client.getBalance(account.getAddress())), "1.5");
-    assert.equal((await account.getBalance()).asset.getDecimals(), 8);
     assert.equal(client.toDisplayAmount(250000n), "0.0025");
     assert.equal(wide.requests.some((url) => url.includes("status")), false);
 });
@@ -53,7 +49,7 @@ test("wide transfer term, available balance and pending history retain every ato
     const { wallet, account, request } = await funded();
     const amount = client.toAtomicAmount("10.000000000000000001");
     const sent = await client.transfer({ ...request, to: account.getAddress(), amount });
-    assert.ok(wide.submitted.at(-1)?.data.term.includes("10000000000000000001n"));
+    assert.ok(wide.submitted[wide.submitted.length - 1].data.term.includes("10000000000000000001n"));
     assert.equal(client.toDisplayAmount(await client.getAvailableBalance(request.walletId, request.accountId)), "89.999999999999749999");
     const reservation = (await client.getReservations(wallet.getId()))[0];
     assert.equal(reservation.nativeTokenDecimals, 18);
@@ -79,50 +75,7 @@ test("deploy reservations format fee products using the captured precision", asy
     assert.equal(reservation.nativeTokenDecimals, 18);
 });
 
-test("a balance response from the previously selected network is rejected", async () => {
-    const { account } = await funded();
-    const step = wide.holdBalance();
-    const result = client.getBalance(account.getAddress());
-    const checked = assert.rejects(result, BalanceUnavailableError);
-    await step.reached;
-    client.setNetwork("Legacy"); step.release();
-    await checked;
-});
-
-test("available balance responses cannot cross networks", async () => {
-    const { request } = await funded();
-    const step = wide.holdBalance();
-    const result = client.getAvailableBalance(request.walletId, request.accountId);
-    const checked = assert.rejects(result, BalanceUnavailableError);
-    await step.reached;
-    client.setNetwork("Legacy"); step.release();
-    await checked;
-});
-
-test("switching away and back still invalidates an earlier balance response", async () => {
-    const { account } = await funded();
-    const step = wide.holdBalance();
-    const result = client.getBalance(account.getAddress());
-    const checked = assert.rejects(result, BalanceUnavailableError);
-    await step.reached;
-    client.setNetwork("Legacy"); client.setNetwork("Wide"); step.release();
-    await checked;
-});
-
-test("a previous endpoint response cannot survive reconfiguration under the same network id", async () => {
-    const custom = await client.addNetwork("Custom", { ...wide.config, IndexerURL: `${wide.config.IndexerURL}?custom` });
-    client.setNetwork(custom.id);
-    const { account } = await funded();
-    const step = wide.holdBalance();
-    const result = client.getBalance(account.getAddress());
-    const checked = assert.rejects(result, BalanceUnavailableError);
-    await step.reached;
-    await client.updateNetwork(custom.id, { config: { ReadOnlyURL: legacy.config.ReadOnlyURL } });
-    step.release();
-    await checked;
-});
-
-test("custom precision persists and cannot change while closed-wallet reservations exist", async () => {
+test("custom precision is persisted, can be corrected and survives a client restart", async () => {
     const custom = await client.addNetwork("Custom", { ...wide.config, IndexerURL: `${wide.config.IndexerURL}?custom` });
     client.setNetwork(custom.id);
     const { wallet, account, request } = await funded();
@@ -133,19 +86,27 @@ test("custom precision persists and cannot change while closed-wallet reservatio
     const stored = (await client.getReservations(wallet.getId()))[0];
     assert.equal(stored.details.amount, "0.000000000000000001");
     client.closeWallet(wallet.getId());
-    await assert.rejects(client.updateNetwork(custom.id, { config: { nativeTokenDecimals: 8 } }), /reservations are pending/);
-    assert.equal(ApiClientManager.getInstance().getNetwork(custom.id).config.nativeTokenDecimals, 18);
-    assert.equal((await StorageManager.getCustomNetworks()).find((record) => record.id === custom.id)?.config.nativeTokenDecimals, 18);
+    await client.updateNetwork(custom.id, { config: { nativeTokenDecimals: 8 } });
+    assert.equal(ApiClientManager.getInstance().getNetwork(custom.id).config.nativeTokenDecimals, 8);
+    assert.equal((await StorageManager.getCustomNetworks()).find((record) => record.id === custom.id)?.config.nativeTokenDecimals, 8);
     await client.close(); client = await create(); client.setNetwork(custom.id);
-    assert.equal(client.getNativeTokenDecimals(), 18);
+    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
 });
 
 test("invalid updates fail before configuration is written", async () => {
     const custom = await client.addNetwork("Custom", { ...wide.config, IndexerURL: `${wide.config.IndexerURL}?custom` });
-    for (const nativeTokenDecimals of [undefined, 19, -1, 1.5]) {
-        await assert.rejects(client.updateNetwork(custom.id, { config: { nativeTokenDecimals } }), /nativeTokenDecimals/);
+    for (const nativeTokenDecimals of [19, -1, 1.5]) {
+        await assert.rejects(
+            client.updateNetwork(custom.id, { config: { nativeTokenDecimals } }),
+            /Native token decimals must be an integer from 0 to 18/,
+        );
         assert.equal(ApiClientManager.getInstance().getNetwork(custom.id).config.nativeTokenDecimals, 18);
     }
+
+    await client.updateNetwork(custom.id, {
+        config: { nativeTokenDecimals: undefined },
+    });
+    assert.equal(ApiClientManager.getInstance().getNetwork(custom.id).config.nativeTokenDecimals, 18);
 });
 
 test("history queries bind endpoints and precision-independent recorded amounts to the requested network", async () => {

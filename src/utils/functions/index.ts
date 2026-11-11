@@ -5,7 +5,6 @@ import { TransactionType } from "@domains/Transaction";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
 import { BASELINE_STORAGE_VERSION } from "@config/index";
-import { getNativeTokenDecimals } from "@utils/nativeToken";
 
 export const genRandomHex = (size: number) =>
     [...Array(size)]
@@ -321,10 +320,7 @@ export const isNetworkConfigChanged = (
 
     return NETWORK_CONFIG_FIELDS.some(
         (field: keyof INetworkConfig) =>
-            field === "nativeTokenDecimals"
-                ? ("nativeTokenDecimals" in update &&
-                    getNativeTokenDecimals(update) !== getNativeTokenDecimals(current))
-                : update[field] !== undefined && update[field] !== current[field],
+            update[field] !== undefined && update[field] !== current[field],
     );
 };
 
@@ -333,9 +329,7 @@ export const isSameNetworkConfig = (
     second: INetworkConfig,
 ): boolean =>
     NETWORK_CONFIG_FIELDS.every(
-        (field: keyof INetworkConfig) => field === "nativeTokenDecimals"
-            ? getNativeTokenDecimals(first) === getNativeTokenDecimals(second)
-            : first[field] === second[field],
+        (field: keyof INetworkConfig) => first[field] === second[field],
     );
 
 export const withSchemaVersion = <T extends ITableRecord>(record: T): T => ({

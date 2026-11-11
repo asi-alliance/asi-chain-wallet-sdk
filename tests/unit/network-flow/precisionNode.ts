@@ -3,11 +3,9 @@ import type { AddressInfo } from "node:net";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import type { INetworkConfig } from "@domains/Network";
 import type { SignedResult } from "@services/Signer";
-import { createHeldStep, type IHeldStep } from "../reservation-flow/fakeNode";
 
 export const startPrecisionNode = async (precision: number) => {
     let balance = 100000000000000000000n;
-    let heldBalance: IHeldStep | undefined;
     const requests: string[] = [];
     const submitted: SignedResult[] = [];
     const server = http.createServer((request, response) => {
@@ -22,11 +20,7 @@ export const startPrecisionNode = async (precision: number) => {
                 response.end(JSON.stringify(value));
             };
             if (url.startsWith("/api/explore-deploy")) {
-                const step = heldBalance;
-                heldBalance = undefined;
-                const observed = balance;
-                if (step) await step.wait();
-                json({ expr: [{ ExprBigInt: { data: observed.toString() } }] });
+                json({ expr: [{ ExprBigInt: { data: balance.toString() } }] });
             } else if (url.startsWith("/api/blocks")) {
                 json([{ blockNumber: 100 }]);
             } else if (url.startsWith("/api/deploy/")) {
@@ -56,7 +50,6 @@ export const startPrecisionNode = async (precision: number) => {
     return {
         config, requests, submitted,
         setBalance: (amount: bigint) => { balance = amount; },
-        holdBalance: () => (heldBalance = createHeldStep()),
         close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     };
 };

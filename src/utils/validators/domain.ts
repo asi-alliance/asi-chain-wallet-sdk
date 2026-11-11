@@ -11,6 +11,7 @@ import {
     KeyfileTypes,
     MAX_KEYFILE_ACCOUNT_NAME_LENGTH,
     MAX_KEYFILE_ACCOUNTS,
+    MAX_NATIVE_TOKEN_DECIMALS,
 } from "@config/index";
 import Bip44Path from "@domains/Bip44Path";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
@@ -19,6 +20,7 @@ import blakejs from "blakejs";
 import {
     isEncryptedData,
     isKeyfileWalletAccount,
+    isNativeTokenDecimals,
     isNodeApiProfile,
 } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
@@ -35,7 +37,6 @@ import {
     encodeBase58,
 } from "@utils/codec";
 import { isSameNetworkConfig } from "@utils/functions";
-import { getNativeTokenDecimals, isNativeTokenDecimals } from "@utils/nativeToken";
 import { isIntegerInRange } from "./primitives";
 
 const { blake2bHex } = blakejs;
@@ -211,6 +212,23 @@ export const validateNodeApiProfile = (
     return { isValid: true };
 };
 
+export const validateNativeTokenDecimals = (
+    decimals: unknown,
+): { isValid: boolean; error?: string } => {
+    if (decimals === undefined) {
+        return { isValid: true };
+    }
+
+    if (!isNativeTokenDecimals(decimals)) {
+        return {
+            isValid: false,
+            error: `Native token decimals must be an integer from 0 to ${MAX_NATIVE_TOKEN_DECIMALS}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
 export const validateNetworkConfigUrls = (
     config: Partial<INetworkConfig>,
     { allowEmpty }: { allowEmpty: boolean },
@@ -284,9 +302,13 @@ export const validatePositiveAmount = (
 export const validateReservationPayload = (
     payload: TCreateTransactionReservationPayload,
 ): { isValid: boolean; error?: string } => {
-    if ("nativeTokenDecimals" in payload && !isNativeTokenDecimals(payload.nativeTokenDecimals)) {
-        return { isValid: false, error: "Invalid reservation native token decimals" };
+    const decimalsValidation: { isValid: boolean; error?: string } =
+        validateNativeTokenDecimals(payload.nativeTokenDecimals);
+
+    if (!decimalsValidation.isValid) {
+        return decimalsValidation;
     }
+
     if (!payload.deployId.trim()) {
         return { isValid: false, error: "Deploy id is required" };
     }
@@ -364,9 +386,13 @@ export const validateReservationUpdateTarget = (
         };
     }
 
-    if (getNativeTokenDecimals(currentReservation) !== getNativeTokenDecimals(payload)) {
-        return { isValid: false, error: "Reservation precision cannot be changed" };
+    if (currentReservation.nativeTokenDecimals !== payload.nativeTokenDecimals) {
+        return {
+            isValid: false,
+            error: "Reservation precision cannot be changed",
+        };
     }
+
     return { isValid: true };
 };
 
