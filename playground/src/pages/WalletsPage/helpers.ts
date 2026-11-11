@@ -32,7 +32,8 @@ export type WalletPageHandlers = {
     exportWalletKeyfile: (walletId: string) => void;
     removeWallet: (walletId: string) => void;
     renameAccount: (walletId: string, accountId: string) => void;
-    removeAccount: (walletId: string, accountId: string) => void;
+    hideAccount: (walletId: string, accountId: string) => void;
+    unhideAccount: (walletId: string, accountId: string) => void;
 };
 
 const strengthFromWords = (words: 12 | 24): MnemonicStrength =>
@@ -302,16 +303,28 @@ export const createWalletPageHandlers = ({
             });
         },
 
-        removeAccount: (walletId: string, accountId: string) =>
+        hideAccount: (walletId: string, accountId: string) =>
             withLoader(async () => {
-                if (!window.confirm("Remove this account?")) return;
+                if (!window.confirm("Hide this account?")) return;
 
                 try {
-                    await sdk.removeAccount(walletId, accountId);
+                    await sdk.hideAccount(walletId, accountId);
                 } catch (error) {
                     console.error(error);
                     alert(
-                        toErrorText(error, "Failed to remove account"),
+                        toErrorText(error, "Failed to hide account"),
+                    );
+                }
+            }),
+
+        unhideAccount: (walletId: string, accountId: string) =>
+            withLoader(async () => {
+                try {
+                    await sdk.unhideAccount(walletId, accountId);
+                } catch (error) {
+                    console.error(error);
+                    alert(
+                        toErrorText(error, "Failed to unhide account"),
                     );
                 }
             }),

@@ -615,6 +615,7 @@ export default class Client extends ClosableDomain {
         return createdAccountData;
     }
 
+    /** @deprecated Use {@link Client.hideAccount} instead. */
     @EnsureActive
     public async removeAccount(
         walletId: string,
@@ -632,6 +633,42 @@ export default class Client extends ClosableDomain {
         this.emitAccountsChanged(walletId);
 
         return removedAccount;
+    }
+
+    @EnsureActive
+    public async hideAccount(
+        walletId: string,
+        accountId: string,
+    ): Promise<Account> {
+        const hiddenAccount: Account = await this.walletManager.hideAccount(
+            walletId,
+            accountId,
+        );
+
+        if (this.flags?.withInsensitiveCacheStorage) {
+            InsensitiveCacheStorageManager.delete(hiddenAccount.getId());
+        }
+
+        this.emitAccountsChanged(walletId);
+
+        return hiddenAccount;
+    }
+
+    @EnsureActive
+    public async unhideAccount(
+        walletId: string,
+        accountId: string,
+    ): Promise<Account> {
+        const restoredAccount: Account = await this.walletManager.unhideAccount(
+            walletId,
+            accountId,
+        );
+
+        this.emitAccountsChanged(walletId);
+
+        this.cacheInsensitiveAccountsData([restoredAccount]);
+
+        return restoredAccount;
     }
 
     @EnsureActive
@@ -1190,6 +1227,10 @@ export default class Client extends ClosableDomain {
         accountId: Account["id"],
     ): Account {
         return this.getOpenWallet(walletId).getAccount(accountId);
+    }
+
+    public getHiddenAccounts(walletId: Wallet["id"]): Account[] {
+        return this.getOpenWallet(walletId).getHiddenAccounts();
     }
 
     public getNetworks(): INetworkRecord[] {

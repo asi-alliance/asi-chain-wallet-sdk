@@ -29,6 +29,7 @@ export interface IAccountStorageRecord extends ITableRecord {
     name: string;
     index: number | null;
     fingerprint: string;
+    hidden?: boolean;
 
     createdAt: number;
     updatedAt?: number;

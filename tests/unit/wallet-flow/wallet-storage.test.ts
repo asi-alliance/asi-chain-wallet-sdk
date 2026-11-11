@@ -5,6 +5,11 @@ import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
 import KeysManager from "@services/KeysManager";
 import StorageManager from "@services/StorageManager";
+import WalletManager, {
+    IAccountMetadata,
+    IWalletMetadata,
+} from "@services/WalletManager";
+import Account from "@domains/Account";
 import { AccountsStorageRepository } from "@domains/AccountsStorageRepository";
 import { SignersStorageRepository } from "@domains/SignersStorageRepository";
 import Bip44Path from "@domains/Bip44Path";
@@ -581,6 +586,107 @@ test("should complete full wallet storage lifecycle with multiple wallet types",
     assert.equal(restoredCustomHD.getAccounts().length, 3);
 
     console.log("\n=== TEST PASSED ===\n");
+});
+
+const getAccountIndexes = (accounts: Account[]): (number | null)[] =>
+    accounts.map((account: Account) => account.getIndex());
+
+const getMetadataIndexes = (
+    accounts: IAccountMetadata[] | undefined,
+): (number | null)[] | undefined =>
+    accounts?.map((account: IAccountMetadata) => account.index);
+
+const getWalletMetadata = async (
+    walletManager: WalletManager,
+    signerId: string,
+): Promise<IWalletMetadata | undefined> =>
+    (await walletManager.getPublicWalletsMetadata()).find(
+        (metadata: IWalletMetadata) => metadata.signerId === signerId,
+    );
+
+test("should persist hidden HD accounts and expose them in wallet metadata", async () => {
+    console.log("\n=== HIDDEN HD ACCOUNTS IN STORAGE ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet = await walletManager.createHD(
+        { accountName: "Main account" },
+        hdSecretProvider,
+    );
+
+    const signerId = wallet.getSigner().getId();
+
+    const { accountId: hiddenAccountId } = await walletManager.deriveAccount(
+        wallet.getId(),
+        "Account 1",
+        passwordProvider,
+    );
+
+    await walletManager.deriveAccount(
+        wallet.getId(),
+        "Account 2",
+        passwordProvider,
+    );
+
+    await walletManager.hideAccount(wallet.getId(), hiddenAccountId);
+
+    assert.equal((await StorageManager.getAccount(hiddenAccountId)).hidden, true);
+
+    const hiddenMetadata = await getWalletMetadata(walletManager, signerId);
+
+    console.log("    Visible metadata:", hiddenMetadata?.accounts);
+    console.log("    Hidden metadata:", hiddenMetadata?.hiddenAccounts);
+
+    assert.deepEqual(getMetadataIndexes(hiddenMetadata?.accounts), [0, 2]);
+    assert.deepEqual(getMetadataIndexes(hiddenMetadata?.hiddenAccounts), [1]);
+    assert.equal(hiddenMetadata?.hiddenAccounts?.[0].id, hiddenAccountId);
+
+    const reopenedManager = new WalletManager();
+
+    const reopened = await reopenedManager.open(signerId, passwordProvider);
+
+    assert.deepEqual(getAccountIndexes(reopened.getAccounts()), [0, 2]);
+    assert.deepEqual(getAccountIndexes(reopened.getHiddenAccounts()), [1]);
+
+    await reopenedManager.unhideAccount(reopened.getId(), hiddenAccountId);
+
+    assert.equal(
+        (await StorageManager.getAccount(hiddenAccountId)).hidden,
+        false,
+    );
+
+    const restoredMetadata = await getWalletMetadata(reopenedManager, signerId);
+
+    assert.deepEqual(getMetadataIndexes(restoredMetadata?.accounts), [0, 1, 2]);
+    assert.deepEqual(restoredMetadata?.hiddenAccounts, []);
+    assert.deepEqual(getAccountIndexes(reopened.getAccounts()), [0, 1, 2]);
+});
+
+test("should delete hidden HD account records together with the wallet", async () => {
+    console.log("\n=== HIDDEN HD ACCOUNTS ON WALLET DELETE ===");
+
+    const walletManager = new WalletManager();
+
+    const wallet = await walletManager.createHD(
+        { accountName: "Main account" },
+        hdSecretProvider,
+    );
+
+    const { accountId } = await walletManager.deriveAccount(
+        wallet.getId(),
+        "Account 1",
+        passwordProvider,
+    );
+
+    await walletManager.hideAccount(wallet.getId(), accountId);
+
+    assert.equal(wallet.getAccountsMap().size, 1);
+    assert.equal((await StorageManager.getAccounts()).length, 2);
+
+    await walletManager.delete(wallet.getId());
+
+    assert.deepEqual(await StorageManager.getAccounts(), []);
+    assert.deepEqual(await StorageManager.getSigners(), []);
 });
 
 test.afterEach(async () => {
