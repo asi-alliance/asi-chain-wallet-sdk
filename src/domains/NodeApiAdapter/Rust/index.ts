@@ -16,8 +16,15 @@ interface IRustBlockDto {
     };
 }
 
+export enum DeployFinalizationState {
+    FINALIZED = "Finalized",
+    FAILED = "Failed",
+    PENDING = "Pending",
+    EXPIRED = "Expired",
+}
+
 interface IRustDeployInfo extends IDeployInfo {
-    isFinalized?: boolean;
+    finalizationState?: DeployFinalizationState;
 }
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
@@ -52,7 +59,7 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
     }
 
     public isDeployFinalized(deploy: IRustDeployInfo): boolean {
-        return deploy.isFinalized === true;
+        return deploy.finalizationState === DeployFinalizationState.FINALIZED;
     }
 
     public async getLatestBlockNumber(): Promise<number> {

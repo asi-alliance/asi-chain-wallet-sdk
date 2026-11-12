@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import ApiClientManager, { IApiClients } from "@domains/ApiClientManager";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
-import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
+import RustNodeApiAdapter, {
+    DeployFinalizationState,
+} from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
@@ -51,18 +53,24 @@ const RUST_PENDING_DEPLOY = {
     blockHash: BLOCK_HASH,
     blockNumber: 524,
     isFinalized: false,
-    finalizationState: "Pending",
+    finalizationState: DeployFinalizationState.PENDING,
 };
 
 const RUST_FINALIZED_DEPLOY = {
     ...RUST_PENDING_DEPLOY,
     isFinalized: true,
-    finalizationState: "Finalized",
+    finalizationState: DeployFinalizationState.FINALIZED,
 };
 
-const RUST_FINALIZED_FLAG_DEPLOY = {
+const RUST_FINALIZED_BLOCK_DEPLOY = {
     ...RUST_PENDING_DEPLOY,
     isFinalized: true,
+};
+
+const RUST_FAILED_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+    finalizationState: DeployFinalizationState.FAILED,
 };
 
 const createBlocksClients = (
@@ -362,7 +370,7 @@ test("rust profile rejects block numbers that are not safe non-negative integers
     );
 });
 
-test("rust profile reads deploy finalization from the isFinalized flag", async () => {
+test("rust profile reads deploy finalization from the deploy finalization state", async () => {
     console.log("\n=== RUST DEPLOY FINALIZATION ===");
 
     const notFoundStatus: DeployStatus = await readDeployStatus(
@@ -373,13 +381,17 @@ test("rust profile reads deploy finalization from the isFinalized flag", async (
         NodeApiProfile.RUST,
         RUST_PENDING_DEPLOY,
     );
+    const finalizedBlockStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FINALIZED_BLOCK_DEPLOY,
+    );
+    const failedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FAILED_DEPLOY,
+    );
     const finalizedStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.RUST,
         RUST_FINALIZED_DEPLOY,
-    );
-    const finalizedFlagStatus: DeployStatus = await readDeployStatus(
-        NodeApiProfile.RUST,
-        RUST_FINALIZED_FLAG_DEPLOY,
     );
     const faultToleranceStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.RUST,
@@ -388,14 +400,16 @@ test("rust profile reads deploy finalization from the isFinalized flag", async (
 
     console.log("    Not found:", notFoundStatus);
     console.log("    Pending:", pendingStatus);
-    console.log("    Finalized:", finalizedStatus);
-    console.log("    Finalized flag with pending state:", finalizedFlagStatus);
+    console.log("    Finalized block, pending deploy:", finalizedBlockStatus);
+    console.log("    Finalized block, failed deploy:", failedStatus);
+    console.log("    Finalized deploy:", finalizedStatus);
     console.log("    Fault tolerance only:", faultToleranceStatus);
 
     assert.equal(notFoundStatus, DeployStatus.DEPLOYING);
     assert.equal(pendingStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(finalizedBlockStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(failedStatus, DeployStatus.INCLUDED_IN_BLOCK);
     assert.equal(finalizedStatus, DeployStatus.FINALIZED);
-    assert.equal(finalizedFlagStatus, DeployStatus.FINALIZED);
     assert.equal(faultToleranceStatus, DeployStatus.INCLUDED_IN_BLOCK);
 });
 
@@ -408,11 +422,15 @@ test("scala profile keeps reading deploy finalization from fault tolerance", asy
     );
     const includedStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.SCALA,
-        { blockHash: BLOCK_HASH, faultTolerance: 0.5, isFinalized: true },
+        {
+            blockHash: BLOCK_HASH,
+            faultTolerance: 0.5,
+            finalizationState: DeployFinalizationState.FINALIZED,
+        },
     );
 
     console.log("    Fault tolerance 0.99:", finalizedStatus);
-    console.log("    Fault tolerance 0.5 with isFinalized:", includedStatus);
+    console.log("    Fault tolerance 0.5 with Finalized state:", includedStatus);
 
     assert.equal(finalizedStatus, DeployStatus.FINALIZED);
     assert.equal(includedStatus, DeployStatus.INCLUDED_IN_BLOCK);

@@ -27,8 +27,8 @@ export const MAX_UINT256: bigint = (1n << 256n) - 1n;
 
 export const SCALA_FAULT_TOLERANCE_THRESHOLD: number = 0.99;
 // TODO(next-major): Remove; the rust node reports finalization through
-// isFinalized instead of faultTolerance.
-/** @deprecated The rust node API profile reads deploy finalization from isFinalized. */
+// finalizationState instead of faultTolerance.
+/** @deprecated The rust node API profile reads deploy finalization from finalizationState. */
 export const RUST_FAULT_TOLERANCE_THRESHOLD: number = 0.33;
 
 export const INVALID_BLOCK_NUMBER = -1;
