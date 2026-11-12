@@ -1,7 +1,9 @@
+export type PhloPrice = number | string | bigint;
+
 export interface DeployData {
     term: string;
     phloLimit: number;
-    phloPrice: number;
+    phloPrice: number | string;
     validAfterBlockNumber: number;
     timestamp: number;
     shardId?: string;

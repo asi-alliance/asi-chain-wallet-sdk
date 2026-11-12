@@ -1,6 +1,7 @@
 import { IBlockDto, IGetBlocksParams } from "@domains/ObserverClient";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import {
+    DeployData,
     DeployStatus,
     IDeployInfo,
     IDeployStatusResult,
@@ -10,7 +11,9 @@ import {
     INVALID_BLOCK_NUMBER,
     SCALA_FAULT_TOLERANCE_THRESHOLD,
 } from "@utils/index";
+import { GasFee } from "@config/index";
 import { UnknownErrorReason } from "@domains/CustomError";
+import SignerService from "@services/Signer";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -20,6 +23,8 @@ export interface IExploratoryDeployClient {
     submitExploratoryDeploy(body: unknown): Promise<unknown>;
 }
 
+const MAX_SAFE_PHLO_PRICE: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+
 export default abstract class NodeApiAdapter {
     protected readonly clients: IApiClients;
 
@@ -28,6 +33,22 @@ export default abstract class NodeApiAdapter {
     }
 
     public abstract getProfile(): NodeApiProfile;
+
+    public getMaxPhloPrice(): bigint {
+        return MAX_SAFE_PHLO_PRICE;
+    }
+
+    public toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] {
+        return Number(phloPrice);
+    }
+
+    public serializeDeployData(deployData: DeployData): Uint8Array {
+        return SignerService.deployDataProtobufSerialize(deployData);
+    }
+
+    public getTransferGasReserve(_maxPhloCharge: bigint): bigint {
+        return GasFee.MAX;
+    }
 
     public submitDeploy(deploy: SignedResult): Promise<unknown> {
         return this.clients.validator.submitDeploy(deploy);

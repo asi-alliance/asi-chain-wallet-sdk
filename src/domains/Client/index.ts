@@ -24,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
+import { PhloPrice } from "@domains/Deploy";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -107,6 +108,9 @@ export interface ITransferRequest {
     accountId: string;
     to: Address;
     amount: bigint;
+    phloLimit?: number;
+    phloPrice?: PhloPrice;
+    shardId?: string;
 }
 
 export interface IDeployRequest {
@@ -114,6 +118,8 @@ export interface IDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
+    phloPrice?: PhloPrice;
+    shardId?: string;
 }
 
 export interface ISignDeployRequest {
@@ -121,7 +127,7 @@ export interface ISignDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice;
     shardId?: string;
 }
 
@@ -1044,7 +1050,15 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public transfer(
-        { walletId, accountId, to, amount }: ITransferRequest,
+        {
+            walletId,
+            accountId,
+            to,
+            amount,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1070,7 +1084,14 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    { to, amount, asset: this.getNativeAsset() },
+                    {
+                        to,
+                        amount,
+                        phloLimit,
+                        phloPrice,
+                        shardId,
+                        asset: this.getNativeAsset(),
+                    },
                     passwordProvider,
                 );
             },
@@ -1081,7 +1102,14 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public deploy(
-        { walletId, accountId, term, phloLimit }: IDeployRequest,
+        {
+            walletId,
+            accountId,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1107,7 +1135,7 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.deploy(
                     wallet,
                     accountId,
-                    { term, phloLimit },
+                    { term, phloLimit, phloPrice, shardId },
                     passwordProvider,
                 );
             },
@@ -1189,6 +1217,12 @@ export default class Client extends ClosableDomain {
 
     public toExactAtomicAmount(amount: string): bigint {
         return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
+    }
+
+    public getTransferGasReserve(
+        phlo: Pick<ITransferRequest, "phloLimit" | "phloPrice"> = {},
+    ): bigint {
+        return ReservationAdapter.getTransferGasReserve(phlo);
     }
 
     private getOpenWallet(walletId: string): Wallet {

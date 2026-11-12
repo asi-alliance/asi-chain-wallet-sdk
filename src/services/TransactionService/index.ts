@@ -1,7 +1,6 @@
 import blakejs from "blakejs";
-import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Asset from "@domains/Asset";
-import { DeployData } from "@domains/Deploy";
+import { DeployData, PhloPrice } from "@domains/Deploy";
 import { IDeployTermFactory } from "@domains/Deploy/factory";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -15,11 +14,13 @@ import {
     validateDeployPayload,
 } from "@utils/index";
 import { createDeployTermFactory } from "@fabrics/deployTermFactory";
-import SignerService, { SignedResult } from "@services/Signer";
+import { SignedResult } from "@services/Signer";
 import Account from "@domains/Account";
 import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 
 const { blake2bHex } = blakejs;
 
@@ -28,7 +29,7 @@ export interface ITransferDetails {
     amount: bigint;
     asset: Asset;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice;
     shardId?: string;
 }
 
@@ -46,7 +47,7 @@ export interface IDeployPayload {
     signer: Signer;
     term: string;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice;
     shardId?: string;
     passwordProvider?: SecretsProvider;
 }
@@ -87,8 +88,13 @@ export default class TransactionService {
         shardId,
         passwordProvider,
     }: IDeployPayload): Promise<SignedResult> {
+        const api: NodeApiAdapter = this.nodeApiProvider.getApi();
+
         ensureValid(
-            validateDeployPayload({ term, phloLimit, phloPrice, shardId }),
+            validateDeployPayload(
+                { term, phloLimit, phloPrice, shardId },
+                { maxPhloPrice: api.getMaxPhloPrice() },
+            ),
             { context: "TransactionService.signDeploy" },
         );
 
@@ -109,17 +115,21 @@ export default class TransactionService {
                       index: account.getIndex()!,
                   };
 
+        const deployPhlo: IDeployPhlo = createDeployPhlo({
+            phloLimit,
+            phloPrice,
+        });
+
         const deployData: DeployData = {
             term,
-            phloLimit: phloLimit ?? DEFAULT_PHLO_LIMIT,
-            phloPrice: phloPrice ?? DEFAULT_PHLO_PRICE,
+            phloLimit: deployPhlo.phloLimit,
+            phloPrice: api.toDeployPhloPrice(deployPhlo.phloPrice),
             validAfterBlockNumber: latestBlockNumber - 1,
             timestamp: Date.now(),
             shardId: shardId ?? "root",
         };
 
-        const serialized: Uint8Array =
-            SignerService.deployDataProtobufSerialize(deployData);
+        const serialized: Uint8Array = api.serializeDeployData(deployData);
 
         const hash: string = blake2bHex(serialized, undefined, 32);
 

@@ -504,6 +504,12 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const getTransferGasReserve = useCallback(
+        (phlo?: Pick<ITransferRequest, "phloLimit" | "phloPrice">): bigint =>
+            requireClient().getTransferGasReserve(phlo),
+        [requireClient],
+    );
+
     const getReservations = useCallback(
         (walletId: string): Promise<ITransactionReservation[]> =>
             requireClient().getReservations(walletId),
@@ -610,6 +616,7 @@ const useSdk = () => {
         importKeyfileAccounts,
         getBalance,
         getAvailableBalance,
+        getTransferGasReserve,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,

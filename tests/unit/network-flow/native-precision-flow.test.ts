@@ -189,7 +189,7 @@ test("wide transfer term, available balance and pending history retain every ato
 
     assert.equal(
         client.toDisplayAmount(availableBalance),
-        "89.999999999999749999",
+        "89.999999999999499999",
     );
 
     const [reservation]: ITransactionReservation[] =
@@ -197,7 +197,11 @@ test("wide transfer term, available balance and pending history retain every ato
 
     assert.equal(reservation.nativeTokenDecimals, 18);
     assert.equal(reservation.details.amount, "10.000000000000000001");
-    assert.equal(reservation.details.gasCost, "0.00000000000025");
+    assert.equal(reservation.details.gasCost, "0.0000000000005");
+    assert.equal(
+        reservation.details.gasCost,
+        client.toDisplayAmount(client.getTransferGasReserve()),
+    );
 
     const signerId: string = wallet.getSigner().getId();
 

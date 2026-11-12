@@ -4,13 +4,19 @@ import assert from "node:assert/strict";
 import ApiClientManager, { IApiClients } from "@domains/ApiClientManager";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
-import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
+import RustNodeApiAdapter, {
+    DeployFinalizationState,
+} from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
+import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
+import ReservationAdapter from "@domains/ReservationAdapter";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
+import { MAX_UINT256 } from "@utils/constants";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
 
 interface IExploreCall {
@@ -25,8 +31,47 @@ interface IRustBlockNumberCase {
 
 const LATEST_BLOCK_NUMBER: number = 42;
 
+const WIDE_PHLO_PRICE: bigint = 9007199254740993n;
+const MAX_PHLO_CHARGE: bigint = 3n * WIDE_PHLO_PRICE;
+
 const INVALID_BLOCK_NUMBER_ERROR: RegExp =
     /Block number must be a non-negative safe integer/;
+
+const INVALID_TRANSFER_PHLO_PRICE_ERROR: RegExp =
+    /ReservationAdapter\.getTransferGasReserve: Phlo price must be a positive integer not greater than/;
+
+const DEPLOY_ID: string = "3044022012ab";
+const BLOCK_HASH: string = "bcd950e8b296";
+
+const RUST_DEPLOY_NOT_FOUND = {
+    error: "deploy_not_found",
+    message: `Couldn't find block containing deploy with id: ${DEPLOY_ID}`,
+};
+
+const RUST_PENDING_DEPLOY = {
+    deployId: DEPLOY_ID,
+    blockHash: BLOCK_HASH,
+    blockNumber: 524,
+    isFinalized: false,
+    finalizationState: DeployFinalizationState.PENDING,
+};
+
+const RUST_FINALIZED_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+    finalizationState: DeployFinalizationState.FINALIZED,
+};
+
+const RUST_FINALIZED_BLOCK_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+};
+
+const RUST_FAILED_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+    finalizationState: DeployFinalizationState.FAILED,
+};
 
 const createBlocksClients = (
     blocks: unknown[],
@@ -41,6 +86,25 @@ const createBlocksClients = (
             },
         },
     }) as unknown as IApiClients;
+
+const createDeployClients = (deploy: unknown): IApiClients =>
+    ({
+        observer: {
+            getDeploy: async () => deploy,
+        },
+    }) as unknown as IApiClients;
+
+const readDeployStatus = async (
+    profile: NodeApiProfile,
+    deploy: unknown,
+): Promise<DeployStatus> => {
+    const result: IDeployStatusResult = await createNodeApiAdapter(
+        profile,
+        createDeployClients(deploy),
+    ).getDeployStatus(DEPLOY_ID);
+
+    return result.status;
+};
 
 const readRustLatestBlockNumber = (blocks: unknown[]): Promise<number> =>
     createNodeApiAdapter(
@@ -139,6 +203,50 @@ test("rust profile sends exploratory deploy to the observer as a json term", asy
     assert.equal(calls.length, 1);
     assert.equal(calls[0].client, "observer");
     assert.deepEqual(calls[0].body, { term: "Nil" });
+});
+
+test("scala profile keeps classic phlo pricing and the fixed transfer gas reserve", () => {
+    console.log("\n=== SCALA PHLO PRICING ===");
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.SCALA,
+        createStubClients([]),
+    );
+
+    console.log("    Max phlo price:", adapter.getMaxPhloPrice().toString());
+    console.log(
+        "    Transfer gas reserve:",
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE).toString(),
+    );
+
+    assert.equal(adapter.getMaxPhloPrice(), BigInt(Number.MAX_SAFE_INTEGER));
+    assert.equal(adapter.toDeployPhloPrice(42n), 42);
+    assert.equal(adapter.getTransferGasReserve(MAX_PHLO_CHARGE), GasFee.MAX);
+});
+
+test("rust profile prices phlo as uint256 and reserves the maximum transfer charge", () => {
+    console.log("\n=== RUST PHLO PRICING ===");
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.RUST,
+        createStubClients([]),
+    );
+
+    console.log("    Max phlo price:", adapter.getMaxPhloPrice().toString());
+    console.log(
+        "    Transfer gas reserve:",
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE).toString(),
+    );
+
+    assert.equal(adapter.getMaxPhloPrice(), MAX_UINT256);
+    assert.equal(
+        adapter.toDeployPhloPrice(WIDE_PHLO_PRICE),
+        WIDE_PHLO_PRICE.toString(),
+    );
+    assert.equal(
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE),
+        MAX_PHLO_CHARGE,
+    );
 });
 
 test("scala profile reads the flat latest block number with the default blocks request", async () => {
@@ -262,6 +370,72 @@ test("rust profile rejects block numbers that are not safe non-negative integers
     );
 });
 
+test("rust profile reads deploy finalization from the deploy finalization state", async () => {
+    console.log("\n=== RUST DEPLOY FINALIZATION ===");
+
+    const notFoundStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_DEPLOY_NOT_FOUND,
+    );
+    const pendingStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_PENDING_DEPLOY,
+    );
+    const finalizedBlockStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FINALIZED_BLOCK_DEPLOY,
+    );
+    const failedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FAILED_DEPLOY,
+    );
+    const finalizedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FINALIZED_DEPLOY,
+    );
+    const faultToleranceStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        { blockHash: BLOCK_HASH, faultTolerance: 1 },
+    );
+
+    console.log("    Not found:", notFoundStatus);
+    console.log("    Pending:", pendingStatus);
+    console.log("    Finalized block, pending deploy:", finalizedBlockStatus);
+    console.log("    Finalized block, failed deploy:", failedStatus);
+    console.log("    Finalized deploy:", finalizedStatus);
+    console.log("    Fault tolerance only:", faultToleranceStatus);
+
+    assert.equal(notFoundStatus, DeployStatus.DEPLOYING);
+    assert.equal(pendingStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(finalizedBlockStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(failedStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(finalizedStatus, DeployStatus.FINALIZED);
+    assert.equal(faultToleranceStatus, DeployStatus.INCLUDED_IN_BLOCK);
+});
+
+test("scala profile keeps reading deploy finalization from fault tolerance", async () => {
+    console.log("\n=== SCALA DEPLOY FINALIZATION ===");
+
+    const finalizedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.SCALA,
+        { blockHash: BLOCK_HASH, faultTolerance: 0.99 },
+    );
+    const includedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.SCALA,
+        {
+            blockHash: BLOCK_HASH,
+            faultTolerance: 0.5,
+            finalizationState: DeployFinalizationState.FINALIZED,
+        },
+    );
+
+    console.log("    Fault tolerance 0.99:", finalizedStatus);
+    console.log("    Fault tolerance 0.5 with Finalized state:", includedStatus);
+
+    assert.equal(finalizedStatus, DeployStatus.FINALIZED);
+    assert.equal(includedStatus, DeployStatus.INCLUDED_IN_BLOCK);
+});
+
 test("node api provider follows the active network profile", () => {
     console.log("\n=== PROVIDER FOLLOWS ACTIVE NETWORK ===");
 
@@ -282,6 +456,76 @@ test("node api provider follows the active network profile", () => {
 
     assert.equal(beforeSwitch, NodeApiProfile.SCALA);
     assert.equal(afterSwitch, NodeApiProfile.RUST);
+
+    apiClientManager.close();
+});
+
+test("transfer gas reserve follows the active network profile", () => {
+    console.log("\n=== TRANSFER GAS RESERVE FOLLOWS ACTIVE NETWORK ===");
+
+    const apiClientManager: ApiClientManager =
+        initApiClientManager(SCALA_NETWORK);
+
+    NodeApiProvider.getInstance(apiClientManager);
+
+    const scalaDefaultReserve: bigint =
+        ReservationAdapter.getTransferGasReserve();
+    const scalaPhloReserve: bigint = ReservationAdapter.getTransferGasReserve({
+        phloLimit: 3,
+        phloPrice: 2,
+    });
+
+    apiClientManager.switchNetwork(RUST_NETWORK);
+
+    const rustDefaultReserve: bigint =
+        ReservationAdapter.getTransferGasReserve();
+    const rustWideReserve: bigint = ReservationAdapter.getTransferGasReserve({
+        phloLimit: 3,
+        phloPrice: WIDE_PHLO_PRICE,
+    });
+
+    console.log("    Scala default reserve:", scalaDefaultReserve.toString());
+    console.log("    Scala reserve with phlo:", scalaPhloReserve.toString());
+    console.log("    Rust default reserve:", rustDefaultReserve.toString());
+    console.log("    Rust wide reserve:", rustWideReserve.toString());
+
+    assert.equal(scalaDefaultReserve, GasFee.MAX);
+    assert.equal(scalaPhloReserve, GasFee.MAX);
+    assert.equal(
+        rustDefaultReserve,
+        BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE),
+    );
+    assert.equal(rustWideReserve, MAX_PHLO_CHARGE);
+
+    apiClientManager.close();
+});
+
+test("transfer gas reserve rejects phlo prices outside the active network bounds", () => {
+    console.log("\n=== TRANSFER GAS RESERVE REJECTS INVALID PHLO ===");
+
+    const apiClientManager: ApiClientManager =
+        initApiClientManager(SCALA_NETWORK);
+
+    NodeApiProvider.getInstance(apiClientManager);
+
+    assert.throws(
+        () =>
+            ReservationAdapter.getTransferGasReserve({
+                phloPrice: WIDE_PHLO_PRICE,
+            }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
+
+    apiClientManager.switchNetwork(RUST_NETWORK);
+
+    assert.throws(
+        () => ReservationAdapter.getTransferGasReserve({ phloPrice: 0 }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
+    assert.throws(
+        () => ReservationAdapter.getTransferGasReserve({ phloPrice: "1.5" }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
 
     apiClientManager.close();
 });

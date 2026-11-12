@@ -1,9 +1,10 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { IGetBlocksParams } from "@domains/ObserverClient";
-import { RUST_FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
+import { MAX_UINT256 } from "@utils/constants";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { IDeployInfo } from "@domains/Deploy";
+import { DeployData, IDeployInfo } from "@domains/Deploy";
+import SignerService from "@services/Signer";
 
 interface ISimpleExploreDeployRequest {
     term: string;
@@ -15,6 +16,17 @@ interface IRustBlockDto {
     };
 }
 
+export enum DeployFinalizationState {
+    FINALIZED = "Finalized",
+    FAILED = "Failed",
+    PENDING = "Pending",
+    EXPIRED = "Expired",
+}
+
+interface IRustDeployInfo extends IDeployInfo {
+    finalizationState?: DeployFinalizationState;
+}
+
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
     view: "summary",
 };
@@ -24,14 +36,30 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
         return NodeApiProfile.RUST;
     }
 
+    public getMaxPhloPrice(): bigint {
+        return MAX_UINT256;
+    }
+
+    public toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] {
+        return phloPrice.toString();
+    }
+
+    public serializeDeployData(deployData: DeployData): Uint8Array {
+        return SignerService.deployDataUint256ProtobufSerialize(deployData);
+    }
+
+    public getTransferGasReserve(maxPhloCharge: bigint): bigint {
+        return maxPhloCharge;
+    }
+
     protected buildExploreDeployBody(
         term: string,
     ): ISimpleExploreDeployRequest {
         return { term };
     }
 
-    public isDeployFinalized(deploy: IDeployInfo): boolean {
-        return (deploy.faultTolerance ?? 0) >= RUST_FAULT_TOLERANCE_THRESHOLD;
+    public isDeployFinalized(deploy: IRustDeployInfo): boolean {
+        return deploy.finalizationState === DeployFinalizationState.FINALIZED;
     }
 
     public async getLatestBlockNumber(): Promise<number> {
