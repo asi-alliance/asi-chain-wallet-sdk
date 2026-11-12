@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
     Account,
+    GasFee,
     Wallet,
     type Asset,
     type ITransactionReservation,
@@ -37,7 +38,6 @@ import {
     isGasCostAllowed,
     toDefaultDeployGasCost,
     toDefaultGasCost,
-    toMaxGasCost,
     toMinGasCost,
     toDuplicateDeployIdError,
     toExpirationLabel,
@@ -64,18 +64,23 @@ const ReservationsPage = (): ReactElement => {
         currentNetwork,
         isCurrentNetworkBusy,
         getAvailableBalance,
+        getTransferGasReserve,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,
         removeTransactionReservation,
     } = useSdkContext();
     const asset: Asset = useNativeAsset(currentNetwork);
+    const transferGasReserve: bigint = useMemo(
+        () => (currentNetwork ? getTransferGasReserve() : GasFee.MAX),
+        [currentNetwork, getTransferGasReserve],
+    );
     const runSecureAction = useSecureAction();
 
     const [selectedWalletId, setSelectedWalletId] = useState<string>("");
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [form, setForm] = useState<IReservationFormState>(() =>
-        createEmptyFormState(asset),
+        createEmptyFormState(asset, transferGasReserve),
     );
     const [editedReservationId, setEditedReservationId] = useState<
         string | null
@@ -244,7 +249,7 @@ const ReservationsPage = (): ReactElement => {
         : null;
 
     const resetForm = (): void => {
-        setForm(createEmptyFormState(asset));
+        setForm(createEmptyFormState(asset, transferGasReserve));
         setEditedReservationId(null);
         setError(null);
     };
@@ -261,7 +266,10 @@ const ReservationsPage = (): ReactElement => {
     const handleKindChange = (value: string): void => {
         const kind = value as TransactionReservationKind;
 
-        updateForm({ kind, gasCost: toDefaultGasCost(kind, asset) });
+        updateForm({
+            kind,
+            gasCost: toDefaultGasCost(kind, asset, transferGasReserve),
+        });
     };
 
     const isTransferAmountInputAllowed = (value: string): boolean =>
@@ -269,7 +277,7 @@ const ReservationsPage = (): ReactElement => {
 
     const isGasCostInputAllowed = (value: string): boolean =>
         isTransferAmountInputAllowed(value) &&
-        isGasCostAllowed(form.kind, value, asset);
+        isGasCostAllowed(form.kind, value, asset, transferGasReserve);
 
     const startEditing = (reservation: ITransactionReservation): void => {
         setNotice(null);
@@ -593,7 +601,7 @@ const ReservationsPage = (): ReactElement => {
                             inputMode="decimal"
                             hint={
                                 form.kind === "transfer"
-                                    ? `network charges ${toMinGasCost(asset)} to ${toMaxGasCost(asset)}`
+                                    ? `network charges ${toMinGasCost(asset)} to ${formatAmount(transferGasReserve, asset)}`
                                     : `default deploy budget is ${toDefaultDeployGasCost(asset)}`
                             }
                             error={form.gasCost ? gasCostError : null}
