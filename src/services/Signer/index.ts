@@ -9,7 +9,9 @@ export interface SigningRequest {
 }
 
 export interface SignedResult {
-    data: DeployData;
+    // TODO(next-major): Type data as DeployData; narrowing it from any breaks
+    // consumers that read fields outside DeployData or treat phloPrice as a number.
+    data: any;
     deployer: string;
     signature: string;
     sigAlgorithm: string;
