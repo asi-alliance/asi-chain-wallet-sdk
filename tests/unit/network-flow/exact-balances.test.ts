@@ -103,6 +103,9 @@ test("unavailable or inexact balances remain errors instead of zero", async () =
         [{ ExprInt: null, ExprBigInt: null }],
         [{ ExprString: null }],
         [{ ExprString: { data: "unavailable" } }],
+        [{ ExprString: { data: "" } }],
+        [{ ExprString: { data: 42 } }],
+        [{ ExprString: { data: { toString: null } } }],
         ...invalidValues.map((data: unknown) => [{ ExprBigInt: { data } }]),
     ];
 

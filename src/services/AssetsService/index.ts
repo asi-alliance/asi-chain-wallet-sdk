@@ -103,9 +103,9 @@ export default class AssetsService {
 
             throw new BalanceUnavailableError(
                 address,
-                vaultError
-                    ? String(vaultError)
-                    : "the vault returned an empty error",
+                typeof vaultError === "string" && vaultError
+                    ? vaultError
+                    : "the vault returned an empty or malformed error",
             );
         }
 
