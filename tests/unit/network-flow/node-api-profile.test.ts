@@ -11,7 +11,8 @@ import { INetworkContext } from "@domains/Network";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
-import { GasFee } from "@config/index";
+import ReservationAdapter from "@domains/ReservationAdapter";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
 import { MAX_UINT256 } from "@utils/constants";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
 
@@ -32,6 +33,9 @@ const MAX_PHLO_CHARGE: bigint = 3n * WIDE_PHLO_PRICE;
 
 const INVALID_BLOCK_NUMBER_ERROR: RegExp =
     /Block number must be a non-negative safe integer/;
+
+const INVALID_TRANSFER_PHLO_PRICE_ERROR: RegExp =
+    /ReservationAdapter\.getTransferGasReserve: Phlo price must be a positive integer not greater than/;
 
 const createBlocksClients = (
     blocks: unknown[],
@@ -331,6 +335,76 @@ test("node api provider follows the active network profile", () => {
 
     assert.equal(beforeSwitch, NodeApiProfile.SCALA);
     assert.equal(afterSwitch, NodeApiProfile.RUST);
+
+    apiClientManager.close();
+});
+
+test("transfer gas reserve follows the active network profile", () => {
+    console.log("\n=== TRANSFER GAS RESERVE FOLLOWS ACTIVE NETWORK ===");
+
+    const apiClientManager: ApiClientManager =
+        initApiClientManager(SCALA_NETWORK);
+
+    NodeApiProvider.getInstance(apiClientManager);
+
+    const scalaDefaultReserve: bigint =
+        ReservationAdapter.getTransferGasReserve();
+    const scalaPhloReserve: bigint = ReservationAdapter.getTransferGasReserve({
+        phloLimit: 3,
+        phloPrice: 2,
+    });
+
+    apiClientManager.switchNetwork(RUST_NETWORK);
+
+    const rustDefaultReserve: bigint =
+        ReservationAdapter.getTransferGasReserve();
+    const rustWideReserve: bigint = ReservationAdapter.getTransferGasReserve({
+        phloLimit: 3,
+        phloPrice: WIDE_PHLO_PRICE,
+    });
+
+    console.log("    Scala default reserve:", scalaDefaultReserve.toString());
+    console.log("    Scala reserve with phlo:", scalaPhloReserve.toString());
+    console.log("    Rust default reserve:", rustDefaultReserve.toString());
+    console.log("    Rust wide reserve:", rustWideReserve.toString());
+
+    assert.equal(scalaDefaultReserve, GasFee.MAX);
+    assert.equal(scalaPhloReserve, GasFee.MAX);
+    assert.equal(
+        rustDefaultReserve,
+        BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE),
+    );
+    assert.equal(rustWideReserve, MAX_PHLO_CHARGE);
+
+    apiClientManager.close();
+});
+
+test("transfer gas reserve rejects phlo prices outside the active network bounds", () => {
+    console.log("\n=== TRANSFER GAS RESERVE REJECTS INVALID PHLO ===");
+
+    const apiClientManager: ApiClientManager =
+        initApiClientManager(SCALA_NETWORK);
+
+    NodeApiProvider.getInstance(apiClientManager);
+
+    assert.throws(
+        () =>
+            ReservationAdapter.getTransferGasReserve({
+                phloPrice: WIDE_PHLO_PRICE,
+            }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
+
+    apiClientManager.switchNetwork(RUST_NETWORK);
+
+    assert.throws(
+        () => ReservationAdapter.getTransferGasReserve({ phloPrice: 0 }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
+    assert.throws(
+        () => ReservationAdapter.getTransferGasReserve({ phloPrice: "1.5" }),
+        INVALID_TRANSFER_PHLO_PRICE_ERROR,
+    );
 
     apiClientManager.close();
 });

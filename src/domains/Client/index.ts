@@ -1219,6 +1219,12 @@ export default class Client extends ClosableDomain {
         return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
     }
 
+    public getTransferGasReserve(
+        phlo: Pick<ITransferRequest, "phloLimit" | "phloPrice"> = {},
+    ): bigint {
+        return ReservationAdapter.getTransferGasReserve(phlo);
+    }
+
     private getOpenWallet(walletId: string): Wallet {
         const wallet: Wallet | null = this.walletManager.get(walletId);
 

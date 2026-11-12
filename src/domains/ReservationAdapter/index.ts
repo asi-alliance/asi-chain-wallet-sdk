@@ -523,6 +523,21 @@ export default class ReservationAdapter {
         };
     }
 
+    public static getTransferGasReserve(
+        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
+    ): bigint {
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        ensureValid(
+            validatePhloSettings(phlo, {
+                maxPhloPrice: api.getMaxPhloPrice(),
+            }),
+            { context: "ReservationAdapter.getTransferGasReserve" },
+        );
+
+        return api.getTransferGasReserve(createDeployPhlo(phlo).maxPhloCharge);
+    }
+
     public async transfer(
         wallet: Wallet,
         accountId: string,
@@ -535,18 +550,9 @@ export default class ReservationAdapter {
         const nativeTokenDecimals: number =
             ApiClientManager.getInstance().getNetwork(networkId).config
                 .nativeTokenDecimals;
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
-        ensureValid(
-            validatePhloSettings(details, {
-                maxPhloPrice: api.getMaxPhloPrice(),
-            }),
-            { context: "ReservationAdapter.transfer" },
-        );
-
-        const gasCost: bigint = api.getTransferGasReserve(
-            createDeployPhlo(details).maxPhloCharge,
-        );
+        const gasCost: bigint =
+            ReservationAdapter.getTransferGasReserve(details);
         const pendingAmount: bigint = details.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
