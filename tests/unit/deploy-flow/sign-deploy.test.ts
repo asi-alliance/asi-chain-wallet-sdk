@@ -1,13 +1,15 @@
-import NodeApiProvider from "@domains/NodeApiProvider";
-import { NodeApiProfile } from "@domains/NodeApiProfile";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { verify } from "@noble/secp256k1";
 import blakejs from "blakejs";
 
 import Account from "@domains/Account";
+import { IApiClients } from "@domains/ApiClientManager";
 import Bip44Path from "@domains/Bip44Path";
 import { DeployData } from "@domains/Deploy";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { WalletTypes } from "@domains/Signer";
 import BlockService from "@services/BlockService";
@@ -168,11 +170,13 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
     return { account, signer };
 };
 
+const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
+
 const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
 ): TransactionService =>
     new TransactionService(deployService, new StubBlockService(), {
-        getApi: () => ({ getProfile: () => NodeApiProfile.SCALA }),
+        getApi: () => scalaApi,
     } as unknown as NodeApiProvider);
 
 const hashSignedData = (signed: SignedResult): string =>
@@ -303,14 +307,11 @@ test("signDeploy never submits the deploy", async () => {
     assert.equal(deployService.submitted.length, 0);
 });
 
-test("scala deploy data keeps the classic protobuf bytes", () => {
+test("scala adapter serializes deploy data into the classic protobuf bytes", () => {
     console.log("\n=== SCALA CLASSIC SERIALIZATION ===");
 
     for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
-        const bytes: Uint8Array = SignerService.deployDataProtobufSerialize(
-            data,
-            NodeApiProfile.SCALA,
-        );
+        const bytes: Uint8Array = scalaApi.serializeDeployData(data);
 
         console.log("    Case:", name);
         console.log("    Protobuf:", toHex(bytes));
@@ -319,8 +320,8 @@ test("scala deploy data keeps the classic protobuf bytes", () => {
     }
 });
 
-test("deploy data serialized without a profile keeps the classic protobuf bytes", () => {
-    console.log("\n=== DEFAULT CLASSIC SERIALIZATION ===");
+test("classic deploy serializer keeps the protobuf bytes", () => {
+    console.log("\n=== CLASSIC SERIALIZER ===");
 
     for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
         const bytes: Uint8Array =
@@ -354,7 +355,12 @@ test("signDeploy rejects an invalid payload", async () => {
         {
             name: "phlo price that is not a number",
             details: { term: TERM, phloPrice: Number.NaN },
-            error: /Phlo price must be a positive safe integer/,
+            error: /Phlo price must be a positive integer/,
+        },
+        {
+            name: "phlo price above the classic range",
+            details: { term: TERM, phloPrice: 1n << 60n },
+            error: /Phlo price must be a positive integer not greater than 9007199254740991/,
         },
         {
             name: "blank shard id",

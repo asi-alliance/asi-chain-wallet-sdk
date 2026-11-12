@@ -1,3 +1,5 @@
+export type PhloPrice = number | string | bigint;
+
 export interface DeployData {
     term: string;
     phloLimit: number;

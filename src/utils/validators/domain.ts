@@ -14,8 +14,7 @@ import {
     MAX_NATIVE_TOKEN_DECIMALS,
 } from "@config/index";
 import Bip44Path from "@domains/Bip44Path";
-import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
-import { resolveDeployPhlo } from "@utils/monetary";
+import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
 import {
@@ -24,6 +23,7 @@ import {
     isKeyfileWalletAccount,
     isNativeTokenDecimals,
     isNodeApiProfile,
+    isUint256,
 } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
@@ -414,16 +414,10 @@ export const validateReservationUpdateTarget = (
 const MIN_PHLO_VALUE: number = 1;
 const MAX_PHLO_VALUE: number = Number.MAX_SAFE_INTEGER;
 
-export const validateDeployPayload = ({
-    term,
-    phloLimit,
-    phloPrice,
-    shardId,
-}: TDeployDetails, profile: NodeApiProfile = NodeApiProfile.SCALA): { isValid: boolean; error?: string } => {
-    if (typeof term !== "string" || !term.trim()) {
-        return { isValid: false, error: "Deploy term must not be empty" };
-    }
-
+export const validatePhloSettings = (
+    { phloLimit, phloPrice }: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+    { maxPhloPrice }: { maxPhloPrice: bigint },
+): { isValid: boolean; error?: string } => {
     if (
         phloLimit !== undefined &&
         !isIntegerInRange(phloLimit, MIN_PHLO_VALUE, MAX_PHLO_VALUE)
@@ -434,13 +428,42 @@ export const validateDeployPayload = ({
         };
     }
 
-    try {
-        resolveDeployPhlo({ phloLimit, phloPrice }, profile);
-    } catch (error) {
-        return { isValid: false, error: (error as Error).message };
+    if (phloPrice === undefined) {
+        return { isValid: true };
     }
 
-    if (shardId !== undefined && (typeof shardId !== "string" || !shardId.trim())) {
+    if (
+        !isUint256(phloPrice) ||
+        BigInt(phloPrice) < BigInt(MIN_PHLO_VALUE) ||
+        BigInt(phloPrice) > maxPhloPrice
+    ) {
+        return {
+            isValid: false,
+            error: `Phlo price must be a positive integer not greater than ${maxPhloPrice}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateDeployPayload = (
+    { term, phloLimit, phloPrice, shardId }: TDeployDetails,
+    { maxPhloPrice }: { maxPhloPrice: bigint } = {
+        maxPhloPrice: BigInt(MAX_PHLO_VALUE),
+    },
+): { isValid: boolean; error?: string } => {
+    if (!term.trim()) {
+        return { isValid: false, error: "Deploy term must not be empty" };
+    }
+
+    const phloValidation: { isValid: boolean; error?: string } =
+        validatePhloSettings({ phloLimit, phloPrice }, { maxPhloPrice });
+
+    if (!phloValidation.isValid) {
+        return phloValidation;
+    }
+
+    if (shardId !== undefined && !shardId.trim()) {
         return { isValid: false, error: "Shard id must not be empty" };
     }
 

@@ -1,5 +1,3 @@
-import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { resolveDeployPhlo } from "@utils/monetary";
 import StorageManager from "@services/StorageManager";
 import TransactionReservationsManager, {
     ITransactionReservationsManagerOptions,
@@ -11,14 +9,13 @@ import {
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import SecretsProvider from "@domains/SecretsProvider";
-import { IResolvedNetworkConfig, NetworkId } from "@domains/Network";
+import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import {
-    GasFee,
-    SUBMISSION_SETTLE_TIMEOUT_MS,
-} from "@config/index";
+import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
@@ -28,6 +25,7 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
 } from "@fabrics/transactionReservation";
+import { createDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
@@ -45,6 +43,7 @@ import {
     isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
+    validatePhloSettings,
     validatePositiveAmount,
     validateReservationPayload,
     validateReservationUpdateTarget,
@@ -533,10 +532,21 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const { nativeTokenDecimals, nodeApiProfile }: IResolvedNetworkConfig =
-            ApiClientManager.getInstance().getNetwork(networkId).config;
-        const gasCost = nodeApiProfile === NodeApiProfile.RUST
-            ? resolveDeployPhlo(details, nodeApiProfile).charge : GasFee.MAX;
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        ensureValid(
+            validatePhloSettings(details, {
+                maxPhloPrice: api.getMaxPhloPrice(),
+            }),
+            { context: "ReservationAdapter.transfer" },
+        );
+
+        const gasCost: bigint = api.getTransferGasReserve(
+            createDeployPhlo(details).maxPhloCharge,
+        );
         const pendingAmount: bigint = details.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
@@ -597,9 +607,19 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const { nativeTokenDecimals, nodeApiProfile }: IResolvedNetworkConfig =
-            ApiClientManager.getInstance().getNetwork(networkId).config;
-        const pendingAmount = resolveDeployPhlo(details, nodeApiProfile).charge;
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        ensureValid(
+            validatePhloSettings(details, {
+                maxPhloPrice: api.getMaxPhloPrice(),
+            }),
+            { context: "ReservationAdapter.deploy" },
+        );
+
+        const pendingAmount: bigint = createDeployPhlo(details).maxPhloCharge;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",

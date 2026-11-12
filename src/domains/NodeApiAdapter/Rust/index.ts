@@ -1,9 +1,13 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { IGetBlocksParams } from "@domains/ObserverClient";
-import { RUST_FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
+import {
+    MAX_UINT256,
+    RUST_FAULT_TOLERANCE_THRESHOLD,
+} from "@utils/constants";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { IDeployInfo } from "@domains/Deploy";
+import { DeployData, IDeployInfo } from "@domains/Deploy";
+import SignerService from "@services/Signer";
 
 interface ISimpleExploreDeployRequest {
     term: string;
@@ -22,6 +26,22 @@ const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
 export default class RustNodeApiAdapter extends NodeApiAdapter {
     public getProfile(): NodeApiProfile {
         return NodeApiProfile.RUST;
+    }
+
+    public getMaxPhloPrice(): bigint {
+        return MAX_UINT256;
+    }
+
+    public toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] {
+        return phloPrice.toString();
+    }
+
+    public serializeDeployData(deployData: DeployData): Uint8Array {
+        return SignerService.deployDataUint256ProtobufSerialize(deployData);
+    }
+
+    public getTransferGasReserve(maxPhloCharge: bigint): bigint {
+        return maxPhloCharge;
     }
 
     protected buildExploreDeployBody(

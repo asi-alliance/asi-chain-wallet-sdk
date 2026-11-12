@@ -1,4 +1,3 @@
-import type { PhloPrice } from "@utils/monetary";
 import {
     DEFAULT_AUTO_LOCK_MS,
     RequirePassword,
@@ -25,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
+import { PhloPrice } from "@domains/Deploy";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -1050,7 +1050,15 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public transfer(
-        { walletId, accountId, to, amount, phloLimit, phloPrice, shardId }: ITransferRequest,
+        {
+            walletId,
+            accountId,
+            to,
+            amount,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1076,7 +1084,14 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    { to, amount, phloLimit, phloPrice, shardId, asset: this.getNativeAsset() },
+                    {
+                        to,
+                        amount,
+                        phloLimit,
+                        phloPrice,
+                        shardId,
+                        asset: this.getNativeAsset(),
+                    },
                     passwordProvider,
                 );
             },
@@ -1087,7 +1102,14 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public deploy(
-        { walletId, accountId, term, phloLimit, phloPrice, shardId }: IDeployRequest,
+        {
+            walletId,
+            accountId,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(

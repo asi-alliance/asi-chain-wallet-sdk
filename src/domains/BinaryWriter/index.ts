@@ -4,15 +4,25 @@ const WIRE_TYPE_VARINT: number = 0;
 const BITS_SHIFT: number = 7;
 const MARK_NEXT_BYTE_AS_CONTINUATION: number = 0x80;
 const MAX_BYTE_VALUE: number = 0x7f;
+const INT64_BITS: number = 64;
+const MAX_BYTE_VALUE_BIGINT: bigint = BigInt(MAX_BYTE_VALUE);
+const BITS_SHIFT_BIGINT: bigint = BigInt(BITS_SHIFT);
 
 export default class BinaryWriterService {
     private buffer: number[] = [];
 
     writeBytes(fieldNumber: number, value: Uint8Array): void {
-        if (!value.length) return;
-        this.writeInteger((fieldNumber << DATA_TYPE_SHIFT) | WIRE_TYPE_LENGTH_DELIMITED);
+        if (!value.length) {
+            return;
+        }
+
+        const key: number =
+            (fieldNumber << DATA_TYPE_SHIFT) | WIRE_TYPE_LENGTH_DELIMITED;
+
+        this.writeInteger(key);
         this.writeInteger(value.length);
-        for (const byte of value) this.buffer.push(byte);
+
+        this.buffer.push(...Array.from(value));
     }
 
     writeString(fieldNumber: number, value: string): void {
@@ -36,6 +46,7 @@ export default class BinaryWriterService {
         if (!Number.isSafeInteger(value)) {
             throw new RangeError("Integer field must be a safe integer");
         }
+
         if (!value) {
             return;
         }
@@ -59,11 +70,17 @@ export default class BinaryWriterService {
     }
 
     private writeInteger64(value: number): void {
-        let integer = BigInt.asUintN(64, BigInt(value));
-        while (integer > 127n) {
-            this.buffer.push(Number(integer & 127n) | MARK_NEXT_BYTE_AS_CONTINUATION);
-            integer >>= 7n;
+        let integer: bigint = BigInt.asUintN(INT64_BITS, BigInt(value));
+
+        while (integer > MAX_BYTE_VALUE_BIGINT) {
+            this.buffer.push(
+                Number(integer & MAX_BYTE_VALUE_BIGINT) |
+                    MARK_NEXT_BYTE_AS_CONTINUATION,
+            );
+
+            integer >>= BITS_SHIFT_BIGINT;
         }
+
         this.buffer.push(Number(integer));
     }
 

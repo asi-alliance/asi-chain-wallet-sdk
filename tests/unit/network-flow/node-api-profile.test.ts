@@ -11,6 +11,8 @@ import { INetworkContext } from "@domains/Network";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
+import { GasFee } from "@config/index";
+import { MAX_UINT256 } from "@utils/constants";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
 
 interface IExploreCall {
@@ -24,6 +26,9 @@ interface IRustBlockNumberCase {
 }
 
 const LATEST_BLOCK_NUMBER: number = 42;
+
+const WIDE_PHLO_PRICE: bigint = 9007199254740993n;
+const MAX_PHLO_CHARGE: bigint = 3n * WIDE_PHLO_PRICE;
 
 const INVALID_BLOCK_NUMBER_ERROR: RegExp =
     /Block number must be a non-negative safe integer/;
@@ -139,6 +144,50 @@ test("rust profile sends exploratory deploy to the observer as a json term", asy
     assert.equal(calls.length, 1);
     assert.equal(calls[0].client, "observer");
     assert.deepEqual(calls[0].body, { term: "Nil" });
+});
+
+test("scala profile keeps classic phlo pricing and the fixed transfer gas reserve", () => {
+    console.log("\n=== SCALA PHLO PRICING ===");
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.SCALA,
+        createStubClients([]),
+    );
+
+    console.log("    Max phlo price:", adapter.getMaxPhloPrice().toString());
+    console.log(
+        "    Transfer gas reserve:",
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE).toString(),
+    );
+
+    assert.equal(adapter.getMaxPhloPrice(), BigInt(Number.MAX_SAFE_INTEGER));
+    assert.equal(adapter.toDeployPhloPrice(42n), 42);
+    assert.equal(adapter.getTransferGasReserve(MAX_PHLO_CHARGE), GasFee.MAX);
+});
+
+test("rust profile prices phlo as uint256 and reserves the maximum transfer charge", () => {
+    console.log("\n=== RUST PHLO PRICING ===");
+
+    const adapter: NodeApiAdapter = createNodeApiAdapter(
+        NodeApiProfile.RUST,
+        createStubClients([]),
+    );
+
+    console.log("    Max phlo price:", adapter.getMaxPhloPrice().toString());
+    console.log(
+        "    Transfer gas reserve:",
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE).toString(),
+    );
+
+    assert.equal(adapter.getMaxPhloPrice(), MAX_UINT256);
+    assert.equal(
+        adapter.toDeployPhloPrice(WIDE_PHLO_PRICE),
+        WIDE_PHLO_PRICE.toString(),
+    );
+    assert.equal(
+        adapter.getTransferGasReserve(MAX_PHLO_CHARGE),
+        MAX_PHLO_CHARGE,
+    );
 });
 
 test("scala profile reads the flat latest block number with the default blocks request", async () => {

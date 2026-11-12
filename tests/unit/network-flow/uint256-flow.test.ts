@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import Client from "@domains/Client";
 import { BalanceUnavailableError } from "@domains/CustomError";
-import { MAX_TOKEN_AMOUNT } from "@utils/monetary";
+import { MAX_UINT256 } from "@utils/constants";
 import { startPrecisionNode } from "./precisionNode";
 
 const PASSWORD = "uint256-fixture-password";
@@ -63,7 +63,7 @@ test("deploy reserves exact wide fees and overflow never reaches HTTP or storage
     assert.equal(submittedDeploys[submittedDeploys.length - 1].data.phloPrice, price);
     assert.equal((await client.getReservations(request.walletId))[0].pendingAmount, (2n * BigInt(price)).toString());
     const count = node.getSubmittedDeploys().length;
-    await assert.rejects(client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: MAX_TOKEN_AMOUNT }), /charge exceeds/);
+    await assert.rejects(client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: MAX_UINT256 }), /charge exceeds/);
     assert.equal(node.getSubmittedDeploys().length, count);
     assert.equal((await client.getReservations(request.walletId)).length, 1);
 });
@@ -74,8 +74,8 @@ test("wide balances stay exact and malformed balances never become zero", async 
         node.setBalanceResponse(raw);
         await assert.rejects(client.getBalance(account.getAddress()), BalanceUnavailableError);
     }
-    node.setBalance(MAX_TOKEN_AMOUNT);
-    assert.equal(await client.getBalance(account.getAddress()), MAX_TOKEN_AMOUNT);
+    node.setBalance(MAX_UINT256);
+    assert.equal(await client.getBalance(account.getAddress()), MAX_UINT256);
     node.setBalance(0n);
     assert.equal(await client.getBalance(account.getAddress()), 0n);
 });
