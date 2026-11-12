@@ -8,6 +8,7 @@ import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
+import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
@@ -37,6 +38,33 @@ const INVALID_BLOCK_NUMBER_ERROR: RegExp =
 const INVALID_TRANSFER_PHLO_PRICE_ERROR: RegExp =
     /ReservationAdapter\.getTransferGasReserve: Phlo price must be a positive integer not greater than/;
 
+const DEPLOY_ID: string = "3044022012ab";
+const BLOCK_HASH: string = "bcd950e8b296";
+
+const RUST_DEPLOY_NOT_FOUND = {
+    error: "deploy_not_found",
+    message: `Couldn't find block containing deploy with id: ${DEPLOY_ID}`,
+};
+
+const RUST_PENDING_DEPLOY = {
+    deployId: DEPLOY_ID,
+    blockHash: BLOCK_HASH,
+    blockNumber: 524,
+    isFinalized: false,
+    finalizationState: "Pending",
+};
+
+const RUST_FINALIZED_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+    finalizationState: "Finalized",
+};
+
+const RUST_FINALIZED_FLAG_DEPLOY = {
+    ...RUST_PENDING_DEPLOY,
+    isFinalized: true,
+};
+
 const createBlocksClients = (
     blocks: unknown[],
     calls: (IGetBlocksParams | undefined)[],
@@ -50,6 +78,25 @@ const createBlocksClients = (
             },
         },
     }) as unknown as IApiClients;
+
+const createDeployClients = (deploy: unknown): IApiClients =>
+    ({
+        observer: {
+            getDeploy: async () => deploy,
+        },
+    }) as unknown as IApiClients;
+
+const readDeployStatus = async (
+    profile: NodeApiProfile,
+    deploy: unknown,
+): Promise<DeployStatus> => {
+    const result: IDeployStatusResult = await createNodeApiAdapter(
+        profile,
+        createDeployClients(deploy),
+    ).getDeployStatus(DEPLOY_ID);
+
+    return result.status;
+};
 
 const readRustLatestBlockNumber = (blocks: unknown[]): Promise<number> =>
     createNodeApiAdapter(
@@ -313,6 +360,62 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         readRustLatestBlockNumber([]),
         INVALID_BLOCK_NUMBER_ERROR,
     );
+});
+
+test("rust profile reads deploy finalization from the isFinalized flag", async () => {
+    console.log("\n=== RUST DEPLOY FINALIZATION ===");
+
+    const notFoundStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_DEPLOY_NOT_FOUND,
+    );
+    const pendingStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_PENDING_DEPLOY,
+    );
+    const finalizedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FINALIZED_DEPLOY,
+    );
+    const finalizedFlagStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        RUST_FINALIZED_FLAG_DEPLOY,
+    );
+    const faultToleranceStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.RUST,
+        { blockHash: BLOCK_HASH, faultTolerance: 1 },
+    );
+
+    console.log("    Not found:", notFoundStatus);
+    console.log("    Pending:", pendingStatus);
+    console.log("    Finalized:", finalizedStatus);
+    console.log("    Finalized flag with pending state:", finalizedFlagStatus);
+    console.log("    Fault tolerance only:", faultToleranceStatus);
+
+    assert.equal(notFoundStatus, DeployStatus.DEPLOYING);
+    assert.equal(pendingStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(finalizedStatus, DeployStatus.FINALIZED);
+    assert.equal(finalizedFlagStatus, DeployStatus.FINALIZED);
+    assert.equal(faultToleranceStatus, DeployStatus.INCLUDED_IN_BLOCK);
+});
+
+test("scala profile keeps reading deploy finalization from fault tolerance", async () => {
+    console.log("\n=== SCALA DEPLOY FINALIZATION ===");
+
+    const finalizedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.SCALA,
+        { blockHash: BLOCK_HASH, faultTolerance: 0.99 },
+    );
+    const includedStatus: DeployStatus = await readDeployStatus(
+        NodeApiProfile.SCALA,
+        { blockHash: BLOCK_HASH, faultTolerance: 0.5, isFinalized: true },
+    );
+
+    console.log("    Fault tolerance 0.99:", finalizedStatus);
+    console.log("    Fault tolerance 0.5 with isFinalized:", includedStatus);
+
+    assert.equal(finalizedStatus, DeployStatus.FINALIZED);
+    assert.equal(includedStatus, DeployStatus.INCLUDED_IN_BLOCK);
 });
 
 test("node api provider follows the active network profile", () => {

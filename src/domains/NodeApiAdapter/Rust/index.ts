@@ -1,9 +1,6 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { IGetBlocksParams } from "@domains/ObserverClient";
-import {
-    MAX_UINT256,
-    RUST_FAULT_TOLERANCE_THRESHOLD,
-} from "@utils/constants";
+import { MAX_UINT256 } from "@utils/constants";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { DeployData, IDeployInfo } from "@domains/Deploy";
@@ -17,6 +14,10 @@ interface IRustBlockDto {
     blockInfo: {
         blockNumber: number | string;
     };
+}
+
+interface IRustDeployInfo extends IDeployInfo {
+    isFinalized?: boolean;
 }
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
@@ -50,8 +51,8 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
         return { term };
     }
 
-    public isDeployFinalized(deploy: IDeployInfo): boolean {
-        return (deploy.faultTolerance ?? 0) >= RUST_FAULT_TOLERANCE_THRESHOLD;
+    public isDeployFinalized(deploy: IRustDeployInfo): boolean {
+        return deploy.isFinalized === true;
     }
 
     public async getLatestBlockNumber(): Promise<number> {
