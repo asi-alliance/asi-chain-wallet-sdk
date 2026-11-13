@@ -72,9 +72,14 @@ export interface ISerializedTransactionReservationPrivateData
     details: TSerializedTransactionReservationDetails;
 }
 
-export interface ITransactionReservation
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in reservation inputs and accept ITransactionReservation again.
+export interface ITransactionReservationInput
     extends ITransactionReservationPrivateData, ITableRecord {
     networkId: NetworkId;
+}
+
+export interface ITransactionReservation extends ITransactionReservationInput {
     nativeTokenDecimals: number;
 }
 

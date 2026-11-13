@@ -8,7 +8,11 @@ import { INetworkRecord, IPersistedNetworkRecord } from "@domains/Network";
 import ReservationAdapter, {
     IReservedOperationResult,
 } from "@domains/ReservationAdapter";
-import { ITransactionReservation, Transaction } from "@domains/Transaction";
+import {
+    ITransactionReservation,
+    ITransactionReservationInput,
+    Transaction,
+} from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
 import { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import AccountDataService from "@services/AccountDataService";
@@ -387,6 +391,51 @@ test("a reservation payload without precision takes the precision of its network
 
         assert.equal(updated.nativeTokenDecimals, 18);
         assert.equal(updated.details.amount, "0.000000000000000001");
+    } finally {
+        reservationAdapter.dispose();
+    }
+});
+
+test("reservations passed to the adapter without precision take the precision of their network", () => {
+    console.log("\n=== ADAPTER RESERVATIONS USE THE NETWORK PRECISION ===");
+
+    const createReservationInput = (
+        networkId: string,
+    ): ITransactionReservationInput => ({
+        id: `reservation-${networkId}`,
+        networkId,
+        accountId: "account-id",
+        pendingAmount: "1000",
+        expirationTime: Date.now() + 5 * 60 * 1000,
+        kind: "deploy",
+        details: {
+            deployId: `deploy-${networkId}`,
+            timestamp: new Date(),
+            from: "sender-address",
+        },
+    });
+
+    const reservationAdapter: ReservationAdapter = new ReservationAdapter([
+        createReservationInput(NATIVE_18_NETWORK),
+        createReservationInput(NATIVE_8_NETWORK),
+    ]);
+
+    try {
+        const precisionByNetwork: Record<string, number> = Object.fromEntries(
+            reservationAdapter
+                .getReservations()
+                .map((reservation: ITransactionReservation) => [
+                    reservation.networkId,
+                    reservation.nativeTokenDecimals,
+                ]),
+        );
+
+        console.log("    Precision by network:", precisionByNetwork);
+
+        assert.deepEqual(precisionByNetwork, {
+            [NATIVE_18_NETWORK]: 18,
+            [NATIVE_8_NETWORK]: 8,
+        });
     } finally {
         reservationAdapter.dispose();
     }

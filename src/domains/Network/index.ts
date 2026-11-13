@@ -67,6 +67,12 @@ export interface INetworkContext {
     api: NodeApiAdapter;
 }
 
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkContext again.
+export interface INetworkContextInput extends Omit<INetworkContext, "config"> {
+    config: INetworkConfig;
+}
+
 const NETWORK_URL_FIELD_MAP: Record<keyof INetworkEndpoints, true> = {
     ValidatorURL: true,
     ReadOnlyURL: true,

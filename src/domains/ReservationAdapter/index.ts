@@ -5,6 +5,7 @@ import TransactionReservationsManager, {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationInput,
     Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
@@ -65,11 +66,13 @@ export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
-        reservations: ITransactionReservation[],
+        reservations: ITransactionReservationInput[],
         reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
         this.reservationsManager = new TransactionReservationsManager(
-            reservations,
+            reservations.map((reservation: ITransactionReservationInput) =>
+                ReservationAdapter.withNetworkPrecision(reservation),
+            ),
             {
                 ...reservationsManagerOptions,
                 onConfirmed: (reservation: ITransactionReservation) => {
@@ -125,14 +128,14 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount >= 0n;
     }
 
-    private static withNetworkPrecision(
-        payload: TCreateTransactionReservationPayload,
-    ): TWithNativeTokenDecimals<TCreateTransactionReservationPayload> {
+    private static withNetworkPrecision<
+        T extends { networkId: NetworkId; nativeTokenDecimals?: number },
+    >(value: T): TWithNativeTokenDecimals<T> {
         return {
-            ...payload,
+            ...value,
             nativeTokenDecimals:
-                payload.nativeTokenDecimals ??
-                ApiClientManager.getInstance().getNetwork(payload.networkId)
+                value.nativeTokenDecimals ??
+                ApiClientManager.getInstance().getNetwork(value.networkId)
                     .config.nativeTokenDecimals,
         };
     }
