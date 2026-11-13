@@ -5,9 +5,12 @@ import Account from "@domains/Account";
 import ApiClientManager from "@domains/ApiClientManager";
 import Client, { TTransactionReservationRequest } from "@domains/Client";
 import { INetworkRecord, IPersistedNetworkRecord } from "@domains/Network";
-import { IReservedOperationResult } from "@domains/ReservationAdapter";
+import ReservationAdapter, {
+    IReservedOperationResult,
+} from "@domains/ReservationAdapter";
 import { ITransactionReservation, Transaction } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
+import { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import AccountDataService from "@services/AccountDataService";
 import { SignedResult } from "@services/Signer";
 import StorageManager from "@services/StorageManager";
@@ -346,6 +349,47 @@ test("precision change keeps open reservations and their update takes the networ
     assert.equal(updated.nativeTokenDecimals, 8);
     assert.equal(updated.pendingAmount, "250001");
     assert.equal(updated.details.amount, "0.00000001");
+});
+
+test("a reservation payload without precision takes the precision of its network", async () => {
+    console.log("\n=== RESERVATION WITHOUT PRECISION USES THE NETWORK ===");
+
+    const { wallet, account }: IFundedWallet = await createFundedWallet();
+    const reservationAdapter: ReservationAdapter = new ReservationAdapter([]);
+
+    const payload: TCreateTransactionReservationPayload = {
+        kind: "transfer",
+        deployId: "external",
+        networkId: client.getCurrentNetwork().id,
+        account,
+        pendingAmount: 250001n,
+        gasCost: 250000n,
+        details: { to: account.getAddress(), amount: 1n },
+    };
+
+    try {
+        const added: ITransactionReservation = await reservationAdapter.add(
+            wallet,
+            payload,
+        );
+
+        console.log(
+            "    Added reservation precision:",
+            added.nativeTokenDecimals,
+        );
+
+        assert.equal(added.nativeTokenDecimals, 18);
+        assert.equal(added.details.amount, "0.000000000000000001");
+        assert.equal(added.details.gasCost, "0.00000000000025");
+
+        const updated: ITransactionReservation =
+            await reservationAdapter.update(wallet, added.id, payload);
+
+        assert.equal(updated.nativeTokenDecimals, 18);
+        assert.equal(updated.details.amount, "0.000000000000000001");
+    } finally {
+        reservationAdapter.dispose();
+    }
 });
 
 test("invalid updates fail before configuration is written", async () => {

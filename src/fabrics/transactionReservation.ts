@@ -21,7 +21,9 @@ import {
 } from "@domains/Transaction";
 
 interface IReservationPayload {
-    nativeTokenDecimals: number;
+    // TODO(next-major): make nativeTokenDecimals required in the reservation
+    // input and stop resolving it from the reservation network.
+    nativeTokenDecimals?: number;
     deployId: string;
     networkId: NetworkId;
     account: Account;
@@ -47,6 +49,8 @@ export type TCreateTransactionReservationPayload =
     | ICreateTransferReservationPayload
     | ICreateDeployReservationPayload;
 
+export type TWithNativeTokenDecimals<T> = T & { nativeTokenDecimals: number };
+
 interface IReservationMeta {
     deployId: string;
     pendingAmount: bigint;
@@ -70,7 +74,7 @@ export type TTransactionReservationMeta =
 
 export default class TransactionReservationFabric {
     private static build(
-        payload: IReservationPayload,
+        payload: TWithNativeTokenDecimals<IReservationPayload>,
         details: ITransactionReservationDetails,
         id: string,
     ): ITransactionReservation {
@@ -126,7 +130,7 @@ export default class TransactionReservationFabric {
     }
 
     public static createTransfer(
-        payload: ICreateTransferReservationPayload,
+        payload: TWithNativeTokenDecimals<ICreateTransferReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
         const { deployId, account, details, gasCost, nativeTokenDecimals } =
@@ -150,7 +154,7 @@ export default class TransactionReservationFabric {
     }
 
     public static createDeploy(
-        payload: ICreateDeployReservationPayload,
+        payload: TWithNativeTokenDecimals<ICreateDeployReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
         const {
@@ -179,7 +183,7 @@ export default class TransactionReservationFabric {
     }
 
     public static create(
-        payload: TCreateTransactionReservationPayload,
+        payload: TWithNativeTokenDecimals<TCreateTransactionReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
         return payload.kind === "transfer"

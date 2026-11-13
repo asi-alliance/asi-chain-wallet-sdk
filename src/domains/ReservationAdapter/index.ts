@@ -27,6 +27,7 @@ import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
+    TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
 import {
     CorruptedDataSource,
@@ -124,6 +125,18 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount >= 0n;
     }
 
+    private static withNetworkPrecision(
+        payload: TCreateTransactionReservationPayload,
+    ): TWithNativeTokenDecimals<TCreateTransactionReservationPayload> {
+        return {
+            ...payload,
+            nativeTokenDecimals:
+                payload.nativeTokenDecimals ??
+                ApiClientManager.getInstance().getNetwork(payload.networkId)
+                    .config.nativeTokenDecimals,
+        };
+    }
+
     public async add(
         wallet: Wallet,
         payload: TCreateTransactionReservationPayload,
@@ -154,7 +167,9 @@ export default class ReservationAdapter {
                     );
 
                     const reservation: ITransactionReservation =
-                        TransactionReservationFabric.create(payload);
+                        TransactionReservationFabric.create(
+                            ReservationAdapter.withNetworkPrecision(payload),
+                        );
 
                     await this.persistReservation(
                         reservation,
@@ -224,7 +239,9 @@ export default class ReservationAdapter {
 
                             const reservation: ITransactionReservation =
                                 TransactionReservationFabric.create(
-                                    payload,
+                                    ReservationAdapter.withNetworkPrecision(
+                                        payload,
+                                    ),
                                     reservationId,
                                 );
 
