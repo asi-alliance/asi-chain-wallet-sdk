@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import Account from "@domains/Account";
 import ApiClientManager from "@domains/ApiClientManager";
-import Client from "@domains/Client";
+import Client, { TTransactionReservationRequest } from "@domains/Client";
 import { INetworkRecord, IPersistedNetworkRecord } from "@domains/Network";
 import { IReservedOperationResult } from "@domains/ReservationAdapter";
 import { ITransactionReservation, Transaction } from "@domains/Transaction";
@@ -297,6 +297,55 @@ test("custom precision is persisted, can be corrected and survives a client rest
     client.setNetwork(custom.id);
 
     assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
+});
+
+test("precision change keeps open reservations and their update takes the network precision", async () => {
+    console.log("\n=== PRECISION CHANGE KEEPS OPEN RESERVATIONS ===");
+
+    const custom: INetworkRecord = await addCustomNetwork();
+
+    client.setNetwork(custom.id);
+
+    const { wallet, account, request }: IFundedWallet =
+        await createFundedWallet();
+
+    const reservationRequest: TTransactionReservationRequest = {
+        ...request,
+        kind: "transfer",
+        deployId: "external",
+        to: account.getAddress(),
+        amount: 1n,
+        gasCost: 250000n,
+        pendingAmount: 250001n,
+    };
+
+    await client.addTransactionReservation(reservationRequest);
+
+    await client.updateNetwork(custom.id, {
+        config: { nativeTokenDecimals: 8 },
+    });
+
+    const [kept]: ITransactionReservation[] = await client.getReservations(
+        wallet.getId(),
+    );
+
+    console.log("    Kept reservation precision:", kept.nativeTokenDecimals);
+
+    assert.equal(kept.nativeTokenDecimals, 18);
+    assert.equal(kept.pendingAmount, "250001");
+    assert.equal(kept.details.amount, "0.000000000000000001");
+
+    const updated: ITransactionReservation =
+        await client.updateTransactionReservation(kept.id, reservationRequest);
+
+    console.log(
+        "    Updated reservation precision:",
+        updated.nativeTokenDecimals,
+    );
+
+    assert.equal(updated.nativeTokenDecimals, 8);
+    assert.equal(updated.pendingAmount, "250001");
+    assert.equal(updated.details.amount, "0.00000001");
 });
 
 test("invalid updates fail before configuration is written", async () => {

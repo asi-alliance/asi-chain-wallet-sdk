@@ -71,8 +71,12 @@ export const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[] = Object.keys(
     NETWORK_URL_FIELD_MAP,
 ) as (keyof INetworkEndpoints)[];
 
-export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+export const NETWORK_CONNECTION_FIELDS: (keyof INetworkConfig)[] = [
     ...NETWORK_URL_FIELDS,
     "nodeApiProfile",
+];
+
+export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+    ...NETWORK_CONNECTION_FIELDS,
     "nativeTokenDecimals",
 ];

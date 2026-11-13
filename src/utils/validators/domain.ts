@@ -386,13 +386,6 @@ export const validateReservationUpdateTarget = (
         };
     }
 
-    if (currentReservation.nativeTokenDecimals !== payload.nativeTokenDecimals) {
-        return {
-            isValid: false,
-            error: "Reservation precision cannot be changed",
-        };
-    }
-
     return { isValid: true };
 };
 

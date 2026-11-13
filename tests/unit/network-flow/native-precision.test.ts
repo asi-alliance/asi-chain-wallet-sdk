@@ -25,7 +25,11 @@ import { EncryptedData } from "@services/Crypto";
 import { mapRawTransferToTransaction } from "@services/GraphqlParser/mapper";
 import KeysManager from "@services/KeysManager";
 import WalletsService from "@services/Wallets";
-import { isNetworkConfigChanged, isSameNetworkConfig } from "@utils/functions";
+import {
+    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
+    isSameNetworkConfig,
+} from "@utils/functions";
 import {
     isNativeTokenDecimals,
     isSerializedReservationPrivateData,
@@ -181,6 +185,16 @@ test("legacy configurations mean 8, with explicit zero and 18 also supported", (
         isNetworkConfigChanged(native8, { nativeTokenDecimals: undefined }),
         false,
     );
+    assert.equal(
+        isNetworkConnectionChanged(native8, { nativeTokenDecimals: 18 }),
+        false,
+    );
+    assert.equal(
+        isNetworkConnectionChanged(native8, {
+            IndexerURL: `${native8.IndexerURL}?other`,
+        }),
+        true,
+    );
 });
 
 test("invalid explicit precision is rejected by configuration and never falls back to 8", () => {
@@ -309,7 +323,7 @@ for (const {
         assert.equal(
             validateReservationUpdateTarget(restored, otherPrecisionUpdate)
                 .isValid,
-            false,
+            true,
         );
 
         serialized.nativeTokenDecimals = 19;
