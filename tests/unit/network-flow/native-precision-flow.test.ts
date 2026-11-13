@@ -421,21 +421,21 @@ test("reservations passed to the adapter without precision take the precision of
     ]);
 
     try {
-        const precisionByNetwork: Record<string, number> = Object.fromEntries(
-            reservationAdapter
-                .getReservations()
-                .map((reservation: ITransactionReservation) => [
-                    reservation.networkId,
-                    reservation.nativeTokenDecimals,
-                ]),
+        const native18Reservation: ITransactionReservation =
+            reservationAdapter.getReservation(
+                `reservation-${NATIVE_18_NETWORK}`,
+            );
+        const native8Reservation: ITransactionReservation =
+            reservationAdapter.getReservation(`reservation-${NATIVE_8_NETWORK}`);
+
+        console.log(
+            "    Precision by network:",
+            native18Reservation.nativeTokenDecimals,
+            native8Reservation.nativeTokenDecimals,
         );
 
-        console.log("    Precision by network:", precisionByNetwork);
-
-        assert.deepEqual(precisionByNetwork, {
-            [NATIVE_18_NETWORK]: 18,
-            [NATIVE_8_NETWORK]: 8,
-        });
+        assert.equal(native18Reservation.nativeTokenDecimals, 18);
+        assert.equal(native8Reservation.nativeTokenDecimals, 8);
     } finally {
         reservationAdapter.dispose();
     }
