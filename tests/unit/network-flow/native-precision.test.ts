@@ -273,12 +273,21 @@ test("restored custom precision is validated while legacy records retain 8", (t)
         { id: "legacy", name: "Legacy", config: createConfig() },
         { id: "wide", name: "Wide", config: createConfig(18) },
         { id: "invalid", name: "Invalid", config: createConfig(19) },
+        {
+            id: "malformed",
+            name: "Malformed",
+            config: {
+                ...createConfig(),
+                nativeTokenDecimals: JSON.parse('{"toString":null}'),
+            },
+        },
     ]);
 
     assert.equal(provider.get("legacy").config.nativeTokenDecimals, 8);
     assert.equal(provider.get("wide").config.nativeTokenDecimals, 18);
     assert.equal(provider.getIds().includes("invalid"), false);
-    assert.equal(warn.mock.callCount(), 1);
+    assert.equal(provider.getIds().includes("malformed"), false);
+    assert.equal(warn.mock.callCount(), 2);
 });
 
 for (const {

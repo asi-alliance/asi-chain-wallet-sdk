@@ -75,7 +75,7 @@ export default class NetworkConfigProvider {
                 !isNativeTokenDecimals(nativeTokenDecimals)
             ) {
                 console.warn(
-                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals "${String(nativeTokenDecimals)}"`,
+                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals`,
                 );
 
                 return;
