@@ -1,6 +1,7 @@
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkRecordInput,
     INetworkUpdate,
     IPersistedNetworkRecord,
     IResolvedNetworkConfig,
@@ -109,7 +110,7 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
-    public set(record: INetworkRecord): void {
+    public set(record: INetworkRecordInput): void {
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },

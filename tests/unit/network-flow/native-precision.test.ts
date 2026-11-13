@@ -7,6 +7,7 @@ import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkRecordInput,
     IResolvedNetworkConfig,
 } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
@@ -226,6 +227,20 @@ test("a missing or undefined precision means the legacy 8 decimals", () => {
     });
 
     assert.equal(provider.get("Main").config.nativeTokenDecimals, 8);
+
+    const legacyRecord: INetworkRecordInput = {
+        id: "custom",
+        name: "Custom",
+        config: {
+            ...createConfig(),
+            IndexerURL: `${NETWORK_CONFIG.IndexerURL}?custom`,
+        },
+        isDefault: false,
+    };
+
+    provider.set(legacyRecord);
+
+    assert.equal(provider.get("custom").config.nativeTokenDecimals, 8);
 });
 
 test("network precision snapshots cannot be changed through caller-owned objects", () => {

@@ -7,6 +7,7 @@ import {
     INetworkConfig,
     INetworkContext,
     INetworkRecord,
+    INetworkRecordInput,
     INetworksState,
     INetworkUpdate,
     IPersistedNetworkRecord,
@@ -206,7 +207,7 @@ export default class ApiClientManager {
     }
 
     @EnsureApiClientManagerInitialized
-    public applyNetwork(record: INetworkRecord): void {
+    public applyNetwork(record: INetworkRecordInput): void {
         this.networkConfigProvider.set(record);
 
         if (this.currentNetworkId === record.id) {

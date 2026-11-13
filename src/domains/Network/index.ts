@@ -32,6 +32,10 @@ export interface INetworkRecord {
     isDefault: boolean;
 }
 
+export interface INetworkRecordInput extends Omit<INetworkRecord, "config"> {
+    config: INetworkConfig;
+}
+
 export interface IPersistedNetworkRecord {
     id: NetworkId;
     name: NetworkName;
