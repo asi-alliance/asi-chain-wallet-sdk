@@ -5,6 +5,8 @@ import Account from "@domains/Account";
 import ApiClientManager from "@domains/ApiClientManager";
 import Client, { TTransactionReservationRequest } from "@domains/Client";
 import { INetworkRecord, IPersistedNetworkRecord } from "@domains/Network";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import ReservationAdapter, {
     IReservedOperationResult,
 } from "@domains/ReservationAdapter";
@@ -499,4 +501,38 @@ test("history queries bind endpoints and precision-independent recorded amounts 
     console.log("    18-decimal history amount:", native18History[0].amount);
 
     assert.equal(native18History[0].amount, "10.000000000000000001");
+});
+
+test("history without a network id is read through the injected node API provider", async () => {
+    console.log("\n=== HISTORY USES THE INJECTED PROVIDER ===");
+
+    const native8Api: NodeApiAdapter =
+        ApiClientManager.getInstance().createNetworkContext(
+            NATIVE_8_NETWORK,
+        ).api;
+    const nodeApiProvider: NodeApiProvider = {
+        getApi: () => native8Api,
+    } as unknown as NodeApiProvider;
+
+    const accountDataService: AccountDataService = new AccountDataService(
+        nodeApiProvider,
+    );
+
+    const providerHistory: Transaction[] =
+        await accountDataService.getTransactionHistory("recipient", "key");
+
+    console.log("    Provider history amount:", providerHistory[0].amount);
+
+    assert.equal(client.getCurrentNetworkId(), NATIVE_18_NETWORK);
+    assert.equal(providerHistory[0].amount, "1.50000000");
+
+    const requestedHistory: Transaction[] =
+        await accountDataService.getTransactionHistory(
+            "recipient",
+            "key",
+            {},
+            NATIVE_18_NETWORK,
+        );
+
+    assert.equal(requestedHistory[0].amount, "10.000000000000000001");
 });
