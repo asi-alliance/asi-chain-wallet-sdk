@@ -122,10 +122,15 @@ export default class NetworkConfigProvider {
             validateNativeTokenDecimals(record.config.nativeTokenDecimals),
             { context: "NetworkConfigProvider.set" },
         );
+
+        const config: IResolvedNetworkConfig = createNetworkConfigSnapshot(
+            record.config,
+        );
+
         ensureValid(
             validateNetworkUniqueness(
                 record.name,
-                record.config,
+                config,
                 this.getAll().filter(
                     (otherRecord: INetworkRecord) =>
                         otherRecord.id !== record.id,
@@ -134,10 +139,7 @@ export default class NetworkConfigProvider {
             { context: "NetworkConfigProvider.set" },
         );
 
-        this.networksRecords!.set(record.id, {
-            ...record,
-            config: createNetworkConfigSnapshot(record.config),
-        });
+        this.networksRecords!.set(record.id, { ...record, config });
     }
 
     @EnsureNetworkConfigProviderReady

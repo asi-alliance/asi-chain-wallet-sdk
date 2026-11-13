@@ -71,6 +71,8 @@ const INVALID_NATIVE_TOKEN_DECIMALS: unknown[] = [
 const INVALID_NATIVE_TOKEN_DECIMALS_ERROR: RegExp =
     /Native token decimals must be an integer from 0 to 18/;
 
+const SAME_CONFIG_ERROR: RegExp = /Network with the same config already exists/;
+
 const RESERVATION_PRECISION_CASES: IReservationPrecisionCase[] = [
     {
         nativeTokenDecimals: 8,
@@ -241,6 +243,29 @@ test("a missing or undefined precision means the legacy 8 decimals", () => {
     provider.set(legacyRecord);
 
     assert.equal(provider.get("custom").config.nativeTokenDecimals, 8);
+});
+
+test("a missing precision and an explicit 8 are the same network for the duplicate check", () => {
+    for (const [storedDecimals, inputDecimals] of [
+        [8, undefined],
+        [undefined, 8],
+    ]) {
+        const provider: NetworkConfigProvider = new NetworkConfigProvider();
+
+        provider.initialize({ Main: createConfig(storedDecimals) });
+
+        assert.throws(
+            () =>
+                provider.set({
+                    id: "custom",
+                    name: "Custom",
+                    config: createConfig(inputDecimals),
+                    isDefault: false,
+                }),
+            SAME_CONFIG_ERROR,
+        );
+        assert.equal(provider.getIds().includes("custom"), false);
+    }
 });
 
 test("network precision snapshots cannot be changed through caller-owned objects", () => {
