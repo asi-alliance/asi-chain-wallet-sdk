@@ -15,6 +15,7 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
+import { CANONICAL_INTEGER_REGEX, MAX_UINT256 } from "@utils/constants";
 import {
     isIntegerInRange,
     isPrivateKeyValid,
@@ -52,6 +53,22 @@ export const isNativeTokenDecimals = (value: unknown): value is number => {
         typeof value === "number" &&
         isIntegerInRange(value, 0, MAX_NATIVE_TOKEN_DECIMALS)
     );
+};
+
+export const isUint256 = (
+    value: unknown,
+): value is number | string | bigint => {
+    if (typeof value === "number") {
+        return isIntegerInRange(value, 0, Number.MAX_SAFE_INTEGER);
+    }
+
+    if (typeof value === "string") {
+        return (
+            CANONICAL_INTEGER_REGEX.test(value) && BigInt(value) <= MAX_UINT256
+        );
+    }
+
+    return typeof value === "bigint" && value >= 0n && value <= MAX_UINT256;
 };
 
 const isStoredPrivateKey = (value: unknown): boolean => {
