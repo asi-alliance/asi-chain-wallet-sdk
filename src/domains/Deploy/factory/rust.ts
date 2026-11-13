@@ -1,4 +1,6 @@
 import { Address } from "@domains/Wallet";
+import { MAX_INT64 } from "@utils/constants";
+import { isUint256 } from "@utils/guards";
 import { escapeRholangString } from "./index";
 
 export const createRustCheckBalanceDeploy = (address: Address): string => {
@@ -36,9 +38,14 @@ export const createRustTransferDeploy = (
         throw new Error("Transfer amount must be greater than zero");
     }
 
+    if (!isUint256(amount)) {
+        throw new Error("Transfer amount exceeds uint256");
+    }
+
     const escapedFromAddress = escapeRholangString(fromAddress);
     const escapedToAddress = escapeRholangString(toAddress);
-    const amountString: string = amount.toString();
+    const amountString: string =
+        amount > MAX_INT64 ? `${amount}n` : amount.toString();
 
     return `
         new
