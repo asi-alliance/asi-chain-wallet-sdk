@@ -32,6 +32,8 @@ export interface INetworkRecord {
     isDefault: boolean;
 }
 
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkRecord again.
 export interface INetworkRecordInput extends Omit<INetworkRecord, "config"> {
     config: INetworkConfig;
 }
