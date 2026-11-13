@@ -1,6 +1,10 @@
 import { POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
-import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import {
+    INetworkConfig,
+    NETWORK_CONFIG_FIELDS,
+    NETWORK_CONNECTION_FIELDS,
+} from "@domains/Network";
 import { TransactionType } from "@domains/Transaction";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
@@ -310,7 +314,8 @@ export const selectByField = <T, K extends keyof T>(
     return { selected, missingValues };
 };
 
-export const isNetworkConfigChanged = (
+const isNetworkFieldChanged = (
+    fields: (keyof INetworkConfig)[],
     current: INetworkConfig,
     update?: Partial<INetworkConfig>,
 ): boolean => {
@@ -318,11 +323,22 @@ export const isNetworkConfigChanged = (
         return false;
     }
 
-    return NETWORK_CONFIG_FIELDS.some(
+    return fields.some(
         (field: keyof INetworkConfig) =>
             update[field] !== undefined && update[field] !== current[field],
     );
 };
+
+export const isNetworkConfigChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean => isNetworkFieldChanged(NETWORK_CONFIG_FIELDS, current, update);
+
+export const isNetworkConnectionChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean =>
+    isNetworkFieldChanged(NETWORK_CONNECTION_FIELDS, current, update);
 
 export const isSameNetworkConfig = (
     first: INetworkConfig,

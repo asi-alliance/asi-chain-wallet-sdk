@@ -1,6 +1,5 @@
 import {
     DEFAULT_AUTO_LOCK_MS,
-    NATIVE_TOKEN_DECIMALS_AMOUNT,
     RequirePassword,
 } from "@config/index";
 import {
@@ -55,7 +54,7 @@ import ExportKeyfileService, {
 import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
-    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
     isPrivateKeyValid,
     toAtomicAmount,
     toExactAtomicAmount,
@@ -71,7 +70,7 @@ import {
     EnsureWithInsensitiveCacheStorage,
     TrackOperation,
 } from "@utils/decorators";
-import { DEFAULT_ASSET } from "@domains/Asset";
+import Asset, { getNativeAsset as createNativeAsset } from "@domains/Asset";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
@@ -823,7 +822,7 @@ export default class Client extends ClosableDomain {
         const balance =
             await ApiServiceRegistry.getInstance().assets.getBalance(
                 address,
-                DEFAULT_ASSET,
+                this.getNativeAsset(),
             );
 
         return balance.amount;
@@ -898,6 +897,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
+                        this.getNativeAsset().getDecimals(),
                     );
 
                 const reservation: ITransactionReservation =
@@ -946,6 +946,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
+                        this.getNativeAsset().getDecimals(),
                     );
 
                 const reservation: ITransactionReservation =
@@ -1018,7 +1019,7 @@ export default class Client extends ClosableDomain {
         }
 
         if (!pendingTransactions.length) {
-            return account.getTransactionsHistory(undefined, pagination);
+            return account.getTransactionsHistory(networkId, pagination);
         }
 
         const historyWindow: ITransactionsHistoryWindow =
@@ -1030,7 +1031,7 @@ export default class Client extends ClosableDomain {
 
         const executedTransactions: Transaction[] =
             await account.getTransactionsHistory(
-                undefined,
+                networkId,
                 historyWindow.executedPagination,
             );
 
@@ -1069,7 +1070,7 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    { to, amount, asset: DEFAULT_ASSET },
+                    { to, amount, asset: this.getNativeAsset() },
                     passwordProvider,
                 );
             },
@@ -1168,17 +1169,26 @@ export default class Client extends ClosableDomain {
         );
     }
 
+    private getNativeAsset(): Asset {
+        return createNativeAsset(
+            ApiClientManager.getInstance().getCurrentNetwork().config,
+        );
+    }
+
     public toDisplayAmount(atomicAmount: bigint): string {
-        return fromAtomicAmount(atomicAmount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+        return fromAtomicAmount(
+            atomicAmount,
+            this.getNativeAsset().getDecimals(),
+        );
     }
 
     /** @deprecated Use {@link Client.toExactAtomicAmount} instead. */
     public toAtomicAmount(amount: number | string): bigint {
-        return toAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+        return toAtomicAmount(amount, this.getNativeAsset().getDecimals());
     }
 
     public toExactAtomicAmount(amount: string): bigint {
-        return toExactAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+        return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
     }
 
     private getOpenWallet(walletId: string): Wallet {
@@ -1248,16 +1258,17 @@ export default class Client extends ClosableDomain {
         return this.reservationAdapterManager.runExclusiveNetworkAction(
             id,
             async () => {
-                const isConfigChanged: boolean = isNetworkConfigChanged(
-                    ApiClientManager.getInstance().getNetwork(id).config,
-                    update.config,
-                );
+                const isConnectionChanged: boolean =
+                    isNetworkConnectionChanged(
+                        ApiClientManager.getInstance().getNetwork(id).config,
+                        update.config,
+                    );
 
                 await NetworkManager.updateNetwork(id, update);
 
                 this.emitNetworksChanged();
 
-                if (!isConfigChanged) {
+                if (!isConnectionChanged) {
                     return;
                 }
 

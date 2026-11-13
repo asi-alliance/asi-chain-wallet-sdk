@@ -5,6 +5,7 @@ import TransactionReservationsManager, {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationInput,
     Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
@@ -27,6 +28,7 @@ import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
+    TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
 import {
     CorruptedDataSource,
@@ -64,11 +66,13 @@ export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
-        reservations: ITransactionReservation[],
+        reservations: ITransactionReservationInput[],
         reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
         this.reservationsManager = new TransactionReservationsManager(
-            reservations,
+            reservations.map((reservation: ITransactionReservationInput) =>
+                ReservationAdapter.withNetworkPrecision(reservation),
+            ),
             {
                 ...reservationsManagerOptions,
                 onConfirmed: (reservation: ITransactionReservation) => {
@@ -124,6 +128,18 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount >= 0n;
     }
 
+    private static withNetworkPrecision<
+        T extends { networkId: NetworkId; nativeTokenDecimals?: number },
+    >(value: T): TWithNativeTokenDecimals<T> {
+        return {
+            ...value,
+            nativeTokenDecimals:
+                value.nativeTokenDecimals ??
+                ApiClientManager.getInstance().getNetwork(value.networkId)
+                    .config.nativeTokenDecimals,
+        };
+    }
+
     public async add(
         wallet: Wallet,
         payload: TCreateTransactionReservationPayload,
@@ -154,7 +170,9 @@ export default class ReservationAdapter {
                     );
 
                     const reservation: ITransactionReservation =
-                        TransactionReservationFabric.create(payload);
+                        TransactionReservationFabric.create(
+                            ReservationAdapter.withNetworkPrecision(payload),
+                        );
 
                     await this.persistReservation(
                         reservation,
@@ -224,7 +242,9 @@ export default class ReservationAdapter {
 
                             const reservation: ITransactionReservation =
                                 TransactionReservationFabric.create(
-                                    payload,
+                                    ReservationAdapter.withNetworkPrecision(
+                                        payload,
+                                    ),
                                     reservationId,
                                 );
 
@@ -533,6 +553,9 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
         const pendingAmount: bigint = details.amount + GasFee.MAX;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
@@ -564,6 +587,7 @@ export default class ReservationAdapter {
                                     kind: "transfer",
                                     deployId: signedDeploy.signature,
                                     networkId,
+                                    nativeTokenDecimals,
                                     account,
                                     pendingAmount,
                                     details,
@@ -591,6 +615,9 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
+        const nativeTokenDecimals: number =
+            ApiClientManager.getInstance().getNetwork(networkId).config
+                .nativeTokenDecimals;
         const pendingAmount: bigint =
             BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
             BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
@@ -624,6 +651,7 @@ export default class ReservationAdapter {
                                     kind: "deploy",
                                     deployId: signedDeploy.signature,
                                     networkId,
+                                    nativeTokenDecimals,
                                     account,
                                     pendingAmount,
                                     term: details.term,

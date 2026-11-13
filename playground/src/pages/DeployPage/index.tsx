@@ -8,10 +8,12 @@ import {
     IReservedOperationResult,
     validateDeployPayload,
     Wallet,
+    type Asset,
 } from "asi-wallet-sdk";
 import {
     formatAssetAmount,
     toErrorText,
+    useNativeAsset,
     useSdkContext,
 } from "../../sdk-react-kit";
 import {
@@ -50,6 +52,7 @@ const DeployPage = (): ReactElement => {
         exploreDeploy,
         getAvailableBalance,
     } = useSdkContext();
+    const asset: Asset = useNativeAsset(currentNetwork);
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
         currentNetwork?.id,
@@ -175,6 +178,7 @@ const DeployPage = (): ReactElement => {
                 setError(
                     `Transaction aborted: Insufficient balance, the deploy reserves ${formatAssetAmount(
                         reservedGasCost,
+                        asset,
                     )}`,
                 );
 

@@ -14,6 +14,13 @@ export interface INetworkEndpoints {
 
 export interface INetworkConfig extends INetworkEndpoints {
     nodeApiProfile: NodeApiProfile;
+    // TODO(next-major): make nativeTokenDecimals required like nodeApiProfile
+    // and migrate stored custom networks that were saved without it.
+    nativeTokenDecimals?: number;
+}
+
+export interface IResolvedNetworkConfig extends INetworkConfig {
+    nativeTokenDecimals: number;
 }
 
 export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
@@ -21,8 +28,14 @@ export type TNetworksConfig = Record<NetworkName, INetworkConfig>;
 export interface INetworkRecord {
     id: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     isDefault: boolean;
+}
+
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkRecord again.
+export interface INetworkRecordInput extends Omit<INetworkRecord, "config"> {
+    config: INetworkConfig;
 }
 
 export interface IPersistedNetworkRecord {
@@ -49,9 +62,15 @@ export type TNetworkBusyListener = (
 export interface INetworkContext {
     networkId: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     clients: IApiClients;
     api: NodeApiAdapter;
+}
+
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkContext again.
+export interface INetworkContextInput extends Omit<INetworkContext, "config"> {
+    config: INetworkConfig;
 }
 
 const NETWORK_URL_FIELD_MAP: Record<keyof INetworkEndpoints, true> = {
@@ -64,7 +83,12 @@ export const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[] = Object.keys(
     NETWORK_URL_FIELD_MAP,
 ) as (keyof INetworkEndpoints)[];
 
-export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+export const NETWORK_CONNECTION_FIELDS: (keyof INetworkConfig)[] = [
     ...NETWORK_URL_FIELDS,
     "nodeApiProfile",
+];
+
+export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+    ...NETWORK_CONNECTION_FIELDS,
+    "nativeTokenDecimals",
 ];

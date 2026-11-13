@@ -21,6 +21,9 @@ import {
 } from "@domains/Transaction";
 
 interface IReservationPayload {
+    // TODO(next-major): make nativeTokenDecimals required in the reservation
+    // input and stop resolving it from the reservation network.
+    nativeTokenDecimals?: number;
     deployId: string;
     networkId: NetworkId;
     account: Account;
@@ -46,6 +49,8 @@ export type TCreateTransactionReservationPayload =
     | ICreateTransferReservationPayload
     | ICreateDeployReservationPayload;
 
+export type TWithNativeTokenDecimals<T> = T & { nativeTokenDecimals: number };
+
 interface IReservationMeta {
     deployId: string;
     pendingAmount: bigint;
@@ -69,12 +74,16 @@ export type TTransactionReservationMeta =
 
 export default class TransactionReservationFabric {
     private static build(
-        { networkId, account, pendingAmount, kind }: IReservationPayload,
+        payload: TWithNativeTokenDecimals<IReservationPayload>,
         details: ITransactionReservationDetails,
         id: string,
     ): ITransactionReservation {
+        const { networkId, account, pendingAmount, kind, nativeTokenDecimals } =
+            payload;
+
         return {
             id,
+            nativeTokenDecimals,
             networkId,
             accountId: account.getId(),
             pendingAmount: pendingAmount.toString(),
@@ -88,6 +97,7 @@ export default class TransactionReservationFabric {
         meta: TTransactionReservationMeta,
         account: Account,
         networkId: NetworkId,
+        nativeTokenDecimals: number,
     ): TCreateTransactionReservationPayload {
         const { deployId, pendingAmount, gasCost } = meta;
 
@@ -96,6 +106,7 @@ export default class TransactionReservationFabric {
                 kind: "deploy",
                 deployId,
                 networkId,
+                nativeTokenDecimals,
                 account,
                 pendingAmount,
                 gasCost,
@@ -107,6 +118,7 @@ export default class TransactionReservationFabric {
             kind: "transfer",
             deployId,
             networkId,
+            nativeTokenDecimals,
             account,
             pendingAmount,
             gasCost,
@@ -118,10 +130,11 @@ export default class TransactionReservationFabric {
     }
 
     public static createTransfer(
-        payload: ICreateTransferReservationPayload,
+        payload: TWithNativeTokenDecimals<ICreateTransferReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, account, details, gasCost } = payload;
+        const { deployId, account, details, gasCost, nativeTokenDecimals } =
+            payload;
 
         return TransactionReservationFabric.build(
             payload,
@@ -130,13 +143,10 @@ export default class TransactionReservationFabric {
                 timestamp: new Date(),
                 from: account.getAddress(),
                 to: details.to,
-                amount: fromAtomicAmount(
-                    details.amount,
-                    NATIVE_TOKEN_DECIMALS_AMOUNT,
-                ),
+                amount: fromAtomicAmount(details.amount, nativeTokenDecimals),
                 gasCost: fromAtomicAmount(
                     gasCost ?? GasFee.MAX,
-                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                    nativeTokenDecimals,
                 ),
             },
             id,
@@ -144,10 +154,17 @@ export default class TransactionReservationFabric {
     }
 
     public static createDeploy(
-        payload: ICreateDeployReservationPayload,
+        payload: TWithNativeTokenDecimals<ICreateDeployReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
-        const { deployId, account, pendingAmount, term, gasCost } = payload;
+        const {
+            deployId,
+            account,
+            pendingAmount,
+            term,
+            gasCost,
+            nativeTokenDecimals,
+        } = payload;
 
         return TransactionReservationFabric.build(
             payload,
@@ -157,7 +174,7 @@ export default class TransactionReservationFabric {
                 from: account.getAddress(),
                 gasCost: fromAtomicAmount(
                     gasCost ?? pendingAmount,
-                    NATIVE_TOKEN_DECIMALS_AMOUNT,
+                    nativeTokenDecimals,
                 ),
                 contractCode: term,
             },
@@ -166,7 +183,7 @@ export default class TransactionReservationFabric {
     }
 
     public static create(
-        payload: TCreateTransactionReservationPayload,
+        payload: TWithNativeTokenDecimals<TCreateTransactionReservationPayload>,
         id: string = generateRandomId(),
     ): ITransactionReservation {
         return payload.kind === "transfer"
@@ -175,11 +192,17 @@ export default class TransactionReservationFabric {
     }
 
     public static toPendingTransaction(
-        { networkId, kind, details }: ITransactionReservation,
+        {
+            networkId,
+            kind,
+            details,
+            nativeTokenDecimals,
+        }: ITransactionReservation,
         viewerAddress: Address,
     ): Transaction {
         return {
             id: details.deployId,
+            nativeTokenDecimals,
             deployId: details.deployId,
             timestamp: details.timestamp,
             type:
@@ -199,6 +222,7 @@ export default class TransactionReservationFabric {
 
     public static toPrivateData({
         accountId,
+        nativeTokenDecimals,
         pendingAmount,
         expirationTime,
         kind,
@@ -206,6 +230,7 @@ export default class TransactionReservationFabric {
     }: ITransactionReservation): ISerializedTransactionReservationPrivateData {
         return {
             accountId,
+            nativeTokenDecimals,
             pendingAmount,
             expirationTime,
             kind,
@@ -224,6 +249,11 @@ export default class TransactionReservationFabric {
             id: record.id,
             networkId: record.networkId,
             accountId: privateData.accountId,
+            // TODO: drop the 8-decimal fallback once Dev and DevNet both run
+            // the Rust node with 18 decimals and reservations stored before
+            // nativeTokenDecimals was persisted have expired.
+            nativeTokenDecimals:
+                privateData.nativeTokenDecimals ?? NATIVE_TOKEN_DECIMALS_AMOUNT,
             pendingAmount: privateData.pendingAmount,
             expirationTime: privateData.expirationTime,
             kind: privateData.kind,

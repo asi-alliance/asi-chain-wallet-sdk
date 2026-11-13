@@ -1,8 +1,10 @@
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkRecordInput,
     INetworkUpdate,
     IPersistedNetworkRecord,
+    IResolvedNetworkConfig,
     NetworkId,
     NetworkName,
     TNetworksConfig,
@@ -10,11 +12,13 @@ import {
 import {
     ensureValid,
     generateRandomId,
+    validateNativeTokenDecimals,
     validateNetworkConfigUrls,
     validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
-import { isNodeApiProfile } from "@utils/guards";
+import { isNativeTokenDecimals, isNodeApiProfile } from "@utils/guards";
+import { createNetworkConfigSnapshot } from "@fabrics/network";
 import {
     EnsureNetworkConfigProviderReady,
     EnsureNetworkExist,
@@ -34,6 +38,10 @@ export default class NetworkConfigProvider {
             ensureValid(validateNodeApiProfile(networkConfig.nodeApiProfile), {
                 context: "NetworkConfigProvider.initialize",
             });
+            ensureValid(
+                validateNativeTokenDecimals(networkConfig.nativeTokenDecimals),
+                { context: "NetworkConfigProvider.initialize" },
+            );
         });
 
         this.networksRecords = new Map<NetworkId, INetworkRecord>(
@@ -42,7 +50,7 @@ export default class NetworkConfigProvider {
                 {
                     id: name,
                     name,
-                    config: networkConfig,
+                    config: createNetworkConfigSnapshot(networkConfig),
                     isDefault: true,
                 },
             ]),
@@ -60,10 +68,23 @@ export default class NetworkConfigProvider {
                 return;
             }
 
+            const { nativeTokenDecimals } = record.config;
+
+            if (
+                nativeTokenDecimals !== undefined &&
+                !isNativeTokenDecimals(nativeTokenDecimals)
+            ) {
+                console.warn(
+                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals`,
+                );
+
+                return;
+            }
+
             this.networksRecords!.set(record.id, {
                 id: record.id,
                 name: record.name,
-                config: record.config,
+                config: createNetworkConfigSnapshot(record.config),
                 isDefault: false,
             });
         });
@@ -71,13 +92,15 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     public getAll(): INetworkRecord[] {
-        return Array.from(this.networksRecords!.values());
+        return Array.from(this.networksRecords!.values()).map(
+            (record: INetworkRecord) => ({ ...record }),
+        );
     }
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkExist
     public get(id: NetworkId): INetworkRecord {
-        return this.networksRecords!.get(id)!;
+        return { ...this.networksRecords!.get(id)! };
     }
 
     @EnsureNetworkConfigProviderReady
@@ -87,7 +110,7 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
-    public set(record: INetworkRecord): void {
+    public set(record: INetworkRecordInput): void {
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },
@@ -96,9 +119,18 @@ export default class NetworkConfigProvider {
             context: "NetworkConfigProvider.set",
         });
         ensureValid(
+            validateNativeTokenDecimals(record.config.nativeTokenDecimals),
+            { context: "NetworkConfigProvider.set" },
+        );
+
+        const config: IResolvedNetworkConfig = createNetworkConfigSnapshot(
+            record.config,
+        );
+
+        ensureValid(
             validateNetworkUniqueness(
                 record.name,
-                record.config,
+                config,
                 this.getAll().filter(
                     (otherRecord: INetworkRecord) =>
                         otherRecord.id !== record.id,
@@ -107,7 +139,7 @@ export default class NetworkConfigProvider {
             { context: "NetworkConfigProvider.set" },
         );
 
-        this.networksRecords!.set(record.id, record);
+        this.networksRecords!.set(record.id, { ...record, config });
     }
 
     @EnsureNetworkConfigProviderReady
@@ -123,18 +155,25 @@ export default class NetworkConfigProvider {
             context: "NetworkConfigProvider.add",
         });
         ensureValid(
-            validateNetworkUniqueness(name, networkConfig, this.getAll()),
+            validateNativeTokenDecimals(networkConfig.nativeTokenDecimals),
             { context: "NetworkConfigProvider.add" },
         );
+
+        const config: IResolvedNetworkConfig =
+            createNetworkConfigSnapshot(networkConfig);
+
+        ensureValid(validateNetworkUniqueness(name, config, this.getAll()), {
+            context: "NetworkConfigProvider.add",
+        });
 
         const record: INetworkRecord = {
             id: generateRandomId(),
             name,
-            config: networkConfig,
+            config,
             isDefault: false,
         };
 
-        this.networksRecords!.set(record.id, record);
+        this.networksRecords!.set(record.id, { ...record });
 
         return record;
     }
@@ -159,6 +198,10 @@ export default class NetworkConfigProvider {
                 validateNetworkConfigUrls(update.config, { allowEmpty: false }),
                 { context: "NetworkConfigProvider.update" },
             );
+            ensureValid(
+                validateNativeTokenDecimals(update.config.nativeTokenDecimals),
+                { context: "NetworkConfigProvider.update" },
+            );
         }
 
         if (update.config && update.config.nodeApiProfile !== undefined) {
@@ -171,14 +214,17 @@ export default class NetworkConfigProvider {
 
         const name: NetworkName = update.name ?? record.name;
 
-        const config: INetworkConfig = update.config
-            ? {
+        const config: IResolvedNetworkConfig = update.config
+            ? createNetworkConfigSnapshot({
                   ...record.config,
                   ...update.config,
                   nodeApiProfile:
                       update.config.nodeApiProfile ??
                       record.config.nodeApiProfile,
-              }
+                  nativeTokenDecimals:
+                      update.config.nativeTokenDecimals ??
+                      record.config.nativeTokenDecimals,
+              })
             : record.config;
 
         ensureValid(

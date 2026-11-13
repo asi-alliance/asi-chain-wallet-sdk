@@ -1,12 +1,15 @@
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import {
     INetworkConfig,
     INetworkRecord,
     INetworkUpdate,
+    IResolvedNetworkConfig,
     NetworkName,
 } from "@domains/Network";
 import {
     ensureValid,
     generateRandomId,
+    validateNativeTokenDecimals,
     validateNetworkConfigUrls,
     validateNetworkUniqueness,
     validateNodeApiProfile,
@@ -30,6 +33,18 @@ const otherNetworks = (
 ): INetworkRecord[] =>
     networks.filter((record: INetworkRecord) => record.id !== id);
 
+export const createNetworkConfigSnapshot = (
+    config: INetworkConfig,
+): IResolvedNetworkConfig =>
+    Object.freeze({
+        ...config,
+        // TODO: drop the 8-decimal fallback once Dev and DevNet both run the
+        // Rust node with 18 decimals and every network config sets
+        // nativeTokenDecimals explicitly.
+        nativeTokenDecimals:
+            config.nativeTokenDecimals ?? NATIVE_TOKEN_DECIMALS_AMOUNT,
+    });
+
 export const createNetworkRecord = ({
     name,
     config,
@@ -41,14 +56,20 @@ export const createNetworkRecord = ({
     ensureValid(validateNodeApiProfile(config.nodeApiProfile), {
         context: "createNetworkRecord",
     });
-    ensureValid(validateNetworkUniqueness(name, config, networks), {
+    ensureValid(validateNativeTokenDecimals(config.nativeTokenDecimals), {
+        context: "createNetworkRecord",
+    });
+
+    const snapshot: IResolvedNetworkConfig = createNetworkConfigSnapshot(config);
+
+    ensureValid(validateNetworkUniqueness(name, snapshot, networks), {
         context: "createNetworkRecord",
     });
 
     return {
         id: generateRandomId(),
         name,
-        config,
+        config: snapshot,
         isDefault: false,
     };
 };
@@ -67,6 +88,10 @@ export const createUpdatedNetworkRecord = ({
             validateNetworkConfigUrls(update.config, { allowEmpty: false }),
             { context: "createUpdatedNetworkRecord" },
         );
+        ensureValid(
+            validateNativeTokenDecimals(update.config.nativeTokenDecimals),
+            { context: "createUpdatedNetworkRecord" },
+        );
     }
 
     if (update.config && update.config.nodeApiProfile !== undefined) {
@@ -77,13 +102,16 @@ export const createUpdatedNetworkRecord = ({
 
     const name: NetworkName = update.name ?? record.name;
 
-    const config: INetworkConfig = update.config
-        ? {
+    const config: IResolvedNetworkConfig = update.config
+        ? createNetworkConfigSnapshot({
               ...record.config,
               ...update.config,
               nodeApiProfile:
                   update.config.nodeApiProfile ?? record.config.nodeApiProfile,
-          }
+              nativeTokenDecimals:
+                  update.config.nativeTokenDecimals ??
+                  record.config.nativeTokenDecimals,
+          })
         : record.config;
 
     ensureValid(

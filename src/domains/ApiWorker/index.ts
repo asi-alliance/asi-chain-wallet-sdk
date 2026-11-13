@@ -1,11 +1,11 @@
-import { INetworkContext, NetworkId } from "@domains/Network";
+import { INetworkContextInput, NetworkId } from "@domains/Network";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 
 export default abstract class ApiWorker {
-    protected readonly networkContext: INetworkContext;
+    protected readonly networkContext: INetworkContextInput;
 
-    constructor(networkContext: INetworkContext) {
+    constructor(networkContext: INetworkContextInput) {
         this.networkContext = networkContext;
     }
 
