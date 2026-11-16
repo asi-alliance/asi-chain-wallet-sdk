@@ -108,9 +108,6 @@ export interface ITransferRequest {
     accountId: string;
     to: Address;
     amount: bigint;
-    phloLimit?: number;
-    phloPrice?: PhloPrice;
-    shardId?: string;
 }
 
 export interface IDeployRequest {
@@ -1050,15 +1047,7 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public transfer(
-        {
-            walletId,
-            accountId,
-            to,
-            amount,
-            phloLimit,
-            phloPrice,
-            shardId,
-        }: ITransferRequest,
+        { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1084,14 +1073,7 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    {
-                        to,
-                        amount,
-                        phloLimit,
-                        phloPrice,
-                        shardId,
-                        asset: this.getNativeAsset(),
-                    },
+                    { to, amount, asset: this.getNativeAsset() },
                     passwordProvider,
                 );
             },
@@ -1219,10 +1201,8 @@ export default class Client extends ClosableDomain {
         return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
     }
 
-    public getTransferGasReserve(
-        phlo: Pick<ITransferRequest, "phloLimit" | "phloPrice"> = {},
-    ): bigint {
-        return ReservationAdapter.getTransferGasReserve(phlo);
+    public getTransferGasReserve(): bigint {
+        return ReservationAdapter.getTransferGasReserve();
     }
 
     private getOpenWallet(walletId: string): Wallet {

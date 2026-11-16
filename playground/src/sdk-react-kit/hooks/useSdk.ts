@@ -505,8 +505,7 @@ const useSdk = () => {
     );
 
     const getTransferGasReserve = useCallback(
-        (phlo?: Pick<ITransferRequest, "phloLimit" | "phloPrice">): bigint =>
-            requireClient().getTransferGasReserve(phlo),
+        (): bigint => requireClient().getTransferGasReserve(),
         [requireClient],
     );
 
