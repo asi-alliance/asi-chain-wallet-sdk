@@ -9,6 +9,7 @@ import Bip44Path from "@domains/Bip44Path";
 import BinaryWriter from "@domains/BinaryWriter";
 import { DeployData } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
+import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -24,7 +25,7 @@ import TransactionService, {
 import { createSigner } from "@fabrics/signer";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { encodeBase16 } from "@utils/index";
-import { ASI_COIN_TYPE } from "@utils/constants";
+import { ASI_COIN_TYPE, MAX_UINT256 } from "@utils/constants";
 
 const { blake2bHex } = blakejs;
 
@@ -110,7 +111,11 @@ const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
 const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 class StubBlockService extends BlockService {
+    public requests: number = 0;
+
     public async getLatestBlockNumber(): Promise<number> {
+        this.requests += 1;
+
         return LATEST_BLOCK_NUMBER;
     }
 }
@@ -180,6 +185,7 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
 };
 
 const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
+const rustApi: NodeApiAdapter = new RustNodeApiAdapter({} as IApiClients);
 
 const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
@@ -448,4 +454,34 @@ test("signDeploy rejects an invalid payload", async () => {
     }
 
     assert.equal(deployService.submitted.length, 0);
+});
+
+test("signDeploy rejects a phlo charge above uint256 before requesting the block height", async () => {
+    console.log("\n=== PHLO CHARGE OVERFLOW BEFORE THE BLOCK REQUEST ===");
+
+    const blockService: StubBlockService = new StubBlockService();
+    const transactionService: TransactionService = new TransactionService(
+        new SpyDeployService(),
+        blockService,
+        { getApi: () => rustApi } as unknown as NodeApiProvider,
+    );
+    const { account, signer }: ISigningContext =
+        await createPrivateKeyContext();
+
+    await assert.rejects(
+        transactionService.signDeploy({
+            walletType: WalletTypes.PRIVATE_KEY,
+            account,
+            signer,
+            term: TERM,
+            phloLimit: 2,
+            phloPrice: MAX_UINT256,
+            passwordProvider: createPasswordProvider(),
+        }),
+        /charge exceeds uint256/,
+    );
+
+    console.log("    Block height requests:", blockService.requests);
+
+    assert.equal(blockService.requests, 0);
 });

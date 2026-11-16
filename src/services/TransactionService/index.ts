@@ -98,6 +98,11 @@ export default class TransactionService {
             { context: "TransactionService.signDeploy" },
         );
 
+        const deployPhlo: IDeployPhlo = createDeployPhlo({
+            phloLimit,
+            phloPrice,
+        });
+
         const latestBlockNumber: number =
             await this.blockService.getLatestBlockNumber();
 
@@ -114,11 +119,6 @@ export default class TransactionService {
                       passwordProvider,
                       index: account.getIndex()!,
                   };
-
-        const deployPhlo: IDeployPhlo = createDeployPhlo({
-            phloLimit,
-            phloPrice,
-        });
 
         const deployData: DeployData = {
             term,

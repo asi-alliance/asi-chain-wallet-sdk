@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
+import { getNativeAsset } from "@domains/Asset";
 import Client from "@domains/Client";
+import ReservationAdapter from "@domains/ReservationAdapter";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
 import { BalanceUnavailableError } from "@domains/CustomError";
 import { MAX_UINT256 } from "@utils/constants";
 import { startPrecisionNode } from "./precisionNode";
@@ -68,6 +71,29 @@ test("deploy reserves exact wide fees and overflow never reaches HTTP or storage
     await assert.rejects(client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: MAX_UINT256 }), /charge exceeds/);
     assert.equal(node.getSubmittedDeploys().length, count);
     assert.equal((await client.getReservations(request.walletId)).length, 1);
+});
+
+test("direct reservations sign and reserve the phlo read when the operation starts", async () => {
+    const { wallet, account } = await funded();
+    const reservationAdapter = new ReservationAdapter([]);
+    const asset = getNativeAsset(client.getCurrentNetwork().config);
+    const transferDetails: ITransferDetails = { to: account.getAddress(), amount: 1n, asset, phloLimit: 2, phloPrice: 1 };
+    const deployDetails: TDeployDetails = { term: "Nil", phloLimit: 3, phloPrice: 1 };
+    try {
+        const transferring = reservationAdapter.transfer(wallet, account.getId(), transferDetails);
+        transferDetails.phloPrice = 100;
+        await transferring;
+        const deploying = reservationAdapter.deploy(wallet, account.getId(), deployDetails);
+        deployDetails.phloPrice = 100;
+        await deploying;
+        const [transferDeploy, deployDeploy] = node.getSubmittedDeploys().slice(-2);
+        assert.equal(transferDeploy.data.phloPrice, "1");
+        assert.equal(deployDeploy.data.phloPrice, "1");
+        const pendingAmounts = reservationAdapter.getReservations().map(reservation => reservation.pendingAmount);
+        assert.deepEqual(pendingAmounts, ["3", "3"]);
+    } finally {
+        reservationAdapter.dispose();
+    }
 });
 
 test("wide balances stay exact and malformed balances never become zero", async () => {
