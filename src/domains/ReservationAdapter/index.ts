@@ -5,6 +5,7 @@ import TransactionReservationsManager, {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationInput,
     Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
@@ -24,6 +25,7 @@ import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
+    TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
 import { createDeployPhlo } from "@fabrics/deployPhlo";
 import {
@@ -63,11 +65,13 @@ export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
-        reservations: ITransactionReservation[],
+        reservations: ITransactionReservationInput[],
         reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
     ) {
         this.reservationsManager = new TransactionReservationsManager(
-            reservations,
+            reservations.map((reservation: ITransactionReservationInput) =>
+                ReservationAdapter.withNetworkPrecision(reservation),
+            ),
             {
                 ...reservationsManagerOptions,
                 onConfirmed: (reservation: ITransactionReservation) => {
@@ -123,6 +127,18 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount >= 0n;
     }
 
+    private static withNetworkPrecision<
+        T extends { networkId: NetworkId; nativeTokenDecimals?: number },
+    >(value: T): TWithNativeTokenDecimals<T> {
+        return {
+            ...value,
+            nativeTokenDecimals:
+                value.nativeTokenDecimals ??
+                ApiClientManager.getInstance().getNetwork(value.networkId)
+                    .config.nativeTokenDecimals,
+        };
+    }
+
     public async add(
         wallet: Wallet,
         payload: TCreateTransactionReservationPayload,
@@ -153,7 +169,9 @@ export default class ReservationAdapter {
                     );
 
                     const reservation: ITransactionReservation =
-                        TransactionReservationFabric.create(payload);
+                        TransactionReservationFabric.create(
+                            ReservationAdapter.withNetworkPrecision(payload),
+                        );
 
                     await this.persistReservation(
                         reservation,
@@ -223,7 +241,9 @@ export default class ReservationAdapter {
 
                             const reservation: ITransactionReservation =
                                 TransactionReservationFabric.create(
-                                    payload,
+                                    ReservationAdapter.withNetworkPrecision(
+                                        payload,
+                                    ),
                                     reservationId,
                                 );
 

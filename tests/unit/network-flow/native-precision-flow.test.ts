@@ -3,11 +3,20 @@ import assert from "node:assert/strict";
 
 import Account from "@domains/Account";
 import ApiClientManager from "@domains/ApiClientManager";
-import Client from "@domains/Client";
+import Client, { TTransactionReservationRequest } from "@domains/Client";
 import { INetworkRecord, IPersistedNetworkRecord } from "@domains/Network";
-import { IReservedOperationResult } from "@domains/ReservationAdapter";
-import { ITransactionReservation, Transaction } from "@domains/Transaction";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
+import ReservationAdapter, {
+    IReservedOperationResult,
+} from "@domains/ReservationAdapter";
+import {
+    ITransactionReservation,
+    ITransactionReservationInput,
+    Transaction,
+} from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
+import { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import AccountDataService from "@services/AccountDataService";
 import { SignedResult } from "@services/Signer";
 import StorageManager from "@services/StorageManager";
@@ -303,6 +312,141 @@ test("custom precision is persisted, can be corrected and survives a client rest
     assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
 });
 
+test("precision change keeps open reservations and their update takes the network precision", async () => {
+    console.log("\n=== PRECISION CHANGE KEEPS OPEN RESERVATIONS ===");
+
+    const custom: INetworkRecord = await addCustomNetwork();
+
+    client.setNetwork(custom.id);
+
+    const { wallet, account, request }: IFundedWallet =
+        await createFundedWallet();
+
+    const reservationRequest: TTransactionReservationRequest = {
+        ...request,
+        kind: "transfer",
+        deployId: "external",
+        to: account.getAddress(),
+        amount: 1n,
+        gasCost: 250000n,
+        pendingAmount: 250001n,
+    };
+
+    await client.addTransactionReservation(reservationRequest);
+
+    await client.updateNetwork(custom.id, {
+        config: { nativeTokenDecimals: 8 },
+    });
+
+    const [kept]: ITransactionReservation[] = await client.getReservations(
+        wallet.getId(),
+    );
+
+    console.log("    Kept reservation precision:", kept.nativeTokenDecimals);
+
+    assert.equal(kept.nativeTokenDecimals, 18);
+    assert.equal(kept.pendingAmount, "250001");
+    assert.equal(kept.details.amount, "0.000000000000000001");
+
+    const updated: ITransactionReservation =
+        await client.updateTransactionReservation(kept.id, reservationRequest);
+
+    console.log(
+        "    Updated reservation precision:",
+        updated.nativeTokenDecimals,
+    );
+
+    assert.equal(updated.nativeTokenDecimals, 8);
+    assert.equal(updated.pendingAmount, "250001");
+    assert.equal(updated.details.amount, "0.00000001");
+});
+
+test("a reservation payload without precision takes the precision of its network", async () => {
+    console.log("\n=== RESERVATION WITHOUT PRECISION USES THE NETWORK ===");
+
+    const { wallet, account }: IFundedWallet = await createFundedWallet();
+    const reservationAdapter: ReservationAdapter = new ReservationAdapter([]);
+
+    const payload: TCreateTransactionReservationPayload = {
+        kind: "transfer",
+        deployId: "external",
+        networkId: client.getCurrentNetwork().id,
+        account,
+        pendingAmount: 250001n,
+        gasCost: 250000n,
+        details: { to: account.getAddress(), amount: 1n },
+    };
+
+    try {
+        const added: ITransactionReservation = await reservationAdapter.add(
+            wallet,
+            payload,
+        );
+
+        console.log(
+            "    Added reservation precision:",
+            added.nativeTokenDecimals,
+        );
+
+        assert.equal(added.nativeTokenDecimals, 18);
+        assert.equal(added.details.amount, "0.000000000000000001");
+        assert.equal(added.details.gasCost, "0.00000000000025");
+
+        const updated: ITransactionReservation =
+            await reservationAdapter.update(wallet, added.id, payload);
+
+        assert.equal(updated.nativeTokenDecimals, 18);
+        assert.equal(updated.details.amount, "0.000000000000000001");
+    } finally {
+        reservationAdapter.dispose();
+    }
+});
+
+test("reservations passed to the adapter without precision take the precision of their network", () => {
+    console.log("\n=== ADAPTER RESERVATIONS USE THE NETWORK PRECISION ===");
+
+    const createReservationInput = (
+        networkId: string,
+    ): ITransactionReservationInput => ({
+        id: `reservation-${networkId}`,
+        networkId,
+        accountId: "account-id",
+        pendingAmount: "1000",
+        expirationTime: Date.now() + 5 * 60 * 1000,
+        kind: "deploy",
+        details: {
+            deployId: `deploy-${networkId}`,
+            timestamp: new Date(),
+            from: "sender-address",
+        },
+    });
+
+    const reservationAdapter: ReservationAdapter = new ReservationAdapter([
+        createReservationInput(NATIVE_18_NETWORK),
+        createReservationInput(NATIVE_8_NETWORK),
+    ]);
+
+    try {
+        const native18Reservation: ITransactionReservation =
+            reservationAdapter.getReservation(
+                `reservation-${NATIVE_18_NETWORK}`,
+            );
+        const native8Reservation: ITransactionReservation =
+            reservationAdapter.getReservation(`reservation-${NATIVE_8_NETWORK}`);
+
+        console.log(
+            "    Precision by network:",
+            native18Reservation.nativeTokenDecimals,
+            native8Reservation.nativeTokenDecimals,
+        );
+
+        assert.equal(native18Reservation.nativeTokenDecimals, 18);
+        assert.equal(native8Reservation.nativeTokenDecimals, 8);
+    } finally {
+        reservationAdapter.dispose();
+    }
+});
+
 test("invalid updates fail before configuration is written", async () => {
     console.log("\n=== INVALID PRECISION UPDATES ARE REJECTED ===");
 
@@ -361,4 +505,38 @@ test("history queries bind endpoints and precision-independent recorded amounts 
     console.log("    18-decimal history amount:", native18History[0].amount);
 
     assert.equal(native18History[0].amount, "10.000000000000000001");
+});
+
+test("history without a network id is read through the injected node API provider", async () => {
+    console.log("\n=== HISTORY USES THE INJECTED PROVIDER ===");
+
+    const native8Api: NodeApiAdapter =
+        ApiClientManager.getInstance().createNetworkContext(
+            NATIVE_8_NETWORK,
+        ).api;
+    const nodeApiProvider: NodeApiProvider = {
+        getApi: () => native8Api,
+    } as unknown as NodeApiProvider;
+
+    const accountDataService: AccountDataService = new AccountDataService(
+        nodeApiProvider,
+    );
+
+    const providerHistory: Transaction[] =
+        await accountDataService.getTransactionHistory("recipient", "key");
+
+    console.log("    Provider history amount:", providerHistory[0].amount);
+
+    assert.equal(client.getCurrentNetworkId(), NATIVE_18_NETWORK);
+    assert.equal(providerHistory[0].amount, "1.50000000");
+
+    const requestedHistory: Transaction[] =
+        await accountDataService.getTransactionHistory(
+            "recipient",
+            "key",
+            {},
+            NATIVE_18_NETWORK,
+        );
+
+    assert.equal(requestedHistory[0].amount, "10.000000000000000001");
 });

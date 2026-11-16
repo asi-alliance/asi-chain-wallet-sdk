@@ -55,7 +55,7 @@ import ExportKeyfileService, {
 import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
-    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
     isPrivateKeyValid,
     toAtomicAmount,
     toExactAtomicAmount,
@@ -1292,16 +1292,17 @@ export default class Client extends ClosableDomain {
         return this.reservationAdapterManager.runExclusiveNetworkAction(
             id,
             async () => {
-                const isConfigChanged: boolean = isNetworkConfigChanged(
-                    ApiClientManager.getInstance().getNetwork(id).config,
-                    update.config,
-                );
+                const isConnectionChanged: boolean =
+                    isNetworkConnectionChanged(
+                        ApiClientManager.getInstance().getNetwork(id).config,
+                        update.config,
+                    );
 
                 await NetworkManager.updateNetwork(id, update);
 
                 this.emitNetworksChanged();
 
-                if (!isConfigChanged) {
+                if (!isConnectionChanged) {
                     return;
                 }
 

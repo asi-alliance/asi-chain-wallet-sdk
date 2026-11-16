@@ -15,11 +15,7 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
-import {
-    CANONICAL_INTEGER_REGEX,
-    DIGITS_ONLY_REGEX,
-    MAX_UINT256,
-} from "@utils/constants";
+import { CANONICAL_INTEGER_REGEX, MAX_UINT256 } from "@utils/constants";
 import {
     isIntegerInRange,
     isPrivateKeyValid,
@@ -61,7 +57,7 @@ export const isNativeTokenDecimals = (value: unknown): value is number => {
 
 export const isBlockNumber = (value: unknown): value is number | string => {
     const blockNumber: unknown =
-        typeof value === "string" && DIGITS_ONLY_REGEX.test(value)
+        typeof value === "string" && CANONICAL_INTEGER_REGEX.test(value)
             ? Number(value)
             : value;
 

@@ -27,9 +27,9 @@ export default class ObserverClient extends BaseHttpClient {
         return this.get(`/api/block/${blockHash}`);
     }
 
-    public getBlocks<T = IBlockDto>(
-        params: IGetBlocksParams = {},
-    ): Promise<T[]> {
+    // TODO(next-major): type the response for both node API profiles; the
+    // Rust node returns the block number in blockInfo.blockNumber.
+    public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
         const { start, end, view } = params;
 
         const path: string = buildUrl("api/blocks", {

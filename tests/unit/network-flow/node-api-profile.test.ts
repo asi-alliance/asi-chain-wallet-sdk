@@ -352,6 +352,8 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         "-1",
         "1.5",
         "1e3",
+        "00",
+        "0123",
         String(Number.MAX_SAFE_INTEGER + 1),
     ];
 
@@ -364,10 +366,12 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         );
     }
 
-    await assert.rejects(
-        readRustLatestBlockNumber([]),
-        INVALID_BLOCK_NUMBER_ERROR,
-    );
+    for (const blocks of [[], [null], [{ blockInfo: null }]]) {
+        await assert.rejects(
+            readRustLatestBlockNumber(blocks),
+            INVALID_BLOCK_NUMBER_ERROR,
+        );
+    }
 });
 
 test("rust profile reads deploy finalization from the deploy finalization state", async () => {

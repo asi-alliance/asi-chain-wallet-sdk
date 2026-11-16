@@ -1,6 +1,6 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
-import type { ITransactionReservation } from "@domains/Transaction";
+import type { ITransactionReservationInput } from "@domains/Transaction";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
 import type { IWalletKeyfile } from "@services/ExportKeyfileService";
@@ -29,7 +29,7 @@ import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
     NETWORK_URL_FIELDS,
     type INetworkConfig,
-    type INetworkRecord,
+    type INetworkRecordInput,
     type NetworkName,
 } from "@domains/Network";
 import {
@@ -272,10 +272,10 @@ export const validateNetworkConfigUrls = (
 export const validateNetworkUniqueness = (
     name: NetworkName,
     config: INetworkConfig,
-    otherRecords: INetworkRecord[],
+    otherRecords: INetworkRecordInput[],
 ): { isValid: boolean; error?: string } => {
     if (
-        otherRecords.some((record: INetworkRecord) =>
+        otherRecords.some((record: INetworkRecordInput) =>
             isSameNetworkConfig(record.config, config),
         )
     ) {
@@ -285,7 +285,9 @@ export const validateNetworkUniqueness = (
         };
     }
 
-    if (otherRecords.some((record: INetworkRecord) => record.name === name)) {
+    if (
+        otherRecords.some((record: INetworkRecordInput) => record.name === name)
+    ) {
         return {
             isValid: false,
             error: "Network with the same name already exists",
@@ -384,7 +386,7 @@ export const validateReservationPayload = (
 };
 
 export const validateReservationUpdateTarget = (
-    currentReservation: ITransactionReservation,
+    currentReservation: ITransactionReservationInput,
     payload: TCreateTransactionReservationPayload,
 ): { isValid: boolean; error?: string } => {
     if (currentReservation.accountId !== payload.account.getId()) {
@@ -398,13 +400,6 @@ export const validateReservationUpdateTarget = (
         return {
             isValid: false,
             error: "Reservation cannot be moved to another network",
-        };
-    }
-
-    if (currentReservation.nativeTokenDecimals !== payload.nativeTokenDecimals) {
-        return {
-            isValid: false,
-            error: "Reservation precision cannot be changed",
         };
     }
 

@@ -7,6 +7,7 @@ import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkRecordInput,
     IResolvedNetworkConfig,
 } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
@@ -25,7 +26,11 @@ import { EncryptedData } from "@services/Crypto";
 import { mapRawTransferToTransaction } from "@services/GraphqlParser/mapper";
 import KeysManager from "@services/KeysManager";
 import WalletsService from "@services/Wallets";
-import { isNetworkConfigChanged, isSameNetworkConfig } from "@utils/functions";
+import {
+    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
+    isSameNetworkConfig,
+} from "@utils/functions";
 import {
     isNativeTokenDecimals,
     isSerializedReservationPrivateData,
@@ -65,6 +70,8 @@ const INVALID_NATIVE_TOKEN_DECIMALS: unknown[] = [
 
 const INVALID_NATIVE_TOKEN_DECIMALS_ERROR: RegExp =
     /Native token decimals must be an integer from 0 to 18/;
+
+const SAME_CONFIG_ERROR: RegExp = /Network with the same config already exists/;
 
 const RESERVATION_PRECISION_CASES: IReservationPrecisionCase[] = [
     {
@@ -181,6 +188,16 @@ test("legacy configurations mean 8, with explicit zero and 18 also supported", (
         isNetworkConfigChanged(native8, { nativeTokenDecimals: undefined }),
         false,
     );
+    assert.equal(
+        isNetworkConnectionChanged(native8, { nativeTokenDecimals: 18 }),
+        false,
+    );
+    assert.equal(
+        isNetworkConnectionChanged(native8, {
+            IndexerURL: `${native8.IndexerURL}?other`,
+        }),
+        true,
+    );
 });
 
 test("invalid explicit precision is rejected by configuration and never falls back to 8", () => {
@@ -212,6 +229,43 @@ test("a missing or undefined precision means the legacy 8 decimals", () => {
     });
 
     assert.equal(provider.get("Main").config.nativeTokenDecimals, 8);
+
+    const legacyRecord: INetworkRecordInput = {
+        id: "custom",
+        name: "Custom",
+        config: {
+            ...createConfig(),
+            IndexerURL: `${NETWORK_CONFIG.IndexerURL}?custom`,
+        },
+        isDefault: false,
+    };
+
+    provider.set(legacyRecord);
+
+    assert.equal(provider.get("custom").config.nativeTokenDecimals, 8);
+});
+
+test("a missing precision and an explicit 8 are the same network for the duplicate check", () => {
+    for (const [storedDecimals, inputDecimals] of [
+        [8, undefined],
+        [undefined, 8],
+    ]) {
+        const provider: NetworkConfigProvider = new NetworkConfigProvider();
+
+        provider.initialize({ Main: createConfig(storedDecimals) });
+
+        assert.throws(
+            () =>
+                provider.set({
+                    id: "custom",
+                    name: "Custom",
+                    config: createConfig(inputDecimals),
+                    isDefault: false,
+                }),
+            SAME_CONFIG_ERROR,
+        );
+        assert.equal(provider.getIds().includes("custom"), false);
+    }
 });
 
 test("network precision snapshots cannot be changed through caller-owned objects", () => {
@@ -244,12 +298,21 @@ test("restored custom precision is validated while legacy records retain 8", (t)
         { id: "legacy", name: "Legacy", config: createConfig() },
         { id: "wide", name: "Wide", config: createConfig(18) },
         { id: "invalid", name: "Invalid", config: createConfig(19) },
+        {
+            id: "malformed",
+            name: "Malformed",
+            config: {
+                ...createConfig(),
+                nativeTokenDecimals: JSON.parse('{"toString":null}'),
+            },
+        },
     ]);
 
     assert.equal(provider.get("legacy").config.nativeTokenDecimals, 8);
     assert.equal(provider.get("wide").config.nativeTokenDecimals, 18);
     assert.equal(provider.getIds().includes("invalid"), false);
-    assert.equal(warn.mock.callCount(), 1);
+    assert.equal(provider.getIds().includes("malformed"), false);
+    assert.equal(warn.mock.callCount(), 2);
 });
 
 for (const {
@@ -309,7 +372,7 @@ for (const {
         assert.equal(
             validateReservationUpdateTarget(restored, otherPrecisionUpdate)
                 .isValid,
-            false,
+            true,
         );
 
         serialized.nativeTokenDecimals = 19;

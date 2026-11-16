@@ -254,6 +254,10 @@ const ReservationsPage = (): ReactElement => {
         setError(null);
     };
 
+    useEffect(() => {
+        resetForm();
+    }, [currentNetwork?.id, asset.getDecimals(), transferGasReserve]);
+
     const updateForm = (patch: Partial<IReservationFormState>): void => {
         setNotice(null);
         setError(null);
