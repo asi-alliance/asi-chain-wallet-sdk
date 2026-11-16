@@ -4,7 +4,7 @@ import DeployService from "@services/DeployService";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import ValidatorClient from "@domains/ValidatorClient";
 import { SignedResult } from "@services/Signer";
-import { DeployAdmissionRefusedError, DeploySubmissionRejectedError, DeploySubmissionUnknownError } from "@domains/CustomError";
+import { CustomErrorCode, DeployAdmissionRefusedError, DeployRefusedError, DeploySubmissionRejectedError, DeploySubmissionUnknownError } from "@domains/CustomError";
 
 const signed = (): SignedResult => ({ data: { term: "Nil", timestamp: 123 }, signature: "abcdef", deployer: "public-key", sigAlgorithm: "secp256k1" });
 const failure = (status: number, data: unknown) => Object.assign(new Error("node response"), { isAxiosError: true, response: { status, data } });
@@ -35,6 +35,40 @@ for (const code of ["deploy_pool_busy", "deploy_admission_busy"] as const) {
         assert.ok(arrivals[2] - arrivals[1] >= 400);
         assert.ok(payloads.every((payload) => payload.data.timestamp === 123 && payload.signature === "abcdef"));
         assert.deepEqual(payloads[0], payloads[2]);
+    });
+}
+
+for (const [status, code, errorCode, retryable] of [
+    [413, "deploy_too_large", CustomErrorCode.DEPLOY_TOO_LARGE, false],
+    [400, "deploy_expired", CustomErrorCode.DEPLOY_EXPIRED, false],
+    [400, "invalid_deploy_window", CustomErrorCode.DEPLOY_WINDOW_INVALID, true],
+] as const) {
+    test(`HTTP ${status} ${code} is a typed node refusal and is not retried`, async () => {
+        let requests = 0;
+        const client = service(async () => { requests += 1; throw failure(status, { error: code, message: "not accepted" }); });
+        await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) => {
+            assert.ok(error instanceof DeployRefusedError);
+            assert.ok(error instanceof DeploySubmissionRejectedError);
+            assert.ok(!(error instanceof DeployAdmissionRefusedError));
+            assert.equal(error.rejectionCode, code);
+            assert.equal(error.code, errorCode);
+            assert.equal(error.status, status);
+            assert.equal(error.deployId, "abcdef");
+            assert.equal(error.retryable, retryable);
+            return true;
+        });
+        assert.equal(requests, 1);
+    });
+}
+
+for (const [status, body] of [[400, { error: "deploy_too_large" }], [413, { error: "deploy_expired" }], [400, { error: "illegal_argument" }]] as const) {
+    test(`HTTP ${status} ${JSON.stringify(body)} stays a generic rejection`, async () => {
+        const client = service(async () => { throw failure(status, body); });
+        await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) => {
+            assert.ok(error instanceof DeploySubmissionRejectedError);
+            assert.ok(!(error instanceof DeployRefusedError));
+            return true;
+        });
     });
 }
 

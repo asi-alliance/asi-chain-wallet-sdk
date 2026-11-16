@@ -28,6 +28,9 @@ export enum CustomErrorCode {
     API_REQUEST_FAILED = "API_REQUEST_FAILED",
     DEPLOY_SUBMISSION_REJECTED = "DEPLOY_SUBMISSION_REJECTED",
     DEPLOY_ADMISSION_REFUSED = "DEPLOY_ADMISSION_REFUSED",
+    DEPLOY_TOO_LARGE = "DEPLOY_TOO_LARGE",
+    DEPLOY_EXPIRED = "DEPLOY_EXPIRED",
+    DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
     DEPLOY_SUBMISSION_UNKNOWN = "DEPLOY_SUBMISSION_UNKNOWN",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
@@ -253,6 +256,29 @@ export class DeployAdmissionRefusedError extends DeploySubmissionRejectedError {
         public readonly deployId: string,
     ) {
         super(operation, reason, CustomErrorCode.DEPLOY_ADMISSION_REFUSED, 503);
+    }
+}
+
+export type DeployRejectionCode = "deploy_too_large" | "deploy_expired" | "invalid_deploy_window";
+
+const DEPLOY_REJECTION_ERROR_CODES: Readonly<Record<DeployRejectionCode, CustomErrorCode>> = {
+    deploy_too_large: CustomErrorCode.DEPLOY_TOO_LARGE,
+    deploy_expired: CustomErrorCode.DEPLOY_EXPIRED,
+    invalid_deploy_window: CustomErrorCode.DEPLOY_WINDOW_INVALID,
+};
+
+export class DeployRefusedError extends DeploySubmissionRejectedError {
+    public readonly retryable: boolean;
+
+    constructor(
+        operation: string,
+        reason: string,
+        public readonly rejectionCode: DeployRejectionCode,
+        public readonly deployId: string,
+        status: number,
+    ) {
+        super(operation, reason, DEPLOY_REJECTION_ERROR_CODES[rejectionCode], status);
+        this.retryable = rejectionCode === "invalid_deploy_window";
     }
 }
 

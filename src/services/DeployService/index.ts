@@ -9,10 +9,27 @@ import {
     DeploySubmissionRejectedError,
     DeployAdmissionCode,
     DeployAdmissionRefusedError,
+    DeployRefusedError,
+    DeployRejectionCode,
     DeploySubmissionUnknownError,
     UnknownErrorReason,
 } from "@domains/CustomError";
 import { getErrorMessage, isRejectedByServer } from "@utils/index";
+
+const DEPLOY_REJECTIONS: ReadonlyArray<readonly [number, DeployRejectionCode]> = [
+    [413, "deploy_too_large"],
+    [400, "deploy_expired"],
+    [400, "invalid_deploy_window"],
+];
+
+const deployRejection = (error: unknown): { code: DeployRejectionCode; status: number } | undefined => {
+    if (!axios.isAxiosError(error) || !error.response) {
+        return undefined;
+    }
+    const kind: unknown = error.response.data?.error;
+    const match = DEPLOY_REJECTIONS.find(([status, code]) => status === error.response?.status && code === kind);
+    return match ? { status: match[0], code: match[1] } : undefined;
+};
 
 const ADMISSION_RETRY_DELAYS_MS = [250, 500] as const;
 
@@ -73,6 +90,12 @@ export default class DeployService {
                     }
                     throw new DeployAdmissionRefusedError(
                         "DeployService.submitSignedDeploy", reason, admissionCode, signedDeploy.signature,
+                    );
+                }
+                const rejection = deployRejection(error);
+                if (rejection) {
+                    throw new DeployRefusedError(
+                        "DeployService.submitSignedDeploy", reason, rejection.code, signedDeploy.signature, rejection.status,
                     );
                 }
                 if (isRejectedByServer(error)) {

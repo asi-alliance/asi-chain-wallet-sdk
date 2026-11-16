@@ -784,4 +784,12 @@ For [node #789](https://github.com/F1R3FLY-io/f1r3node-rust/pull/789), the SDK r
 
 After exhausted explicit refusals, `DeployAdmissionRefusedError` carries `admissionCode`, `deployId` and `retryable=true`. It extends `DeploySubmissionRejectedError`, so reservation-aware operations release the unaccepted reservation. Finalization watching starts only after accepted submission.
 
+Three other node refusals are never retried automatically. They produce `DeployRefusedError`, which also extends `DeploySubmissionRejectedError` and carries `rejectionCode`, `deployId`, `status` and `retryable`:
+
+| Node response | `rejectionCode` | Error code | `retryable` |
+|---|---|---|---|
+| 413 | `deploy_too_large` | `DEPLOY_TOO_LARGE` | `false`: the deploy exceeds the node's whole byte budget |
+| 400 | `deploy_expired` | `DEPLOY_EXPIRED` | `false`: its validity window or expiration timestamp has closed |
+| 400 | `invalid_deploy_window` | `DEPLOY_WINDOW_INVALID` | `true`: its validity height is still ahead; resubmit the same deploy later |
+
 A timeout, dropped response, unrelated 503, or unexpected acceptance ID produces `DeploySubmissionUnknownError`, without automatic resubmission. Its signed deploy ID and reservation are retained for reconciliation. Callers must distinguish this state from a known refusal before creating a new transfer.
