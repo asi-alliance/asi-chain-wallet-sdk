@@ -2,11 +2,13 @@ import { useState, type FormEvent, type ReactElement } from "react";
 import {
     DEFAULT_NODE_API_PROFILE,
     INetworkConfig,
+    MAX_NATIVE_TOKEN_DECIMALS,
+    NATIVE_TOKEN_DECIMALS_AMOUNT,
     NODE_API_PROFILE_DESCRIPTORS,
     NetworkName,
     validateUrl,
 } from "asi-wallet-sdk";
-import { toNodeApiProfile } from "../../sdk-react-kit";
+import { toIntegerRangeError, toNodeApiProfile } from "../../sdk-react-kit";
 
 export interface INetworkModalPayload {
     name: NetworkName;
@@ -47,11 +49,30 @@ const NetworkModal = ({
             return;
         }
 
+        const nativeTokenDecimals = (
+            (formData.get("nativeTokenDecimals") as string) ?? ""
+        ).trim();
+
+        const decimalsError: string | null = toIntegerRangeError(
+            nativeTokenDecimals,
+            {
+                label: "Native token decimals",
+                min: 0,
+                max: MAX_NATIVE_TOKEN_DECIMALS,
+            },
+        );
+
+        if (decimalsError) {
+            setLocalError(decimalsError);
+            return;
+        }
+
         const config: INetworkConfig = {
             ValidatorURL: ((formData.get("validatorUrl") as string) ?? "").trim(),
             ReadOnlyURL: ((formData.get("readOnlyUrl") as string) ?? "").trim(),
             IndexerURL: ((formData.get("indexerUrl") as string) ?? "").trim(),
             nodeApiProfile: toNodeApiProfile(formData.get("nodeApiProfile")),
+            nativeTokenDecimals: Number(nativeTokenDecimals),
         };
 
         const urlFields: { label: string; value: string }[] = [
@@ -121,6 +142,24 @@ const NetworkModal = ({
                                 ),
                             )}
                         </select>
+                    </div>
+
+                    <div className="network-modal__row">
+                        <label htmlFor="nativeTokenDecimals">
+                            Native token decimals
+                        </label>
+                        <input
+                            id="nativeTokenDecimals"
+                            name="nativeTokenDecimals"
+                            type="number"
+                            min={0}
+                            max={MAX_NATIVE_TOKEN_DECIMALS}
+                            step={1}
+                            defaultValue={
+                                initialConfig?.nativeTokenDecimals ??
+                                NATIVE_TOKEN_DECIMALS_AMOUNT
+                            }
+                        />
                     </div>
 
                     <div className="network-modal__row">

@@ -1,4 +1,5 @@
 export const NATIVE_TOKEN_DECIMALS_AMOUNT: number = 8;
+export const MAX_NATIVE_TOKEN_DECIMALS: number = 18;
 
 export const DEFAULT_PHLO_LIMIT: number = 500000;
 export const DEFAULT_PHLO_PRICE: number = 1;

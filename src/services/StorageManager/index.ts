@@ -9,7 +9,7 @@ import {
     IAccountStorageRecord,
 } from "@domains/AccountsStorageRepository";
 import {
-    INetworkRecord,
+    INetworkRecordInput,
     IPersistedNetworkRecord,
     NetworkId,
 } from "@domains/Network";
@@ -365,7 +365,7 @@ class StorageManager {
     };
 
     public static saveCustomNetwork = async (
-        network: INetworkRecord,
+        network: INetworkRecordInput,
     ): Promise<void> => {
         await CustomNetworksStorageRepository.getInstance().saveCustomNetwork(
             network.id,
@@ -375,7 +375,7 @@ class StorageManager {
     };
 
     public static updateCustomNetwork = async (
-        network: INetworkRecord,
+        network: INetworkRecordInput,
     ): Promise<void> => {
         await CustomNetworksStorageRepository.getInstance().updateCustomNetwork(
             network.id,

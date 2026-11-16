@@ -83,6 +83,7 @@ const createReservation = (
 ): ITransactionReservation => ({
     id,
     networkId,
+    nativeTokenDecimals: 8,
     accountId: "account-id",
     pendingAmount: "1000",
     expirationTime: Date.now() + 5 * 60 * 1000,

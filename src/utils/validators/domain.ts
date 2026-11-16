@@ -1,6 +1,6 @@
 import type { Address } from "@domains/Wallet";
 import type { IErrorContext } from "@domains/CustomError";
-import type { ITransactionReservation } from "@domains/Transaction";
+import type { ITransactionReservationInput } from "@domains/Transaction";
 import type { TCreateTransactionReservationPayload } from "@fabrics/transactionReservation";
 import type { TDeployDetails } from "@services/TransactionService";
 import type { IWalletKeyfile } from "@services/ExportKeyfileService";
@@ -11,21 +11,24 @@ import {
     KeyfileTypes,
     MAX_KEYFILE_ACCOUNT_NAME_LENGTH,
     MAX_KEYFILE_ACCOUNTS,
+    MAX_NATIVE_TOKEN_DECIMALS,
 } from "@config/index";
 import Bip44Path from "@domains/Bip44Path";
 import { NODE_API_PROFILES } from "@domains/NodeApiProfile";
 import { WalletTypes } from "@domains/Signer";
 import blakejs from "blakejs";
 import {
+    isBlockNumber,
     isEncryptedData,
     isKeyfileWalletAccount,
+    isNativeTokenDecimals,
     isNodeApiProfile,
 } from "@utils/guards";
 import { ASI_CHAIN_PREFIX } from "@utils/constants";
 import {
     NETWORK_URL_FIELDS,
     type INetworkConfig,
-    type INetworkRecord,
+    type INetworkRecordInput,
     type NetworkName,
 } from "@domains/Network";
 import {
@@ -210,6 +213,36 @@ export const validateNodeApiProfile = (
     return { isValid: true };
 };
 
+export const validateNativeTokenDecimals = (
+    decimals: unknown,
+): { isValid: boolean; error?: string } => {
+    if (decimals === undefined) {
+        return { isValid: true };
+    }
+
+    if (!isNativeTokenDecimals(decimals)) {
+        return {
+            isValid: false,
+            error: `Native token decimals must be an integer from 0 to ${MAX_NATIVE_TOKEN_DECIMALS}`,
+        };
+    }
+
+    return { isValid: true };
+};
+
+export const validateBlockNumber = (
+    blockNumber: unknown,
+): { isValid: boolean; error?: string } => {
+    if (!isBlockNumber(blockNumber)) {
+        return {
+            isValid: false,
+            error: "Block number must be a non-negative safe integer",
+        };
+    }
+
+    return { isValid: true };
+};
+
 export const validateNetworkConfigUrls = (
     config: Partial<INetworkConfig>,
     { allowEmpty }: { allowEmpty: boolean },
@@ -238,10 +271,10 @@ export const validateNetworkConfigUrls = (
 export const validateNetworkUniqueness = (
     name: NetworkName,
     config: INetworkConfig,
-    otherRecords: INetworkRecord[],
+    otherRecords: INetworkRecordInput[],
 ): { isValid: boolean; error?: string } => {
     if (
-        otherRecords.some((record: INetworkRecord) =>
+        otherRecords.some((record: INetworkRecordInput) =>
             isSameNetworkConfig(record.config, config),
         )
     ) {
@@ -251,7 +284,9 @@ export const validateNetworkUniqueness = (
         };
     }
 
-    if (otherRecords.some((record: INetworkRecord) => record.name === name)) {
+    if (
+        otherRecords.some((record: INetworkRecordInput) => record.name === name)
+    ) {
         return {
             isValid: false,
             error: "Network with the same name already exists",
@@ -283,6 +318,13 @@ export const validatePositiveAmount = (
 export const validateReservationPayload = (
     payload: TCreateTransactionReservationPayload,
 ): { isValid: boolean; error?: string } => {
+    const decimalsValidation: { isValid: boolean; error?: string } =
+        validateNativeTokenDecimals(payload.nativeTokenDecimals);
+
+    if (!decimalsValidation.isValid) {
+        return decimalsValidation;
+    }
+
     if (!payload.deployId.trim()) {
         return { isValid: false, error: "Deploy id is required" };
     }
@@ -343,7 +385,7 @@ export const validateReservationPayload = (
 };
 
 export const validateReservationUpdateTarget = (
-    currentReservation: ITransactionReservation,
+    currentReservation: ITransactionReservationInput,
     payload: TCreateTransactionReservationPayload,
 ): { isValid: boolean; error?: string } => {
     if (currentReservation.accountId !== payload.account.getId()) {

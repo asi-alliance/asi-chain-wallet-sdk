@@ -1,4 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
+import { MAX_NATIVE_TOKEN_DECIMALS } from "@config/index";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -14,7 +15,11 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
-import { isPrivateKeyValid } from "@utils/validators/primitives";
+import { CANONICAL_INTEGER_REGEX, MAX_UINT256 } from "@utils/constants";
+import {
+    isIntegerInRange,
+    isPrivateKeyValid,
+} from "@utils/validators/primitives";
 import {
     isRecord,
     isSerializedDecimal,
@@ -41,6 +46,41 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return isValueInConst(value, NODE_API_PROFILES);
+};
+
+export const isNativeTokenDecimals = (value: unknown): value is number => {
+    return (
+        typeof value === "number" &&
+        isIntegerInRange(value, 0, MAX_NATIVE_TOKEN_DECIMALS)
+    );
+};
+
+export const isBlockNumber = (value: unknown): value is number | string => {
+    const blockNumber: unknown =
+        typeof value === "string" && CANONICAL_INTEGER_REGEX.test(value)
+            ? Number(value)
+            : value;
+
+    return (
+        typeof blockNumber === "number" &&
+        isIntegerInRange(blockNumber, 0, Number.MAX_SAFE_INTEGER)
+    );
+};
+
+export const isUint256 = (
+    value: unknown,
+): value is number | string | bigint => {
+    if (typeof value === "number") {
+        return isIntegerInRange(value, 0, Number.MAX_SAFE_INTEGER);
+    }
+
+    if (typeof value === "string") {
+        return (
+            CANONICAL_INTEGER_REGEX.test(value) && BigInt(value) <= MAX_UINT256
+        );
+    }
+
+    return typeof value === "bigint" && value >= 0n && value <= MAX_UINT256;
 };
 
 const isStoredPrivateKey = (value: unknown): boolean => {
@@ -113,6 +153,13 @@ export const isSerializedReservationPrivateData = (
     }
 
     const { accountId, pendingAmount, expirationTime, kind, details } = value;
+
+    if (
+        "nativeTokenDecimals" in value &&
+        !isNativeTokenDecimals(value.nativeTokenDecimals)
+    ) {
+        return false;
+    }
 
     return (
         typeof accountId === "string" &&

@@ -8,6 +8,8 @@ import {
 } from "@domains/CustomError";
 import {
     getErrorMessage,
+    isRecord,
+    isUint256,
     parseAtomicAmount,
     validateAddress,
 } from "@utils/index";
@@ -19,9 +21,14 @@ export interface IBalanceData {
     asset: Asset;
 }
 
+interface IExploreExprData {
+    data?: unknown;
+}
+
 interface IExploreExprItem {
-    ExprInt?: { data?: unknown };
-    ExprString?: { data?: unknown };
+    ExprInt?: IExploreExprData | null;
+    ExprBigInt?: IExploreExprData | null;
+    ExprString?: IExploreExprData | null;
 }
 
 export default class AssetsService {
@@ -70,29 +77,35 @@ export default class AssetsService {
 
         const firstExpr: IExploreExprItem | undefined = expr?.[0];
 
-        if (firstExpr?.ExprInt !== undefined) {
+        const integerExpr: IExploreExprData | null | undefined =
+            firstExpr?.ExprInt ?? firstExpr?.ExprBigInt;
+
+        if (isRecord(integerExpr)) {
             const amount: bigint | null = parseAtomicAmount(
-                firstExpr.ExprInt.data,
+                integerExpr.data,
             );
 
-            if (amount === null) {
+            if (amount === null || !isUint256(amount)) {
                 throw new BalanceUnavailableError(
                     address,
-                    `the node returned an unexpected balance value: ${JSON.stringify(firstExpr.ExprInt.data)}`,
+                    `the node returned an unexpected balance value: ${JSON.stringify(integerExpr.data)}`,
                 );
             }
 
             return { amount, asset };
         }
 
-        if (firstExpr?.ExprString !== undefined) {
-            const vaultError: unknown = firstExpr.ExprString.data;
+        const stringExpr: IExploreExprData | null | undefined =
+            firstExpr?.ExprString;
+
+        if (isRecord(stringExpr)) {
+            const vaultError: unknown = stringExpr.data;
 
             throw new BalanceUnavailableError(
                 address,
-                vaultError
-                    ? String(vaultError)
-                    : "the vault returned an empty error",
+                typeof vaultError === "string" && vaultError
+                    ? vaultError
+                    : "the vault returned an empty or malformed error",
             );
         }
 
