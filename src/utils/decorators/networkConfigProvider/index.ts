@@ -1,4 +1,8 @@
-import type { INetworkRecord, NetworkId } from "@domains/Network";
+import type {
+    INetworkRecord,
+    INetworkRecordInput,
+    NetworkId,
+} from "@domains/Network";
 
 interface INetworkConfigProviderContext {
     isReady(): boolean;
@@ -55,7 +59,7 @@ export function EnsureNetworkNotDefault<
 
 export function EnsureNetworkRecordNotDefault<
     This extends INetworkConfigProviderContext,
-    Args extends [INetworkRecord, ...any[]],
+    Args extends [INetworkRecordInput, ...any[]],
     Return,
 >(target: (...args: Args) => Return, _context: ClassMethodDecoratorContext) {
     return function (this: This, ...args: Args): Return {

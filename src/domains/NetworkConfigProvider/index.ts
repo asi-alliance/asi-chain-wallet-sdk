@@ -1,6 +1,7 @@
 import {
     INetworkConfig,
     INetworkRecord,
+    INetworkRecordInput,
     INetworkUpdate,
     IPersistedNetworkRecord,
     IResolvedNetworkConfig,
@@ -74,7 +75,7 @@ export default class NetworkConfigProvider {
                 !isNativeTokenDecimals(nativeTokenDecimals)
             ) {
                 console.warn(
-                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals "${String(nativeTokenDecimals)}"`,
+                    `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals`,
                 );
 
                 return;
@@ -109,7 +110,7 @@ export default class NetworkConfigProvider {
 
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
-    public set(record: INetworkRecord): void {
+    public set(record: INetworkRecordInput): void {
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },
@@ -121,10 +122,15 @@ export default class NetworkConfigProvider {
             validateNativeTokenDecimals(record.config.nativeTokenDecimals),
             { context: "NetworkConfigProvider.set" },
         );
+
+        const config: IResolvedNetworkConfig = createNetworkConfigSnapshot(
+            record.config,
+        );
+
         ensureValid(
             validateNetworkUniqueness(
                 record.name,
-                record.config,
+                config,
                 this.getAll().filter(
                     (otherRecord: INetworkRecord) =>
                         otherRecord.id !== record.id,
@@ -133,10 +139,7 @@ export default class NetworkConfigProvider {
             { context: "NetworkConfigProvider.set" },
         );
 
-        this.networksRecords!.set(record.id, {
-            ...record,
-            config: createNetworkConfigSnapshot(record.config),
-        });
+        this.networksRecords!.set(record.id, { ...record, config });
     }
 
     @EnsureNetworkConfigProviderReady

@@ -92,11 +92,20 @@ test("unavailable or inexact balances remain errors instead of zero", async () =
         "-1",
         "1.5",
         "1e19",
+        (MAX_UINT256 + 1n).toString(),
     ];
     const exprs: unknown[] = [
         [],
         undefined,
+        [null],
+        [{ ExprInt: null }],
+        [{ ExprBigInt: null }],
+        [{ ExprInt: null, ExprBigInt: null }],
+        [{ ExprString: null }],
         [{ ExprString: { data: "unavailable" } }],
+        [{ ExprString: { data: "" } }],
+        [{ ExprString: { data: 42 } }],
+        [{ ExprString: { data: { toString: null } } }],
         ...invalidValues.map((data: unknown) => [{ ExprBigInt: { data } }]),
     ];
 

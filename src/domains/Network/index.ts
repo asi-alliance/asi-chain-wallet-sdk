@@ -32,6 +32,12 @@ export interface INetworkRecord {
     isDefault: boolean;
 }
 
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkRecord again.
+export interface INetworkRecordInput extends Omit<INetworkRecord, "config"> {
+    config: INetworkConfig;
+}
+
 export interface IPersistedNetworkRecord {
     id: NetworkId;
     name: NetworkName;
@@ -61,6 +67,12 @@ export interface INetworkContext {
     api: NodeApiAdapter;
 }
 
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in INetworkConfig and accept INetworkContext again.
+export interface INetworkContextInput extends Omit<INetworkContext, "config"> {
+    config: INetworkConfig;
+}
+
 const NETWORK_URL_FIELD_MAP: Record<keyof INetworkEndpoints, true> = {
     ValidatorURL: true,
     ReadOnlyURL: true,
@@ -71,8 +83,12 @@ export const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[] = Object.keys(
     NETWORK_URL_FIELD_MAP,
 ) as (keyof INetworkEndpoints)[];
 
-export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+export const NETWORK_CONNECTION_FIELDS: (keyof INetworkConfig)[] = [
     ...NETWORK_URL_FIELDS,
     "nodeApiProfile",
+];
+
+export const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[] = [
+    ...NETWORK_CONNECTION_FIELDS,
     "nativeTokenDecimals",
 ];
