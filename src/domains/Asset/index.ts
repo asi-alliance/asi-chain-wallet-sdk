@@ -1,5 +1,6 @@
 import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import { generateRandomId } from "@utils/index";
+import type { IResolvedNetworkConfig } from "@domains/Network";
 
 type AssetId = string;
 type Assets = Map<AssetId, Asset>;
@@ -43,7 +44,19 @@ export default class Asset {
     }
 }
 
+// TODO: revisit the 8 decimals of DEFAULT_ASSET once Dev and DevNet both run
+// the Rust node with 18 decimals, together with the Account asset portfolio
+// redesign.
 export const DEFAULT_ASSET: Asset = new Asset({
     id: generateRandomId(),
     name: "ASI",
 });
+
+export const getNativeAsset = ({
+    nativeTokenDecimals,
+}: IResolvedNetworkConfig): Asset =>
+    new Asset({
+        id: DEFAULT_ASSET.getId(),
+        name: DEFAULT_ASSET.getName(),
+        decimals: nativeTokenDecimals,
+    });

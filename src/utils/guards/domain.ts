@@ -1,4 +1,5 @@
 import Bip44Path from "@domains/Bip44Path";
+import { MAX_NATIVE_TOKEN_DECIMALS } from "@config/index";
 import {
     IHDSecret,
     IPrivateKeyCredentials,
@@ -45,6 +46,13 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return isValueInConst(value, NODE_API_PROFILES);
+};
+
+export const isNativeTokenDecimals = (value: unknown): value is number => {
+    return (
+        typeof value === "number" &&
+        isIntegerInRange(value, 0, MAX_NATIVE_TOKEN_DECIMALS)
+    );
 };
 
 export const isUint256 = (
@@ -133,6 +141,13 @@ export const isSerializedReservationPrivateData = (
     }
 
     const { accountId, pendingAmount, expirationTime, kind, details } = value;
+
+    if (
+        "nativeTokenDecimals" in value &&
+        !isNativeTokenDecimals(value.nativeTokenDecimals)
+    ) {
+        return false;
+    }
 
     return (
         typeof accountId === "string" &&
