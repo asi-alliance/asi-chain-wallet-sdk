@@ -9,7 +9,7 @@ import { DeployData, PhloPrice } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
-import { SignedResult } from "@services/Signer";
+import SignerService, { SignedResult } from "@services/Signer";
 import { createDeployPhlo } from "@fabrics/deployPhlo";
 import {
     bigIntToBuffer,
@@ -134,6 +134,35 @@ test("uint256 phlo price is encoded as 32 big endian bytes", () => {
     assert.equal(one.length, UINT256_BYTES_LENGTH);
     assert.equal(one[UINT256_BYTES_LENGTH - 1], 1);
     assert.deepEqual(max, new Uint8Array(UINT256_BYTES_LENGTH).fill(MAX_BYTE));
+});
+
+test("uint256 serializer rejects a phlo price that does not fit 32 bytes", () => {
+    console.log("\n=== UINT256 SERIALIZER PRICE BOUNDS ===");
+
+    const deployData: DeployData = fixture.vectors[0].data;
+
+    const invalidPrices: DeployData["phloPrice"][] = [
+        -1,
+        1.5,
+        "-1",
+        "01",
+        "1e3",
+        (MAX_UINT256 + 1n).toString(),
+        (1n << 260n).toString(),
+    ];
+
+    for (const phloPrice of invalidPrices) {
+        console.log("    Rejected:", String(phloPrice).slice(0, 20));
+
+        assert.throws(
+            () =>
+                SignerService.deployDataUint256ProtobufSerialize({
+                    ...deployData,
+                    phloPrice,
+                }),
+            RangeError,
+        );
+    }
 });
 
 test("rust phlo settings accept wide prices and reject malformed values", () => {

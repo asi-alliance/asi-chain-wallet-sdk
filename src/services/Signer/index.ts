@@ -2,6 +2,7 @@ import Wallet from "@domains/Wallet";
 import BinaryWriter from "@domains/BinaryWriter";
 import { DeployData } from "@domains/Deploy";
 import { bigIntToBuffer } from "@utils/codec";
+import { isUint256 } from "@utils/guards";
 
 export interface SigningRequest {
     wallet: Wallet;
@@ -50,11 +51,19 @@ export default class SignerService {
     public static readonly deployDataUint256ProtobufSerialize = (
         deployData: DeployData,
     ): Uint8Array => {
+        const { phloPrice } = deployData;
+
+        if (!isUint256(phloPrice)) {
+            throw new RangeError(
+                "Phlo price field must be an unsigned 256-bit integer",
+            );
+        }
+
         const writer = new BinaryWriter();
 
         writeDeployHeader(writer, deployData);
         writeDeployBody(writer, deployData);
-        writer.writeBytes(15, bigIntToBuffer(BigInt(deployData.phloPrice)));
+        writer.writeBytes(15, bigIntToBuffer(BigInt(phloPrice)));
 
         return writer.getResultBuffer();
     };
