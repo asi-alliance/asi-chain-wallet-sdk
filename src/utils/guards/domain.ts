@@ -55,6 +55,18 @@ export const isNativeTokenDecimals = (value: unknown): value is number => {
     );
 };
 
+export const isBlockNumber = (value: unknown): value is number | string => {
+    const blockNumber: unknown =
+        typeof value === "string" && CANONICAL_INTEGER_REGEX.test(value)
+            ? Number(value)
+            : value;
+
+    return (
+        typeof blockNumber === "number" &&
+        isIntegerInRange(blockNumber, 0, Number.MAX_SAFE_INTEGER)
+    );
+};
+
 export const isUint256 = (
     value: unknown,
 ): value is number | string | bigint => {
