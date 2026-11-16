@@ -1,18 +1,13 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { RUST_FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
+import { isRecord } from "@utils/guards";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { IDeployInfo } from "@domains/Deploy";
 
 interface ISimpleExploreDeployRequest {
     term: string;
-}
-
-interface IRustBlockDto {
-    blockInfo: {
-        blockNumber: number | string;
-    };
 }
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
@@ -35,12 +30,15 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
     }
 
     public async getLatestBlockNumber(): Promise<number> {
-        const [latestBlock]: IRustBlockDto[] =
-            await this.clients.observer.getBlocks<IRustBlockDto>(
-                LATEST_BLOCK_PARAMS,
-            );
+        // TODO(next-major): read a Rust block DTO checked by its guard once
+        // ObserverClient.getBlocks types the response for both profiles.
+        const [latestBlock]: unknown[] =
+            await this.clients.observer.getBlocks(LATEST_BLOCK_PARAMS);
 
-        const blockNumber: unknown = latestBlock?.blockInfo.blockNumber;
+        const blockNumber: unknown =
+            isRecord(latestBlock) && isRecord(latestBlock.blockInfo)
+                ? latestBlock.blockInfo.blockNumber
+                : undefined;
 
         ensureValid(validateBlockNumber(blockNumber), {
             context: "RustNodeApiAdapter.getLatestBlockNumber",

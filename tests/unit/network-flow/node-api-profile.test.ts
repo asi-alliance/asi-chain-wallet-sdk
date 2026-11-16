@@ -258,10 +258,12 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         );
     }
 
-    await assert.rejects(
-        readRustLatestBlockNumber([]),
-        INVALID_BLOCK_NUMBER_ERROR,
-    );
+    for (const blocks of [[], [null], [{ blockInfo: null }]]) {
+        await assert.rejects(
+            readRustLatestBlockNumber(blocks),
+            INVALID_BLOCK_NUMBER_ERROR,
+        );
+    }
 });
 
 test("node api provider follows the active network profile", () => {
