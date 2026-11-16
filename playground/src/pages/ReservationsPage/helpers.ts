@@ -84,25 +84,6 @@ export const toReservedAmount = (
     return amount + gasCost;
 };
 
-export const isGasCostAllowed = (
-    kind: TransactionReservationKind,
-    value: string,
-    asset: Asset,
-    transferGasReserve: bigint,
-): boolean => {
-    if (kind === "deploy") {
-        return true;
-    }
-
-    const gasCost: bigint | null = toAmountOrNull(value, asset);
-
-    if (gasCost === null) {
-        return true;
-    }
-
-    return gasCost <= transferGasReserve;
-};
-
 export const toGasCostError = (
     form: IReservationFormState,
     asset: Asset,

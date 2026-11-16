@@ -35,7 +35,6 @@ import SelectFilter, {
 import ConstrainedInput from "@components/common/ConstrainedInput";
 import {
     createEmptyFormState,
-    isGasCostAllowed,
     toDefaultDeployGasCost,
     toDefaultGasCost,
     toMinGasCost,
@@ -276,12 +275,8 @@ const ReservationsPage = (): ReactElement => {
         });
     };
 
-    const isTransferAmountInputAllowed = (value: string): boolean =>
+    const isAssetAmountInputAllowed = (value: string): boolean =>
         isAmountInputAllowed(value, asset.getDecimals());
-
-    const isGasCostInputAllowed = (value: string): boolean =>
-        isTransferAmountInputAllowed(value) &&
-        isGasCostAllowed(form.kind, value, asset, transferGasReserve);
 
     const startEditing = (reservation: ITransactionReservation): void => {
         setNotice(null);
@@ -588,7 +583,7 @@ const ReservationsPage = (): ReactElement => {
                                     onChange={(value: string) =>
                                         updateForm({ amount: value })
                                     }
-                                    isAllowed={isTransferAmountInputAllowed}
+                                    isAllowed={isAssetAmountInputAllowed}
                                     inputMode="decimal"
                                 />
                             </>
@@ -601,11 +596,11 @@ const ReservationsPage = (): ReactElement => {
                             onChange={(value: string) =>
                                 updateForm({ gasCost: value })
                             }
-                            isAllowed={isGasCostInputAllowed}
+                            isAllowed={isAssetAmountInputAllowed}
                             inputMode="decimal"
                             hint={
                                 form.kind === "transfer"
-                                    ? `network charges ${toMinGasCost(asset)} to ${formatAmount(transferGasReserve, asset)}`
+                                    ? `at least ${toMinGasCost(asset)}, default transfer reserve is ${formatAmount(transferGasReserve, asset)}`
                                     : `default deploy budget is ${toDefaultDeployGasCost(asset)}`
                             }
                             error={form.gasCost ? gasCostError : null}
