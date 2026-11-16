@@ -244,6 +244,8 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         "-1",
         "1.5",
         "1e3",
+        "00",
+        "0123",
         String(Number.MAX_SAFE_INTEGER + 1),
     ];
 
