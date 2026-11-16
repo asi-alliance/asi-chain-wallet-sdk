@@ -6,6 +6,7 @@ import blakejs from "blakejs";
 import Account from "@domains/Account";
 import { IApiClients } from "@domains/ApiClientManager";
 import Bip44Path from "@domains/Bip44Path";
+import BinaryWriter from "@domains/BinaryWriter";
 import { DeployData } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
@@ -33,6 +34,14 @@ const LATEST_BLOCK_NUMBER = 100;
 const HD_ACCOUNT_INDEX = 3;
 const DEPLOY_HASH_LENGTH = 32;
 const DEFAULT_SHARD_ID = "root";
+const LARGE_FIELD_LENGTH = 1_000_000;
+const LARGE_FIELD_HEADER_LENGTH = 4;
+const LARGE_BYTES_FIELD_NUMBER = 15;
+const LARGE_STRING_FIELD_NUMBER = 2;
+const LARGE_FIELD_BYTE = 1;
+const LARGE_FIELD_CHAR_CODE = 0x61;
+const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
+const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
 
 interface ISigningContext {
     account: Account;
@@ -331,6 +340,54 @@ test("classic deploy serializer keeps the protobuf bytes", () => {
 
         assert.equal(toHex(bytes), protobufHex);
     }
+});
+
+test("binary writer writes byte and string fields of a million bytes", () => {
+    console.log("\n=== LARGE PROTOBUF FIELDS ===");
+
+    const writer: BinaryWriter = new BinaryWriter();
+
+    writer.writeBytes(
+        LARGE_BYTES_FIELD_NUMBER,
+        new Uint8Array(LARGE_FIELD_LENGTH).fill(LARGE_FIELD_BYTE),
+    );
+    writer.writeString(
+        LARGE_STRING_FIELD_NUMBER,
+        String.fromCharCode(LARGE_FIELD_CHAR_CODE).repeat(LARGE_FIELD_LENGTH),
+    );
+
+    const bytes: Uint8Array = writer.getResultBuffer();
+    const fieldLength: number = LARGE_FIELD_HEADER_LENGTH + LARGE_FIELD_LENGTH;
+
+    const bytesField: Uint8Array = bytes.subarray(
+        LARGE_FIELD_HEADER_LENGTH,
+        fieldLength,
+    );
+    const stringField: Uint8Array = bytes.subarray(
+        fieldLength + LARGE_FIELD_HEADER_LENGTH,
+    );
+
+    console.log("    Written bytes:", bytes.length);
+
+    assert.equal(bytes.length, fieldLength * 2);
+    assert.equal(
+        toHex(bytes.subarray(0, LARGE_FIELD_HEADER_LENGTH)),
+        LARGE_BYTES_FIELD_HEADER_HEX,
+    );
+    assert.equal(
+        toHex(
+            bytes.subarray(fieldLength, fieldLength + LARGE_FIELD_HEADER_LENGTH),
+        ),
+        LARGE_STRING_FIELD_HEADER_HEX,
+    );
+    assert.equal(
+        bytesField.every((byte: number) => byte === LARGE_FIELD_BYTE),
+        true,
+    );
+    assert.equal(
+        stringField.every((byte: number) => byte === LARGE_FIELD_CHAR_CODE),
+        true,
+    );
 });
 
 test("signDeploy rejects an invalid payload", async () => {

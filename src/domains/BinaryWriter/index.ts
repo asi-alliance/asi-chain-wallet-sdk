@@ -11,6 +11,12 @@ const BITS_SHIFT_BIGINT: bigint = BigInt(BITS_SHIFT);
 export default class BinaryWriterService {
     private buffer: number[] = [];
 
+    private writeRawBytes(bytes: Uint8Array): void {
+        for (const byte of bytes) {
+            this.buffer.push(byte);
+        }
+    }
+
     writeBytes(fieldNumber: number, value: Uint8Array): void {
         if (!value.length) {
             return;
@@ -21,8 +27,7 @@ export default class BinaryWriterService {
 
         this.writeInteger(key);
         this.writeInteger(value.length);
-
-        this.buffer.push(...Array.from(value));
+        this.writeRawBytes(value);
     }
 
     writeString(fieldNumber: number, value: string): void {
@@ -38,8 +43,7 @@ export default class BinaryWriterService {
         const bytes: Uint8Array = new TextEncoder().encode(value);
 
         this.writeInteger(bytes.length);
-
-        this.buffer.push(...Array.from(bytes));
+        this.writeRawBytes(bytes);
     }
 
     writeInt64(fieldNumber: number, value: number): void {
