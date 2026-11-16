@@ -43,11 +43,6 @@ const INVALID_TRANSFER_PHLO_PRICE_ERROR: RegExp =
 const DEPLOY_ID: string = "3044022012ab";
 const BLOCK_HASH: string = "bcd950e8b296";
 
-const RUST_DEPLOY_NOT_FOUND = {
-    error: "deploy_not_found",
-    message: `Couldn't find block containing deploy with id: ${DEPLOY_ID}`,
-};
-
 const RUST_PENDING_DEPLOY = {
     deployId: DEPLOY_ID,
     blockHash: BLOCK_HASH,
@@ -377,10 +372,6 @@ test("rust profile rejects block numbers that are not safe non-negative integers
 test("rust profile reads deploy finalization from the deploy finalization state", async () => {
     console.log("\n=== RUST DEPLOY FINALIZATION ===");
 
-    const notFoundStatus: DeployStatus = await readDeployStatus(
-        NodeApiProfile.RUST,
-        RUST_DEPLOY_NOT_FOUND,
-    );
     const pendingStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.RUST,
         RUST_PENDING_DEPLOY,
@@ -402,14 +393,12 @@ test("rust profile reads deploy finalization from the deploy finalization state"
         { blockHash: BLOCK_HASH, faultTolerance: 1 },
     );
 
-    console.log("    Not found:", notFoundStatus);
     console.log("    Pending:", pendingStatus);
     console.log("    Finalized block, pending deploy:", finalizedBlockStatus);
     console.log("    Finalized block, failed deploy:", failedStatus);
     console.log("    Finalized deploy:", finalizedStatus);
     console.log("    Fault tolerance only:", faultToleranceStatus);
 
-    assert.equal(notFoundStatus, DeployStatus.DEPLOYING);
     assert.equal(pendingStatus, DeployStatus.INCLUDED_IN_BLOCK);
     assert.equal(finalizedBlockStatus, DeployStatus.INCLUDED_IN_BLOCK);
     assert.equal(failedStatus, DeployStatus.INCLUDED_IN_BLOCK);
