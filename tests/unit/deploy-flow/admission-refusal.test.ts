@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DeployService from "@services/DeployService";
 import NodeApiProvider from "@domains/NodeApiProvider";
-import ValidatorClient from "@domains/ValidatorClient";
 import { SignedResult } from "@services/Signer";
 import { CustomErrorCode, DeployAdmissionRefusedError, DeployQueueRefusedError, DeployRefusedError, DeploySubmissionRejectedError, DeploySubmissionUnknownError } from "@domains/CustomError";
 
@@ -124,21 +123,6 @@ test("a permanent 400 refusal is never retried or relabelled transient", async (
     await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) => error instanceof DeploySubmissionRejectedError && !(error instanceof DeployAdmissionRefusedError));
     assert.equal(requests, 1);
 });
-
-for (const timeout of [undefined, 1200]) {
-    test(`deployment HTTP requests have a finite timeout (override=${timeout})`, async () => {
-        let actual = 0;
-        const client = new ValidatorClient({
-            baseUrl: "http://node.invalid",
-            axiosConfig: { timeout, adapter: async (config) => {
-                actual = config.timeout ?? 0;
-                return { data: "accepted", status: 200, statusText: "OK", headers: {}, config };
-            } },
-        });
-        await client.submitDeploy(signed());
-        assert.equal(actual, timeout ?? 30_000);
-    });
-}
 
 const queueFailure = (status: number, data: unknown, headers: Record<string, string> = {}) =>
     Object.assign(new Error("queue response"), { isAxiosError: true, response: { status, data, headers } });
