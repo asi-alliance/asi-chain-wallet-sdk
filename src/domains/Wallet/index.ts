@@ -24,6 +24,7 @@ import ConcurrentOperationGuardService, {
 } from "@services/ConcurrentOperationGuard";
 import { EnsureAccountIsIdle, OnlyHDWallet } from "@utils/decorators";
 import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { IDeployPhlo } from "@domains/Deploy";
 import { SignedResult } from "@services/Signer";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import ApiClientManager from "@domains/ApiClientManager";
@@ -421,16 +422,20 @@ export default class Wallet {
         accountId: string,
         payload: TDeployDetails,
         passwordProvider?: SecretsProvider,
+        deployPhlo?: IDeployPhlo,
     ): Promise<SignedResult> {
         return this.runAccountOperation(accountId, (account: Account) =>
             ApiClientManager.getInstance().runNetworkOperation(() =>
-                ApiServiceRegistry.getInstance().transactions.signDeploy({
-                    walletType: this.type,
-                    account,
-                    signer: this.signer,
-                    ...payload,
-                    passwordProvider,
-                }),
+                ApiServiceRegistry.getInstance().transactions.signDeploy(
+                    {
+                        walletType: this.type,
+                        account,
+                        signer: this.signer,
+                        ...payload,
+                        passwordProvider,
+                    },
+                    deployPhlo,
+                ),
             ),
         );
     }
@@ -439,16 +444,20 @@ export default class Wallet {
         accountId: string,
         payload: ITransferDetails,
         passwordProvider?: SecretsProvider,
+        deployPhlo?: IDeployPhlo,
     ): Promise<SignedResult> {
         return this.runAccountOperation(accountId, (account: Account) =>
             ApiClientManager.getInstance().runNetworkOperation(() =>
-                ApiServiceRegistry.getInstance().transactions.signTransfer({
-                    walletType: this.type,
-                    account,
-                    signer: this.signer,
-                    details: payload,
-                    passwordProvider,
-                }),
+                ApiServiceRegistry.getInstance().transactions.signTransfer(
+                    {
+                        walletType: this.type,
+                        account,
+                        signer: this.signer,
+                        details: payload,
+                        passwordProvider,
+                    },
+                    deployPhlo,
+                ),
             ),
         );
     }

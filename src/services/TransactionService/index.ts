@@ -1,6 +1,6 @@
 import blakejs from "blakejs";
 import Asset from "@domains/Asset";
-import { DeployData, PhloPrice } from "@domains/Deploy";
+import { DeployData, IDeployPhlo, PhloPrice } from "@domains/Deploy";
 import { IDeployTermFactory } from "@domains/Deploy/factory";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -11,7 +11,7 @@ import {
     ensureValid,
     INVALID_BLOCK_NUMBER,
     validateAddress,
-    validateDeployPayload,
+    validateDeployContent,
 } from "@utils/index";
 import { createDeployTermFactory } from "@fabrics/deployTermFactory";
 import { SignedResult } from "@services/Signer";
@@ -20,7 +20,7 @@ import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
-import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
+import { createDeployPhlo } from "@fabrics/deployPhlo";
 
 const { blake2bHex } = blakejs;
 
@@ -78,30 +78,35 @@ export default class TransactionService {
         );
     }
 
-    public async signDeploy({
-        walletType,
-        account,
-        signer,
-        term,
-        phloLimit,
-        phloPrice,
-        shardId,
-        passwordProvider,
-    }: IDeployPayload): Promise<SignedResult> {
-        const api: NodeApiAdapter = this.nodeApiProvider.getApi();
-
-        ensureValid(
-            validateDeployPayload(
-                { term, phloLimit, phloPrice, shardId },
-                { maxPhloPrice: api.getMaxPhloPrice() },
-            ),
-            { context: "TransactionService.signDeploy" },
-        );
-
-        const deployPhlo: IDeployPhlo = createDeployPhlo({
+    public async signDeploy(
+        {
+            walletType,
+            account,
+            signer,
+            term,
             phloLimit,
             phloPrice,
+            shardId,
+            passwordProvider,
+        }: IDeployPayload,
+        deployPhlo?: IDeployPhlo,
+    ): Promise<SignedResult> {
+        const api: NodeApiAdapter = this.nodeApiProvider.getApi();
+
+        ensureValid(validateDeployContent({ term, shardId }), {
+            context: "TransactionService.signDeploy",
         });
+
+        // TODO(next-major): Accept either the raw phloLimit / phloPrice or a
+        // resolved deployPhlo, not both; the raw values are ignored when
+        // deployPhlo is passed.
+        const phlo: IDeployPhlo =
+            deployPhlo ??
+            createDeployPhlo(
+                { phloLimit, phloPrice },
+                { maxPhloPrice: api.getMaxPhloPrice() },
+                { context: "TransactionService.signDeploy" },
+            );
 
         const latestBlockNumber: number =
             await this.blockService.getLatestBlockNumber();
@@ -122,8 +127,8 @@ export default class TransactionService {
 
         const deployData: DeployData = {
             term,
-            phloLimit: deployPhlo.phloLimit,
-            phloPrice: api.toDeployPhloPrice(deployPhlo.phloPrice),
+            phloLimit: phlo.phloLimit,
+            phloPrice: api.toDeployPhloPrice(phlo.phloPrice),
             validAfterBlockNumber: latestBlockNumber - 1,
             timestamp: Date.now(),
             shardId: shardId ?? "root",
@@ -158,13 +163,16 @@ export default class TransactionService {
         return submittedDeployId;
     }
 
-    public async signTransfer({
-        walletType,
-        account,
-        signer,
-        details,
-        passwordProvider,
-    }: ITransferPayload): Promise<SignedResult> {
+    public async signTransfer(
+        {
+            walletType,
+            account,
+            signer,
+            details,
+            passwordProvider,
+        }: ITransferPayload,
+        deployPhlo?: IDeployPhlo,
+    ): Promise<SignedResult> {
         const fromAddress: Address = account.getAddress();
 
         const validation: AddressValidationResult = validateAddress(details.to);
@@ -185,16 +193,19 @@ export default class TransactionService {
             details.amount,
         );
 
-        return this.signDeploy({
-            walletType,
-            account,
-            signer,
-            term,
-            phloLimit: details.phloLimit,
-            phloPrice: details.phloPrice,
-            shardId: details.shardId,
-            passwordProvider,
-        });
+        return this.signDeploy(
+            {
+                walletType,
+                account,
+                signer,
+                term,
+                phloLimit: details.phloLimit,
+                phloPrice: details.phloPrice,
+                shardId: details.shardId,
+                passwordProvider,
+            },
+            deployPhlo,
+        );
     }
 
     public async transfer(payload: ITransferPayload): Promise<string> {

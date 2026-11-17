@@ -441,21 +441,15 @@ export const validatePhloSettings = (
     return { isValid: true };
 };
 
-export const validateDeployPayload = (
-    { term, phloLimit, phloPrice, shardId }: TDeployDetails,
-    { maxPhloPrice }: { maxPhloPrice: bigint } = {
-        maxPhloPrice: BigInt(MAX_PHLO_VALUE),
-    },
-): { isValid: boolean; error?: string } => {
+export const validateDeployContent = ({
+    term,
+    shardId,
+}: Pick<TDeployDetails, "term" | "shardId">): {
+    isValid: boolean;
+    error?: string;
+} => {
     if (!term.trim()) {
         return { isValid: false, error: "Deploy term must not be empty" };
-    }
-
-    const phloValidation: { isValid: boolean; error?: string } =
-        validatePhloSettings({ phloLimit, phloPrice }, { maxPhloPrice });
-
-    if (!phloValidation.isValid) {
-        return phloValidation;
     }
 
     if (shardId !== undefined && !shardId.trim()) {
@@ -463,6 +457,22 @@ export const validateDeployPayload = (
     }
 
     return { isValid: true };
+};
+
+export const validateDeployPayload = (
+    { term, phloLimit, phloPrice, shardId }: TDeployDetails,
+    { maxPhloPrice }: { maxPhloPrice: bigint } = {
+        maxPhloPrice: BigInt(MAX_PHLO_VALUE),
+    },
+): { isValid: boolean; error?: string } => {
+    const contentValidation: { isValid: boolean; error?: string } =
+        validateDeployContent({ term, shardId });
+
+    if (!contentValidation.isValid) {
+        return contentValidation;
+    }
+
+    return validatePhloSettings({ phloLimit, phloPrice }, { maxPhloPrice });
 };
 
 export const validateWalletKeyfile = (

@@ -27,7 +27,8 @@ import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
     TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
-import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
+import { createDeployPhlo } from "@fabrics/deployPhlo";
+import { IDeployPhlo } from "@domains/Deploy";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
@@ -45,7 +46,6 @@ import {
     isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
-    validatePhloSettings,
     validatePositiveAmount,
     validateReservationPayload,
     validateReservationUpdateTarget,
@@ -543,30 +543,16 @@ export default class ReservationAdapter {
         };
     }
 
-    private static resolveDeployPhlo(
-        api: NodeApiAdapter,
-        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-        { context }: IErrorContext,
-    ): IDeployPhlo {
-        ensureValid(
-            validatePhloSettings(phlo, {
-                maxPhloPrice: api.getMaxPhloPrice(),
-            }),
-            { context },
-        );
-
-        return createDeployPhlo(phlo);
-    }
-
     public static getTransferGasReserve(
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
     ): bigint {
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
-        const { maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, phlo, {
-                context: "ReservationAdapter.getTransferGasReserve",
-            });
+        const { maxPhloCharge }: IDeployPhlo = createDeployPhlo(
+            phlo,
+            { maxPhloPrice: api.getMaxPhloPrice() },
+            { context: "ReservationAdapter.getTransferGasReserve" },
+        );
 
         return api.getTransferGasReserve(maxPhloCharge);
     }
@@ -586,18 +572,17 @@ export default class ReservationAdapter {
 
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
-        const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, details, {
-                context: "ReservationAdapter.transfer",
-            });
+        const deployPhlo: IDeployPhlo = createDeployPhlo(
+            details,
+            { maxPhloPrice: api.getMaxPhloPrice() },
+            { context: "ReservationAdapter.transfer" },
+        );
 
-        const transferDetails: ITransferDetails = {
-            ...details,
-            phloLimit,
-            phloPrice,
-        };
+        const transferDetails: ITransferDetails = { ...details };
 
-        const gasCost: bigint = api.getTransferGasReserve(maxPhloCharge);
+        const gasCost: bigint = api.getTransferGasReserve(
+            deployPhlo.maxPhloCharge,
+        );
         const pendingAmount: bigint = transferDetails.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
@@ -622,6 +607,7 @@ export default class ReservationAdapter {
                                     accountId,
                                     transferDetails,
                                     passwordProvider,
+                                    deployPhlo,
                                 );
 
                             const reservation: ITransactionReservation =
@@ -663,23 +649,13 @@ export default class ReservationAdapter {
                 .nativeTokenDecimals;
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
-        const {
-            phloLimit,
-            phloPrice,
-            maxPhloCharge: pendingAmount,
-        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(api, details, {
-            context: "ReservationAdapter.deploy",
-        });
+        const deployPhlo: IDeployPhlo = createDeployPhlo(
+            details,
+            { maxPhloPrice: api.getMaxPhloPrice() },
+            { context: "ReservationAdapter.deploy" },
+        );
 
-        const deployDetails: TDeployDetails = {
-            ...details,
-            phloLimit,
-            phloPrice,
-        };
-
-        ensureValid(validatePositiveAmount(pendingAmount), {
-            context: "ReservationAdapter.deploy",
-        });
+        const deployDetails: TDeployDetails = { ...details };
 
         return wallet.runAccountOperation(accountId, (account: Account) =>
             ReservationAdapter.operationsGuard.runReservationAction(
@@ -690,7 +666,7 @@ export default class ReservationAdapter {
                         async () => {
                             await this.ensureSufficientBalance(
                                 account,
-                                pendingAmount,
+                                deployPhlo.maxPhloCharge,
                                 { context: "ReservationAdapter.deploy" },
                             );
 
@@ -699,6 +675,7 @@ export default class ReservationAdapter {
                                     accountId,
                                     deployDetails,
                                     passwordProvider,
+                                    deployPhlo,
                                 );
 
                             const reservation: ITransactionReservation =
@@ -708,7 +685,7 @@ export default class ReservationAdapter {
                                     networkId,
                                     nativeTokenDecimals,
                                     account,
-                                    pendingAmount,
+                                    pendingAmount: deployPhlo.maxPhloCharge,
                                     term: deployDetails.term,
                                 });
 
