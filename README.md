@@ -793,3 +793,19 @@ Three other node refusals are never retried automatically. They produce `DeployR
 | 400 | `invalid_deploy_window` | `DEPLOY_WINDOW_INVALID` | `true`: its validity height is still ahead; resubmit the same deploy later |
 
 A timeout, dropped response, unrelated 503, or unexpected acceptance ID produces `DeploySubmissionUnknownError`, without automatic resubmission. Its signed deploy ID and reservation are retained for reconciliation. Callers must distinguish this state from a known refusal before creating a new transfer.
+
+HTTP 409 `duplicate_deploy` means the node or its deploy queue already holds this signed deploy, for example after resending an unknown outcome. The SDK returns the signed deploy ID and keeps the reservation, as for an accepted submission.
+
+### Deploy queue refusals
+
+A [deploy queue (node #990)](https://github.com/F1R3FLY-io/f1r3node-rust/pull/990) can serve the validator's client ports. It answers the node's own refusals as above. Its capacity and availability refusals are HTTP 503 with a `Retry-After` header, and produce `DeployQueueRefusedError`. It extends `DeploySubmissionRejectedError`, because the queue did not hold the deploy, so the reservation is released. The SDK never retries them automatically; it carries `queueCode`, `deployId`, `retryAfterMs`, `congestion` and `retryable`:
+
+| `queueCode` | `congestion` | Error code | `retryable` | Caller action |
+|---|---|---|---|---|
+| `deploy_queue_full` | `validator`, `shard`, `storage` | `DEPLOY_QUEUE_FULL` | `false` | After `retryAfterMs`, sign a new deploy with a current `validAfterBlockNumber`; the user confirms it again |
+| `deploy_queue_full` | `validator_idle` | `DEPLOY_QUEUE_FULL` | `false` | The validator creates no blocks; send a new deploy to another validator rather than wait |
+| `deploy_queue_full` | `deployer_share` | `DEPLOY_QUEUE_FULL` | `true` | This deployer holds its share of the queue; the same deploy can be sent after `retryAfterMs` while its window is open |
+| `node_unavailable` | none | `DEPLOY_QUEUE_UNAVAILABLE` | `true` | Send the same deploy after `retryAfterMs` |
+| `deploy_queue_stopped` | none | `DEPLOY_QUEUE_UNAVAILABLE` | `true` | Send the same deploy later |
+
+The queue's HTTP 500 `queue_store_error` stays `DeploySubmissionUnknownError`. Deploy status is still read from the observer, which does not see a deploy the queue holds or the queue's terminal `Rejected` state.

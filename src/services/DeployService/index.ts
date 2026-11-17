@@ -11,6 +11,9 @@ import {
     DeployAdmissionRefusedError,
     DeployRefusedError,
     DeployRejectionCode,
+    DeployQueueCongestion,
+    DeployQueueRefusalCode,
+    DeployQueueRefusedError,
     DeploySubmissionUnknownError,
     UnknownErrorReason,
 } from "@domains/CustomError";
@@ -32,6 +35,58 @@ const deployRejection = (error: unknown): { code: DeployRejectionCode; status: n
 };
 
 const ADMISSION_RETRY_DELAYS_MS = [250, 500] as const;
+
+const QUEUE_CONGESTION_PREFIXES: ReadonlyArray<readonly [string, DeployQueueCongestion]> = [
+    ["deploy queue is full for this deployer", "deployer_share"],
+    ["deploy queue is full: the validator has created no block", "validator_idle"],
+    ["deploy queue is full: the validator is taking fewer deploys", "validator"],
+    ["deploy queue is full: the shard's finality", "shard"],
+    ["deploy queue is full: the signed deploys the queue holds", "storage"],
+];
+
+const QUEUE_REFUSAL_CODES: ReadonlySet<string> = new Set<DeployQueueRefusalCode>([
+    "deploy_queue_full",
+    "node_unavailable",
+    "deploy_queue_stopped",
+]);
+
+const retryAfterMs = (headers: unknown): number | undefined => {
+    const get = (headers as { get?: (name: string) => unknown } | undefined)?.get;
+    const value: unknown = typeof get === "function"
+        ? get.call(headers, "retry-after")
+        : (headers as Record<string, unknown> | undefined)?.["retry-after"];
+    if (typeof value !== "string" && typeof value !== "number") {
+        return undefined;
+    }
+    const text = String(value).trim();
+    if (/^\d+$/.test(text)) {
+        return Number(text) * 1000;
+    }
+    const date = Date.parse(text);
+    return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+};
+
+/** A deploy queue's HTTP 503 refusal (node-rust #990); the queue did not hold the deploy. */
+const queueRefusal = (
+    error: unknown,
+): { code: DeployQueueRefusalCode; retryAfterMs?: number; congestion?: DeployQueueCongestion } | undefined => {
+    if (!axios.isAxiosError(error) || error.response?.status !== 503) {
+        return undefined;
+    }
+    const kind: unknown = error.response.data?.error;
+    if (typeof kind !== "string" || !QUEUE_REFUSAL_CODES.has(kind)) {
+        return undefined;
+    }
+    const code = kind as DeployQueueRefusalCode;
+    const message: unknown = error.response.data?.message;
+    const congestion = code === "deploy_queue_full" && typeof message === "string"
+        ? QUEUE_CONGESTION_PREFIXES.find(([prefix]) => message.startsWith(prefix))?.[1]
+        : undefined;
+    return { code, retryAfterMs: retryAfterMs(error.response.headers), congestion };
+};
+
+const isDuplicateDeploy = (error: unknown): boolean =>
+    axios.isAxiosError(error) && error.response?.status === 409 && error.response.data?.error === "duplicate_deploy";
 
 export default class DeployService {
     private readonly nodeApiProvider: NodeApiProvider;
@@ -91,6 +146,19 @@ export default class DeployService {
                     throw new DeployAdmissionRefusedError(
                         "DeployService.submitSignedDeploy", reason, admissionCode, signedDeploy.signature,
                     );
+                }
+                const queue = queueRefusal(error);
+                if (queue) {
+                    throw new DeployQueueRefusedError(
+                        "DeployService.submitSignedDeploy", reason, queue.code, signedDeploy.signature,
+                        queue.retryAfterMs, queue.congestion,
+                    );
+                }
+                // The node or its deploy queue already holds this signed deploy,
+                // for example after a resend of an unknown outcome: watch it
+                // rather than release its reservation.
+                if (isDuplicateDeploy(error)) {
+                    return signedDeploy.signature;
                 }
                 const rejection = deployRejection(error);
                 if (rejection) {

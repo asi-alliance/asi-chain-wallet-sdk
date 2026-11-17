@@ -4,7 +4,7 @@ import DeployService from "@services/DeployService";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import ValidatorClient from "@domains/ValidatorClient";
 import { SignedResult } from "@services/Signer";
-import { CustomErrorCode, DeployAdmissionRefusedError, DeployRefusedError, DeploySubmissionRejectedError, DeploySubmissionUnknownError } from "@domains/CustomError";
+import { CustomErrorCode, DeployAdmissionRefusedError, DeployQueueRefusedError, DeployRefusedError, DeploySubmissionRejectedError, DeploySubmissionUnknownError } from "@domains/CustomError";
 
 const signed = (): SignedResult => ({ data: { term: "Nil", timestamp: 123 }, signature: "abcdef", deployer: "public-key", sigAlgorithm: "secp256k1" });
 const failure = (status: number, data: unknown) => Object.assign(new Error("node response"), { isAxiosError: true, response: { status, data } });
@@ -139,3 +139,85 @@ for (const timeout of [undefined, 1200]) {
         assert.equal(actual, timeout ?? 30_000);
     });
 }
+
+const queueFailure = (status: number, data: unknown, headers: Record<string, string> = {}) =>
+    Object.assign(new Error("queue response"), { isAxiosError: true, response: { status, data, headers } });
+
+for (const [message, congestion, retryable] of [
+    ["deploy queue is full: the validator is taking fewer deploys than arrive, so the deploys ahead of this one would not land before its validity window closes; sign it again with a current validAfterBlockNumber and retry in 12s", "validator", false],
+    ["deploy queue is full: the validator has created no block while the shard moved on, so ...", "validator_idle", false],
+    ["deploy queue is full: the shard's finality is holding the validator back, so ...", "shard", false],
+    ["deploy queue is full: the signed deploys the queue holds fill its storage budget, so ...", "storage", false],
+    ["deploy queue is full for this deployer: it holds 4 of the 4 deploys one deployer may hold, so that other deployers keep room; retry in 12s", "deployer_share", true],
+] as const) {
+    test(`503 deploy_queue_full (${congestion}) is a typed queue refusal with its wait and is not retried`, async () => {
+        let requests = 0;
+        const client = service(async () => {
+            requests += 1;
+            throw queueFailure(503, { error: "deploy_queue_full", message }, { "retry-after": "12" });
+        });
+        await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) => {
+            assert.ok(error instanceof DeployQueueRefusedError);
+            assert.ok(error instanceof DeploySubmissionRejectedError);
+            assert.equal(error.queueCode, "deploy_queue_full");
+            assert.equal(error.code, CustomErrorCode.DEPLOY_QUEUE_FULL);
+            assert.equal(error.status, 503);
+            assert.equal(error.deployId, "abcdef");
+            assert.equal(error.retryAfterMs, 12_000);
+            assert.equal(error.congestion, congestion);
+            assert.equal(error.retryable, retryable);
+            return true;
+        });
+        assert.equal(requests, 1);
+    });
+}
+
+for (const [code, headers, wait] of [
+    ["node_unavailable", { "retry-after": "5" }, 5_000],
+    ["deploy_queue_stopped", {}, undefined],
+] as const) {
+    test(`503 ${code} is a retryable queue refusal`, async () => {
+        const client = service(async () => { throw queueFailure(503, { error: code, message: "queue" }, headers); });
+        await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) => {
+            assert.ok(error instanceof DeployQueueRefusedError);
+            assert.equal(error.queueCode, code);
+            assert.equal(error.code, CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE);
+            assert.equal(error.retryAfterMs, wait);
+            assert.equal(error.congestion, undefined);
+            assert.equal(error.retryable, true);
+            return true;
+        });
+    });
+}
+
+test("a Retry-After read through axios headers is honoured", async () => {
+    const headers = { get: (name: string) => (name === "retry-after" ? "7" : undefined) };
+    const client = service(async () => {
+        throw Object.assign(new Error("queue"), { isAxiosError: true, response: { status: 503, data: { error: "node_unavailable" }, headers } });
+    });
+    await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) =>
+        error instanceof DeployQueueRefusedError && error.retryAfterMs === 7_000);
+});
+
+for (const [status, body] of [[500, { error: "queue_store_error", message: "store failed" }], [500, { error: "deploy_queue_full" }]] as const) {
+    test(`HTTP ${status} ${JSON.stringify(body)} from a queue leaves the outcome unknown`, async () => {
+        const client = service(async () => { throw queueFailure(status, body); });
+        await assert.rejects(client.submitSignedDeploy(signed()), DeploySubmissionUnknownError);
+    });
+}
+
+test("409 duplicate_deploy means the node already holds the signed deploy", async () => {
+    let requests = 0;
+    const client = service(async () => {
+        requests += 1;
+        throw queueFailure(409, { error: "duplicate_deploy", message: "Deploy already known: abcdef" });
+    });
+    assert.equal(await client.submitSignedDeploy(signed()), "abcdef");
+    assert.equal(requests, 1);
+});
+
+test("a 409 without the duplicate code stays a rejection", async () => {
+    const client = service(async () => { throw queueFailure(409, { error: "conflict" }); });
+    await assert.rejects(client.submitSignedDeploy(signed()), (error: unknown) =>
+        error instanceof DeploySubmissionRejectedError && !(error instanceof DeployQueueRefusedError));
+});

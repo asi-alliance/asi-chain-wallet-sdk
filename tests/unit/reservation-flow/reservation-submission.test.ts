@@ -13,6 +13,7 @@ import {
     CustomErrorCode,
     DeploySubmissionRejectedError,
     DeployAdmissionRefusedError,
+    DeployQueueRefusedError,
     DomainClosedError,
     WalletAction,
     WalletActionInProgressError,
@@ -272,6 +273,27 @@ for (const code of ["deploy_pool_busy", "deploy_admission_busy"] as const) {
         await funded.client.close();
     });
 }
+
+test("a full deploy queue releases the reservation and reports its wait without retrying", async () => {
+    const funded = await createFundedWallet();
+    fakeNode.setSubmitOutcome({
+        kind: "queueFull",
+        retryAfterSecs: 9,
+        message: "deploy queue is full: the shard's finality is holding the validator back, so ...",
+    });
+    const error = await captureError(funded.transfer);
+    assert.ok(error instanceof DeployQueueRefusedError);
+    assert.equal(error.queueCode, "deploy_queue_full");
+    assert.equal(error.congestion, "shard");
+    assert.equal(error.retryAfterMs, 9_000);
+    assert.equal(error.retryable, false);
+    const submitted = fakeNode.getSubmittedDeploys().filter((deploy) => deploy.signature === error.deployId);
+    assert.equal(submitted.length, 1);
+    assert.equal((await funded.client.getReservations(funded.walletId)).length, 0);
+    assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+    assert.equal(await funded.client.getAvailableBalance(funded.walletId, funded.accountId), BALANCE);
+    await funded.client.close();
+});
 
 test("a dropped connection keeps the reservation and the held funds", async () => {
     console.log("\n=== DROPPED CONNECTION KEEPS THE RESERVATION ===");

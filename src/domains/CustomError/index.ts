@@ -32,6 +32,8 @@ export enum CustomErrorCode {
     DEPLOY_EXPIRED = "DEPLOY_EXPIRED",
     DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
     DEPLOY_SUBMISSION_UNKNOWN = "DEPLOY_SUBMISSION_UNKNOWN",
+    DEPLOY_QUEUE_FULL = "DEPLOY_QUEUE_FULL",
+    DEPLOY_QUEUE_UNAVAILABLE = "DEPLOY_QUEUE_UNAVAILABLE",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
@@ -279,6 +281,46 @@ export class DeployRefusedError extends DeploySubmissionRejectedError {
     ) {
         super(operation, reason, DEPLOY_REJECTION_ERROR_CODES[rejectionCode], status);
         this.retryable = rejectionCode === "invalid_deploy_window";
+    }
+}
+
+export type DeployQueueRefusalCode = "deploy_queue_full" | "node_unavailable" | "deploy_queue_stopped";
+
+/**
+ * What holds a full deploy queue back. `validator_idle` means the validator
+ * creates no blocks: send a new deploy to another validator's queue rather
+ * than wait. `deployer_share` means this deployer holds its full share.
+ */
+export type DeployQueueCongestion = "validator" | "validator_idle" | "shard" | "storage" | "deployer_share";
+
+/**
+ * A deploy queue in front of the validator refused the deploy and did not
+ * hold it (node-rust #990). `retryable` says whether the same signed deploy
+ * can be sent again after `retryAfterMs`. A full queue (other than the
+ * deployer's share) admits a deploy only if it lands with time to spare in
+ * its validity window, so it needs a new deploy signed with a current
+ * `validAfterBlockNumber`.
+ */
+export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
+    public readonly retryable: boolean;
+
+    constructor(
+        operation: string,
+        reason: string,
+        public readonly queueCode: DeployQueueRefusalCode,
+        public readonly deployId: string,
+        public readonly retryAfterMs: number | undefined,
+        public readonly congestion: DeployQueueCongestion | undefined,
+    ) {
+        super(
+            operation,
+            reason,
+            queueCode === "deploy_queue_full"
+                ? CustomErrorCode.DEPLOY_QUEUE_FULL
+                : CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE,
+            503,
+        );
+        this.retryable = queueCode !== "deploy_queue_full" || congestion === "deployer_share";
     }
 }
 
