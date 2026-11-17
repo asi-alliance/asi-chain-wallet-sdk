@@ -43,6 +43,7 @@ const LARGE_FIELD_BYTE = 1;
 const LARGE_FIELD_CHAR_CODE = 0x61;
 const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
 const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
+const PREVIOUS_BLOCK_MINUS_ONE_HEX = "50ffffffffffffffffff01";
 
 const RESOLVED_DEPLOY_PHLO: IDeployPhlo = {
     phloLimit: 7,
@@ -460,6 +461,49 @@ test("signDeploy rejects an invalid payload", async () => {
     }
 
     assert.equal(deployService.submitted.length, 0);
+});
+
+test("signDeploy at rust block height zero signs the previous block -1 as ten protobuf bytes", async () => {
+    console.log("\n=== RUST BLOCK HEIGHT ZERO ===");
+
+    const { account, signer }: ISigningContext =
+        await createPrivateKeyContext();
+
+    for (const blockNumber of [0, "0"]) {
+        const api: NodeApiAdapter = new RustNodeApiAdapter({
+            observer: {
+                getBlocks: async () => [{ blockInfo: { blockNumber } }],
+            },
+        } as unknown as IApiClients);
+        const nodeApiProvider: NodeApiProvider = {
+            getApi: () => api,
+        } as unknown as NodeApiProvider;
+
+        const signed: SignedResult = await new TransactionService(
+            new SpyDeployService(),
+            new BlockService(nodeApiProvider),
+            nodeApiProvider,
+        ).signDeploy({
+            walletType: WalletTypes.PRIVATE_KEY,
+            account,
+            signer,
+            term: TERM,
+            passwordProvider: createPasswordProvider(),
+        });
+
+        const bytes: Uint8Array = api.serializeDeployData(signed.data);
+        const hash: string = blake2bHex(bytes, undefined, DEPLOY_HASH_LENGTH);
+
+        console.log("    Block number:", JSON.stringify(blockNumber));
+        console.log(
+            "    Previous block:",
+            signed.data.validAfterBlockNumber,
+        );
+
+        assert.equal(signed.data.validAfterBlockNumber, -1);
+        assert.equal(toHex(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX), true);
+        assert.equal(verify(signed.signature, hash, signed.deployer), true);
+    }
 });
 
 test("signDeploy signs the resolved phlo as is and still checks the deploy content", async () => {

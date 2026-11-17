@@ -277,6 +277,42 @@ test("scala and rust adapters serialize the same deploy into different price fie
     assert.notEqual(toHex(classic), toHex(uint256));
 });
 
+test("a deploy signed under one node API profile does not verify under the other", async () => {
+    console.log("\n=== MISMATCHED NODE API PROFILES ===");
+
+    const data: DeployData = fixture.vectors[0].data;
+    const publicKey: Uint8Array = getPublicKey(SYNTHETIC_PRIVATE_KEY);
+
+    const rustHash: string = blake2bHex(
+        rustApi.serializeDeployData(data),
+        undefined,
+        DEPLOY_HASH_LENGTH,
+    );
+    const scalaHash: string = blake2bHex(
+        scalaApi.serializeDeployData(data),
+        undefined,
+        DEPLOY_HASH_LENGTH,
+    );
+
+    const rustSignature: Uint8Array = await sign(
+        rustHash,
+        SYNTHETIC_PRIVATE_KEY,
+    );
+    const scalaSignature: Uint8Array = await sign(
+        scalaHash,
+        SYNTHETIC_PRIVATE_KEY,
+    );
+
+    console.log("    Rust hash:", rustHash);
+    console.log("    Scala hash:", scalaHash);
+
+    assert.notEqual(rustHash, scalaHash);
+    assert.equal(verify(rustSignature, rustHash, publicKey), true);
+    assert.equal(verify(rustSignature, scalaHash, publicKey), false);
+    assert.equal(verify(scalaSignature, scalaHash, publicKey), true);
+    assert.equal(verify(scalaSignature, rustHash, publicKey), false);
+});
+
 test("rust submission sends the signed deploy with the decimal price string", async () => {
     console.log("\n=== RUST SUBMISSION REQUEST ===");
 
