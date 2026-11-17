@@ -33,6 +33,8 @@ export enum CustomErrorCode {
     DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
     DEPLOY_SUBMISSION_UNKNOWN = "DEPLOY_SUBMISSION_UNKNOWN",
     DEPLOY_QUEUE_FULL = "DEPLOY_QUEUE_FULL",
+    DEPLOY_REJECTED = "DEPLOY_REJECTED",
+    DEPLOY_EXECUTION_FAILED = "DEPLOY_EXECUTION_FAILED",
     DEPLOY_QUEUE_UNAVAILABLE = "DEPLOY_QUEUE_UNAVAILABLE",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
@@ -321,6 +323,39 @@ export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
             503,
         );
         this.retryable = queueCode !== "deploy_queue_full" || congestion === "deployer_share";
+    }
+}
+
+export type DeployVerdictState = "Rejected" | "Expired" | "Failed";
+
+const DEPLOY_VERDICT_ERROR_CODES: Readonly<Record<DeployVerdictState, CustomErrorCode>> = {
+    Rejected: CustomErrorCode.DEPLOY_REJECTED,
+    Expired: CustomErrorCode.DEPLOY_EXPIRED,
+    Failed: CustomErrorCode.DEPLOY_EXECUTION_FAILED,
+};
+
+const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictState, string>> = {
+    Rejected: "was rejected by the node when its deploy queue released it, and never executed",
+    Expired: "expired without landing in a block, and never executed",
+    Failed: "executed and failed, so its effects did not apply",
+};
+
+/**
+ * The node reached a terminal verdict other than finalization for a watched
+ * deploy. Its reservation is released: `Rejected` and `Expired` deploys
+ * never executed, and a `Failed` deploy's transfer did not apply.
+ */
+export class DeployVerdictError extends CustomError {
+    constructor(
+        public readonly deployId: string,
+        public readonly state: DeployVerdictState,
+        public readonly detail?: string,
+    ) {
+        super(
+            DEPLOY_VERDICT_ERROR_CODES[state],
+            `Deploy ${deployId} ${DEPLOY_VERDICT_MESSAGES[state]}${detail ? `: ${detail}` : ""}`,
+            422,
+        );
     }
 }
 

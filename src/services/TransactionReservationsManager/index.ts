@@ -4,6 +4,7 @@ import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiClientManager from "@domains/ApiClientManager";
 import { NetworkId } from "@domains/Network";
 import { IDeployStatusResult } from "@domains/Deploy";
+import { DeployVerdictError } from "@domains/CustomError";
 import { ITransactionReservation } from "@domains/Transaction";
 import DeployStatusPoller, {
     IDeployConfirmedResult,
@@ -355,6 +356,13 @@ export default class TransactionReservationsManager
         error: Error,
     ): void {
         this.stopWatch(reservation.id);
+
+        // A terminal verdict means the reserved funds will not move: release
+        // them now instead of holding them until the reservation expires.
+        if (error instanceof DeployVerdictError) {
+            this.clearExpiration(reservation.id);
+            this.items.delete(reservation.id);
+        }
 
         this.onFailed?.(reservation, error);
     }

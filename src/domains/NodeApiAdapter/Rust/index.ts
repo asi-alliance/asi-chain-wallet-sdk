@@ -4,7 +4,12 @@ import { RUST_FAULT_TOLERANCE_THRESHOLD } from "@utils/constants";
 import { isRecord } from "@utils/guards";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
-import { IDeployInfo } from "@domains/Deploy";
+import {
+    DeployStatus,
+    DeployVerdictStatus,
+    IDeployInfo,
+    IDeployStatusResult,
+} from "@domains/Deploy";
 
 interface ISimpleExploreDeployRequest {
     term: string;
@@ -12,6 +17,12 @@ interface ISimpleExploreDeployRequest {
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
     view: "summary",
+};
+
+const VERDICT_STATUSES: Readonly<Record<string, DeployVerdictStatus>> = {
+    Rejected: DeployStatus.REJECTED,
+    Expired: DeployStatus.EXPIRED,
+    Failed: DeployStatus.FAILED,
 };
 
 export default class RustNodeApiAdapter extends NodeApiAdapter {
@@ -27,6 +38,60 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
 
     public isDeployFinalized(deploy: IDeployInfo): boolean {
         return (deploy.faultTolerance ?? 0) >= RUST_FAULT_TOLERANCE_THRESHOLD;
+    }
+
+    /**
+     * Reports the validator's terminal verdict first: the observer never sees
+     * a deploy that a deploy queue holds or rejected (node-rust #990), nor
+     * tells an expired or failed deploy from a pending one. Finalization is
+     * still read from the observer.
+     */
+    public async getDeployStatus(
+        deployHash: string,
+    ): Promise<IDeployStatusResult> {
+        const verdict: IDeployStatusResult | undefined =
+            await this.getDeployVerdict(deployHash);
+
+        return verdict ?? super.getDeployStatus(deployHash);
+    }
+
+    /**
+     * The validator's `Rejected`, `Expired` or `Failed` verdict, or
+     * `undefined` while the deploy is pending, finalized, or the validator
+     * cannot answer (such as a node without the endpoint).
+     */
+    private async getDeployVerdict(
+        deployHash: string,
+    ): Promise<IDeployStatusResult | undefined> {
+        let answer: unknown;
+
+        try {
+            answer =
+                await this.clients.validator.getDeployFinalizationStatus(
+                    deployHash,
+                );
+        } catch {
+            return undefined;
+        }
+
+        if (!isRecord(answer) || typeof answer.state !== "string") {
+            return undefined;
+        }
+
+        const status: DeployVerdictStatus | undefined = Object.prototype.hasOwnProperty.call(
+            VERDICT_STATUSES,
+            answer.state,
+        )
+            ? VERDICT_STATUSES[answer.state]
+            : undefined;
+
+        if (!status) {
+            return undefined;
+        }
+
+        return typeof answer.detail === "string" && answer.detail
+            ? { status, detail: answer.detail }
+            : { status };
     }
 
     public async getLatestBlockNumber(): Promise<number> {

@@ -33,6 +33,7 @@ import TransactionReservationFabric, {
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
+    DeployVerdictError,
     DomainClosedError,
     IErrorContext,
     ReservationAction,
@@ -84,6 +85,20 @@ export default class ReservationAdapter {
                     void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onExpired?.(reservation);
+                },
+                onFailed: (
+                    reservation: ITransactionReservation,
+                    error: Error,
+                ) => {
+                    // The manager already released a terminal verdict's
+                    // reservation from memory; release its stored copy too.
+                    if (error instanceof DeployVerdictError) {
+                        void ReservationAdapter.releaseFromStorage(
+                            reservation.id,
+                        );
+                    }
+
+                    reservationsManagerOptions.onFailed?.(reservation, error);
                 },
             },
         );

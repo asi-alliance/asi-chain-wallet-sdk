@@ -14,6 +14,7 @@ import {
     DeploySubmissionRejectedError,
     DeployAdmissionRefusedError,
     DeployQueueRefusedError,
+    DeployVerdictError,
     DomainClosedError,
     WalletAction,
     WalletActionInProgressError,
@@ -149,6 +150,7 @@ test.after(async () => {
 test.beforeEach(() => {
     fakeNode.setBalance(BALANCE);
     fakeNode.setSubmitOutcome({ kind: "accepted" });
+    fakeNode.setFinalizationStatus({ state: "Pending" });
     fakeNode.onBeforeSubmitResponse(async () => {});
 });
 
@@ -292,6 +294,43 @@ test("a full deploy queue releases the reservation and reports its wait without 
     assert.equal((await funded.client.getReservations(funded.walletId)).length, 0);
     assert.equal((await readStoredReservations(funded.signerId)).length, 0);
     assert.equal(await funded.client.getAvailableBalance(funded.walletId, funded.accountId), BALANCE);
+    await funded.client.close();
+});
+
+for (const [state, detail] of [
+    ["Rejected", "rholang_bad_term: syntax error"],
+    ["Expired", undefined],
+    ["Failed", undefined],
+] as const) {
+    test(`a validator verdict ${state} ends the watch and releases the reservation`, async () => {
+        const funded = await createFundedWallet();
+        fakeNode.setFinalizationStatus({ state, queue_state: state.toLowerCase(), detail: detail ?? null });
+        const operation = await funded.transfer();
+        const error = await new Promise<Error>((resolve) => {
+            operation.subscribe({ onError: resolve });
+        });
+        assert.ok(error instanceof DeployVerdictError);
+        assert.equal(error.state, state);
+        assert.equal(error.deployId, operation.deployId);
+        assert.equal(error.detail, detail);
+        while ((await readStoredReservations(funded.signerId)).length > 0) {
+            await wait(10);
+        }
+        assert.equal((await funded.client.getReservations(funded.walletId)).length, 0);
+        assert.equal(await funded.client.getAvailableBalance(funded.walletId, funded.accountId), BALANCE);
+        await funded.client.close();
+    });
+}
+
+test("a pending validator verdict keeps the reservation", async () => {
+    const funded = await createFundedWallet();
+    const operation = await funded.transfer();
+    const statuses: string[] = [];
+    await new Promise<void>((resolve) => {
+        operation.subscribe({ onStatus: (status) => { statuses.push(status.status); resolve(); } });
+    });
+    assert.ok(!statuses.includes("Rejected"));
+    assert.equal((await funded.client.getReservations(funded.walletId)).length, 1);
     await funded.client.close();
 });
 

@@ -45,10 +45,17 @@ export const createHeldStep = (): IHeldStep => {
     };
 };
 
+export interface IFinalizationStatus {
+    state: "Pending" | "Finalized" | "Failed" | "Expired" | "Rejected";
+    queue_state?: string;
+    detail?: string | null;
+}
+
 export interface IFakeNode {
     networksConfig: TNetworksConfig;
     setBalance: (amount: bigint) => void;
     setSubmitOutcome: (outcome: TSubmitOutcome) => void;
+    setFinalizationStatus: (status: IFinalizationStatus) => void;
     onBeforeSubmitResponse: (listener: () => Promise<void>) => void;
     holdSubmitResponse: () => IHeldStep;
     getSubmittedDeploys: () => SignedResult[];
@@ -78,6 +85,7 @@ export const sendJson = (
 export const startFakeNode = async (): Promise<IFakeNode> => {
     let balance: bigint = 0n;
     let submitOutcome: TSubmitOutcome = { kind: "accepted" };
+    let finalizationStatus: IFinalizationStatus = { state: "Pending" };
     let beforeSubmitResponse: (() => Promise<void>) | null = null;
 
     const submittedDeploys: SignedResult[] = [];
@@ -134,6 +142,16 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
         response: http.ServerResponse,
     ): Promise<void> => {
         const url: string = request.url ?? "";
+
+        if (url.startsWith("/api/deploy-finalization-status/")) {
+            sendJson(response, {
+                rejection_count: 0,
+                latest_block_hash: null,
+                ...finalizationStatus,
+            });
+
+            return;
+        }
 
         if (url.startsWith("/api/deploy/")) {
             response.writeHead(404, { "content-type": "text/plain" });
@@ -202,6 +220,9 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
         },
         setSubmitOutcome: (outcome: TSubmitOutcome) => {
             submitOutcome = outcome;
+        },
+        setFinalizationStatus: (status: IFinalizationStatus) => {
+            finalizationStatus = status;
         },
         onBeforeSubmitResponse: (listener: () => Promise<void>) => {
             beforeSubmitResponse = listener;

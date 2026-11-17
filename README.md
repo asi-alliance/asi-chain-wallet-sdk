@@ -808,4 +808,16 @@ A [deploy queue (node #990)](https://github.com/F1R3FLY-io/f1r3node-rust/pull/99
 | `node_unavailable` | none | `DEPLOY_QUEUE_UNAVAILABLE` | `true` | Send the same deploy after `retryAfterMs` |
 | `deploy_queue_stopped` | none | `DEPLOY_QUEUE_UNAVAILABLE` | `true` | Send the same deploy later |
 
-The queue's HTTP 500 `queue_store_error` stays `DeploySubmissionUnknownError`. Deploy status is still read from the observer, which does not see a deploy the queue holds or the queue's terminal `Rejected` state.
+The queue's HTTP 500 `queue_store_error` stays `DeploySubmissionUnknownError`.
+
+### Deploy status verdicts
+
+For the Rust node profile, `getDeployStatus` first asks the validator's `/api/deploy-finalization-status/{signature}`. A deploy queue serves that path for the deploys it holds; otherwise the node answers. A terminal verdict other than finalization is reported before the observer is asked:
+
+| Validator `state` | `DeployStatus` | Watch error `code` | Meaning |
+|---|---|---|---|
+| `Rejected` | `REJECTED` | `DEPLOY_REJECTED` | The node refused the deploy when its queue released it, such as a term that does not compile; `detail` carries the node's reason. It never executed |
+| `Expired` | `EXPIRED` | `DEPLOY_EXPIRED` | The validity window closed without the deploy landing. It never executed |
+| `Failed` | `FAILED` | `DEPLOY_EXECUTION_FAILED` | The deploy executed and failed; its transfer did not apply |
+
+`DeployStatusPoller` ends the watch at once with `DeployVerdictError` (`state`, `detail`, `deployId`) instead of waiting for its timeout, and reservation-aware operations release the deploy's reservation from memory and storage. `Pending`, `Finalized`, an unreachable validator and a node without the endpoint (HTTP 404) leave the decision to the observer as before, so finalization is still confirmed by fault tolerance. The Scala profile does not query the endpoint.
