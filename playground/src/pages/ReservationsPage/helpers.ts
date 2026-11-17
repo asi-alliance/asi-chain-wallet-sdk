@@ -20,17 +20,17 @@ const DEFAULT_DEPLOY_GAS_BUDGET: bigint =
 export const toMinGasCost = (asset: Asset): string =>
     formatAmount(GasFee.MIN, asset);
 
-export const toMaxGasCost = (asset: Asset): string =>
-    formatAmount(GasFee.MAX, asset);
-
 export const toDefaultDeployGasCost = (asset: Asset): string =>
     formatAmount(DEFAULT_DEPLOY_GAS_BUDGET, asset);
 
 export const toDefaultGasCost = (
     kind: TransactionReservationKind,
     asset: Asset,
+    transferGasReserve: bigint,
 ): string =>
-    kind === "deploy" ? toDefaultDeployGasCost(asset) : toMaxGasCost(asset);
+    kind === "deploy"
+        ? toDefaultDeployGasCost(asset)
+        : formatAmount(transferGasReserve, asset);
 
 const toAmountOrNull = (value: string, asset: Asset): bigint | null => {
     try {
@@ -49,10 +49,13 @@ export interface IReservationFormState {
     term: string;
 }
 
-export const createEmptyFormState = (asset: Asset): IReservationFormState => ({
+export const createEmptyFormState = (
+    asset: Asset,
+    transferGasReserve: bigint,
+): IReservationFormState => ({
     kind: "transfer",
     deployId: "",
-    gasCost: toDefaultGasCost("transfer", asset),
+    gasCost: toDefaultGasCost("transfer", asset, transferGasReserve),
     to: "",
     amount: "",
     term: "",
@@ -79,24 +82,6 @@ export const toReservedAmount = (
     }
 
     return amount + gasCost;
-};
-
-export const isGasCostAllowed = (
-    kind: TransactionReservationKind,
-    value: string,
-    asset: Asset,
-): boolean => {
-    if (kind === "deploy") {
-        return true;
-    }
-
-    const gasCost: bigint | null = toAmountOrNull(value, asset);
-
-    if (gasCost === null) {
-        return true;
-    }
-
-    return gasCost <= GasFee.MAX;
 };
 
 export const toGasCostError = (

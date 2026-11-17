@@ -13,13 +13,10 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import {
-    DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
-    GasFee,
-    SUBMISSION_SETTLE_TIMEOUT_MS,
-} from "@config/index";
+import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
@@ -30,6 +27,7 @@ import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
     TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
+import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
@@ -47,6 +45,7 @@ import {
     isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
+    validatePhloSettings,
     validatePositiveAmount,
     validateReservationPayload,
     validateReservationUpdateTarget,
@@ -544,6 +543,34 @@ export default class ReservationAdapter {
         };
     }
 
+    private static resolveDeployPhlo(
+        api: NodeApiAdapter,
+        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+        { context }: IErrorContext,
+    ): IDeployPhlo {
+        ensureValid(
+            validatePhloSettings(phlo, {
+                maxPhloPrice: api.getMaxPhloPrice(),
+            }),
+            { context },
+        );
+
+        return createDeployPhlo(phlo);
+    }
+
+    public static getTransferGasReserve(
+        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
+    ): bigint {
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        const { maxPhloCharge }: IDeployPhlo =
+            ReservationAdapter.resolveDeployPhlo(api, phlo, {
+                context: "ReservationAdapter.getTransferGasReserve",
+            });
+
+        return api.getTransferGasReserve(maxPhloCharge);
+    }
+
     public async transfer(
         wallet: Wallet,
         accountId: string,
@@ -556,7 +583,22 @@ export default class ReservationAdapter {
         const nativeTokenDecimals: number =
             ApiClientManager.getInstance().getNetwork(networkId).config
                 .nativeTokenDecimals;
-        const pendingAmount: bigint = details.amount + GasFee.MAX;
+
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
+            ReservationAdapter.resolveDeployPhlo(api, details, {
+                context: "ReservationAdapter.transfer",
+            });
+
+        const transferDetails: ITransferDetails = {
+            ...details,
+            phloLimit,
+            phloPrice,
+        };
+
+        const gasCost: bigint = api.getTransferGasReserve(maxPhloCharge);
+        const pendingAmount: bigint = transferDetails.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.transfer",
@@ -578,7 +620,7 @@ export default class ReservationAdapter {
                             const signedDeploy: SignedResult =
                                 await wallet.signTransfer(
                                     accountId,
-                                    details,
+                                    transferDetails,
                                     passwordProvider,
                                 );
 
@@ -590,7 +632,8 @@ export default class ReservationAdapter {
                                     nativeTokenDecimals,
                                     account,
                                     pendingAmount,
-                                    details,
+                                    details: transferDetails,
+                                    gasCost,
                                 });
 
                             return this.reserveAndSubmit(
@@ -618,9 +661,21 @@ export default class ReservationAdapter {
         const nativeTokenDecimals: number =
             ApiClientManager.getInstance().getNetwork(networkId).config
                 .nativeTokenDecimals;
-        const pendingAmount: bigint =
-            BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
-            BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+
+        const {
+            phloLimit,
+            phloPrice,
+            maxPhloCharge: pendingAmount,
+        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(api, details, {
+            context: "ReservationAdapter.deploy",
+        });
+
+        const deployDetails: TDeployDetails = {
+            ...details,
+            phloLimit,
+            phloPrice,
+        };
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",
@@ -642,7 +697,7 @@ export default class ReservationAdapter {
                             const signedDeploy: SignedResult =
                                 await wallet.signDeploy(
                                     accountId,
-                                    details,
+                                    deployDetails,
                                     passwordProvider,
                                 );
 
@@ -654,7 +709,7 @@ export default class ReservationAdapter {
                                     nativeTokenDecimals,
                                     account,
                                     pendingAmount,
-                                    term: details.term,
+                                    term: deployDetails.term,
                                 });
 
                             return this.reserveAndSubmit(
