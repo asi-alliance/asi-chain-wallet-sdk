@@ -1,11 +1,5 @@
 export type PhloPrice = number | string | bigint;
 
-export interface IDeployPhlo {
-    readonly phloLimit: number;
-    readonly phloPrice: bigint;
-    readonly maxPhloCharge: bigint;
-}
-
 export interface DeployData {
     term: string;
     phloLimit: number;

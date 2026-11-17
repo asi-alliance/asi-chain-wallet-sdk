@@ -7,7 +7,7 @@ import Account from "@domains/Account";
 import { IApiClients } from "@domains/ApiClientManager";
 import Bip44Path from "@domains/Bip44Path";
 import BinaryWriter from "@domains/BinaryWriter";
-import { DeployData, IDeployPhlo } from "@domains/Deploy";
+import { DeployData } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
@@ -44,12 +44,6 @@ const LARGE_FIELD_CHAR_CODE = 0x61;
 const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
 const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
 const PREVIOUS_BLOCK_MINUS_ONE_HEX = "50ffffffffffffffffff01";
-
-const RESOLVED_DEPLOY_PHLO: IDeployPhlo = {
-    phloLimit: 7,
-    phloPrice: 3n,
-    maxPhloCharge: 21n,
-};
 
 interface ISigningContext {
     account: Account;
@@ -504,50 +498,6 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
         assert.equal(toHex(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX), true);
         assert.equal(verify(signed.signature, hash, signed.deployer), true);
     }
-});
-
-test("signDeploy signs the resolved phlo as is and still checks the deploy content", async () => {
-    console.log("\n=== RESOLVED PHLO IS NOT VALIDATED AGAIN ===");
-
-    const transactionService: TransactionService = createTransactionService();
-    const { account, signer }: ISigningContext =
-        await createPrivateKeyContext();
-
-    const signed: SignedResult = await transactionService.signDeploy(
-        {
-            walletType: WalletTypes.PRIVATE_KEY,
-            account,
-            signer,
-            term: TERM,
-            phloLimit: 0,
-            phloPrice: 0,
-            passwordProvider: createPasswordProvider(),
-        },
-        RESOLVED_DEPLOY_PHLO,
-    );
-
-    console.log("    Signed phlo limit:", signed.data.phloLimit);
-    console.log("    Signed phlo price:", signed.data.phloPrice);
-
-    assert.equal(signed.data.phloLimit, RESOLVED_DEPLOY_PHLO.phloLimit);
-    assert.equal(
-        signed.data.phloPrice,
-        Number(RESOLVED_DEPLOY_PHLO.phloPrice),
-    );
-
-    await assert.rejects(
-        transactionService.signDeploy(
-            {
-                walletType: WalletTypes.PRIVATE_KEY,
-                account,
-                signer,
-                term: "   ",
-                passwordProvider: createPasswordProvider(),
-            },
-            RESOLVED_DEPLOY_PHLO,
-        ),
-        /Deploy term must not be empty/,
-    );
 });
 
 test("signDeploy rejects a phlo charge above uint256 before requesting the block height", async () => {

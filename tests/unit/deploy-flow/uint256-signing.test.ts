@@ -37,7 +37,6 @@ interface INodeVectorsFixture {
 const DEPLOY_HASH_LENGTH = 32;
 const UINT256_BYTES_LENGTH = 32;
 const MAX_BYTE = 255;
-const DEPLOY_PHLO_CONTEXT = "deploy phlo test";
 
 const SYNTHETIC_PRIVATE_KEY: Uint8Array = new Uint8Array(32).fill(1);
 
@@ -223,16 +222,13 @@ test("rust phlo settings accept wide prices and reject malformed values", () => 
     }
 });
 
-test("deploy phlo keeps the exact maximum charge and refuses invalid phlo or a charge above uint256", () => {
+test("deploy phlo keeps the exact maximum charge and refuses a charge above uint256", () => {
     console.log("\n=== DEPLOY PHLO CHARGE ===");
 
-    const bounds = { maxPhloPrice: rustApi.getMaxPhloPrice() };
-
-    const { phloLimit, phloPrice, maxPhloCharge } = createDeployPhlo(
-        { phloLimit: 3, phloPrice: "9007199254740993" },
-        bounds,
-        { context: DEPLOY_PHLO_CONTEXT },
-    );
+    const { phloLimit, phloPrice, maxPhloCharge } = createDeployPhlo({
+        phloLimit: 3,
+        phloPrice: "9007199254740993",
+    });
 
     console.log("    Maximum charge:", maxPhloCharge.toString());
 
@@ -240,24 +236,13 @@ test("deploy phlo keeps the exact maximum charge and refuses invalid phlo or a c
     assert.equal(phloPrice, 9007199254740993n);
     assert.equal(maxPhloCharge, 27021597764222979n);
     assert.equal(
-        createDeployPhlo({ phloLimit: 1, phloPrice: MAX_UINT256 }, bounds, {
-            context: DEPLOY_PHLO_CONTEXT,
-        }).maxPhloCharge,
+        createDeployPhlo({ phloLimit: 1, phloPrice: MAX_UINT256 })
+            .maxPhloCharge,
         MAX_UINT256,
     );
     assert.throws(
-        () =>
-            createDeployPhlo({ phloLimit: 2, phloPrice: MAX_UINT256 }, bounds, {
-                context: DEPLOY_PHLO_CONTEXT,
-            }),
-        /deploy phlo test: Maximum phlo charge exceeds uint256/,
-    );
-    assert.throws(
-        () =>
-            createDeployPhlo({ phloPrice: 0 }, bounds, {
-                context: DEPLOY_PHLO_CONTEXT,
-            }),
-        /deploy phlo test: Phlo price must be a positive integer/,
+        () => createDeployPhlo({ phloLimit: 2, phloPrice: MAX_UINT256 }),
+        /charge exceeds uint256/,
     );
 });
 
