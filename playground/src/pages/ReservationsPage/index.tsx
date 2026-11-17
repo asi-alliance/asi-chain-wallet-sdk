@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
     Account,
+    GasFee,
     Wallet,
     type Asset,
     type ITransactionReservation,
@@ -34,10 +35,8 @@ import SelectFilter, {
 import ConstrainedInput from "@components/common/ConstrainedInput";
 import {
     createEmptyFormState,
-    isGasCostAllowed,
     toDefaultDeployGasCost,
     toDefaultGasCost,
-    toMaxGasCost,
     toMinGasCost,
     toDuplicateDeployIdError,
     toExpirationLabel,
@@ -64,18 +63,23 @@ const ReservationsPage = (): ReactElement => {
         currentNetwork,
         isCurrentNetworkBusy,
         getAvailableBalance,
+        getTransferGasReserve,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,
         removeTransactionReservation,
     } = useSdkContext();
     const asset: Asset = useNativeAsset(currentNetwork);
+    const transferGasReserve: bigint = useMemo(
+        () => (currentNetwork ? getTransferGasReserve() : GasFee.MAX),
+        [currentNetwork, getTransferGasReserve],
+    );
     const runSecureAction = useSecureAction();
 
     const [selectedWalletId, setSelectedWalletId] = useState<string>("");
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [form, setForm] = useState<IReservationFormState>(() =>
-        createEmptyFormState(asset),
+        createEmptyFormState(asset, transferGasReserve),
     );
     const [editedReservationId, setEditedReservationId] = useState<
         string | null
@@ -244,14 +248,14 @@ const ReservationsPage = (): ReactElement => {
         : null;
 
     const resetForm = (): void => {
-        setForm(createEmptyFormState(asset));
+        setForm(createEmptyFormState(asset, transferGasReserve));
         setEditedReservationId(null);
         setError(null);
     };
 
     useEffect(() => {
         resetForm();
-    }, [currentNetwork?.id, asset.getDecimals()]);
+    }, [currentNetwork?.id, asset.getDecimals(), transferGasReserve]);
 
     const updateForm = (patch: Partial<IReservationFormState>): void => {
         setNotice(null);
@@ -265,15 +269,14 @@ const ReservationsPage = (): ReactElement => {
     const handleKindChange = (value: string): void => {
         const kind = value as TransactionReservationKind;
 
-        updateForm({ kind, gasCost: toDefaultGasCost(kind, asset) });
+        updateForm({
+            kind,
+            gasCost: toDefaultGasCost(kind, asset, transferGasReserve),
+        });
     };
 
-    const isTransferAmountInputAllowed = (value: string): boolean =>
+    const isAssetAmountInputAllowed = (value: string): boolean =>
         isAmountInputAllowed(value, asset.getDecimals());
-
-    const isGasCostInputAllowed = (value: string): boolean =>
-        isTransferAmountInputAllowed(value) &&
-        isGasCostAllowed(form.kind, value, asset);
 
     const startEditing = (reservation: ITransactionReservation): void => {
         setNotice(null);
@@ -580,7 +583,7 @@ const ReservationsPage = (): ReactElement => {
                                     onChange={(value: string) =>
                                         updateForm({ amount: value })
                                     }
-                                    isAllowed={isTransferAmountInputAllowed}
+                                    isAllowed={isAssetAmountInputAllowed}
                                     inputMode="decimal"
                                 />
                             </>
@@ -593,11 +596,11 @@ const ReservationsPage = (): ReactElement => {
                             onChange={(value: string) =>
                                 updateForm({ gasCost: value })
                             }
-                            isAllowed={isGasCostInputAllowed}
+                            isAllowed={isAssetAmountInputAllowed}
                             inputMode="decimal"
                             hint={
                                 form.kind === "transfer"
-                                    ? `network charges ${toMinGasCost(asset)} to ${toMaxGasCost(asset)}`
+                                    ? `at least ${toMinGasCost(asset)}, default transfer reserve is ${formatAmount(transferGasReserve, asset)}`
                                     : `default deploy budget is ${toDefaultDeployGasCost(asset)}`
                             }
                             error={form.gasCost ? gasCostError : null}

@@ -17,6 +17,7 @@ export interface IPrecisionNode {
     config: INetworkConfig;
     requests: string[];
     setBalance: (amount: bigint) => void;
+    setBalanceResponse: (value: unknown) => void;
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
@@ -28,8 +29,10 @@ const sendNotFound = (response: http.ServerResponse): void => {
 
 export const startPrecisionNode = async (
     nativeTokenDecimals: number,
+    nodeApiProfile: NodeApiProfile = NodeApiProfile.RUST,
 ): Promise<IPrecisionNode> => {
     let balance: bigint = INITIAL_BALANCE;
+    let balanceResponse: unknown;
 
     const requests: string[] = [];
     const submittedDeploys: SignedResult[] = [];
@@ -64,7 +67,16 @@ export const startPrecisionNode = async (
             await readBody(request);
 
             sendJson(response, {
-                expr: [{ ExprBigInt: { data: balance.toString() } }],
+                expr: [
+                    {
+                        ExprBigInt: {
+                            data:
+                                balanceResponse === undefined
+                                    ? balance.toString()
+                                    : balanceResponse,
+                        },
+                    },
+                ],
             });
 
             return;
@@ -136,7 +148,7 @@ export const startPrecisionNode = async (
         ValidatorURL: baseUrl,
         ReadOnlyURL: baseUrl,
         IndexerURL: `${baseUrl}/v1/graphql`,
-        nodeApiProfile: NodeApiProfile.RUST,
+        nodeApiProfile,
         nativeTokenDecimals,
     };
 
@@ -145,6 +157,10 @@ export const startPrecisionNode = async (
         requests,
         setBalance: (amount: bigint) => {
             balance = amount;
+            balanceResponse = undefined;
+        },
+        setBalanceResponse: (value: unknown) => {
+            balanceResponse = value;
         },
         getSubmittedDeploys: () => submittedDeploys,
         close: () =>

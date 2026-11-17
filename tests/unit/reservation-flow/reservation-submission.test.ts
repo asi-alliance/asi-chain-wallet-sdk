@@ -19,7 +19,11 @@ import {
     WalletAction,
     WalletActionInProgressError,
 } from "@domains/CustomError";
-import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
+import {
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+    SUBMISSION_SETTLE_TIMEOUT_MS,
+} from "@config/index";
 import { SignedResult } from "@services/Signer";
 import { isRejectedByServer } from "@utils/index";
 import {
@@ -39,8 +43,9 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/reservation-submission" };
 
 const BALANCE: bigint = 1_000_000_000n;
 const TRANSFER_AMOUNT: bigint = 100_000_000n;
-const GAS_MAX: bigint = 250_000n;
-const RESERVED: bigint = TRANSFER_AMOUNT + GAS_MAX;
+const MAX_PHLO_CHARGE: bigint =
+    BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE);
+const RESERVED: bigint = TRANSFER_AMOUNT + MAX_PHLO_CHARGE;
 
 const RESTORE_GRACE_MS = 500;
 const SETTLE_WAIT_LIMIT_MS = 15_000;
@@ -121,6 +126,21 @@ const holdReservationSave = (): IHeldStep => {
     };
 
     return step;
+};
+
+// The stored copy is deleted asynchronously after release; a read can meet
+// the file mid-write, so a failed read is retried rather than reported.
+const waitUntilNoStoredReservations = async (signerId: string): Promise<void> => {
+    for (;;) {
+        try {
+            if ((await readStoredReservations(signerId)).length === 0) {
+                return;
+            }
+        } catch {
+            // A concurrent write; read again.
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
 };
 
 const nextTurn = (): Promise<void> =>
@@ -313,10 +333,8 @@ for (const [state, detail] of [
         assert.equal(error.state, state);
         assert.equal(error.deployId, operation.deployId);
         assert.equal(error.detail, detail);
-        while ((await readStoredReservations(funded.signerId)).length > 0) {
-            await wait(10);
-        }
         assert.equal((await funded.client.getReservations(funded.walletId)).length, 0);
+        await waitUntilNoStoredReservations(funded.signerId);
         assert.equal(await funded.client.getAvailableBalance(funded.walletId, funded.accountId), BALANCE);
         await funded.client.close();
     });

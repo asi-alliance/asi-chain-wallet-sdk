@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
+import { getNativeAsset } from "@domains/Asset";
+import Client from "@domains/Client";
+import ReservationAdapter from "@domains/ReservationAdapter";
+import { ITransferDetails, TDeployDetails } from "@services/TransactionService";
+import { BalanceUnavailableError } from "@domains/CustomError";
+import { MAX_UINT256 } from "@utils/constants";
+import { startPrecisionNode } from "./precisionNode";
+
+const PASSWORD = "uint256-fixture-password";
+let node: Awaited<ReturnType<typeof startPrecisionNode>>;
+let client: Client;
+const create = () => Client.create({
+    networksConfig: { Wide: node.config },
+    defaultNetwork: "Wide",
+    storageOptions: { nodeStorageDir: ".tmp/uint256-flow" },
+});
+const funded = async () => {
+    const wallet = await client.createPrivateKeyWallet({
+        privateKey: client.generatePrivateKey(), accountName: "UInt256 fixture",
+    }, PASSWORD);
+    await client.unlockWallet(wallet.getId(), PASSWORD);
+    const account = wallet.getAccounts()[0];
+    return { wallet, account, request: { walletId: wallet.getId(), accountId: account.getId() } };
+};
+
+test.before(async () => { node = await startPrecisionNode(18); });
+test.beforeEach(async () => {
+    client = await create(); await client.clearPersistence(); await client.close(); client = await create();
+    node.setBalance(100000000000000000000n);
+});
+test.afterEach(async () => { await client.close(); });
+test.after(async () => { await node.close(); });
+
+test("wide transfer amount survives signing, HTTP, reservations, reopening and pending history", async () => {
+    const { wallet, account, request } = await funded();
+    const amount = 10000000000000000001n;
+    const gasReserve = client.getTransferGasReserve();
+    const sent = await client.transfer({ ...request, to: account.getAddress(), amount });
+    const submittedDeploys = node.getSubmittedDeploys();
+    const submitted = submittedDeploys[submittedDeploys.length - 1];
+    assert.equal(submitted.data.phloPrice, String(DEFAULT_PHLO_PRICE));
+    assert.equal(submitted.data.phloLimit, DEFAULT_PHLO_LIMIT);
+    assert.equal(gasReserve, BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE));
+    assert.equal("nodeApiProfile" in submitted, false);
+    assert.ok(submitted.data.term.includes("10000000000000000001n"));
+    assert.equal(await client.getAvailableBalance(request.walletId, request.accountId), 100000000000000000000n - amount - gasReserve);
+    const reservation = (await client.getReservations(wallet.getId()))[0];
+    assert.equal(reservation.pendingAmount, (amount + gasReserve).toString());
+    assert.equal(reservation.details.gasCost, client.toDisplayAmount(gasReserve));
+    const signerId = wallet.getSigner().getId();
+    await client.close(); client = await create();
+    const restored = await client.openWallet(signerId, PASSWORD);
+    const history = await client.getTransactionsHistory(restored.getId(), account.getId(), { sources: ["pending"] });
+    const transaction = history.find(tx => tx.deployId === sent.deployId)!;
+    assert.equal(transaction.amount, "10.000000000000000001");
+    assert.equal(transaction.gasCost, client.toDisplayAmount(gasReserve));
+    assert.equal(transaction.nativeTokenDecimals, 18);
+});
+
+test("deploy reserves exact wide fees and overflow never reaches HTTP or storage", async () => {
+    const { request } = await funded();
+    const price = "9007199254740993";
+    await client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: price });
+    const submittedDeploys = node.getSubmittedDeploys();
+    assert.equal(submittedDeploys[submittedDeploys.length - 1].data.phloPrice, price);
+    assert.equal((await client.getReservations(request.walletId))[0].pendingAmount, (2n * BigInt(price)).toString());
+    const count = node.getSubmittedDeploys().length;
+    await assert.rejects(client.deploy({ ...request, term: "Nil", phloLimit: 2, phloPrice: MAX_UINT256 }), /charge exceeds/);
+    assert.equal(node.getSubmittedDeploys().length, count);
+    assert.equal((await client.getReservations(request.walletId)).length, 1);
+});
+
+test("direct reservations sign and reserve the phlo read when the operation starts", async () => {
+    const { wallet, account } = await funded();
+    const reservationAdapter = new ReservationAdapter([]);
+    const asset = getNativeAsset(client.getCurrentNetwork().config);
+    const transferDetails: ITransferDetails = { to: account.getAddress(), amount: 1n, asset, phloLimit: 2, phloPrice: 1 };
+    const deployDetails: TDeployDetails = { term: "Nil", phloLimit: 3, phloPrice: 1 };
+    try {
+        const transferring = reservationAdapter.transfer(wallet, account.getId(), transferDetails);
+        transferDetails.phloPrice = 100;
+        await transferring;
+        const deploying = reservationAdapter.deploy(wallet, account.getId(), deployDetails);
+        deployDetails.phloPrice = 100;
+        await deploying;
+        const [transferDeploy, deployDeploy] = node.getSubmittedDeploys().slice(-2);
+        assert.equal(transferDeploy.data.phloPrice, "1");
+        assert.equal(deployDeploy.data.phloPrice, "1");
+        const pendingAmounts = reservationAdapter.getReservations().map(reservation => reservation.pendingAmount);
+        assert.deepEqual(pendingAmounts, ["3", "3"]);
+    } finally {
+        reservationAdapter.dispose();
+    }
+});
+
+test("wide balances stay exact and malformed balances never become zero", async () => {
+    const { account } = await funded();
+    for (const raw of ["-1", "1.0", "1e2", null]) {
+        node.setBalanceResponse(raw);
+        await assert.rejects(client.getBalance(account.getAddress()), BalanceUnavailableError);
+    }
+    node.setBalance(MAX_UINT256);
+    assert.equal(await client.getBalance(account.getAddress()), MAX_UINT256);
+    node.setBalance(0n);
+    assert.equal(await client.getBalance(account.getAddress()), 0n);
+});

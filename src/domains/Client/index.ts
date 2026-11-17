@@ -24,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
+import { PhloPrice } from "@domains/Deploy";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -114,6 +115,8 @@ export interface IDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
+    phloPrice?: PhloPrice;
+    shardId?: string;
 }
 
 export interface ISignDeployRequest {
@@ -121,7 +124,7 @@ export interface ISignDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice;
     shardId?: string;
 }
 
@@ -1081,7 +1084,14 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public deploy(
-        { walletId, accountId, term, phloLimit }: IDeployRequest,
+        {
+            walletId,
+            accountId,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1107,7 +1117,7 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.deploy(
                     wallet,
                     accountId,
-                    { term, phloLimit },
+                    { term, phloLimit, phloPrice, shardId },
                     passwordProvider,
                 );
             },
@@ -1189,6 +1199,10 @@ export default class Client extends ClosableDomain {
 
     public toExactAtomicAmount(amount: string): bigint {
         return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
+    }
+
+    public getTransferGasReserve(): bigint {
+        return ReservationAdapter.getTransferGasReserve();
     }
 
     private getOpenWallet(walletId: string): Wallet {
