@@ -4,9 +4,14 @@ import {
     ApiRequestError,
     ApiSource,
     DeployTimeoutError,
+    DeployVerdictError,
     UnknownErrorReason,
 } from "@domains/CustomError";
-import { getErrorMessage, isErrorWithMessage } from "@utils/index";
+import {
+    getErrorMessage,
+    isDeployVerdictStatus,
+    isErrorWithMessage,
+} from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -17,6 +22,7 @@ export interface IDeployWatchCallbacks {
     onConfirmed?: (result: IDeployConfirmedResult) => void;
     onError?: (error: Error) => void;
     onStatus?: (status: IDeployStatusResult, deployId: string) => void;
+    onVerdict?: (error: DeployVerdictError) => void;
 }
 
 export interface IDeployWatchOptions {
@@ -75,13 +81,14 @@ export default class DeployStatusPoller extends ApiWorker {
             resolveDone(result);
         };
 
-        const fail = (error: Error): void => {
+        const fail = (error: Error, notifyCause?: () => void): void => {
             if (finished) {
                 return;
             }
 
             stop();
 
+            notifyCause?.();
             callbacks.onError?.(error);
 
             rejectDone(error);
@@ -106,6 +113,18 @@ export default class DeployStatusPoller extends ApiWorker {
 
                 if (status.status === DeployStatus.FINALIZED) {
                     succeed({ deployId });
+
+                    return;
+                }
+
+                if (isDeployVerdictStatus(status.status)) {
+                    const verdict: DeployVerdictError = new DeployVerdictError(
+                        deployId,
+                        status.status,
+                        "detail" in status ? status.detail : undefined,
+                    );
+
+                    fail(verdict, () => callbacks.onVerdict?.(verdict));
 
                     return;
                 }

@@ -1,6 +1,7 @@
 import http from "node:http";
 import { AddressInfo } from "node:net";
 
+import { DeployAdmissionCode, DeployVerdictStatus } from "@domains/Deploy";
 import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { SignedResult } from "@services/Signer";
@@ -11,6 +12,9 @@ const LATEST_BLOCK_NUMBER: number = 100;
 
 export type TSubmitOutcome =
     | { kind: "accepted" }
+    | { kind: "admission"; code: DeployAdmissionCode }
+    | { kind: "queueFull"; retryAfterSecs: number; message: string }
+    | { kind: "duplicate" }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }
     | { kind: "dropped" };
@@ -43,10 +47,17 @@ export const createHeldStep = (): IHeldStep => {
     };
 };
 
+export interface IFinalizationStatus {
+    state: "Pending" | "Finalized" | DeployVerdictStatus;
+    queue_state?: string;
+    detail?: string | null;
+}
+
 export interface IFakeNode {
     networksConfig: TNetworksConfig;
     setBalance: (amount: bigint) => void;
     setSubmitOutcome: (outcome: TSubmitOutcome) => void;
+    setFinalizationStatus: (status: IFinalizationStatus) => void;
     onBeforeSubmitResponse: (listener: () => Promise<void>) => void;
     holdSubmitResponse: () => IHeldStep;
     getSubmittedDeploys: () => SignedResult[];
@@ -76,6 +87,7 @@ export const sendJson = (
 export const startFakeNode = async (): Promise<IFakeNode> => {
     let balance: bigint = 0n;
     let submitOutcome: TSubmitOutcome = { kind: "accepted" };
+    let finalizationStatus: IFinalizationStatus = { state: "Pending" };
     let beforeSubmitResponse: (() => Promise<void>) | null = null;
 
     const submittedDeploys: SignedResult[] = [];
@@ -106,6 +118,45 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
             return;
         }
 
+        if (submitOutcome.kind === "queueFull") {
+            response.writeHead(503, {
+                "content-type": "application/json",
+                "retry-after": String(submitOutcome.retryAfterSecs),
+            });
+            response.end(
+                JSON.stringify({
+                    error: "deploy_queue_full",
+                    message: submitOutcome.message,
+                }),
+            );
+
+            return;
+        }
+
+        if (submitOutcome.kind === "duplicate") {
+            response.writeHead(409, { "content-type": "application/json" });
+            response.end(
+                JSON.stringify({
+                    error: "duplicate_deploy",
+                    message: `Deploy already known: ${deploy.signature}`,
+                }),
+            );
+
+            return;
+        }
+
+        if (submitOutcome.kind === "admission") {
+            response.writeHead(503, { "content-type": "application/json" });
+            response.end(
+                JSON.stringify({
+                    error: submitOutcome.code,
+                    message: "deploy not accepted",
+                }),
+            );
+
+            return;
+        }
+
         response.writeHead(submitOutcome.status, {
             "content-type": "text/plain",
         });
@@ -117,6 +168,16 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
         response: http.ServerResponse,
     ): Promise<void> => {
         const url: string = request.url ?? "";
+
+        if (url.startsWith("/api/deploy-finalization-status/")) {
+            sendJson(response, {
+                rejection_count: 0,
+                latest_block_hash: null,
+                ...finalizationStatus,
+            });
+
+            return;
+        }
 
         if (url.startsWith("/api/deploy/")) {
             response.writeHead(404, { "content-type": "text/plain" });
@@ -185,6 +246,9 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
         },
         setSubmitOutcome: (outcome: TSubmitOutcome) => {
             submitOutcome = outcome;
+        },
+        setFinalizationStatus: (status: IFinalizationStatus) => {
+            finalizationStatus = status;
         },
         onBeforeSubmitResponse: (listener: () => Promise<void>) => {
             beforeSubmitResponse = listener;

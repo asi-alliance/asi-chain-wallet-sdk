@@ -31,6 +31,7 @@ import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
+    DeployVerdictError,
     DomainClosedError,
     IErrorContext,
     ReservationAction,
@@ -83,6 +84,17 @@ export default class ReservationAdapter {
                     void ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onExpired?.(reservation);
+                },
+                onReleased: (
+                    reservation: ITransactionReservation,
+                    verdict: DeployVerdictError,
+                ) => {
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
+
+                    reservationsManagerOptions.onReleased?.(
+                        reservation,
+                        verdict,
+                    );
                 },
             },
         );
