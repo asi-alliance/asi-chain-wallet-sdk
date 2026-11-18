@@ -13,6 +13,7 @@ export interface IBlockDto {
 export type TBlocksView = "summary" | "full";
 
 export interface IGetBlocksParams {
+    depth?: number;
     start?: number;
     end?: number;
     view?: TBlocksView;
@@ -30,9 +31,10 @@ export default class ObserverClient extends BaseHttpClient {
     // TODO(next-major): type the response for both node API profiles; the
     // Rust node returns the block number in blockInfo.blockNumber.
     public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
-        const { start, end, view } = params;
+        const { depth, start, end, view } = params;
+        const basePath = depth === undefined ? "api/blocks" : `api/blocks/${depth}`;
 
-        const path: string = buildUrl("api/blocks", {
+        const path: string = buildUrl(basePath, {
             path: {
                 start,
                 end,
