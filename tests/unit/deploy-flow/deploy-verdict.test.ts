@@ -97,9 +97,9 @@ const pollerFor = (statuses: IDeployStatusResult[]): DeployStatusPoller => {
 };
 
 for (const [status, state, code] of [
-    [DeployStatus.REJECTED, "Rejected", CustomErrorCode.DEPLOY_REJECTED],
-    [DeployStatus.EXPIRED, "Expired", CustomErrorCode.DEPLOY_EXPIRED],
-    [DeployStatus.FAILED, "Failed", CustomErrorCode.DEPLOY_EXECUTION_FAILED],
+    [DeployStatus.REJECTED, "Rejected", CustomErrorCode.DEPLOY_VERDICT_REJECTED],
+    [DeployStatus.EXPIRED, "Expired", CustomErrorCode.DEPLOY_VERDICT_EXPIRED],
+    [DeployStatus.FAILED, "Failed", CustomErrorCode.DEPLOY_VERDICT_FAILED],
 ] as const) {
     test(`the poller ends a watch at once on the verdict ${state}`, async () => {
         const poller = pollerFor([{ status: DeployStatus.DEPLOYING }, { status, detail: "kind: why" }]);
