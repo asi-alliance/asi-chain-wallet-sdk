@@ -85,19 +85,16 @@ export default class ReservationAdapter {
 
                     reservationsManagerOptions.onExpired?.(reservation);
                 },
-                onFailed: (
+                onReleased: (
                     reservation: ITransactionReservation,
-                    error: Error,
+                    verdict: DeployVerdictError,
                 ) => {
-                    // The manager already released a terminal verdict's
-                    // reservation from memory; release its stored copy too.
-                    if (error instanceof DeployVerdictError) {
-                        void ReservationAdapter.releaseFromStorage(
-                            reservation.id,
-                        );
-                    }
+                    void ReservationAdapter.releaseFromStorage(reservation.id);
 
-                    reservationsManagerOptions.onFailed?.(reservation, error);
+                    reservationsManagerOptions.onReleased?.(
+                        reservation,
+                        verdict,
+                    );
                 },
             },
         );

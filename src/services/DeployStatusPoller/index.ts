@@ -22,6 +22,7 @@ export interface IDeployWatchCallbacks {
     onConfirmed?: (result: IDeployConfirmedResult) => void;
     onError?: (error: Error) => void;
     onStatus?: (status: IDeployStatusResult, deployId: string) => void;
+    onVerdict?: (error: DeployVerdictError) => void;
 }
 
 export interface IDeployWatchOptions {
@@ -80,13 +81,14 @@ export default class DeployStatusPoller extends ApiWorker {
             resolveDone(result);
         };
 
-        const fail = (error: Error): void => {
+        const fail = (error: Error, notifyCause?: () => void): void => {
             if (finished) {
                 return;
             }
 
             stop();
 
+            notifyCause?.();
             callbacks.onError?.(error);
 
             rejectDone(error);
@@ -116,13 +118,13 @@ export default class DeployStatusPoller extends ApiWorker {
                 }
 
                 if (isDeployVerdictStatus(status.status)) {
-                    fail(
-                        new DeployVerdictError(
-                            deployId,
-                            status.status,
-                            "detail" in status ? status.detail : undefined,
-                        ),
+                    const verdict: DeployVerdictError = new DeployVerdictError(
+                        deployId,
+                        status.status,
+                        "detail" in status ? status.detail : undefined,
                     );
+
+                    fail(verdict, () => callbacks.onVerdict?.(verdict));
 
                     return;
                 }
