@@ -20,6 +20,7 @@ import { TCreateTransactionReservationPayload } from "@fabrics/transactionReserv
 import AccountDataService from "@services/AccountDataService";
 import { SignedResult } from "@services/Signer";
 import StorageManager from "@services/StorageManager";
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { IPrecisionNode, startPrecisionNode } from "./precisionNode";
 
 interface IFundedWallet {
@@ -181,10 +182,15 @@ test("wide transfer term, available balance and pending history retain every ato
 
     const submittedDeploys: SignedResult[] =
         native18Node.getSubmittedDeploys();
-    const submittedTerm: string =
-        submittedDeploys[submittedDeploys.length - 1].data.term;
+    const submitted: SignedResult =
+        submittedDeploys[submittedDeploys.length - 1];
 
-    assert.ok(submittedTerm.includes("10000000000000000001n"));
+    console.log("    Submitted phlo price:", submitted.data.phloPrice);
+
+    assert.ok(submitted.data.term.includes("10000000000000000001n"));
+    assert.equal(submitted.data.phloPrice, String(DEFAULT_PHLO_PRICE));
+    assert.equal(submitted.data.phloLimit, DEFAULT_PHLO_LIMIT);
+    assert.equal("nodeApiProfile" in submitted, false);
 
     const availableBalance: bigint = await client.getAvailableBalance(
         request.walletId,

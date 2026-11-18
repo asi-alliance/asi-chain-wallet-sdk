@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { getNativeAsset } from "@domains/Asset";
 import Client from "@domains/Client";
 import ReservationAdapter from "@domains/ReservationAdapter";
@@ -33,32 +32,6 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => { await client.close(); });
 test.after(async () => { await node.close(); });
-
-test("wide transfer amount survives signing, HTTP, reservations, reopening and pending history", async () => {
-    const { wallet, account, request } = await funded();
-    const amount = 10000000000000000001n;
-    const gasReserve = client.getTransferGasReserve();
-    const sent = await client.transfer({ ...request, to: account.getAddress(), amount });
-    const submittedDeploys = node.getSubmittedDeploys();
-    const submitted = submittedDeploys[submittedDeploys.length - 1];
-    assert.equal(submitted.data.phloPrice, String(DEFAULT_PHLO_PRICE));
-    assert.equal(submitted.data.phloLimit, DEFAULT_PHLO_LIMIT);
-    assert.equal(gasReserve, BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE));
-    assert.equal("nodeApiProfile" in submitted, false);
-    assert.ok(submitted.data.term.includes("10000000000000000001n"));
-    assert.equal(await client.getAvailableBalance(request.walletId, request.accountId), 100000000000000000000n - amount - gasReserve);
-    const reservation = (await client.getReservations(wallet.getId()))[0];
-    assert.equal(reservation.pendingAmount, (amount + gasReserve).toString());
-    assert.equal(reservation.details.gasCost, client.toDisplayAmount(gasReserve));
-    const signerId = wallet.getSigner().getId();
-    await client.close(); client = await create();
-    const restored = await client.openWallet(signerId, PASSWORD);
-    const history = await client.getTransactionsHistory(restored.getId(), account.getId(), { sources: ["pending"] });
-    const transaction = history.find(tx => tx.deployId === sent.deployId)!;
-    assert.equal(transaction.amount, "10.000000000000000001");
-    assert.equal(transaction.gasCost, client.toDisplayAmount(gasReserve));
-    assert.equal(transaction.nativeTokenDecimals, 18);
-});
 
 test("deploy reserves exact wide fees and overflow never reaches HTTP or storage", async () => {
     const { request } = await funded();
