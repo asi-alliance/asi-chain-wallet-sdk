@@ -127,7 +127,7 @@ export default class DeployService {
 
     public async submitSignedDeploy(
         signedDeploy: SignedResult,
-    ): Promise<string | undefined> {
+    ): Promise<string> {
         let result: unknown;
 
         try {

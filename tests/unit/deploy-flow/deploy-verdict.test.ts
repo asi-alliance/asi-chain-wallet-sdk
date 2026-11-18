@@ -47,7 +47,7 @@ for (const [state, status] of [
     ["Expired", DeployStatus.EXPIRED],
     ["Failed", DeployStatus.FAILED],
 ] as const) {
-    test(`a Rust validator verdict ${state} is reported before the observer is asked`, async () => {
+    test(`a Rust validator verdict ${state} takes precedence over the observer status`, async () => {
         const calls: IStatusCalls = { validator: [], observer: [] };
         const api = adapter(
             NodeApiProfile.RUST,
@@ -56,7 +56,7 @@ for (const [state, status] of [
             calls,
         );
         assert.deepEqual(await api.getDeployStatus("sig"), { status, detail: "kind: why" });
-        assert.deepEqual(calls, { validator: ["sig"], observer: [] });
+        assert.deepEqual(calls, { validator: ["sig"], observer: ["sig"] });
     });
 }
 
