@@ -70,10 +70,15 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
     public async getDeployStatus(
         deployHash: string,
     ): Promise<IDeployStatusResult> {
-        const verdict: IDeployStatusResult | undefined =
-            await this.getDeployVerdict(deployHash);
+        const [verdict, observedStatus]: [
+            IDeployStatusResult | undefined,
+            IDeployStatusResult,
+        ] = await Promise.all([
+            this.getDeployVerdict(deployHash),
+            super.getDeployStatus(deployHash),
+        ]);
 
-        return verdict ?? super.getDeployStatus(deployHash);
+        return verdict ?? observedStatus;
     }
 
     /**
