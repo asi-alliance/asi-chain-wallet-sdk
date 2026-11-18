@@ -31,10 +31,13 @@ import CryptoService, { EncryptedData } from "@services/Crypto";
 import KeyFingerprintService from "@services/KeyFingerprint";
 import {
     AccountBusyError,
+    AccountHideRejectedError,
+    AccountHideRejectionReason,
     LastAccountRemovalError,
     UnknownAccountError,
 } from "@domains/CustomError";
 import ImportKeyfileService from "@services/ImportKeyfileService";
+import { isPrivateKeySecretData } from "@utils/guards";
 
 type AddressBrand = { readonly __brand: unique symbol };
 export type Address = `1111${string & AddressBrand}`;
@@ -44,6 +47,7 @@ export interface IWalletOptions {
     type: WalletTypes;
     signer: Signer;
     accounts: Map<string, Account>;
+    rootIndex?: number;
 }
 
 export type TCreateHDPathWalletOptions =
@@ -75,14 +79,30 @@ export default class Wallet {
     private readonly type: WalletTypes;
     private readonly signer: Signer;
     private readonly accountManager: AccountManager;
+    private readonly rootIndex: number | null;
     private readonly accountOperationsGuard: ConcurrentOperationGuardService<string> =
         new ConcurrentOperationGuardService();
 
-    private constructor({ id, type, signer, accounts }: IWalletOptions) {
+    private constructor({
+        id,
+        type,
+        signer,
+        accounts,
+        rootIndex,
+    }: IWalletOptions) {
         this.id = id ?? generateRandomId();
         this.type = type;
         this.signer = signer;
         this.accountManager = new AccountManager(accounts);
+        this.rootIndex = rootIndex ?? null;
+    }
+
+    private static getRootIndex(secret: TDecryptedSecret): number | undefined {
+        if (isPrivateKeySecretData(secret)) {
+            return undefined;
+        }
+
+        return secret.rootHDPath.getIndex();
     }
 
     public getId(): string {
@@ -126,6 +146,10 @@ export default class Wallet {
         return this.accountManager.getAccountsMap();
     }
 
+    public getHiddenAccounts(): Account[] {
+        return this.accountManager.getHiddenAccounts();
+    }
+
     public getAccount(id: string): Account {
         const account: Account | null = this.accountManager.getAccount(id);
 
@@ -157,7 +181,8 @@ export default class Wallet {
     private getDerivationIndex(initialHDPath: Bip44Path): number | null {
         const initialAccountIndex = initialHDPath.getIndex();
 
-        const indexes = this.getAccounts()
+        const indexes = this.accountManager
+            .getAllAccounts()
             .map((account: Account) => account.getIndex())
             .filter((index: number | null): index is number => index !== null);
 
@@ -207,14 +232,56 @@ export default class Wallet {
         this.accountManager.addAccounts(accounts);
     }
 
+    /** @deprecated Use {@link Wallet.hideAccount} instead. */
     @OnlyHDWallet
     @EnsureAccountIsIdle
     public removeAccount(id: string): Account {
+        const account: Account = this.getAccount(id);
+
         if (this.getAccounts().length === 1) {
             throw new LastAccountRemovalError(this.id, id);
         }
 
-        return this.accountManager.remove(id);
+        return this.accountManager.remove(account.getId());
+    }
+
+    @OnlyHDWallet
+    @EnsureAccountIsIdle
+    public hideAccount(id: string): Account {
+        const account: Account = this.getAccount(id);
+
+        if (account.getIndex() === this.rootIndex) {
+            throw new AccountHideRejectedError(
+                this.id,
+                id,
+                AccountHideRejectionReason.ROOT_ACCOUNT,
+            );
+        }
+
+        if (this.getAccounts().length === 1) {
+            throw new AccountHideRejectedError(
+                this.id,
+                id,
+                AccountHideRejectionReason.LAST_VISIBLE_ACCOUNT,
+            );
+        }
+
+        account.setHidden(true);
+
+        return account;
+    }
+
+    @OnlyHDWallet
+    public unhideAccount(id: string): Account {
+        const account: Account | null = this.accountManager.getHiddenAccount(id);
+
+        if (!account) {
+            throw new UnknownAccountError(this.id, id);
+        }
+
+        account.setHidden(false);
+
+        return account;
     }
 
     public updateAccount(id: string, payload: TEditableAccountOptions): void {
@@ -254,6 +321,8 @@ export default class Wallet {
         const rootHDPath = await KeysManager.getInitialHDPathFromOptions(
             options.pathOptions,
         );
+
+        const rootIndex: number = rootHDPath.getIndex();
 
         const secretProviderFromSigner: SecretsProvider = new SecretsProvider(
             () => {
@@ -297,6 +366,7 @@ export default class Wallet {
             type: WalletTypes.HD,
             signer,
             accounts,
+            rootIndex,
         });
     }
 
@@ -320,6 +390,8 @@ export default class Wallet {
             () => secret,
         );
 
+        const rootIndex: number | undefined = Wallet.getRootIndex(secret);
+
         const accountsMap: Map<string, Account> = new Map();
 
         for (const accountOptions of accounts) {
@@ -335,6 +407,7 @@ export default class Wallet {
             type: walletType,
             signer,
             accounts: accountsMap,
+            rootIndex,
         });
     }
 
@@ -359,6 +432,8 @@ export default class Wallet {
 
         const secretProvider = new SecretsProvider(() => secretData);
 
+        const rootIndex: number | undefined = Wallet.getRootIndex(secretData);
+
         const accountsMap: Map<string, Account> = new Map();
 
         for (const record of accountRecords) {
@@ -371,6 +446,10 @@ export default class Wallet {
                 secretProvider,
             );
 
+            if (record.hidden) {
+                account.setHidden(true);
+            }
+
             accountsMap.set(account.getId(), account);
         }
 
@@ -378,6 +457,7 @@ export default class Wallet {
             type: signerRecord.type,
             signer,
             accounts: accountsMap,
+            rootIndex,
         });
     }
 

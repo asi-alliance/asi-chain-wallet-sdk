@@ -8,12 +8,15 @@ import KeysManager from "@services/KeysManager";
 import Wallet from "@domains/Wallet";
 import Bip44Path from "@domains/Bip44Path";
 import { ISignerRecord, WalletTypes } from "@domains/Signer";
-import { IAccountRecord } from "@domains/Account";
+import Account, { IAccountRecord } from "@domains/Account";
 import CryptoService from "@services/Crypto";
 import {
+    AccountHideRejectedError,
+    AccountHideRejectionReason,
     CustomErrorCode,
     HDWalletOnlyOperationError,
     LastAccountRemovalError,
+    UnknownAccountError,
 } from "@domains/CustomError";
 import MnemonicService from "@services/Mnemonic";
 
@@ -63,6 +66,41 @@ const createAccountRecords = (wallet: Wallet): IAccountRecord[] =>
         name: account.getName(),
         index: account.getIndex(),
     }));
+
+const getIndexes = (accounts: Account[]): (number | null)[] =>
+    accounts.map((account: Account) => account.getIndex());
+
+const createHDWallet = (index: number = 0): Promise<Wallet> =>
+    Wallet.createHD(
+        {
+            accountOptions,
+            pathOptions: {
+                index,
+            },
+        },
+        hdSecretProvider,
+    );
+
+const assertHideRejected = (
+    wallet: Wallet,
+    accountId: string,
+    reason: AccountHideRejectionReason,
+): void => {
+    assert.throws(
+        () => wallet.hideAccount(accountId),
+        (error: unknown) => {
+            assert.ok(error instanceof AccountHideRejectedError);
+            assert.equal(error.code, CustomErrorCode.ACCOUNT_HIDE_REJECTED);
+            assert.equal(error.reason, reason);
+            assert.equal(error.walletId, wallet.getId());
+            assert.equal(error.accountId, accountId);
+
+            console.log("Account hide rejected:", error.message);
+
+            return true;
+        },
+    );
+};
 
 const PAYLOAD =
     "0102030405060708091011121314151617181920212223242526272829303132";
@@ -129,6 +167,29 @@ test("PK wallet should reject account removal", async () => {
 
     assert.equal(wallet.getAccounts().length, 1);
     assert.equal(wallet.getAccounts()[0].getId(), accountId);
+});
+
+test("PK wallet should reject hiding and unhiding accounts", async () => {
+    const { provider } = createPkProvider(PASSWORD);
+
+    const wallet = await Wallet.createPk(accountOptions, provider);
+
+    const accountId = wallet.getAccounts()[0].getId();
+
+    for (const operation of ["hideAccount", "unhideAccount"] as const) {
+        assert.throws(
+            () => wallet[operation](accountId),
+            (error: unknown) => {
+                assert.ok(error instanceof HDWalletOnlyOperationError);
+                assert.equal(error.operation, operation);
+
+                return true;
+            },
+        );
+    }
+
+    assert.equal(wallet.getAccounts().length, 1);
+    assert.deepEqual(wallet.getHiddenAccounts(), []);
 });
 
 test("should sign payload with PK wallet signer", async () => {
@@ -513,4 +574,182 @@ test("HD wallet should update, remove account and reuse freed derivation index",
     console.log("\nFinal indexes:", finalIndexes);
 
     assert.deepEqual(finalIndexes, [0, 1, 2, 3]);
+});
+
+test("HD wallet should hide and unhide accounts and keep the hidden index reserved", async () => {
+    const wallet = await createHDWallet();
+
+    await wallet.deriveAccount({ name: "Account 1" }, passwordProvider);
+
+    const { account: hiddenAccount } = await wallet.deriveAccount(
+        { name: "Account 2" },
+        passwordProvider,
+    );
+
+    await wallet.deriveAccount({ name: "Account 3" }, passwordProvider);
+
+    const hiddenAccountId = hiddenAccount.getId();
+
+    assert.equal(wallet.hideAccount(hiddenAccountId), hiddenAccount);
+
+    console.log("\n[HD Account Hide]");
+    console.log("Visible indexes:", getIndexes(wallet.getAccounts()));
+    console.log("Hidden indexes:", getIndexes(wallet.getHiddenAccounts()));
+
+    assert.equal(hiddenAccount.isHidden(), true);
+    assert.deepEqual(getIndexes(wallet.getAccounts()), [0, 1, 3]);
+    assert.deepEqual(getIndexes(wallet.getHiddenAccounts()), [2]);
+    assert.equal(wallet.getAccountsMap().has(hiddenAccountId), false);
+
+    const { account: derivedAfterHide } = await wallet.deriveAccount(
+        { name: "Account 4" },
+        passwordProvider,
+    );
+
+    console.log("Derived after hide:", derivedAfterHide.getIndex());
+
+    assert.equal(derivedAfterHide.getIndex(), 4);
+    assert.notEqual(derivedAfterHide.getAddress(), hiddenAccount.getAddress());
+
+    assert.equal(wallet.unhideAccount(hiddenAccountId), hiddenAccount);
+
+    assert.equal(hiddenAccount.isHidden(), false);
+    assert.deepEqual(getIndexes(wallet.getAccounts()), [0, 1, 2, 3, 4]);
+    assert.deepEqual(wallet.getHiddenAccounts(), []);
+    assert.equal(wallet.getAccount(hiddenAccountId), hiddenAccount);
+});
+
+test("HD wallet should treat a hidden account as removed for account operations", async () => {
+    const wallet = await createHDWallet();
+
+    await wallet.deriveAccount({ name: "Account 1" }, passwordProvider);
+
+    const { account } = await wallet.deriveAccount(
+        { name: "Account 2" },
+        passwordProvider,
+    );
+
+    const accountId = account.getId();
+
+    wallet.hideAccount(accountId);
+
+    const assertUnknownAccount = (operation: () => unknown): void => {
+        assert.throws(operation, (error: unknown) => {
+            assert.ok(error instanceof UnknownAccountError);
+            assert.equal(error.code, CustomErrorCode.UNKNOWN_ACCOUNT);
+            assert.equal(error.walletId, wallet.getId());
+            assert.equal(error.accountId, accountId);
+
+            return true;
+        });
+    };
+
+    assertUnknownAccount(() => wallet.getAccount(accountId));
+    assertUnknownAccount(() => wallet.hideAccount(accountId));
+    assertUnknownAccount(() => wallet.removeAccount(accountId));
+
+    await assert.rejects(
+        () => wallet.runAccountOperation(accountId, async () => undefined),
+        UnknownAccountError,
+    );
+
+    wallet.updateAccount(accountId, { name: "Renamed hidden account" });
+
+    assert.equal(account.getName(), "Account 2");
+    assert.deepEqual(getIndexes(wallet.getHiddenAccounts()), [2]);
+
+    wallet.unhideAccount(accountId);
+
+    assertUnknownAccount(() => wallet.unhideAccount(accountId));
+
+    assert.deepEqual(getIndexes(wallet.getAccounts()), [0, 1, 2]);
+});
+
+test("HD wallet should reject hiding the root account and the last visible account", async () => {
+    const wallet = await createHDWallet(5);
+
+    const [rootAccount] = wallet.getAccounts();
+
+    console.log("\n[HD Account Hide Rejection]");
+
+    assertHideRejected(
+        wallet,
+        rootAccount.getId(),
+        AccountHideRejectionReason.ROOT_ACCOUNT,
+    );
+
+    const { account } = await wallet.deriveAccount(
+        { name: "Account 6" },
+        passwordProvider,
+    );
+
+    assertHideRejected(
+        wallet,
+        rootAccount.getId(),
+        AccountHideRejectionReason.ROOT_ACCOUNT,
+    );
+
+    wallet.removeAccount(rootAccount.getId());
+
+    assertHideRejected(
+        wallet,
+        account.getId(),
+        AccountHideRejectionReason.LAST_VISIBLE_ACCOUNT,
+    );
+
+    assert.deepEqual(getIndexes(wallet.getAccounts()), [6]);
+    assert.deepEqual(wallet.getHiddenAccounts(), []);
+});
+
+test("should restore hidden HD accounts and keep the root index", async () => {
+    const original = await createHDWallet();
+
+    await original.deriveAccount({ name: "Account 1" }, passwordProvider);
+    await original.deriveAccount({ name: "Account 2" }, passwordProvider);
+
+    const [rootAccount, hiddenAccount, lastAccount] = original.getAccounts();
+
+    original.hideAccount(hiddenAccount.getId());
+
+    const accountRecords: IAccountRecord[] = [
+        rootAccount,
+        hiddenAccount,
+        lastAccount,
+    ].map((account: Account) => ({
+        id: account.getId(),
+        signerId: "signer-id",
+        name: account.getName(),
+        index: account.getIndex(),
+        hidden: account.isHidden(),
+    }));
+
+    const restored = await Wallet.restore(
+        {
+            signerRecord: createSignerRecord(original),
+            accountRecords,
+        },
+        passwordProvider,
+    );
+
+    console.log("\n[HD Hidden Account Restore]");
+    console.log("Visible indexes:", getIndexes(restored.getAccounts()));
+    console.log("Hidden indexes:", getIndexes(restored.getHiddenAccounts()));
+
+    assert.deepEqual(getIndexes(restored.getAccounts()), [0, 2]);
+    assert.deepEqual(getIndexes(restored.getHiddenAccounts()), [1]);
+    assert.equal(
+        restored.getHiddenAccounts()[0].getAddress(),
+        hiddenAccount.getAddress(),
+    );
+
+    assertHideRejected(
+        restored,
+        rootAccount.getId(),
+        AccountHideRejectionReason.ROOT_ACCOUNT,
+    );
+
+    restored.hideAccount(lastAccount.getId());
+
+    assert.deepEqual(getIndexes(restored.getAccounts()), [0]);
+    assert.deepEqual(getIndexes(restored.getHiddenAccounts()), [1, 2]);
 });

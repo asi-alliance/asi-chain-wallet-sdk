@@ -44,6 +44,7 @@ export interface IAccountRecord {
     signerId: string;
     name: string;
     index: number | null;
+    hidden?: boolean;
 }
 
 class Account {
@@ -53,6 +54,7 @@ class Account {
     private readonly publicKey: Uint8Array;
     private readonly fingerprint: string;
     private name: string;
+    private hidden: boolean = false;
     private assets: Assets;
     private primaryAsset: Asset;
 
@@ -86,6 +88,14 @@ class Account {
 
     public getIndex(): number | null {
         return this.index;
+    }
+
+    public isHidden(): boolean {
+        return this.hidden;
+    }
+
+    public setHidden(hidden: boolean): void {
+        this.hidden = hidden;
     }
 
     public listAssets(): Asset[] {

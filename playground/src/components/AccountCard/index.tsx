@@ -24,7 +24,7 @@ export interface IAccountCardProps {
     walletId: string;
     account: Account;
     onRename: () => void;
-    onRemove?: () => void;
+    onHide?: () => void;
 }
 
 const getBalanceLabel = (
@@ -49,7 +49,7 @@ const AccountCard = ({
     walletId,
     account,
     onRename,
-    onRemove,
+    onHide,
 }: IAccountCardProps): ReactElement => {
     const { setModalState, withLoader } = useAppContext();
     const runSecureAction = useSecureAction();
@@ -220,13 +220,13 @@ const AccountCard = ({
                     >
                         Export
                     </button>
-                    {onRemove && (
+                    {onHide && (
                         <button
                             className="account-card-button account-card-button--danger"
                             type="button"
-                            onClick={onRemove}
+                            onClick={onHide}
                         >
-                            Remove
+                            Hide
                         </button>
                     )}
                 </div>
