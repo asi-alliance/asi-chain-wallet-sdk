@@ -13,6 +13,16 @@ import {
 } from "@domains/Transaction";
 import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
+import {
+    DEPLOY_ADMISSION_CODES,
+    DEPLOY_QUEUE_REFUSAL_CODES,
+    DEPLOY_REJECTION_CODES,
+    DEPLOY_VERDICT_STATUSES,
+    DeployAdmissionCode,
+    DeployQueueRefusalCode,
+    DeployRejectionCode,
+    DeployVerdictStatus,
+} from "@domains/Deploy";
 import MnemonicService from "@services/Mnemonic";
 import { toUint8Array } from "@utils/codec";
 import { CANONICAL_INTEGER_REGEX, MAX_UINT256 } from "@utils/constants";
@@ -46,6 +56,30 @@ export const isPrivateKeySecretData = (
 
 export const isNodeApiProfile = (value: unknown): value is NodeApiProfile => {
     return isValueInConst(value, NODE_API_PROFILES);
+};
+
+export const isDeployAdmissionCode = (
+    value: unknown,
+): value is DeployAdmissionCode => {
+    return isValueInConst(value, DEPLOY_ADMISSION_CODES);
+};
+
+export const isDeployRejectionCode = (
+    value: unknown,
+): value is DeployRejectionCode => {
+    return isValueInConst(value, DEPLOY_REJECTION_CODES);
+};
+
+export const isDeployQueueRefusalCode = (
+    value: unknown,
+): value is DeployQueueRefusalCode => {
+    return isValueInConst(value, DEPLOY_QUEUE_REFUSAL_CODES);
+};
+
+export const isDeployVerdictStatus = (
+    value: unknown,
+): value is DeployVerdictStatus => {
+    return isValueInConst(value, DEPLOY_VERDICT_STATUSES);
 };
 
 export const isNativeTokenDecimals = (value: unknown): value is number => {

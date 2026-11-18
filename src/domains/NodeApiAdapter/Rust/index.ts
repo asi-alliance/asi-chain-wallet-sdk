@@ -1,13 +1,11 @@
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import { MAX_UINT256 } from "@utils/constants";
-import { isRecord } from "@utils/guards";
+import { isDeployVerdictStatus, isRecord } from "@utils/guards";
 import { ensureValid, validateBlockNumber } from "@utils/validators";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import {
     DeployData,
-    DeployStatus,
-    DeployVerdictStatus,
     IDeployInfo,
     IDeployStatusResult,
 } from "@domains/Deploy";
@@ -30,12 +28,6 @@ interface IRustDeployInfo extends IDeployInfo {
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
     view: "summary",
-};
-
-const VERDICT_STATUSES: Readonly<Record<string, DeployVerdictStatus>> = {
-    Rejected: DeployStatus.REJECTED,
-    Expired: DeployStatus.EXPIRED,
-    Failed: DeployStatus.FAILED,
 };
 
 export default class RustNodeApiAdapter extends NodeApiAdapter {
@@ -103,24 +95,13 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
             return undefined;
         }
 
-        if (!isRecord(answer) || typeof answer.state !== "string") {
-            return undefined;
-        }
-
-        const status: DeployVerdictStatus | undefined = Object.prototype.hasOwnProperty.call(
-            VERDICT_STATUSES,
-            answer.state,
-        )
-            ? VERDICT_STATUSES[answer.state]
-            : undefined;
-
-        if (!status) {
+        if (!isRecord(answer) || !isDeployVerdictStatus(answer.state)) {
             return undefined;
         }
 
         return typeof answer.detail === "string" && answer.detail
-            ? { status, detail: answer.detail }
-            : { status };
+            ? { status: answer.state, detail: answer.detail }
+            : { status: answer.state };
     }
 
     public async getLatestBlockNumber(): Promise<number> {

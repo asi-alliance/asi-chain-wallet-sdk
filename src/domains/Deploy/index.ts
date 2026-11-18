@@ -19,18 +19,52 @@ export enum DeployStatus {
     INCLUDED_IN_BLOCK = "IncludedInBlock",
     FINALIZED = "Finalized",
     CHECK_ERROR = "CheckingError",
-    /** The node refused the deploy when its deploy queue released it; it never executed. */
     REJECTED = "Rejected",
-    /** The deploy's validity window closed without it landing; it never executed. */
     EXPIRED = "Expired",
-    /** The deploy executed and failed; its effects, such as a transfer, did not apply. */
     FAILED = "Failed",
 }
 
-export type DeployVerdictStatus =
-    | DeployStatus.REJECTED
-    | DeployStatus.EXPIRED
-    | DeployStatus.FAILED;
+export const DEPLOY_VERDICT_STATUSES = [
+    DeployStatus.REJECTED,
+    DeployStatus.EXPIRED,
+    DeployStatus.FAILED,
+] as const;
+
+export type DeployVerdictStatus = (typeof DEPLOY_VERDICT_STATUSES)[number];
+
+export const DEPLOY_ADMISSION_CODES = [
+    "deploy_pool_busy",
+    "deploy_admission_busy",
+] as const;
+
+export type DeployAdmissionCode = (typeof DEPLOY_ADMISSION_CODES)[number];
+
+export const DEPLOY_REJECTION_CODES = [
+    "deploy_too_large",
+    "deploy_expired",
+    "invalid_deploy_window",
+] as const;
+
+export type DeployRejectionCode = (typeof DEPLOY_REJECTION_CODES)[number];
+
+export const DEPLOY_REJECTION_STATUSES: Readonly<
+    Record<DeployRejectionCode, number>
+> = {
+    deploy_too_large: 413,
+    deploy_expired: 400,
+    invalid_deploy_window: 400,
+};
+
+export const DEPLOY_QUEUE_REFUSAL_CODES = [
+    "deploy_queue_full",
+    "node_unavailable",
+    "deploy_queue_stopped",
+] as const;
+
+export type DeployQueueRefusalCode =
+    (typeof DEPLOY_QUEUE_REFUSAL_CODES)[number];
+
+export const DUPLICATE_DEPLOY_CODE: string = "duplicate_deploy";
 
 export type IDeployStatusResult =
     | {
@@ -45,6 +79,5 @@ export type IDeployStatusResult =
       }
     | {
           status: DeployVerdictStatus;
-          /** The node's error kind and message, as a deploy queue recorded them. */
           detail?: string;
       };

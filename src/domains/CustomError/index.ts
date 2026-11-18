@@ -1,5 +1,12 @@
 import { NetworkId } from "@domains/Network";
 import type { Address } from "@domains/Wallet";
+import {
+    DeployAdmissionCode,
+    DeployQueueRefusalCode,
+    DeployRejectionCode,
+    DeployStatus,
+    DeployVerdictStatus,
+} from "@domains/Deploy";
 
 export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
@@ -248,8 +255,6 @@ export class DeploySubmissionRejectedError extends ApiRequestError {
     }
 }
 
-export type DeployAdmissionCode = "deploy_pool_busy" | "deploy_admission_busy";
-
 export class DeployAdmissionRefusedError extends DeploySubmissionRejectedError {
     public readonly retryable = true;
 
@@ -262,8 +267,6 @@ export class DeployAdmissionRefusedError extends DeploySubmissionRejectedError {
         super(operation, reason, CustomErrorCode.DEPLOY_ADMISSION_REFUSED, 503);
     }
 }
-
-export type DeployRejectionCode = "deploy_too_large" | "deploy_expired" | "invalid_deploy_window";
 
 const DEPLOY_REJECTION_ERROR_CODES: Readonly<Record<DeployRejectionCode, CustomErrorCode>> = {
     deploy_too_large: CustomErrorCode.DEPLOY_TOO_LARGE,
@@ -286,23 +289,6 @@ export class DeployRefusedError extends DeploySubmissionRejectedError {
     }
 }
 
-export type DeployQueueRefusalCode = "deploy_queue_full" | "node_unavailable" | "deploy_queue_stopped";
-
-/**
- * What holds a full deploy queue back. `validator_idle` means the validator
- * creates no blocks: send a new deploy to another validator's queue rather
- * than wait. `deployer_share` means this deployer holds its full share.
- */
-export type DeployQueueCongestion = "validator" | "validator_idle" | "shard" | "storage" | "deployer_share";
-
-/**
- * A deploy queue in front of the validator refused the deploy and did not
- * hold it (node-rust #990). `retryable` says whether the same signed deploy
- * can be sent again after `retryAfterMs`. A full queue (other than the
- * deployer's share) admits a deploy only if it lands with time to spare in
- * its validity window, so it needs a new deploy signed with a current
- * `validAfterBlockNumber`.
- */
 export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
     public readonly retryable: boolean;
 
@@ -312,7 +298,6 @@ export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
         public readonly queueCode: DeployQueueRefusalCode,
         public readonly deployId: string,
         public readonly retryAfterMs: number | undefined,
-        public readonly congestion: DeployQueueCongestion | undefined,
     ) {
         super(
             operation,
@@ -322,22 +307,24 @@ export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
                 : CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE,
             503,
         );
-        this.retryable = queueCode !== "deploy_queue_full" || congestion === "deployer_share";
+        this.retryable = queueCode !== "deploy_queue_full";
     }
 }
 
-export type DeployVerdictState = "Rejected" | "Expired" | "Failed";
-
-const DEPLOY_VERDICT_ERROR_CODES: Readonly<Record<DeployVerdictState, CustomErrorCode>> = {
-    Rejected: CustomErrorCode.DEPLOY_REJECTED,
-    Expired: CustomErrorCode.DEPLOY_EXPIRED,
-    Failed: CustomErrorCode.DEPLOY_EXECUTION_FAILED,
+const DEPLOY_VERDICT_ERROR_CODES: Readonly<
+    Record<DeployVerdictStatus, CustomErrorCode>
+> = {
+    [DeployStatus.REJECTED]: CustomErrorCode.DEPLOY_REJECTED,
+    [DeployStatus.EXPIRED]: CustomErrorCode.DEPLOY_EXPIRED,
+    [DeployStatus.FAILED]: CustomErrorCode.DEPLOY_EXECUTION_FAILED,
 };
 
-const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictState, string>> = {
-    Rejected: "was rejected by the node when its deploy queue released it, and never executed",
-    Expired: "expired without landing in a block, and never executed",
-    Failed: "executed and failed, so its effects did not apply",
+const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictStatus, string>> = {
+    [DeployStatus.REJECTED]:
+        "was rejected by the node when its deploy queue released it, and never executed",
+    [DeployStatus.EXPIRED]:
+        "expired without landing in a block, and never executed",
+    [DeployStatus.FAILED]: "executed and failed, so its effects did not apply",
 };
 
 /**
@@ -348,7 +335,7 @@ const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictState, string>> = {
 export class DeployVerdictError extends CustomError {
     constructor(
         public readonly deployId: string,
-        public readonly state: DeployVerdictState,
+        public readonly state: DeployVerdictStatus,
         public readonly detail?: string,
     ) {
         super(

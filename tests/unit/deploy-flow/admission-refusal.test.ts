@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { AxiosHeaders } from "axios";
 import DeployService from "@services/DeployService";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import { SignedResult } from "@services/Signer";
@@ -89,14 +90,11 @@ test("a permanent 400 refusal is never retried or relabelled transient", async (
 const queueFailure = (status: number, data: unknown, headers: Record<string, string> = {}) =>
     Object.assign(new Error("queue response"), { isAxiosError: true, response: { status, data, headers } });
 
-for (const [message, congestion, retryable] of [
-    ["deploy queue is full: the validator is taking fewer deploys than arrive, so the deploys ahead of this one would not land before its validity window closes; sign it again with a current validAfterBlockNumber and retry in 12s", "validator", false],
-    ["deploy queue is full: the validator has created no block while the shard moved on, so ...", "validator_idle", false],
-    ["deploy queue is full: the shard's finality is holding the validator back, so ...", "shard", false],
-    ["deploy queue is full: the signed deploys the queue holds fill its storage budget, so ...", "storage", false],
-    ["deploy queue is full for this deployer: it holds 4 of the 4 deploys one deployer may hold, so that other deployers keep room; retry in 12s", "deployer_share", true],
+for (const [cause, message] of [
+    ["validator", "deploy queue is full: the validator is taking fewer deploys than arrive, so the deploys ahead of this one would not land before its validity window closes; sign it again with a current validAfterBlockNumber and retry in 12s"],
+    ["deployer share", "deploy queue is full for this deployer: it holds 4 of the 4 deploys one deployer may hold, so that other deployers keep room; retry in 12s"],
 ] as const) {
-    test(`503 deploy_queue_full (${congestion}) is a typed queue refusal with its wait and is not retried`, async () => {
+    test(`503 deploy_queue_full (${cause}) needs a newly signed deploy whatever its message`, async () => {
         let requests = 0;
         const client = service(async () => {
             requests += 1;
@@ -110,8 +108,7 @@ for (const [message, congestion, retryable] of [
             assert.equal(error.status, 503);
             assert.equal(error.deployId, "abcdef");
             assert.equal(error.retryAfterMs, 12_000);
-            assert.equal(error.congestion, congestion);
-            assert.equal(error.retryable, retryable);
+            assert.equal(error.retryable, false);
             return true;
         });
         assert.equal(requests, 1);
@@ -129,7 +126,6 @@ for (const [code, headers, wait] of [
             assert.equal(error.queueCode, code);
             assert.equal(error.code, CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE);
             assert.equal(error.retryAfterMs, wait);
-            assert.equal(error.congestion, undefined);
             assert.equal(error.retryable, true);
             return true;
         });
@@ -137,7 +133,7 @@ for (const [code, headers, wait] of [
 }
 
 test("a Retry-After read through axios headers is honoured", async () => {
-    const headers = { get: (name: string) => (name === "retry-after" ? "7" : undefined) };
+    const headers = new AxiosHeaders({ "retry-after": "7" });
     const client = service(async () => {
         throw Object.assign(new Error("queue"), { isAxiosError: true, response: { status: 503, data: { error: "node_unavailable" }, headers } });
     });

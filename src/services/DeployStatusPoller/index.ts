@@ -5,10 +5,13 @@ import {
     ApiSource,
     DeployTimeoutError,
     DeployVerdictError,
-    DeployVerdictState,
     UnknownErrorReason,
 } from "@domains/CustomError";
-import { getErrorMessage, isErrorWithMessage } from "@utils/index";
+import {
+    getErrorMessage,
+    isDeployVerdictStatus,
+    isErrorWithMessage,
+} from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -33,12 +36,6 @@ export interface IDeployWatchHandle {
 
 const DEFAULT_INTERVAL_IN_MILLISECOND: number = 5000;
 const DEFAULT_TIMEOUT_IN_MILLISECONDS: number = 180000;
-
-const VERDICT_STATES: Readonly<Partial<Record<DeployStatus, DeployVerdictState>>> = {
-    [DeployStatus.REJECTED]: "Rejected",
-    [DeployStatus.EXPIRED]: "Expired",
-    [DeployStatus.FAILED]: "Failed",
-};
 
 export default class DeployStatusPoller extends ApiWorker {
     public watch(
@@ -118,14 +115,11 @@ export default class DeployStatusPoller extends ApiWorker {
                     return;
                 }
 
-                const verdict: DeployVerdictState | undefined =
-                    VERDICT_STATES[status.status];
-
-                if (verdict) {
+                if (isDeployVerdictStatus(status.status)) {
                     fail(
                         new DeployVerdictError(
                             deployId,
-                            verdict,
+                            status.status,
                             "detail" in status ? status.detail : undefined,
                         ),
                     );

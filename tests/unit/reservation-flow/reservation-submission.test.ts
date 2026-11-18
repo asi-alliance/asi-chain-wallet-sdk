@@ -305,7 +305,6 @@ test("a full deploy queue releases the reservation and reports its wait without 
     const error = await captureError(funded.transfer);
     assert.ok(error instanceof DeployQueueRefusedError);
     assert.equal(error.queueCode, "deploy_queue_full");
-    assert.equal(error.congestion, "shard");
     assert.equal(error.retryAfterMs, 9_000);
     assert.equal(error.retryable, false);
     const submitted = fakeNode.getSubmittedDeploys().filter((deploy) => deploy.signature === error.deployId);
