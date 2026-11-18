@@ -1,6 +1,7 @@
 import http from "node:http";
 import { AddressInfo } from "node:net";
 
+import { DeployAdmissionCode, DeployVerdictStatus } from "@domains/Deploy";
 import { INetworkConfig, NetworkName, TNetworksConfig } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { SignedResult } from "@services/Signer";
@@ -11,7 +12,7 @@ const LATEST_BLOCK_NUMBER: number = 100;
 
 export type TSubmitOutcome =
     | { kind: "accepted" }
-    | { kind: "admission"; code: "deploy_pool_busy" | "deploy_admission_busy" }
+    | { kind: "admission"; code: DeployAdmissionCode }
     | { kind: "queueFull"; retryAfterSecs: number; message: string }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }
@@ -46,7 +47,7 @@ export const createHeldStep = (): IHeldStep => {
 };
 
 export interface IFinalizationStatus {
-    state: "Pending" | "Finalized" | "Failed" | "Expired" | "Rejected";
+    state: "Pending" | "Finalized" | DeployVerdictStatus;
     queue_state?: string;
     detail?: string | null;
 }
@@ -121,13 +122,25 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
                 "content-type": "application/json",
                 "retry-after": String(submitOutcome.retryAfterSecs),
             });
-            response.end(JSON.stringify({ error: "deploy_queue_full", message: submitOutcome.message }));
+            response.end(
+                JSON.stringify({
+                    error: "deploy_queue_full",
+                    message: submitOutcome.message,
+                }),
+            );
+
             return;
         }
 
         if (submitOutcome.kind === "admission") {
             response.writeHead(503, { "content-type": "application/json" });
-            response.end(JSON.stringify({ error: submitOutcome.code, message: "deploy not accepted" }));
+            response.end(
+                JSON.stringify({
+                    error: submitOutcome.code,
+                    message: "deploy not accepted",
+                }),
+            );
+
             return;
         }
 
