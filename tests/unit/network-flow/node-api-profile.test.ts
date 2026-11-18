@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import axios from "axios";
 
 import ApiClientManager, { IApiClients } from "@domains/ApiClientManager";
 import NodeApiProvider from "@domains/NodeApiProvider";
@@ -11,7 +12,8 @@ import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkContext } from "@domains/Network";
 import { DeployStatus, IDeployStatusResult } from "@domains/Deploy";
-import { IGetBlocksParams } from "@domains/ObserverClient";
+import ObserverClient, { IGetBlocksParams } from "@domains/ObserverClient";
+import { createApiClients } from "@fabrics/apiClients";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
 import ReservationAdapter from "@domains/ReservationAdapter";
@@ -267,25 +269,37 @@ test("scala profile reads the flat latest block number with the default blocks r
 });
 
 test("rust profile reads the latest block number from the summary block envelope", async () => {
-    console.log("\n=== RUST LATEST BLOCK NUMBER ===");
-
-    const calls: (IGetBlocksParams | undefined)[] = [];
+    const network = NETWORKS_CONFIG[RUST_NETWORK];
+    const requests: string[] = [];
+    const observer = new ObserverClient({
+        baseUrl: network.ReadOnlyURL,
+        axiosConfig: {
+            adapter: async (config) => {
+                requests.push(axios.getUri(config));
+                return {
+                    config,
+                    data: JSON.stringify([
+                        { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
+                    ]),
+                    headers: {},
+                    status: 200,
+                    statusText: "OK",
+                };
+            },
+        },
+    });
 
     const adapter: NodeApiAdapter = createNodeApiAdapter(
         NodeApiProfile.RUST,
-        createBlocksClients(
-            [{ blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } }],
-            calls,
-        ),
+        { ...createApiClients(network), observer },
     );
 
     const blockNumber: number = await adapter.getLatestBlockNumber();
 
-    console.log("    Blocks request params:", JSON.stringify(calls[0]));
-    console.log("    Latest block number:", blockNumber);
-
     assert.equal(blockNumber, LATEST_BLOCK_NUMBER);
-    assert.deepEqual(calls, [{ view: "summary" }]);
+    assert.deepEqual(requests, [
+        `${network.ReadOnlyURL}/api/blocks/1?view=summary`,
+    ]);
 });
 
 test("rust profile does not read the flat block number", async () => {

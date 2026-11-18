@@ -23,6 +23,7 @@ interface IRustDeployInfo extends IDeployInfo {
 }
 
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
+    depth: 1,
     view: "summary",
 };
 

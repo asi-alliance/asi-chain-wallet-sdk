@@ -131,6 +131,11 @@ default: an omitted or unknown profile throws at `Client.create`, because guessi
 it would silently send legacy-shaped requests to a new node. Custom networks added
 at runtime through `client.addNetwork` must supply it too.
 
+Before signing a deploy, the Rust profile reads the latest block height from
+`GET /api/blocks/1?view=summary` on `ReadOnlyURL`. A gateway in front of the
+observer must expose that route. The Scala profile reads its existing
+`GET /api/blocks` endpoint.
+
 ### Create Wallets
 
 ```typescript
