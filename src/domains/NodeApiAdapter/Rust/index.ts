@@ -61,12 +61,6 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
         return deploy.finalizationState === DeployFinalizationState.FINALIZED;
     }
 
-    /**
-     * Reports the validator's terminal verdict first: the observer never sees
-     * a deploy that a deploy queue holds or rejected (node-rust #990), nor
-     * tells an expired or failed deploy from a pending one. Finalization is
-     * still read from the observer.
-     */
     public async getDeployStatus(
         deployHash: string,
     ): Promise<IDeployStatusResult> {
@@ -81,11 +75,6 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
         return verdict ?? observedStatus;
     }
 
-    /**
-     * The validator's `Rejected`, `Expired` or `Failed` verdict, or
-     * `undefined` while the deploy is pending, finalized, or the validator
-     * cannot answer (such as a node without the endpoint).
-     */
     private async getDeployVerdict(
         deployHash: string,
     ): Promise<IDeployStatusResult | undefined> {

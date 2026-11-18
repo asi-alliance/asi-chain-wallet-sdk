@@ -133,9 +133,6 @@ export default class DeployService {
         try {
             result = await this.api.submitDeploy(signedDeploy);
         } catch (error: unknown) {
-            // The node or its deploy queue already holds this signed deploy,
-            // for example after a resend of an unknown outcome: watch it
-            // rather than release its reservation.
             if (DeployService.isDuplicateDeploy(error)) {
                 return signedDeploy.signature;
             }

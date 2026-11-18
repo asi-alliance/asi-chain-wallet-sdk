@@ -371,11 +371,6 @@ const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictStatus, string>> = {
     [DeployStatus.FAILED]: "executed and failed, so its effects did not apply",
 };
 
-/**
- * The node reached a terminal verdict other than finalization for a watched
- * deploy. Its reservation is released: `Rejected` and `Expired` deploys
- * never executed, and a `Failed` deploy's transfer did not apply.
- */
 export class DeployVerdictError extends CustomError {
     public readonly deployId: string;
     public readonly state: DeployVerdictStatus;
