@@ -255,16 +255,47 @@ export class DeploySubmissionRejectedError extends ApiRequestError {
     }
 }
 
-export class DeployAdmissionRefusedError extends DeploySubmissionRejectedError {
-    public readonly retryable = true;
+export class DeployRefusalError extends DeploySubmissionRejectedError {
+    public readonly deployId: string;
+    public readonly retryable: boolean;
+    public readonly retryAfterMs: number | undefined;
 
     constructor(
         operation: string,
         reason: string,
-        public readonly admissionCode: DeployAdmissionCode,
-        public readonly deployId: string,
+        code: CustomErrorCode,
+        status: number,
+        deployId: string,
+        retryable: boolean,
+        retryAfterMs?: number,
     ) {
-        super(operation, reason, CustomErrorCode.DEPLOY_ADMISSION_REFUSED, 503);
+        super(operation, reason, code, status);
+
+        this.deployId = deployId;
+        this.retryable = retryable;
+        this.retryAfterMs = retryAfterMs;
+    }
+}
+
+export class DeployAdmissionRefusedError extends DeployRefusalError {
+    public readonly admissionCode: DeployAdmissionCode;
+
+    constructor(
+        operation: string,
+        reason: string,
+        admissionCode: DeployAdmissionCode,
+        deployId: string,
+    ) {
+        super(
+            operation,
+            reason,
+            CustomErrorCode.DEPLOY_ADMISSION_REFUSED,
+            503,
+            deployId,
+            true,
+        );
+
+        this.admissionCode = admissionCode;
     }
 }
 
@@ -274,30 +305,38 @@ const DEPLOY_REJECTION_ERROR_CODES: Readonly<Record<DeployRejectionCode, CustomE
     invalid_deploy_window: CustomErrorCode.DEPLOY_WINDOW_INVALID,
 };
 
-export class DeployRefusedError extends DeploySubmissionRejectedError {
-    public readonly retryable: boolean;
+export class DeployRefusedError extends DeployRefusalError {
+    public readonly rejectionCode: DeployRejectionCode;
 
     constructor(
         operation: string,
         reason: string,
-        public readonly rejectionCode: DeployRejectionCode,
-        public readonly deployId: string,
+        rejectionCode: DeployRejectionCode,
+        deployId: string,
         status: number,
     ) {
-        super(operation, reason, DEPLOY_REJECTION_ERROR_CODES[rejectionCode], status);
-        this.retryable = rejectionCode === "invalid_deploy_window";
+        super(
+            operation,
+            reason,
+            DEPLOY_REJECTION_ERROR_CODES[rejectionCode],
+            status,
+            deployId,
+            rejectionCode === "invalid_deploy_window",
+        );
+
+        this.rejectionCode = rejectionCode;
     }
 }
 
-export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
-    public readonly retryable: boolean;
+export class DeployQueueRefusedError extends DeployRefusalError {
+    public readonly queueCode: DeployQueueRefusalCode;
 
     constructor(
         operation: string,
         reason: string,
-        public readonly queueCode: DeployQueueRefusalCode,
-        public readonly deployId: string,
-        public readonly retryAfterMs: number | undefined,
+        queueCode: DeployQueueRefusalCode,
+        deployId: string,
+        retryAfterMs: number | undefined,
     ) {
         super(
             operation,
@@ -306,8 +345,12 @@ export class DeployQueueRefusedError extends DeploySubmissionRejectedError {
                 ? CustomErrorCode.DEPLOY_QUEUE_FULL
                 : CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE,
             503,
+            deployId,
+            queueCode !== "deploy_queue_full",
+            retryAfterMs,
         );
-        this.retryable = queueCode !== "deploy_queue_full";
+
+        this.queueCode = queueCode;
     }
 }
 
@@ -333,25 +376,35 @@ const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictStatus, string>> = {
  * never executed, and a `Failed` deploy's transfer did not apply.
  */
 export class DeployVerdictError extends CustomError {
-    constructor(
-        public readonly deployId: string,
-        public readonly state: DeployVerdictStatus,
-        public readonly detail?: string,
-    ) {
+    public readonly deployId: string;
+    public readonly state: DeployVerdictStatus;
+    public readonly detail: string | undefined;
+
+    constructor(deployId: string, state: DeployVerdictStatus, detail?: string) {
         super(
             DEPLOY_VERDICT_ERROR_CODES[state],
             `Deploy ${deployId} ${DEPLOY_VERDICT_MESSAGES[state]}${detail ? `: ${detail}` : ""}`,
             422,
         );
+
+        this.deployId = deployId;
+        this.state = state;
+        this.detail = detail;
     }
 }
 
 export class DeploySubmissionUnknownError extends ApiRequestError {
-    constructor(operation: string, reason: string, public readonly deployId: string) {
-        super(ApiSource.NODE, operation,
+    public readonly deployId: string;
+
+    constructor(operation: string, reason: string, deployId: string) {
+        super(
+            ApiSource.NODE,
+            operation,
             `Submission outcome for deploy ${deployId} is unknown: ${reason}. Check its status before retrying.`,
             CustomErrorCode.DEPLOY_SUBMISSION_UNKNOWN,
         );
+
+        this.deployId = deployId;
     }
 }
 
