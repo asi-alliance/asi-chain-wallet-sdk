@@ -13,6 +13,7 @@ import {
     DeployVerdictError,
 } from "@domains/CustomError";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
+import { DeployFinalizationState } from "@domains/NodeApiAdapter/Rust";
 import { INetworkConfig, INetworkContextInput } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
@@ -41,6 +42,11 @@ interface IVerdictCase {
     code: CustomErrorCode;
 }
 
+interface IObservedTerminalCase {
+    state: DeployFinalizationState;
+    status: DeployStatus;
+}
+
 interface IObserverFallbackCase {
     name: string;
     finalization: () => Promise<unknown>;
@@ -58,6 +64,21 @@ const VERDICT_CASES: IVerdictCase[] = [
     {
         state: DeployStatus.FAILED,
         code: CustomErrorCode.DEPLOY_VERDICT_FAILED,
+    },
+];
+
+const OBSERVED_TERMINAL_CASES: IObservedTerminalCase[] = [
+    {
+        state: DeployFinalizationState.FINALIZED,
+        status: DeployStatus.FINALIZED,
+    },
+    {
+        state: DeployFinalizationState.FAILED,
+        status: DeployStatus.FAILED,
+    },
+    {
+        state: DeployFinalizationState.EXPIRED,
+        status: DeployStatus.EXPIRED,
     },
 ];
 
@@ -117,6 +138,14 @@ const pendingInBlock = async (): Promise<unknown> => ({
 });
 
 const notInBlock = async (): Promise<unknown> => ({});
+
+const observedInBlock = (state: DeployFinalizationState): unknown => ({
+    blockHash: "b1",
+    faultTolerance: 0,
+    finalizationState: state,
+});
+
+const neverAnswers = (): Promise<unknown> => new Promise<unknown>(() => {});
 
 const createClients = (
     finalization: () => Promise<unknown>,
@@ -213,6 +242,67 @@ for (const { name, finalization } of OBSERVER_FALLBACK_CASES) {
         assert.deepEqual(calls.observer, [DEPLOY_ID]);
     });
 }
+
+test("a finalized observer answer is reported while the validator stalls", async () => {
+    console.log("\n=== OBSERVER FINALIZED WHILE VALIDATOR STALLS ===");
+
+    const result: IDeployStatusResult = await createAdapter(
+        NodeApiProfile.RUST,
+        neverAnswers,
+        async () => observedInBlock(DeployFinalizationState.FINALIZED),
+    ).getDeployStatus(DEPLOY_ID);
+
+    console.log("    Status:", result);
+
+    assert.deepEqual(result, { status: DeployStatus.FINALIZED });
+});
+
+test("a validator verdict is reported while the observer stalls", async () => {
+    console.log("\n=== VALIDATOR VERDICT WHILE OBSERVER STALLS ===");
+
+    const result: IDeployStatusResult = await createAdapter(
+        NodeApiProfile.RUST,
+        async () => createVerdictAnswer(DeployStatus.REJECTED),
+        neverAnswers,
+    ).getDeployStatus(DEPLOY_ID);
+
+    console.log("    Status:", result);
+
+    assert.deepEqual(result, {
+        status: DeployStatus.REJECTED,
+        detail: VERDICT_DETAIL,
+    });
+});
+
+for (const { state, status } of OBSERVED_TERMINAL_CASES) {
+    test(`an observer finalization state ${state} is terminal while the validator is pending`, async () => {
+        console.log(`\n=== OBSERVER ${state} WITH A PENDING VALIDATOR ===`);
+
+        const result: IDeployStatusResult = await createAdapter(
+            NodeApiProfile.RUST,
+            async () => ({ state: "Pending" }),
+            async () => observedInBlock(state),
+        ).getDeployStatus(DEPLOY_ID);
+
+        console.log("    Status:", result);
+
+        assert.deepEqual(result, { status });
+    });
+}
+
+test("a validator Finalized answer waits for the observer block", async () => {
+    console.log("\n=== VALIDATOR FINALIZED WITHOUT AN OBSERVER BLOCK ===");
+
+    const result: IDeployStatusResult = await createAdapter(
+        NodeApiProfile.RUST,
+        async () => ({ state: "Finalized" }),
+        notInBlock,
+    ).getDeployStatus(DEPLOY_ID);
+
+    console.log("    Status:", result);
+
+    assert.deepEqual(result, { status: DeployStatus.DEPLOYING });
+});
 
 test("a verdict without detail carries no detail field", async () => {
     console.log("\n=== VERDICT WITHOUT DETAIL ===");

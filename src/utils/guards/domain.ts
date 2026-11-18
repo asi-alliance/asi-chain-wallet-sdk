@@ -21,6 +21,7 @@ import {
     DeployAdmissionCode,
     DeployQueueRefusalCode,
     DeployRejectionCode,
+    DeployStatus,
     DeployVerdictStatus,
 } from "@domains/Deploy";
 import MnemonicService from "@services/Mnemonic";
@@ -80,6 +81,10 @@ export const isDeployVerdictStatus = (
     value: unknown,
 ): value is DeployVerdictStatus => {
     return isValueInConst(value, DEPLOY_VERDICT_STATUSES);
+};
+
+export const isDeployTerminalStatus = (status: DeployStatus): boolean => {
+    return status === DeployStatus.FINALIZED || isDeployVerdictStatus(status);
 };
 
 export const isNativeTokenDecimals = (value: unknown): value is number => {

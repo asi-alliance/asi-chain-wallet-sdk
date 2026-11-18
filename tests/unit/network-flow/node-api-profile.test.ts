@@ -401,7 +401,7 @@ test("rust profile reads deploy finalization from the deploy finalization state"
 
     assert.equal(pendingStatus, DeployStatus.INCLUDED_IN_BLOCK);
     assert.equal(finalizedBlockStatus, DeployStatus.INCLUDED_IN_BLOCK);
-    assert.equal(failedStatus, DeployStatus.INCLUDED_IN_BLOCK);
+    assert.equal(failedStatus, DeployStatus.FAILED);
     assert.equal(finalizedStatus, DeployStatus.FINALIZED);
     assert.equal(faultToleranceStatus, DeployStatus.INCLUDED_IN_BLOCK);
 });
