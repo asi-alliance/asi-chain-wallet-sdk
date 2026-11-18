@@ -284,6 +284,73 @@ for (const { state, code } of VERDICT_CASES) {
     });
 }
 
+test("the poller reports a verdict through onVerdict before onError", async () => {
+    console.log("\n=== POLLER CALLS ON VERDICT BEFORE ON ERROR ===");
+
+    const calls: string[] = [];
+
+    const poller: DeployStatusPoller = createPoller([
+        async () => createVerdictAnswer(DeployStatus.REJECTED),
+    ]);
+
+    await poller
+        .watch(
+            DEPLOY_ID,
+            {
+                onVerdict: (verdict: DeployVerdictError) => {
+                    calls.push(`onVerdict:${verdict.state}`);
+                },
+                onError: (error: Error) => {
+                    calls.push(`onError:${error.constructor.name}`);
+                },
+            },
+            {
+                intervalMs: POLL_INTERVAL_MS,
+                timeoutMs: LONG_WATCH_TIMEOUT_MS,
+            },
+        )
+        .done.catch(() => undefined);
+
+    console.log("    Calls:", calls);
+
+    assert.deepEqual(calls, [
+        `onVerdict:${DeployStatus.REJECTED}`,
+        "onError:DeployVerdictError",
+    ]);
+});
+
+test("the poller does not call onVerdict when the watch times out", async () => {
+    console.log("\n=== POLLER TIMEOUT SKIPS ON VERDICT ===");
+
+    const calls: string[] = [];
+
+    const poller: DeployStatusPoller = createPoller([
+        async () => ({ state: "Pending" }),
+    ]);
+
+    await poller
+        .watch(
+            DEPLOY_ID,
+            {
+                onVerdict: () => {
+                    calls.push("onVerdict");
+                },
+                onError: (error: Error) => {
+                    calls.push(`onError:${error.constructor.name}`);
+                },
+            },
+            {
+                intervalMs: POLL_INTERVAL_MS,
+                timeoutMs: SHORT_WATCH_TIMEOUT_MS,
+            },
+        )
+        .done.catch(() => undefined);
+
+    console.log("    Calls:", calls);
+
+    assert.deepEqual(calls, ["onError:DeployTimeoutError"]);
+});
+
 test("the poller still times out while the deploy stays pending", async () => {
     console.log("\n=== POLLER TIMES OUT WHILE PENDING ===");
 

@@ -378,6 +378,44 @@ test("a full deploy queue rolls the reservation back and reports its wait", asyn
     await funded.client.close();
 });
 
+test("409 duplicate_deploy keeps the reservation and watches the deploy", async () => {
+    console.log("\n=== 409 DUPLICATE DEPLOY KEEPS THE RESERVATION ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({ kind: "duplicate" });
+
+    const operation: IReservedOperationResult = await funded.transfer();
+
+    const status: IDeployStatusResult = await new Promise<IDeployStatusResult>(
+        (resolve) => {
+            operation.subscribe({ onStatus: resolve });
+        },
+    );
+
+    const reservations: ITransactionReservation[] =
+        await funded.client.getReservations(funded.walletId);
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+    const available: bigint = await funded.client.getAvailableBalance(
+        funded.walletId,
+        funded.accountId,
+    );
+
+    console.log("    Deploy id:", operation.deployId);
+    console.log("    First watched status:", status.status);
+    console.log("    Reservations:", reservations.length);
+    console.log("    Available balance:", available);
+
+    assert.equal(countSubmissions(operation.deployId), 1);
+    assert.equal(reservations.length, 1);
+    assert.equal(reservations[0].details.deployId, operation.deployId);
+    assert.equal(stored.length, 1);
+    assert.equal(available, BALANCE - RESERVED);
+
+    await funded.client.close();
+});
+
 for (const { state, detail } of VERDICT_CASES) {
     test(`a validator verdict ${state} ends the watch and releases the reservation`, async () => {
         console.log(`\n=== VERDICT ${state} RELEASES THE RESERVATION ===`);

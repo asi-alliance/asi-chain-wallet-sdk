@@ -14,6 +14,7 @@ export type TSubmitOutcome =
     | { kind: "accepted" }
     | { kind: "admission"; code: DeployAdmissionCode }
     | { kind: "queueFull"; retryAfterSecs: number; message: string }
+    | { kind: "duplicate" }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }
     | { kind: "dropped" };
@@ -126,6 +127,18 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
                 JSON.stringify({
                     error: "deploy_queue_full",
                     message: submitOutcome.message,
+                }),
+            );
+
+            return;
+        }
+
+        if (submitOutcome.kind === "duplicate") {
+            response.writeHead(409, { "content-type": "application/json" });
+            response.end(
+                JSON.stringify({
+                    error: "duplicate_deploy",
+                    message: `Deploy already known: ${deploy.signature}`,
                 }),
             );
 

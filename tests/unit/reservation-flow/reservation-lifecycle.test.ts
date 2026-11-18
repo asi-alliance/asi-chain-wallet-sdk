@@ -9,7 +9,9 @@ import TransactionReservationsManager from "@services/TransactionReservationsMan
 import { ITransactionReservation } from "@domains/Transaction";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { INetworkConfig, INetworkRecord, NetworkId } from "@domains/Network";
+import { DeployStatus } from "@domains/Deploy";
 import {
+    DeployVerdictError,
     DomainClosedError,
     OperationsSuspendedError,
 } from "@domains/CustomError";
@@ -24,6 +26,11 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/reservation-lifecycle" };
 
 const BALANCE: bigint = 1_000_000_000n;
 const TRANSFER_AMOUNT: bigint = 100_000_000n;
+
+const WATCH_INTERVAL_MS = 5;
+const WATCH_TIMEOUT_MS = 30;
+const VERDICT_RESERVATION_ID = "verdict-deploy";
+const TIMEOUT_RESERVATION_ID = "timeout-deploy";
 
 const privateKey: Uint8Array = Uint8Array.from(
     Buffer.from(PRIVATE_KEY_HEX, "hex"),
@@ -132,6 +139,7 @@ test.after(async () => {
 test.beforeEach(() => {
     fakeNode.setBalance(BALANCE);
     fakeNode.setSubmitOutcome({ kind: "accepted" });
+    fakeNode.setFinalizationStatus({ state: "Pending" });
     fakeNode.onBeforeSubmitResponse(async () => {});
 });
 
@@ -210,6 +218,103 @@ test("a closed reservations manager stops tracking new reservations", async () =
     assert.equal(trackedWhileActive, 1);
     assert.equal(manager.isActive(), false);
     assert.equal(manager.getAll().length, 0);
+
+    manager.close();
+
+    await client.close();
+});
+
+test("a deploy verdict releases a tracked reservation through onReleased", async () => {
+    console.log("\n=== VERDICT RELEASES THROUGH ON RELEASED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markFailed!: () => void;
+
+    const failed: Promise<void> = new Promise<void>((resolve) => {
+        markFailed = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+                markFailed();
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        });
+
+    manager.add(
+        VERDICT_RESERVATION_ID,
+        createReservation(VERDICT_RESERVATION_ID, networkId),
+    );
+
+    await failed;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after verdict:", manager.getAll().length);
+
+    assert.deepEqual(events, [
+        `onReleased:${DeployStatus.REJECTED}`,
+        "onFailed:DeployVerdictError",
+    ]);
+    assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
+
+    manager.close();
+
+    await client.close();
+});
+
+test("a watch timeout keeps the reservation and does not call onReleased", async () => {
+    console.log("\n=== WATCH TIMEOUT KEEPS THE RESERVATION ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markFailed!: () => void;
+
+    const failed: Promise<void> = new Promise<void>((resolve) => {
+        markFailed = resolve;
+    });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: () => {
+                events.push("onReleased");
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+                markFailed();
+            },
+            watchOptions: {
+                intervalMs: WATCH_INTERVAL_MS,
+                timeoutMs: WATCH_TIMEOUT_MS,
+            },
+        });
+
+    manager.add(
+        TIMEOUT_RESERVATION_ID,
+        createReservation(TIMEOUT_RESERVATION_ID, networkId),
+    );
+
+    await failed;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after timeout:", manager.getAll().length);
+
+    assert.deepEqual(events, ["onFailed:DeployTimeoutError"]);
+    assert.notEqual(manager.get(TIMEOUT_RESERVATION_ID), null);
 
     manager.close();
 

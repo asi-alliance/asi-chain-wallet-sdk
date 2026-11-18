@@ -12,6 +12,7 @@ import {
     CustomErrorCode,
     DeployAdmissionRefusedError,
     DeployQueueRefusedError,
+    DeployRefusalError,
     DeployRefusedError,
     DeploySubmissionRejectedError,
     DeploySubmissionUnknownError,
@@ -181,6 +182,7 @@ for (const code of ADMISSION_CODES) {
         console.log("    Requests:", submitted.length);
 
         assert.ok(error instanceof DeployAdmissionRefusedError);
+        assert.ok(error instanceof DeployRefusalError);
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.equal(error.admissionCode, code);
         assert.equal(error.code, CustomErrorCode.DEPLOY_ADMISSION_REFUSED);
@@ -206,6 +208,7 @@ for (const { status, code, errorCode, retryable } of REJECTION_CASES) {
         console.log("    Requests:", submitted.length);
 
         assert.ok(error instanceof DeployRefusedError);
+        assert.ok(error instanceof DeployRefusalError);
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.equal(error.rejectionCode, code);
         assert.equal(error.code, errorCode);
@@ -227,7 +230,7 @@ for (const { status, body } of GENERIC_REJECTION_CASES) {
         console.log("    Error:", (error as Error).constructor.name);
 
         assert.ok(error instanceof DeploySubmissionRejectedError);
-        assert.ok(!(error instanceof DeployRefusedError));
+        assert.ok(!(error instanceof DeployRefusalError));
         assert.equal(error.code, CustomErrorCode.DEPLOY_SUBMISSION_REJECTED);
     });
 }
@@ -288,6 +291,7 @@ for (const { cause, message } of QUEUE_FULL_CASES) {
         console.log("    Error:", (error as Error).constructor.name);
 
         assert.ok(error instanceof DeployQueueRefusedError);
+        assert.ok(error instanceof DeployRefusalError);
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.equal(error.queueCode, "deploy_queue_full");
         assert.equal(error.code, CustomErrorCode.DEPLOY_QUEUE_FULL);
@@ -310,6 +314,7 @@ for (const { code, headers, retryAfterMs } of QUEUE_UNAVAILABLE_CASES) {
         console.log("    Error:", (error as Error).constructor.name);
 
         assert.ok(error instanceof DeployQueueRefusedError);
+        assert.ok(error instanceof DeployRefusalError);
         assert.equal(error.queueCode, code);
         assert.equal(error.code, CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE);
         assert.equal(error.retryAfterMs, retryAfterMs);
