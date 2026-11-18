@@ -34,8 +34,6 @@ const deployRejection = (error: unknown): { code: DeployRejectionCode; status: n
     return match ? { status: match[0], code: match[1] } : undefined;
 };
 
-const ADMISSION_RETRY_DELAYS_MS = [250, 500] as const;
-
 const QUEUE_CONGESTION_PREFIXES: ReadonlyArray<readonly [string, DeployQueueCongestion]> = [
     ["deploy queue is full for this deployer", "deployer_share"],
     ["deploy queue is full: the validator has created no block", "validator_idle"],
@@ -118,59 +116,50 @@ export default class DeployService {
         return undefined;
     }
 
-    public async submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> {
-        const api = this.api;
-        const signedDeploy: SignedResult = JSON.parse(JSON.stringify(deploy));
-        for (let attempt = 0; ; attempt += 1) {
-            try {
-                const result = await api.submitDeploy(signedDeploy);
-                const deployId = this.extractDeployId(result);
-                if (!deployId || deployId.toLowerCase() !== signedDeploy.signature.toLowerCase()) {
-                    throw new DeploySubmissionUnknownError(
-                        "DeployService.submitSignedDeploy", "Unexpected acceptance response", signedDeploy.signature,
-                    );
-                }
-                return deployId;
-            } catch (error) {
-                if (error instanceof DeploySubmissionUnknownError) { throw error; }
-                const reason = getErrorMessage(error, UnknownErrorReason.NODE_API);
-                const code: unknown = axios.isAxiosError(error) && error.response?.status === 503
-                    ? error.response.data?.error : undefined;
-                if (code === "deploy_pool_busy" || code === "deploy_admission_busy") {
-                    const admissionCode: DeployAdmissionCode = code;
-                    const delay = ADMISSION_RETRY_DELAYS_MS[attempt];
-                    if (delay !== undefined) {
-                        await new Promise<void>((resolve) => setTimeout(resolve, delay));
-                        continue;
-                    }
-                    throw new DeployAdmissionRefusedError(
-                        "DeployService.submitSignedDeploy", reason, admissionCode, signedDeploy.signature,
-                    );
-                }
-                const queue = queueRefusal(error);
-                if (queue) {
-                    throw new DeployQueueRefusedError(
-                        "DeployService.submitSignedDeploy", reason, queue.code, signedDeploy.signature,
-                        queue.retryAfterMs, queue.congestion,
-                    );
-                }
-                // The node or its deploy queue already holds this signed deploy,
-                // for example after a resend of an unknown outcome: watch it
-                // rather than release its reservation.
-                if (isDuplicateDeploy(error)) {
-                    return signedDeploy.signature;
-                }
-                const rejection = deployRejection(error);
-                if (rejection) {
-                    throw new DeployRefusedError(
-                        "DeployService.submitSignedDeploy", reason, rejection.code, signedDeploy.signature, rejection.status,
-                    );
-                }
-                if (isRejectedByServer(error)) {
-                    throw new DeploySubmissionRejectedError("DeployService.submitSignedDeploy", reason);
-                }
-                throw new DeploySubmissionUnknownError("DeployService.submitSignedDeploy", reason, signedDeploy.signature);
+    public async submitSignedDeploy(signedDeploy: SignedResult): Promise<string | undefined> {
+        try {
+            const result = await this.api.submitDeploy(signedDeploy);
+            const deployId = this.extractDeployId(result);
+            if (!deployId || deployId.toLowerCase() !== signedDeploy.signature.toLowerCase()) {
+                throw new DeploySubmissionUnknownError(
+                    "DeployService.submitSignedDeploy", "Unexpected acceptance response", signedDeploy.signature,
+                );
             }
+            return deployId;
+        } catch (error) {
+            if (error instanceof DeploySubmissionUnknownError) { throw error; }
+            const reason = getErrorMessage(error, UnknownErrorReason.NODE_API);
+            const code: unknown = axios.isAxiosError(error) && error.response?.status === 503
+                ? error.response.data?.error : undefined;
+            if (code === "deploy_pool_busy" || code === "deploy_admission_busy") {
+                const admissionCode: DeployAdmissionCode = code;
+                throw new DeployAdmissionRefusedError(
+                    "DeployService.submitSignedDeploy", reason, admissionCode, signedDeploy.signature,
+                );
+            }
+            const queue = queueRefusal(error);
+            if (queue) {
+                throw new DeployQueueRefusedError(
+                    "DeployService.submitSignedDeploy", reason, queue.code, signedDeploy.signature,
+                    queue.retryAfterMs, queue.congestion,
+                );
+            }
+            // The node or its deploy queue already holds this signed deploy,
+            // for example after a resend of an unknown outcome: watch it
+            // rather than release its reservation.
+            if (isDuplicateDeploy(error)) {
+                return signedDeploy.signature;
+            }
+            const rejection = deployRejection(error);
+            if (rejection) {
+                throw new DeployRefusedError(
+                    "DeployService.submitSignedDeploy", reason, rejection.code, signedDeploy.signature, rejection.status,
+                );
+            }
+            if (isRejectedByServer(error)) {
+                throw new DeploySubmissionRejectedError("DeployService.submitSignedDeploy", reason);
+            }
+            throw new DeploySubmissionUnknownError("DeployService.submitSignedDeploy", reason, signedDeploy.signature);
         }
     }
 
