@@ -9,6 +9,9 @@ export enum CustomErrorCode {
     STORAGE_MIGRATION_INTERRUPTED = "STORAGE_MIGRATION_INTERRUPTED",
     STORAGE_MIGRATION_ROLLBACK_FAILED = "STORAGE_MIGRATION_ROLLBACK_FAILED",
     STORAGE_MIGRATION_CHAIN_INVALID = "STORAGE_MIGRATION_CHAIN_INVALID",
+    PERSISTED_STORAGE_EXPORT_FAILED = "PERSISTED_STORAGE_EXPORT_FAILED",
+    PERSISTED_STORAGE_IMPORT_REJECTED = "PERSISTED_STORAGE_IMPORT_REJECTED",
+    PERSISTED_STORAGE_IMPORT_FAILED = "PERSISTED_STORAGE_IMPORT_FAILED",
     BALANCE_UNAVAILABLE = "BALANCE_UNAVAILABLE",
     DUPLICATE_WALLET = "DUPLICATE_WALLET",
     DUPLICATE_ACCOUNT = "DUPLICATE_ACCOUNT",
@@ -60,6 +63,16 @@ export enum StorageMigrationInterruptionReason {
     ROLLBACK_FAILED = "ROLLBACK_FAILED",
     MIGRATION_NOT_RESUMABLE = "MIGRATION_NOT_RESUMABLE",
     MIGRATION_NOT_FOUND = "MIGRATION_NOT_FOUND",
+}
+
+export enum PersistedStorageImportRejection {
+    INVALID_FORMAT = "INVALID_FORMAT",
+    UNKNOWN_ENVELOPE = "UNKNOWN_ENVELOPE",
+    INVALID_PASSWORD = "INVALID_PASSWORD",
+    NEWER_SCHEMA = "NEWER_SCHEMA",
+    INTERRUPTED_MIGRATION = "INTERRUPTED_MIGRATION",
+    UNKNOWN_TABLE = "UNKNOWN_TABLE",
+    STORAGE_NOT_EMPTY = "STORAGE_NOT_EMPTY",
 }
 
 export enum UnknownErrorReason {
@@ -552,6 +565,74 @@ export class StorageMigrationRollbackError extends StorageSchemaError {
         this.failedVersion = failedVersion;
         this.failures = failures;
         this.migrationError = migrationError;
+    }
+}
+
+export class PersistedStorageExportError extends StorageSchemaError {
+    public readonly reason: string;
+    public readonly exportError: unknown;
+
+    constructor(
+        reason: string,
+        exportError: unknown,
+        message: string = `Persisted storage could not be exported: ${reason}. Storage was only read and is left untouched`,
+    ) {
+        super(
+            CustomErrorCode.PERSISTED_STORAGE_EXPORT_FAILED,
+            message,
+            500,
+            true,
+        );
+
+        this.reason = reason;
+        this.exportError = exportError;
+    }
+}
+
+export class PersistedStorageImportRejectedError extends StorageSchemaError {
+    public readonly rejection: PersistedStorageImportRejection;
+    public readonly reason: string;
+
+    constructor(
+        rejection: PersistedStorageImportRejection,
+        reason: string,
+        message: string = `Persisted storage dump was rejected (${rejection}): ${reason}. Storage was left untouched`,
+    ) {
+        super(
+            CustomErrorCode.PERSISTED_STORAGE_IMPORT_REJECTED,
+            message,
+            422,
+            true,
+        );
+
+        this.rejection = rejection;
+        this.reason = reason;
+    }
+}
+
+export class PersistedStorageImportError extends StorageSchemaError {
+    public readonly reason: string;
+    public readonly importError: unknown;
+    public readonly rollbackFailures: string[];
+
+    constructor(
+        reason: string,
+        importError: unknown,
+        rollbackFailures: string[],
+        message: string = rollbackFailures.length
+            ? `Persisted storage dump could not be imported (${reason}) and its rollback did not complete (${rollbackFailures.join("; ")}). Storage holds part of the dump`
+            : `Persisted storage dump could not be imported: ${reason}. Storage holds none of the dump records`,
+    ) {
+        super(
+            CustomErrorCode.PERSISTED_STORAGE_IMPORT_FAILED,
+            message,
+            500,
+            !rollbackFailures.length,
+        );
+
+        this.reason = reason;
+        this.importError = importError;
+        this.rollbackFailures = rollbackFailures;
     }
 }
 
