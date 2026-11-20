@@ -4,7 +4,11 @@ import { AddressInfo } from "node:net";
 import { INetworkConfig } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { SignedResult } from "@services/Signer";
-import { readBody, sendJson } from "../reservation-flow/fakeNode";
+import {
+    isLatestBlockRequest,
+    readBody,
+    sendJson,
+} from "../reservation-flow/fakeNode";
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
@@ -82,7 +86,7 @@ export const startPrecisionNode = async (
             return;
         }
 
-        if (url.startsWith("/api/blocks")) {
+        if (isLatestBlockRequest(url)) {
             sendJson(response, [
                 { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);

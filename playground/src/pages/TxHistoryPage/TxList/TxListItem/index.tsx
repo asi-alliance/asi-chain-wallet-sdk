@@ -1,10 +1,15 @@
 import type { MouseEvent, ReactElement } from "react";
 import { copyTextToClipboard } from "@utils/misc";
 import { type Transaction } from "asi-wallet-sdk";
-import { formatAddress, formatDate } from "../../../../sdk-react-kit";
+import {
+    formatAddress,
+    formatDate,
+    formatTransactionAmount,
+} from "../../../../sdk-react-kit";
 
 interface TxListItemProps {
     transaction: Transaction;
+    nativeTokenDecimals: number;
 }
 
 const CONTRACT_PREVIEW_LENGTH: number = 40;
@@ -19,7 +24,10 @@ const toContractPreview = (contractCode: string): string => {
     return `${singleLine.substring(0, CONTRACT_PREVIEW_LENGTH)}...`;
 };
 
-const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
+const TxListItem = ({
+    transaction,
+    nativeTokenDecimals,
+}: TxListItemProps): ReactElement => {
     const handleCopyDeployId = async (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
 
@@ -53,7 +61,12 @@ const TxListItem = ({ transaction }: TxListItemProps): ReactElement => {
             <td className="tx-table__mono" data-label="To">
                 {transaction.to ? formatAddress(transaction.to) : "-"}
             </td>
-            <td data-label="Amount">{transaction.amount ?? "-"}</td>
+            <td data-label="Amount">
+                {formatTransactionAmount(
+                    transaction.amount,
+                    transaction.nativeTokenDecimals ?? nativeTokenDecimals,
+                )}
+            </td>
             <td data-label="Details">
                 <div className="tx-table__details">
                     {transaction.gasCost && (

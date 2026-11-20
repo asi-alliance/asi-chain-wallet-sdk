@@ -19,6 +19,9 @@ interface ImportMetaEnv {
     readonly VITE_ALEXANDERNET_NATIVE_TOKEN_DECIMALS?: string;
     readonly VITE_MAINNET_NODE_API_PROFILE?: string;
     readonly VITE_MAINNET_NATIVE_TOKEN_DECIMALS?: string;
+    readonly VITE_TESTNET_VALIDATOR_URL?: string;
+    readonly VITE_TESTNET_READONLY_URL?: string;
+    readonly VITE_TESTNET_INDEXER_URL?: string;
     readonly VITE_TESTNET_NODE_API_PROFILE?: string;
     readonly VITE_TESTNET_NATIVE_TOKEN_DECIMALS?: string;
 }
