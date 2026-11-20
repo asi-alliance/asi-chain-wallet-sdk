@@ -25,7 +25,7 @@ import {
     isNodeApiProfile,
     isUint256,
 } from "@utils/guards";
-import { ASI_CHAIN_PREFIX } from "@utils/constants";
+import { ASI_CHAIN_PREFIX, MAX_CLASSIC_PHLO_PRICE } from "@utils/constants";
 import {
     NETWORK_URL_FIELDS,
     type INetworkConfig,
@@ -444,7 +444,7 @@ export const validatePhloSettings = (
 export const validateDeployPayload = (
     { term, phloLimit, phloPrice, shardId }: TDeployDetails,
     { maxPhloPrice }: { maxPhloPrice: bigint } = {
-        maxPhloPrice: BigInt(MAX_PHLO_VALUE),
+        maxPhloPrice: MAX_CLASSIC_PHLO_PRICE,
     },
 ): { isValid: boolean; error?: string } => {
     if (!term.trim()) {

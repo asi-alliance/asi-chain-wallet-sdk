@@ -18,31 +18,45 @@ export interface SignedResult {
     sigAlgorithm: string;
 }
 
+const DEPLOY_TERM_FIELD: number = 2;
+const DEPLOY_TIMESTAMP_FIELD: number = 3;
+const DEPLOY_CLASSIC_PHLO_PRICE_FIELD: number = 7;
+const DEPLOY_PHLO_LIMIT_FIELD: number = 8;
+const DEPLOY_VALID_AFTER_BLOCK_NUMBER_FIELD: number = 10;
+const DEPLOY_SHARD_ID_FIELD: number = 11;
+const DEPLOY_UINT256_PHLO_PRICE_FIELD: number = 15;
+
 const writeDeployHeader = (
     writer: BinaryWriter,
     { term, timestamp }: DeployData,
 ): void => {
-    writer.writeString(2, term);
-    writer.writeInt64(3, timestamp);
+    writer.writeString(DEPLOY_TERM_FIELD, term);
+    writer.writeInt64(DEPLOY_TIMESTAMP_FIELD, timestamp);
 };
 
 const writeDeployBody = (
     writer: BinaryWriter,
     { phloLimit, validAfterBlockNumber, shardId = "" }: DeployData,
 ): void => {
-    writer.writeInt64(8, phloLimit);
-    writer.writeInt64(10, validAfterBlockNumber);
-    writer.writeString(11, shardId);
+    writer.writeInt64(DEPLOY_PHLO_LIMIT_FIELD, phloLimit);
+    writer.writeInt64(
+        DEPLOY_VALID_AFTER_BLOCK_NUMBER_FIELD,
+        validAfterBlockNumber,
+    );
+    writer.writeString(DEPLOY_SHARD_ID_FIELD, shardId);
 };
 
 export default class SignerService {
     public static readonly deployDataProtobufSerialize = (
         deployData: DeployData,
     ): Uint8Array => {
-        const writer = new BinaryWriter();
+        const writer: BinaryWriter = new BinaryWriter();
 
         writeDeployHeader(writer, deployData);
-        writer.writeInt64(7, Number(deployData.phloPrice));
+        writer.writeInt64(
+            DEPLOY_CLASSIC_PHLO_PRICE_FIELD,
+            Number(deployData.phloPrice),
+        );
         writeDeployBody(writer, deployData);
 
         return writer.getResultBuffer();
@@ -51,7 +65,7 @@ export default class SignerService {
     public static readonly deployDataUint256ProtobufSerialize = (
         deployData: DeployData,
     ): Uint8Array => {
-        const { phloPrice } = deployData;
+        const { phloPrice }: Pick<DeployData, "phloPrice"> = deployData;
 
         if (!isUint256(phloPrice)) {
             throw new RangeError(
@@ -59,11 +73,14 @@ export default class SignerService {
             );
         }
 
-        const writer = new BinaryWriter();
+        const writer: BinaryWriter = new BinaryWriter();
 
         writeDeployHeader(writer, deployData);
         writeDeployBody(writer, deployData);
-        writer.writeBytes(15, bigIntToBuffer(BigInt(phloPrice)));
+        writer.writeBytes(
+            DEPLOY_UINT256_PHLO_PRICE_FIELD,
+            bigIntToBuffer(BigInt(phloPrice)),
+        );
 
         return writer.getResultBuffer();
     };
