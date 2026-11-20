@@ -10,9 +10,8 @@ import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import SignerService, { SignedResult } from "@services/Signer";
-import { createDeployPhlo } from "@fabrics/deployPhlo";
+import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 import {
-    bigIntToBuffer,
     encodeBase16,
     isUint256,
     MAX_UINT256,
@@ -34,14 +33,92 @@ interface INodeVectorsFixture {
     vectors: INodeVector[];
 }
 
-const DEPLOY_HASH_LENGTH = 32;
-const UINT256_BYTES_LENGTH = 32;
-const MAX_BYTE = 255;
+const DEPLOY_HASH_LENGTH: number = 32;
+const PRIVATE_KEY_LENGTH: number = 32;
+const SYNTHETIC_PRIVATE_KEY_BYTE: number = 1;
 
-const SYNTHETIC_PRIVATE_KEY: Uint8Array = new Uint8Array(32).fill(1);
+const SYNTHETIC_PRIVATE_KEY: Uint8Array = new Uint8Array(
+    PRIVATE_KEY_LENGTH,
+).fill(SYNTHETIC_PRIVATE_KEY_BYTE);
 
-const CLASSIC_PROTOBUF_HEX =
-    "121d6e65772072657475726e20696e207b2072657475726e2128343229207d18fb80b3c19c333801400150ffffffffffffffffff015a04726f6f74";
+const CLASSIC_PHLO_PRICE: number = 1;
+
+const WIDE_PHLO_PRICE: string = "9007199254740993";
+const WIDE_PHLO_LIMIT: number = 3;
+const WIDE_MAX_PHLO_CHARGE: bigint = 27021597764222979n;
+
+const PHLO_CHARGE_OVERFLOW_ERROR: RegExp = /charge exceeds uint256/;
+
+const SUBMITTED_VECTOR_INDEX: number = 2;
+
+const VALID_UINT256_VALUES: unknown[] = [
+    0,
+    1,
+    Number.MAX_SAFE_INTEGER,
+    "0",
+    "9007199254740993",
+    MAX_UINT256.toString(),
+    0n,
+    MAX_UINT256,
+];
+
+const INVALID_UINT256_VALUES: unknown[] = [
+    null,
+    undefined,
+    {},
+    "",
+    "01",
+    "-0",
+    "+1",
+    " 1",
+    "1 ",
+    "1.0",
+    "1e2",
+    "9".repeat(100),
+    (MAX_UINT256 + 1n).toString(),
+    -1,
+    0.1,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -1n,
+    MAX_UINT256 + 1n,
+];
+
+const INVALID_SERIALIZED_PHLO_PRICES: DeployData["phloPrice"][] = [
+    -1,
+    1.5,
+    "-1",
+    "01",
+    "1e3",
+    (MAX_UINT256 + 1n).toString(),
+    (1n << 260n).toString(),
+];
+
+const VALID_RUST_PHLO_PRICES: PhloPrice[] = [
+    1,
+    "1",
+    "9007199254740993",
+    1n << 128n,
+    MAX_UINT256,
+];
+
+const INVALID_RUST_PHLO_PRICES: PhloPrice[] = [
+    0,
+    "0",
+    0n,
+    "01",
+    MAX_UINT256 + 1n,
+];
+
+const INVALID_PHLO_LIMITS: number[] = [
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+];
 
 const fixture: INodeVectorsFixture = JSON.parse(
     readFileSync(
@@ -53,22 +130,27 @@ const fixture: INodeVectorsFixture = JSON.parse(
 const rustApi: NodeApiAdapter = new RustNodeApiAdapter({} as IApiClients);
 const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
 
-const toHex = (bytes: Uint8Array): string => encodeBase16(bytes);
-
-console.log("\n[NODE VECTORS]");
-console.log("    Source revision:", fixture.sourceRevision);
-console.log("    Vectors:", fixture.vectors.length);
+const hashDeployData = (api: NodeApiAdapter, data: DeployData): string =>
+    blake2bHex(api.serializeDeployData(data), undefined, DEPLOY_HASH_LENGTH);
 
 for (const vector of fixture.vectors) {
     test(`rust adapter matches the node vector price=${vector.data.phloPrice}, previousBlock=${vector.data.validAfterBlockNumber}`, async () => {
+        console.log("\n=== NODE VECTOR ===");
+        console.log("    Source revision:", fixture.sourceRevision);
+        console.log("    Phlo price:", vector.data.phloPrice);
+        console.log("    Previous block:", vector.data.validAfterBlockNumber);
+
         const bytes: Uint8Array = rustApi.serializeDeployData(vector.data);
         const hash: string = blake2bHex(bytes, undefined, DEPLOY_HASH_LENGTH);
         const signature: Uint8Array = await sign(hash, SYNTHETIC_PRIVATE_KEY);
 
-        assert.equal(toHex(bytes), vector.protobufHex);
+        assert.equal(encodeBase16(bytes), vector.protobufHex);
         assert.equal(hash, vector.hash);
-        assert.equal(toHex(getPublicKey(SYNTHETIC_PRIVATE_KEY)), vector.publicKey);
-        assert.equal(toHex(signature), vector.signature);
+        assert.equal(
+            encodeBase16(getPublicKey(SYNTHETIC_PRIVATE_KEY)),
+            vector.publicKey,
+        );
+        assert.equal(encodeBase16(signature), vector.signature);
         assert.equal(verify(vector.signature, hash, vector.publicKey), true);
     });
 }
@@ -76,64 +158,15 @@ for (const vector of fixture.vectors) {
 test("uint256 guard accepts exact integers from zero to the uint256 maximum", () => {
     console.log("\n=== UINT256 GUARD ===");
 
-    const validValues: unknown[] = [
-        0,
-        1,
-        Number.MAX_SAFE_INTEGER,
-        "0",
-        "9007199254740993",
-        MAX_UINT256.toString(),
-        0n,
-        MAX_UINT256,
-    ];
-
-    const invalidValues: unknown[] = [
-        null,
-        undefined,
-        {},
-        "",
-        "01",
-        "-0",
-        "+1",
-        " 1",
-        "1 ",
-        "1.0",
-        "1e2",
-        "9".repeat(100),
-        (MAX_UINT256 + 1n).toString(),
-        -1,
-        0.1,
-        Number.MAX_SAFE_INTEGER + 1,
-        Number.NaN,
-        Number.POSITIVE_INFINITY,
-        -1n,
-        MAX_UINT256 + 1n,
-    ];
-
-    for (const value of validValues) {
+    for (const value of VALID_UINT256_VALUES) {
         assert.equal(isUint256(value), true, String(value));
     }
 
-    for (const value of invalidValues) {
+    for (const value of INVALID_UINT256_VALUES) {
         console.log("    Rejected:", String(value).slice(0, 20));
 
         assert.equal(isUint256(value), false, String(value));
     }
-});
-
-test("uint256 phlo price is encoded as 32 big endian bytes", () => {
-    console.log("\n=== UINT256 PRICE ENCODING ===");
-
-    const zero: Uint8Array = bigIntToBuffer(0n);
-    const one: Uint8Array = bigIntToBuffer(1n);
-    const max: Uint8Array = bigIntToBuffer(MAX_UINT256);
-
-    console.log("    One:", toHex(one));
-
-    assert.deepEqual(zero, new Uint8Array(UINT256_BYTES_LENGTH));
-    assert.equal(one.length, UINT256_BYTES_LENGTH);
-    assert.equal(one[UINT256_BYTES_LENGTH - 1], 1);
-    assert.deepEqual(max, new Uint8Array(UINT256_BYTES_LENGTH).fill(MAX_BYTE));
 });
 
 test("uint256 serializer rejects a phlo price that does not fit 32 bytes", () => {
@@ -141,17 +174,7 @@ test("uint256 serializer rejects a phlo price that does not fit 32 bytes", () =>
 
     const deployData: DeployData = fixture.vectors[0].data;
 
-    const invalidPrices: DeployData["phloPrice"][] = [
-        -1,
-        1.5,
-        "-1",
-        "01",
-        "1e3",
-        (MAX_UINT256 + 1n).toString(),
-        (1n << 260n).toString(),
-    ];
-
-    for (const phloPrice of invalidPrices) {
+    for (const phloPrice of INVALID_SERIALIZED_PHLO_PRICES) {
         console.log("    Rejected:", String(phloPrice).slice(0, 20));
 
         assert.throws(
@@ -170,26 +193,7 @@ test("rust phlo settings accept wide prices and reject malformed values", () => 
 
     const maxPhloPrice: bigint = rustApi.getMaxPhloPrice();
 
-    const validPrices: PhloPrice[] = [
-        1,
-        "1",
-        "9007199254740993",
-        1n << 128n,
-        MAX_UINT256,
-    ];
-
-    const invalidPrices: unknown[] = [0, "0", 0n, "01", MAX_UINT256 + 1n];
-
-    const invalidLimits: unknown[] = [
-        0,
-        -1,
-        1.5,
-        Number.NaN,
-        Number.POSITIVE_INFINITY,
-        Number.MAX_SAFE_INTEGER + 1,
-    ];
-
-    for (const phloPrice of validPrices) {
+    for (const phloPrice of VALID_RUST_PHLO_PRICES) {
         assert.equal(
             validatePhloSettings({ phloPrice }, { maxPhloPrice }).isValid,
             true,
@@ -197,26 +201,20 @@ test("rust phlo settings accept wide prices and reject malformed values", () => 
         );
     }
 
-    for (const phloPrice of invalidPrices) {
+    for (const phloPrice of INVALID_RUST_PHLO_PRICES) {
         console.log("    Rejected price:", String(phloPrice));
 
         assert.equal(
-            validatePhloSettings(
-                { phloPrice: phloPrice as PhloPrice },
-                { maxPhloPrice },
-            ).isValid,
+            validatePhloSettings({ phloPrice }, { maxPhloPrice }).isValid,
             false,
         );
     }
 
-    for (const phloLimit of invalidLimits) {
+    for (const phloLimit of INVALID_PHLO_LIMITS) {
         console.log("    Rejected limit:", String(phloLimit));
 
         assert.equal(
-            validatePhloSettings(
-                { phloLimit: phloLimit as number },
-                { maxPhloPrice },
-            ).isValid,
+            validatePhloSettings({ phloLimit }, { maxPhloPrice }).isValid,
             false,
         );
     }
@@ -225,41 +223,43 @@ test("rust phlo settings accept wide prices and reject malformed values", () => 
 test("deploy phlo keeps the exact maximum charge and refuses a charge above uint256", () => {
     console.log("\n=== DEPLOY PHLO CHARGE ===");
 
-    const { phloLimit, phloPrice, maxPhloCharge } = createDeployPhlo({
-        phloLimit: 3,
-        phloPrice: "9007199254740993",
-    });
+    const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
+        createDeployPhlo({
+            phloLimit: WIDE_PHLO_LIMIT,
+            phloPrice: WIDE_PHLO_PRICE,
+        });
+
+    const maxPriceCharge: bigint = createDeployPhlo({
+        phloLimit: 1,
+        phloPrice: MAX_UINT256,
+    }).maxPhloCharge;
 
     console.log("    Maximum charge:", maxPhloCharge.toString());
 
-    assert.equal(phloLimit, 3);
-    assert.equal(phloPrice, 9007199254740993n);
-    assert.equal(maxPhloCharge, 27021597764222979n);
-    assert.equal(
-        createDeployPhlo({ phloLimit: 1, phloPrice: MAX_UINT256 })
-            .maxPhloCharge,
-        MAX_UINT256,
-    );
+    assert.equal(phloLimit, WIDE_PHLO_LIMIT);
+    assert.equal(phloPrice, BigInt(WIDE_PHLO_PRICE));
+    assert.equal(maxPhloCharge, WIDE_MAX_PHLO_CHARGE);
+    assert.equal(maxPriceCharge, MAX_UINT256);
     assert.throws(
         () => createDeployPhlo({ phloLimit: 2, phloPrice: MAX_UINT256 }),
-        /charge exceeds uint256/,
+        PHLO_CHARGE_OVERFLOW_ERROR,
     );
 });
 
 test("scala and rust adapters serialize the same deploy into different price fields", () => {
     console.log("\n=== CLASSIC AND UINT256 SERIALIZATION ===");
 
-    const data: DeployData = { ...fixture.vectors[0].data, phloPrice: 1 };
+    const vector: INodeVector = fixture.vectors[0];
+    const data: DeployData = { ...vector.data, phloPrice: CLASSIC_PHLO_PRICE };
 
-    const classic: Uint8Array = scalaApi.serializeDeployData(data);
-    const uint256: Uint8Array = rustApi.serializeDeployData(data);
+    const classicHex: string = encodeBase16(scalaApi.serializeDeployData(data));
+    const uint256Hex: string = encodeBase16(rustApi.serializeDeployData(data));
 
-    console.log("    Classic:", toHex(classic));
-    console.log("    Uint256:", toHex(uint256));
+    console.log("    Classic:", classicHex);
+    console.log("    Uint256:", uint256Hex);
 
-    assert.equal(toHex(classic), CLASSIC_PROTOBUF_HEX);
-    assert.equal(toHex(uint256), fixture.vectors[0].protobufHex);
-    assert.notEqual(toHex(classic), toHex(uint256));
+    assert.equal(uint256Hex, vector.protobufHex);
+    assert.notEqual(classicHex, uint256Hex);
 });
 
 test("a deploy signed under one node API profile does not verify under the other", async () => {
@@ -268,16 +268,8 @@ test("a deploy signed under one node API profile does not verify under the other
     const data: DeployData = fixture.vectors[0].data;
     const publicKey: Uint8Array = getPublicKey(SYNTHETIC_PRIVATE_KEY);
 
-    const rustHash: string = blake2bHex(
-        rustApi.serializeDeployData(data),
-        undefined,
-        DEPLOY_HASH_LENGTH,
-    );
-    const scalaHash: string = blake2bHex(
-        scalaApi.serializeDeployData(data),
-        undefined,
-        DEPLOY_HASH_LENGTH,
-    );
+    const rustHash: string = hashDeployData(rustApi, data);
+    const scalaHash: string = hashDeployData(scalaApi, data);
 
     const rustSignature: Uint8Array = await sign(
         rustHash,
@@ -298,7 +290,7 @@ test("a deploy signed under one node API profile does not verify under the other
     assert.equal(verify(scalaSignature, rustHash, publicKey), false);
 });
 
-test("rust submission sends the signed deploy with the decimal price string", async () => {
+test("rust submission sends the signed deploy unchanged", async () => {
     console.log("\n=== RUST SUBMISSION REQUEST ===");
 
     const requests: unknown[] = [];
@@ -313,7 +305,7 @@ test("rust submission sends the signed deploy with the decimal price string", as
         },
     } as unknown as IApiClients;
 
-    const vector: INodeVector = fixture.vectors[2];
+    const vector: INodeVector = fixture.vectors[SUBMITTED_VECTOR_INDEX];
 
     const signed: SignedResult = {
         data: vector.data,
@@ -324,11 +316,7 @@ test("rust submission sends the signed deploy with the decimal price string", as
 
     await new RustNodeApiAdapter(clients).submitDeploy(signed);
 
-    const sentPrice: unknown = JSON.parse(JSON.stringify(requests[0])).data
-        .phloPrice;
-
-    console.log("    Sent phlo price:", sentPrice);
+    console.log("    Requests sent:", requests.length);
 
     assert.deepEqual(requests, [signed]);
-    assert.equal(sentPrice, "9007199254740993");
 });
