@@ -184,6 +184,7 @@ export type IUrlValue = string | number | boolean | undefined;
 
 export interface IUrlParams {
     path?: Record<string, IUrlValue>;
+    pathSegments?: IUrlValue[];
     query?: Record<string, IUrlValue | undefined | null>;
 }
 
@@ -199,6 +200,14 @@ export const buildUrl = (
         }
 
         url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+    });
+
+    params.pathSegments?.forEach((segment) => {
+        if (segment === undefined) {
+            return;
+        }
+
+        url = `${url}/${encodeURIComponent(String(segment))}`;
     });
 
     const query = new URLSearchParams();

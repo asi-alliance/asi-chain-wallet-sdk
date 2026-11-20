@@ -12,6 +12,7 @@ import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import NodeApiProvider from "@domains/NodeApiProvider";
+import { IGetBlocksParams } from "@domains/ObserverClient";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { WalletTypes } from "@domains/Signer";
 import BlockService from "@services/BlockService";
@@ -44,6 +45,11 @@ const LARGE_FIELD_CHAR_CODE = 0x61;
 const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
 const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
 const PREVIOUS_BLOCK_MINUS_ONE_HEX = "50ffffffffffffffffff01";
+
+const RUST_LATEST_BLOCK_PARAMS: IGetBlocksParams = {
+    depth: 1,
+    view: "summary",
+};
 
 interface ISigningContext {
     account: Account;
@@ -464,9 +470,15 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
         await createPrivateKeyContext();
 
     for (const blockNumber of [0, "0"]) {
+        const calls: (IGetBlocksParams | undefined)[] = [];
+
         const api: NodeApiAdapter = new RustNodeApiAdapter({
             observer: {
-                getBlocks: async () => [{ blockInfo: { blockNumber } }],
+                getBlocks: async (params?: IGetBlocksParams) => {
+                    calls.push(params);
+
+                    return [{ blockInfo: { blockNumber } }];
+                },
             },
         } as unknown as IApiClients);
         const nodeApiProvider: NodeApiProvider = {
@@ -488,12 +500,14 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
         const bytes: Uint8Array = api.serializeDeployData(signed.data);
         const hash: string = blake2bHex(bytes, undefined, DEPLOY_HASH_LENGTH);
 
+        console.log("    Blocks request params:", JSON.stringify(calls[0]));
         console.log("    Block number:", JSON.stringify(blockNumber));
         console.log(
             "    Previous block:",
             signed.data.validAfterBlockNumber,
         );
 
+        assert.deepEqual(calls, [RUST_LATEST_BLOCK_PARAMS]);
         assert.equal(signed.data.validAfterBlockNumber, -1);
         assert.equal(toHex(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX), true);
         assert.equal(verify(signed.signature, hash, signed.deployer), true);
