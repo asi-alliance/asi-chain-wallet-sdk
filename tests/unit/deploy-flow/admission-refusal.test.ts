@@ -10,6 +10,7 @@ import {
 } from "@domains/Deploy";
 import {
     ApiRequestError,
+    ApiSource,
     CustomErrorCode,
     DeployAdmissionRefusedError,
     DeployQueueRefusedError,
@@ -22,6 +23,8 @@ import DeployService from "@services/DeployService";
 import { SignedResult } from "@services/Signer";
 
 const SIGNATURE = "abcdef";
+const SUBMIT_OPERATION = "DeployService.submitSignedDeploy";
+const NODE_FAILURE_REASON = "node response";
 const QUEUE_RETRY_AFTER = "12";
 const QUEUE_RETRY_AFTER_MS = 12_000;
 const AXIOS_RETRY_AFTER = "7";
@@ -133,7 +136,7 @@ const createNodeFailure = (
     data: unknown,
     headers: TResponseHeaders = {},
 ): Error =>
-    Object.assign(new Error("node response"), {
+    Object.assign(new Error(NODE_FAILURE_REASON), {
         isAxiosError: true,
         response: { status, data, headers },
     });
@@ -258,6 +261,15 @@ for (const { status, body } of UNKNOWN_OUTCOME_CASES) {
         assert.ok(error instanceof DeploySubmissionUnknownError);
         assert.ok(error instanceof ApiRequestError);
         assert.equal(error.code, CustomErrorCode.API_REQUEST_FAILED);
+        assert.equal(error.reason, NODE_FAILURE_REASON);
+        assert.equal(
+            error.message,
+            new ApiRequestError(
+                ApiSource.NODE,
+                SUBMIT_OPERATION,
+                NODE_FAILURE_REASON,
+            ).message,
+        );
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(submitted.length, 1);
     });

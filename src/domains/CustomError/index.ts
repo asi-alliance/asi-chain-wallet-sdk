@@ -392,13 +392,11 @@ export class DeploySubmissionUnknownError extends ApiRequestError {
     public readonly deployId: string;
 
     constructor(operation: string, reason: string, deployId: string) {
-        // TODO(next-major): Report a dedicated DEPLOY_SUBMISSION_UNKNOWN code;
-        // it keeps API_REQUEST_FAILED that a failed submission had before.
-        super(
-            ApiSource.NODE,
-            operation,
-            `Submission outcome for deploy ${deployId} is unknown: ${reason}. Check its status before retrying.`,
-        );
+        // TODO(next-major): Report a dedicated DEPLOY_SUBMISSION_UNKNOWN code
+        // and say in the reason that the outcome is unknown; it keeps the
+        // API_REQUEST_FAILED code and the reason that a failed submission
+        // had before.
+        super(ApiSource.NODE, operation, reason);
 
         this.deployId = deployId;
     }
