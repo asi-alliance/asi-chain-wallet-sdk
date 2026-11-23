@@ -6,6 +6,7 @@ import Wallet from "@domains/Wallet";
 import Account from "@domains/Account";
 import StorageManager from "@services/StorageManager";
 import TransactionReservationsManager from "@services/TransactionReservationsManager";
+import ReservationAdapter from "@domains/ReservationAdapter";
 import { ITransactionReservation } from "@domains/Transaction";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { INetworkConfig, INetworkRecord, NetworkId } from "@domains/Network";
@@ -15,7 +16,13 @@ import {
     DomainClosedError,
     OperationsSuspendedError,
 } from "@domains/CustomError";
-import { FAKE_NETWORK, IFakeNode, IHeldStep, startFakeNode } from "./fakeNode";
+import {
+    FAKE_NETWORK,
+    IFakeNode,
+    IHeldStep,
+    createHeldStep,
+    startFakeNode,
+} from "./fakeNode";
 
 const PRIVATE_KEY_HEX =
     "7e4c2412f4694ea426d7f7adbfdfdec46fb0396b491d530a740cfa4761851d35";
@@ -116,6 +123,26 @@ const captureError = async (operation: () => Promise<unknown>) => {
 const nextTurn = (): Promise<void> =>
     new Promise<void>((resolve) => setImmediate(resolve));
 
+const originalDeleteReservation = StorageManager.deleteTransactionReservation;
+
+const holdReservationDelete = (events: string[]): IHeldStep => {
+    const step: IHeldStep = createHeldStep();
+
+    StorageManager.deleteTransactionReservation = async (
+        ...args: Parameters<typeof originalDeleteReservation>
+    ) => {
+        events.push("delete:started");
+
+        await step.wait();
+
+        await originalDeleteReservation(...args);
+
+        events.push("delete:finished");
+    };
+
+    return step;
+};
+
 const createExternalReservationRequest = (
     walletId: string,
     accountId: string,
@@ -144,6 +171,8 @@ test.beforeEach(() => {
 });
 
 test.afterEach(async () => {
+    StorageManager.deleteTransactionReservation = originalDeleteReservation;
+
     await StorageManager.clear();
 });
 
@@ -342,6 +371,61 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
     assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
 
     manager.close();
+
+    await client.close();
+});
+
+test("onReleased reports a verdict release after the reservation leaves the storage", async () => {
+    console.log("\n=== ON RELEASED WAITS FOR THE STORAGE ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    const deletion: IHeldStep = holdReservationDelete(events);
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+                markReleased();
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    await deletion.reached;
+    await nextTurn();
+
+    const eventsWhileDeleting: string[] = [...events];
+
+    deletion.release();
+
+    await released;
+
+    console.log("    Events while deleting:", eventsWhileDeleting);
+    console.log("    Events:", events);
+
+    assert.deepEqual(eventsWhileDeleting, ["delete:started"]);
+    assert.deepEqual(events, [
+        "delete:started",
+        "delete:finished",
+        `onReleased:${DeployStatus.REJECTED}`,
+    ]);
+
+    adapter.dispose();
 
     await client.close();
 });

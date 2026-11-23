@@ -75,21 +75,21 @@ export default class ReservationAdapter {
             ),
             {
                 ...reservationsManagerOptions,
-                onConfirmed: (reservation: ITransactionReservation) => {
-                    void ReservationAdapter.releaseFromStorage(reservation.id);
+                onConfirmed: async (reservation: ITransactionReservation) => {
+                    await ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onConfirmed?.(reservation);
                 },
-                onExpired: (reservation: ITransactionReservation) => {
-                    void ReservationAdapter.releaseFromStorage(reservation.id);
+                onExpired: async (reservation: ITransactionReservation) => {
+                    await ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onExpired?.(reservation);
                 },
-                onReleased: (
+                onReleased: async (
                     reservation: ITransactionReservation,
                     verdict: DeployVerdictError,
                 ) => {
-                    void ReservationAdapter.releaseFromStorage(reservation.id);
+                    await ReservationAdapter.releaseFromStorage(reservation.id);
 
                     reservationsManagerOptions.onReleased?.(
                         reservation,
