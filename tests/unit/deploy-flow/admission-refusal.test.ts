@@ -9,6 +9,7 @@ import {
     DeployRejectionCode,
 } from "@domains/Deploy";
 import {
+    ApiRequestError,
     CustomErrorCode,
     DeployAdmissionRefusedError,
     DeployQueueRefusedError,
@@ -255,7 +256,8 @@ for (const { status, body } of UNKNOWN_OUTCOME_CASES) {
         console.log("    Requests:", submitted.length);
 
         assert.ok(error instanceof DeploySubmissionUnknownError);
-        assert.equal(error.code, CustomErrorCode.DEPLOY_SUBMISSION_UNKNOWN);
+        assert.ok(error instanceof ApiRequestError);
+        assert.equal(error.code, CustomErrorCode.API_REQUEST_FAILED);
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(submitted.length, 1);
     });

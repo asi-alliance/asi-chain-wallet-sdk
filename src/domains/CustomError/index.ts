@@ -38,7 +38,6 @@ export enum CustomErrorCode {
     DEPLOY_TOO_LARGE = "DEPLOY_TOO_LARGE",
     DEPLOY_EXPIRED = "DEPLOY_EXPIRED",
     DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
-    DEPLOY_SUBMISSION_UNKNOWN = "DEPLOY_SUBMISSION_UNKNOWN",
     DEPLOY_QUEUE_FULL = "DEPLOY_QUEUE_FULL",
     DEPLOY_VERDICT_REJECTED = "DEPLOY_VERDICT_REJECTED",
     DEPLOY_VERDICT_EXPIRED = "DEPLOY_VERDICT_EXPIRED",
@@ -393,11 +392,12 @@ export class DeploySubmissionUnknownError extends ApiRequestError {
     public readonly deployId: string;
 
     constructor(operation: string, reason: string, deployId: string) {
+        // TODO(next-major): Report a dedicated DEPLOY_SUBMISSION_UNKNOWN code;
+        // it keeps API_REQUEST_FAILED that a failed submission had before.
         super(
             ApiSource.NODE,
             operation,
             `Submission outcome for deploy ${deployId} is unknown: ${reason}. Check its status before retrying.`,
-            CustomErrorCode.DEPLOY_SUBMISSION_UNKNOWN,
         );
 
         this.deployId = deployId;
