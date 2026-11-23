@@ -180,13 +180,14 @@ const createAdapter = (
 
 const createPoller = (
     finalizations: Array<() => Promise<unknown>>,
+    deploy: () => Promise<unknown> = notInBlock,
 ): DeployStatusPoller => {
     let call: number = 0;
 
     const nextFinalization = (): Promise<unknown> =>
         finalizations[Math.min(call++, finalizations.length - 1)]();
 
-    const clients: IApiClients = createClients(nextFinalization, notInBlock);
+    const clients: IApiClients = createClients(nextFinalization, deploy);
 
     const networkContext: INetworkContextInput = {
         networkId: "rust-test",
@@ -373,6 +374,36 @@ for (const { state, code } of VERDICT_CASES) {
         assert.deepEqual(seen, [DeployStatus.DEPLOYING, state]);
     });
 }
+
+test("an included then expired deploy ends the watch with the expired verdict message", async () => {
+    console.log("\n=== INCLUDED THEN EXPIRED DEPLOY ===");
+
+    const poller: DeployStatusPoller = createPoller(
+        [async () => ({ state: "Pending" })],
+        async () => observedInBlock(DeployFinalizationState.EXPIRED),
+    );
+
+    const error: unknown = await poller
+        .watch(
+            DEPLOY_ID,
+            {},
+            {
+                intervalMs: POLL_INTERVAL_MS,
+                timeoutMs: LONG_WATCH_TIMEOUT_MS,
+            },
+        )
+        .done.catch((reason: unknown) => reason);
+
+    console.log("    Error:", (error as Error).message);
+
+    assert.ok(error instanceof DeployVerdictError);
+    assert.equal(error.code, CustomErrorCode.DEPLOY_VERDICT_EXPIRED);
+    assert.equal(error.detail, undefined);
+    assert.equal(
+        error.message,
+        `Deploy ${DEPLOY_ID} expired without its effects reaching finalized state`,
+    );
+});
 
 test("the poller reports a verdict through onVerdict before onError", async () => {
     console.log("\n=== POLLER CALLS ON VERDICT BEFORE ON ERROR ===");
