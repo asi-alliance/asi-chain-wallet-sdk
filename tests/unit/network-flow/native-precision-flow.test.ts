@@ -317,8 +317,10 @@ test("wide transfer term, available balance and pending history retain every ato
     );
 
     console.log("    Restored pending amount:", pendingTransfer?.amount);
+    console.log("    Restored pending fee:", pendingTransfer?.gasCost);
 
     assert.equal(pendingTransfer?.amount, WIDE_AMOUNT);
+    assert.equal(pendingTransfer?.gasCost, WIDE_TRANSFER_GAS_COST);
     assert.equal(pendingTransfer?.nativeTokenDecimals, NATIVE_18_DECIMALS);
 
     client.setNetwork(NATIVE_8_NETWORK);

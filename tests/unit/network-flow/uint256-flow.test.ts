@@ -180,6 +180,8 @@ test("direct reservations sign and reserve the phlo read when the operation star
         phloPrice: STARTING_PHLO_PRICE,
     };
 
+    const submittedCount: number = node.getSubmittedDeploys().length;
+
     try {
         const transferring: Promise<IReservedOperationResult> =
             reservationAdapter.transfer(
@@ -192,8 +194,6 @@ test("direct reservations sign and reserve the phlo read when the operation star
 
         await transferring;
 
-        const transferDeploy: SignedResult = getLastSubmittedDeploy();
-
         const deploying: Promise<IReservedOperationResult> =
             reservationAdapter.deploy(wallet, account.getId(), deployDetails);
 
@@ -201,7 +201,10 @@ test("direct reservations sign and reserve the phlo read when the operation star
 
         await deploying;
 
-        const deployDeploy: SignedResult = getLastSubmittedDeploy();
+        const submittedDeploys: SignedResult[] = node
+            .getSubmittedDeploys()
+            .slice(submittedCount);
+        const [transferDeploy, deployDeploy]: SignedResult[] = submittedDeploys;
 
         const pendingAmounts: string[] = reservationAdapter
             .getReservations()
@@ -210,10 +213,12 @@ test("direct reservations sign and reserve the phlo read when the operation star
                     reservation.pendingAmount,
             );
 
+        console.log("    Submitted deploys:", submittedDeploys.length);
         console.log("    Transfer phlo price:", transferDeploy.data.phloPrice);
         console.log("    Deploy phlo price:", deployDeploy.data.phloPrice);
         console.log("    Reserved amounts:", pendingAmounts);
 
+        assert.equal(submittedDeploys.length, 2);
         assert.equal(
             transferDeploy.data.phloPrice,
             String(STARTING_PHLO_PRICE),
