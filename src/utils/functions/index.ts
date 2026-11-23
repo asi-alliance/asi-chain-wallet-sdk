@@ -204,7 +204,7 @@ export const buildUrl = (
     });
 
     params.pathSegments?.forEach((segment) => {
-        if (segment === undefined) {
+        if (segment === undefined || segment === "") {
             return;
         }
 
