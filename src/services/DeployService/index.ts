@@ -53,11 +53,12 @@ export default class DeployService {
 
         if (result && typeof result === "object") {
             const response = result as {
-                deployId?: string;
-                signature?: string;
+                deployId?: unknown;
+                signature?: unknown;
             };
+            const deployId: unknown = response.deployId ?? response.signature;
 
-            return response.deployId ?? response.signature;
+            return typeof deployId === "string" ? deployId : undefined;
         }
 
         return undefined;

@@ -97,6 +97,11 @@ const UNKNOWN_OUTCOME_CASES: IFailureCase[] = [
     { status: 500, body: { error: "deploy_queue_full" } },
 ];
 
+const MALFORMED_ACCEPTANCE_BODIES: unknown[] = [
+    { deployId: 123 },
+    { signature: { value: "aa" } },
+];
+
 const QUEUE_FULL_CASES: IQueueFullCase[] = [
     { cause: "validator", message: VALIDATOR_QUEUE_FULL_MESSAGE },
     { cause: "deployer share", message: DEPLOYER_SHARE_QUEUE_FULL_MESSAGE },
@@ -272,6 +277,25 @@ test("an acceptance response for another signature leaves the outcome unknown", 
     assert.equal(error.deployId, SIGNATURE);
     assert.equal(submitted.length, 1);
 });
+
+for (const body of MALFORMED_ACCEPTANCE_BODIES) {
+    test(`an acceptance response ${JSON.stringify(body)} leaves the outcome unknown`, async () => {
+        console.log(`\n=== MALFORMED ACCEPTANCE ${JSON.stringify(body)} ===`);
+
+        const submitted: SignedResult[] = [];
+
+        const error: unknown = await captureSubmissionError(
+            async () => body,
+            submitted,
+        );
+
+        console.log("    Error:", (error as Error).constructor.name);
+
+        assert.ok(error instanceof DeploySubmissionUnknownError);
+        assert.equal(error.deployId, SIGNATURE);
+        assert.equal(submitted.length, 1);
+    });
+}
 
 for (const { cause, message } of QUEUE_FULL_CASES) {
     test(`503 deploy_queue_full (${cause}) needs a newly signed deploy whatever its message`, async () => {
