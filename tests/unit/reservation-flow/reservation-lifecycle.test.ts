@@ -430,6 +430,103 @@ test("onReleased reports a verdict release after the reservation leaves the stor
     await client.close();
 });
 
+test("a rejecting async onReleased is reported instead of being lost", async (t) => {
+    console.log("\n=== ASYNC ON RELEASED FAILURE IS REPORTED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const failure: Error = new Error("Consumer failure");
+    const consoleError = t.mock.method(console, "error", () => {});
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: async () => {
+                markReleased();
+
+                throw failure;
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    await released;
+    await nextTurn();
+
+    const reportedErrors: unknown[] = consoleError.mock.calls.map(
+        (call) => call.arguments[1],
+    );
+
+    console.log("    Reported errors:", reportedErrors.length);
+
+    assert.ok(reportedErrors.includes(failure));
+
+    adapter.dispose();
+
+    await client.close();
+});
+
+test("a failed storage delete reports onReleaseFailed instead of onReleased", async (t) => {
+    console.log("\n=== FAILED STORAGE DELETE IS REPORTED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const storageFailure: Error = new Error("Storage failure");
+    const events: string[] = [];
+
+    t.mock.method(console, "error", () => {});
+
+    StorageManager.deleteTransactionReservation = async () => {
+        throw storageFailure;
+    };
+
+    let markReleaseFailed!: (error: unknown) => void;
+
+    const releaseFailed: Promise<unknown> = new Promise<unknown>((resolve) => {
+        markReleaseFailed = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: () => {
+                events.push("onReleased");
+            },
+            onReleaseFailed: (
+                _reservation: ITransactionReservation,
+                error: unknown,
+            ) => {
+                events.push("onReleaseFailed");
+                markReleaseFailed(error);
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    const reportedError: unknown = await releaseFailed;
+
+    await nextTurn();
+
+    console.log("    Events:", events);
+
+    assert.deepEqual(events, ["onReleaseFailed"]);
+    assert.equal(reportedError, storageFailure);
+
+    adapter.dispose();
+
+    await client.close();
+});
+
 test("a watch timeout keeps the reservation and does not call onReleased", async () => {
     console.log("\n=== WATCH TIMEOUT KEEPS THE RESERVATION ===");
 

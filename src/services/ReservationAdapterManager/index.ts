@@ -51,6 +51,7 @@ class ReservationAdapterManager extends DisposableItemManager<ReservationAdapter
                 onConfirmed: this.notifyReservationsChanged,
                 onExpired: this.notifyReservationsChanged,
                 onReleased: this.notifyReservationsChanged,
+                onReleaseFailed: this.notifyReservationsChanged,
             });
 
         super.add(wallet.getId(), reservationAdapter);
