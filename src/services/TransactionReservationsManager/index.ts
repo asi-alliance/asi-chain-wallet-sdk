@@ -17,6 +17,7 @@ import {
     FailSubscriptionWhenInactive,
 } from "@utils/decorators/transactionReservationsManager";
 import { SkipWhenInactive } from "@utils/decorators";
+import { runProtected } from "@utils/index";
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
@@ -291,15 +292,27 @@ export default class TransactionReservationsManager
         this.watchers.set(reservation.id, handle);
     }
 
+    private static runCallback(callback: () => void): void {
+        runProtected(callback, (error: unknown) =>
+            console.error(
+                "TransactionReservationsManager: callback failed:",
+                error,
+            ),
+        );
+    }
+
     private notify(
         reservationId: string,
         invoke: (callbacks: IDeployWatchCallbacks) => void,
     ): void {
+        const invokeProtected = (callbacks: IDeployWatchCallbacks): void =>
+            TransactionReservationsManager.runCallback(() => invoke(callbacks));
+
         if (this.watchCallbacks) {
-            invoke(this.watchCallbacks);
+            invokeProtected(this.watchCallbacks);
         }
 
-        this.subscribers.get(reservationId)?.forEach(invoke);
+        this.subscribers.get(reservationId)?.forEach(invokeProtected);
     }
 
     private scheduleExpiration(reservation: ITransactionReservation): void {
@@ -356,7 +369,9 @@ export default class TransactionReservationsManager
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 
-        this.onConfirmed?.(reservation);
+        TransactionReservationsManager.runCallback(() =>
+            this.onConfirmed?.(reservation),
+        );
     }
 
     private handleExpired(reservation: ITransactionReservation): void {
@@ -364,7 +379,9 @@ export default class TransactionReservationsManager
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 
-        this.onExpired?.(reservation);
+        TransactionReservationsManager.runCallback(() =>
+            this.onExpired?.(reservation),
+        );
     }
 
     private handleReleased(
@@ -374,7 +391,9 @@ export default class TransactionReservationsManager
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 
-        this.onReleased?.(reservation, verdict);
+        TransactionReservationsManager.runCallback(() =>
+            this.onReleased?.(reservation, verdict),
+        );
     }
 
     private handleFailed(
@@ -383,6 +402,8 @@ export default class TransactionReservationsManager
     ): void {
         this.stopWatch(reservation.id);
 
-        this.onFailed?.(reservation, error);
+        TransactionReservationsManager.runCallback(() =>
+            this.onFailed?.(reservation, error),
+        );
     }
 }

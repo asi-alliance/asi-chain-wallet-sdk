@@ -275,6 +275,77 @@ test("a deploy verdict releases a tracked reservation through onReleased", async
     await client.close();
 });
 
+test("a throwing verdict subscriber does not block the other subscriber or the release", async () => {
+    console.log("\n=== THROWING SUBSCRIBER DOES NOT BLOCK THE RELEASE ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markFailed!: () => void;
+
+    const failed: Promise<void> = new Promise<void>((resolve) => {
+        markFailed = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+                markFailed();
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        });
+
+    manager.add(
+        VERDICT_RESERVATION_ID,
+        createReservation(VERDICT_RESERVATION_ID, networkId),
+    );
+
+    manager.subscribe(VERDICT_RESERVATION_ID, {
+        onVerdict: () => {
+            events.push("throwing:onVerdict");
+
+            throw new Error("Subscriber failure");
+        },
+    });
+
+    manager.subscribe(VERDICT_RESERVATION_ID, {
+        onVerdict: (verdict: DeployVerdictError) => {
+            events.push(`second:onVerdict:${verdict.state}`);
+        },
+        onError: (error: Error) => {
+            events.push(`second:onError:${error.constructor.name}`);
+        },
+    });
+
+    await failed;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after verdict:", manager.getAll().length);
+
+    assert.deepEqual(events, [
+        "throwing:onVerdict",
+        `second:onVerdict:${DeployStatus.REJECTED}`,
+        `onReleased:${DeployStatus.REJECTED}`,
+        "second:onError:DeployVerdictError",
+        "onFailed:DeployVerdictError",
+    ]);
+    assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
+
+    manager.close();
+
+    await client.close();
+});
+
 test("a watch timeout keeps the reservation and does not call onReleased", async () => {
     console.log("\n=== WATCH TIMEOUT KEEPS THE RESERVATION ===");
 

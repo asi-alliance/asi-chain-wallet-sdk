@@ -11,6 +11,7 @@ import {
     getErrorMessage,
     isDeployVerdictStatus,
     isErrorWithMessage,
+    runProtected,
 } from "@utils/index";
 
 export interface IDeployConfirmedResult {
@@ -60,6 +61,14 @@ export default class DeployStatusPoller extends ApiWorker {
             rejectDone = reject;
         });
 
+        const notify = (callback: () => void): void =>
+            runProtected(callback, (error: unknown) =>
+                console.error(
+                    `DeployStatusPoller: watch callback failed for the deploy ${deployId}:`,
+                    error,
+                ),
+            );
+
         const stop = (): void => {
             if (finished) {
                 return;
@@ -76,7 +85,7 @@ export default class DeployStatusPoller extends ApiWorker {
 
             stop();
 
-            callbacks.onConfirmed?.(result);
+            notify(() => callbacks.onConfirmed?.(result));
 
             resolveDone(result);
         };
@@ -88,8 +97,8 @@ export default class DeployStatusPoller extends ApiWorker {
 
             stop();
 
-            notifyCause?.();
-            callbacks.onError?.(error);
+            notify(() => notifyCause?.());
+            notify(() => callbacks.onError?.(error));
 
             rejectDone(error);
         };
@@ -109,7 +118,7 @@ export default class DeployStatusPoller extends ApiWorker {
                     return;
                 }
 
-                callbacks.onStatus?.(status, deployId);
+                notify(() => callbacks.onStatus?.(status, deployId));
 
                 if (status.status === DeployStatus.FINALIZED) {
                     succeed({ deployId });

@@ -409,6 +409,43 @@ test("the poller reports a verdict through onVerdict before onError", async () =
     ]);
 });
 
+test("a throwing onVerdict still ends the watch with the verdict", async () => {
+    console.log("\n=== THROWING ON VERDICT ENDS THE WATCH ===");
+
+    const calls: string[] = [];
+
+    const poller: DeployStatusPoller = createPoller([
+        async () => createVerdictAnswer(DeployStatus.EXPIRED),
+    ]);
+
+    const error: unknown = await poller
+        .watch(
+            DEPLOY_ID,
+            {
+                onVerdict: () => {
+                    calls.push("onVerdict");
+
+                    throw new Error("Subscriber failure");
+                },
+                onError: (reason: Error) => {
+                    calls.push(`onError:${reason.constructor.name}`);
+                },
+            },
+            {
+                intervalMs: POLL_INTERVAL_MS,
+                timeoutMs: LONG_WATCH_TIMEOUT_MS,
+            },
+        )
+        .done.catch((reason: unknown) => reason);
+
+    console.log("    Calls:", calls);
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.deepEqual(calls, ["onVerdict", "onError:DeployVerdictError"]);
+    assert.ok(error instanceof DeployVerdictError);
+    assert.equal(error.state, DeployStatus.EXPIRED);
+});
+
 test("the poller does not call onVerdict when the watch times out", async () => {
     console.log("\n=== POLLER TIMEOUT SKIPS ON VERDICT ===");
 
