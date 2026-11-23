@@ -366,7 +366,7 @@ const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictStatus, string>> = {
     [DeployStatus.REJECTED]:
         "was rejected by the node when its deploy queue released it, and never executed",
     [DeployStatus.EXPIRED]:
-        "expired without landing in a block, and never executed",
+        "expired without its effects reaching finalized state",
     [DeployStatus.FAILED]: "executed and failed, so its effects did not apply",
 };
 
