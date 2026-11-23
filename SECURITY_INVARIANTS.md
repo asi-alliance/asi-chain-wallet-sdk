@@ -179,15 +179,22 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    written without leading zeros. Two different strings must never derive the
    same key.
 8. Deploy payload validation must sit at the signing boundary, not at each entry
-   point. A non-empty term, a phlo limit and phlo price within the positive safe
-   integer range, and a non-blank shard id must be established before a deploy is
+   point. A non-empty term, a phlo limit within the positive safe integer range, a
+   phlo price from 1 up to the bound of the node API profile (the positive safe
+   integer range on `scala`, uint256 on `rust`), a maximum phlo charge within
+   uint256, and a non-blank shard id must be established before a deploy is
    hashed and signed, so no caller can reach the signer with a payload that was
-   validated by a different rule or not at all.
+   validated by a different rule or not at all. Amounts and prices are computed
+   in `bigint`, never through a floating-point `Number`.
 9. Signing a deploy without submitting it must be held to the same rules as
    submitting one: the same payload validation, the same session or password
    requirement, and the same account addressing. A returned signed payload is a
    spendable authorization, so a sign-only path must never be the cheap way
    around a check that the submitting path performs.
+10. The bytes that are signed must be the bytes the node of the current profile
+    verifies: the price bound, the signed price format and the serialization
+    come from one node API adapter, resolved once per signature, and the funds a
+    reservation locks are computed from the same phlo values that are signed.
 
 ### 3a. Reservation Invariants
 

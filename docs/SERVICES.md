@@ -813,8 +813,8 @@ deleteTransactionReservationsBySignerId(signerId) // used when a wallet is delet
 
 // custom networks
 getCustomNetworks(): Promise<IPersistedNetworkRecord[]> // no isDefault: restore assigns it
-saveCustomNetwork(network: INetworkRecord): Promise<void>
-updateCustomNetwork(network: INetworkRecord): Promise<void>
+saveCustomNetwork(network: INetworkRecordInput): Promise<void>   // accepts a config without nativeTokenDecimals
+updateCustomNetwork(network: INetworkRecordInput): Promise<void>
 deleteCustomNetwork(id: NetworkId): Promise<void>
 
 clear(): Promise<void>
@@ -866,7 +866,9 @@ through storage. The fabric refuses to update a built-in record, and
 `NetworkConfigProvider.set` refuses to store one (see `DOMAINS.md`).
 
 Because the record is validated before it is persisted, a stored config always
-carries a validated `nodeApiProfile`.
+carries a validated `nodeApiProfile` and the resolved `nativeTokenDecimals` (8
+when the caller did not set it); only rows stored before that field existed lack
+it.
 
 ### InsensitiveCacheStorageManager (`src/services/InsensitiveCacheStorageManager/index.ts`)
 
@@ -1156,7 +1158,8 @@ private get api(): NodeApiAdapter {
 ```
 
 `AccountDataService` also keeps an `ApiClientManager` because it needs
-`getCurrentNetworkId()` for history mapping. `AssetsService` and
+`getCurrentNetworkId()` for history mapping and `createNetworkContext` for a
+history read of an explicit network. `AssetsService` and
 `TransactionService` use the provider only to pick Rholang terms by profile, via a
 `private get terms()`. The division of labour: the adapter shapes and sends the
 request, the service owns response interpretation and its own fallbacks.
@@ -1169,7 +1172,7 @@ Submits deploys and reads deploy status through the node API adapter.
 submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
 exploreDeployData(rholangCode: string): Promise<any>                  // returns result.expr
 getDeploy(deployHash: string): Promise<any>
-isDeployFinalized(deploy: any): Promise<boolean>                      // faultTolerance >= SCALA_FAULT_TOLERANCE_THRESHOLD
+isDeployFinalized(deploy: IDeployInfo): Promise<boolean>              // NodeApiAdapter.isDeployFinalized of the active profile
 getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
 ```
 
@@ -1197,6 +1200,11 @@ accepted.
 `NodeApiAdapter.getDeployStatus` fills `errorMessage` through `getErrorMessage`,
 so a `CHECK_ERROR` never carries `[object Object]` or an empty string.
 
+Finalization depends on the profile: `scala` compares `faultTolerance` with
+`SCALA_FAULT_TOLERANCE_THRESHOLD`, `rust` requires
+`finalizationState === "Finalized"` (see
+[NodeApiAdapter](DOMAINS.md#nodeapiadapter-srcdomainsnodeapiadapterindexts-nodeapiadapterscala-nodeapiadapterrust)).
+
 ### BlockService (`src/services/BlockService/index.ts`)
 
 ```ts
@@ -1206,6 +1214,13 @@ getLatestBlockNumber(): Promise<number>               // INVALID_BLOCK_NUMBER on
 isValidatorActive(): Promise<boolean>
 ```
 
+`getLatestBlockNumber` delegates to `NodeApiAdapter.getLatestBlockNumber`, which
+knows where the number lives for the profile (flat `blockNumber` of
+`/api/blocks` on `scala`, `blockInfo.blockNumber` of `/api/blocks/1?view=summary`
+on `rust`). Any failure, a Rust validation error included, becomes
+`INVALID_BLOCK_NUMBER`, and signing refuses that value. `getLatestBlock` reads
+`/api/blocks` without a depth, as before; it is no longer on the signing path.
+
 ### AccountDataService (`src/services/AccountDataService/index.ts`)
 
 Reads and maps transaction history (transfers + deployments) from the indexer.
@@ -1214,6 +1229,13 @@ Recoverable network/CORS errors are swallowed and return an empty list.
 ```ts
 getTransactionHistory(address: string, publicKey: string, pagination?: Pagination, networkId?: NetworkId): Promise<Transaction[]>
 ```
+
+Without `networkId` the history is read through the injected `NodeApiProvider`
+and mapped to the current network id. With an explicit `networkId` it is read
+through `ApiClientManager.createNetworkContext(networkId)`, so the request goes
+to that network's indexer and the rows carry that network id, whichever network
+is selected. `Client.getTransactionsHistory` passes the network it merges
+pending rows for, so both halves of the history come from the same network.
 
 ### AssetsService (`src/services/AssetsService/index.ts`)
 
@@ -1236,13 +1258,17 @@ raise it:
   underlying message, read through `getErrorMessage` so a silent failure still
   names the node api rather than producing an empty string;
 - the node answers with `ExprString`, which is how the vault reports its own
-  error;
-- `ExprInt` carries something that is not a non-negative integer — validated
-  through `parseAtomicAmount`, so an overflowing or fractional value is rejected
-  instead of being coerced;
-- no expression comes back at all.
+  error; the reason is the vault's message when it is a non-empty string, and
+  "the vault returned an empty or malformed error" otherwise;
+- `ExprInt` or `ExprBigInt` carries something that is not an integer in
+  `0 … MAX_UINT256` — validated through `parseAtomicAmount` and `isUint256`, so
+  a fractional, negative, or out-of-range value is rejected instead of being
+  coerced;
+- no expression comes back at all, or the expression is `null`.
 
-Only a genuine `ExprInt` amount resolves. Callers that previously relied on a
+Only a genuine `ExprInt` or `ExprBigInt` amount resolves. The Rust node may
+return the balance as `ExprBigInt` and as a decimal string, even for small
+values; both forms are read exactly, without passing through `Number`. Callers that previously relied on a
 falsy balance to mean "empty account" have to handle the error explicitly.
 
 ### TransactionService (`src/services/TransactionService/index.ts`)
@@ -1267,7 +1293,7 @@ interface ITransferDetails {
     amount: bigint;
     asset: Asset;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice; // number | string | bigint
     shardId?: string;
 }
 interface ITransferPayload {
@@ -1283,7 +1309,7 @@ interface IDeployPayload {
     signer: Signer;
     term: string;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice; // number | string | bigint
     shardId?: string;
     passwordProvider?: SecretsProvider; // optional when a signing session is active
 }
@@ -1293,13 +1319,24 @@ interface IDeployPayload {
 `deploy` takes an arbitrary `term` from the caller.
 
 `signDeploy` is the shared core and is now **public**, because a caller that
-submits the deploy itself needs exactly this half: validate the payload through
-`validateDeployPayload` (`ensureValid` turns a rejection into a thrown error) →
-read the latest block number → build the appropriate `TSigningContext` (HD adds
-`index`) → assemble the `DeployData` → serialize + `blake2b-256` hash + sign, and
-return the `SignedResult`. Defaults `phloLimit`/`phloPrice` from config and
-`shardId` to `"root"`, and sets `validAfterBlockNumber` to the chain head minus
-one.
+submits the deploy itself needs exactly this half: resolve the node API adapter
+of the current network → validate the payload through `validateDeployPayload`
+with the adapter's price bound (`ensureValid` turns a rejection into a thrown
+error) → resolve the phlo values with `createDeployPhlo` (an overflowing
+`phloLimit * phloPrice` is refused here, before any request) → read the latest
+block number → build the appropriate `TSigningContext` (HD adds `index`) →
+assemble the `DeployData` with the price in the adapter's format
+(`toDeployPhloPrice`) → serialize with the adapter (`serializeDeployData`) +
+`blake2b-256` hash + sign, and return the `SignedResult`. Defaults
+`phloLimit`/`phloPrice` from config and `shardId` to `"root"`, and sets
+`validAfterBlockNumber` to the chain head minus one.
+
+The adapter is resolved once per call, so the bound, the price format and the
+signed bytes always belong to one profile. `TransactionService` itself does not
+pin the network: a direct `transfer` / `deploy` call (outside `Client`,
+`Wallet`, or `ReservationAdapter`, which run inside `runNetworkOperation`) must
+not let the current network change between signing and submission, because a
+deploy signed for one profile is refused by the node of the other.
 
 `deploy` is `signDeploy` followed by `submitSignedDeploy`, which pushes the
 signed envelope through `DeployService` and fails when the response carries no
@@ -1323,7 +1360,7 @@ constructed with the `INetworkContext` of the network the deploy was submitted
 to and keeps polling that network even after the active one changes.
 
 ```ts
-new DeployStatusPoller(networkContext: INetworkContext)
+new DeployStatusPoller(networkContext: INetworkContextInput)
 
 watch(deployId, callbacks?: IDeployWatchCallbacks, options?: IDeployWatchOptions): IDeployWatchHandle
 waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult>
@@ -1368,6 +1405,15 @@ from `@utils/functions`, the same helper the reservation fabric uses to render a
 pending row, so an indexed transfer and its pending twin cannot disagree about
 direction. `queryOptions.ts` defines `Pagination` (`{ offset?, limit? }`),
 `Order`, and `QueryOptions`.
+
+Amounts (`amount_asi`, gas) are display strings in ASI and are passed on as the
+indexer returns them, without rounding: a string must be a decimal
+(`DECIMAL_REGEX`) and is kept verbatim, including trailing zeros (the TestNet
+indexer returns 77 fractional digits); a JSON number, which the DevNet indexer
+still returns, is turned into a string only when it is finite and within
+`Number.MAX_SAFE_INTEGER` (`TODO`: accept strings only once that indexer
+switches). Anything else maps to `undefined`. Trimming trailing zeros for display
+is left to the consumer.
 
 #### Known limitation: offset and limit are applied twice
 
@@ -1622,11 +1668,32 @@ is `PRIVATE_KEY_LENGTH` (32 bytes).
 ### SignerService (`src/services/Signer/index.ts`)
 
 Serializes `DeployData` into the protobuf byte layout expected on-chain (used by
-`TransactionService` before hashing/signing).
+`TransactionService`, through `NodeApiAdapter.serializeDeployData`, before
+hashing/signing). There are two layouts, one per node contract:
 
 ```ts
-SignerService.deployDataProtobufSerialize(deployData: DeployData): Uint8Array
+SignerService.deployDataProtobufSerialize(deployData: DeployData): Uint8Array        // classic: scala
+SignerService.deployDataUint256ProtobufSerialize(deployData: DeployData): Uint8Array // uint256: rust
 ```
+
+| Field | Classic | uint256 |
+| --- | --- | --- |
+| 2 `term` | string | string |
+| 3 `timestamp` | int64 | int64 |
+| 7 `phloPrice` | int64 | not written (reserved by the node) |
+| 8 `phloLimit` | int64 | int64 |
+| 10 `validAfterBlockNumber` | int64 | int64 |
+| 11 `shardId` | string | string |
+| 15 `phloPrice` | not written | exactly 32 bytes, unsigned big-endian |
+
+The classic layout is unchanged byte for byte (pinned by reference bytes in the
+tests), except for a negative `validAfterBlockNumber`, which is now encoded
+correctly (see `BinaryWriter` in `DOMAINS.md`); it accepts a numeric string
+price and writes it as a number. The uint256 layout first checks the price with
+`isUint256` and throws `RangeError` ("Phlo price field must be an unsigned
+256-bit integer") for anything that is not a canonical integer in
+`0 … MAX_UINT256`, so a value that would not fit 32 bytes is never signed. Its
+bytes are pinned by test vectors taken from the Rust node.
 
 Also exports the signing result contracts:
 
@@ -1636,9 +1703,12 @@ interface SigningRequest {
     data: any;
 }
 interface SignedResult {
-    data: any;
+    data: any; // the signed DeployData; TODO(next-major): type it as DeployData
     deployer: string;
     signature: string;
     sigAlgorithm: string;
 }
 ```
+
+`SignedResult.data.phloPrice` is a number on `scala` and a decimal string on
+`rust`.

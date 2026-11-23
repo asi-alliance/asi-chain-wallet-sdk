@@ -157,7 +157,11 @@ Current controls:
 18. Validation at the signing boundary: term, phlo limit, phlo price, and shard id
     are checked where the deploy is signed rather than at each entry point, so
     submitting a deploy, transferring, and signing without submitting are all held
-    to one rule.
+    to one rule. The phlo price bound and the serialization follow the node API
+    profile (int64 price on `scala`, uint256 price on `rust`), the maximum phlo
+    charge is bounded by uint256, and an amount or price is never converted
+    through a floating-point `Number`, so a wide value cannot be signed as a
+    different one.
 19. Explicit account targeting: operations name their wallet and account instead
     of mutating a shared "active account", so concurrent operations cannot
     redirect each other's signature, and an account is registered as busy for the

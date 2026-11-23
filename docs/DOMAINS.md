@@ -271,6 +271,11 @@ A network with an operation in flight cannot be switched, updated, or removed:
 (status `409`) until it goes idle. `isNetworkBusy` and the `onNetworkBusyChanged`
 event let a UI disable those controls instead of catching the error. Removing a
 network also drops that network's reservations from memory and storage.
+`updateNetwork` drops the reservations of open wallets on that network only when
+the **connection** changes (an endpoint URL or `nodeApiProfile`,
+`isNetworkConnectionChanged`). A change of `nativeTokenDecimals` alone keeps
+them: each reservation stores the precision it was created with, so its atomic
+amounts still describe the deploy that was sent.
 
 `updateNetwork` and `removeNetwork` take that one step further: both run inside
 `ReservationAdapterManager.runExclusiveNetworkAction`, which takes an **exclusive
@@ -318,6 +323,22 @@ transfer(request: ITransferRequest, password?: string): Promise<IReservedOperati
 `password` is optional: when a session is active it is omitted; when it is
 supplied and the policy holds sessions, the transfer (re-)establishes the
 session before signing.
+
+Balances and amounts are atomic `bigint` values in the precision of the current
+network (`getCurrentNetwork().config.nativeTokenDecimals`): 1 ASI is `10^8`
+atomic units on an 8-decimal network and `10^18` on an 18-decimal one. Convert
+with the amount helpers below (`toExactAtomicAmount`, `toDisplayAmount`), never
+with a fixed number of decimals. A balance is read exactly: the node may return it as a
+number or a decimal string (`ExprInt` / `ExprBigInt`), and a value outside
+`0 … MAX_UINT256` is refused with `BalanceUnavailableError`.
+
+`transfer` signs with the default phlo (`DEFAULT_PHLO_LIMIT`,
+`DEFAULT_PHLO_PRICE`) and reserves `amount` plus the **transfer gas reserve** of
+the current network: `GasFee.MAX` on `scala`, the signed budget
+`phloLimit * phloPrice` on `rust`. `getTransferGasReserve()` returns that value,
+so a UI computing "Max" or a confirmation total uses the same number the SDK
+reserves. On `rust` an amount above `MAX_INT64` is sent as a Rholang BigInt
+literal; an amount above `MAX_UINT256` is rejected.
 
 `getTransactionsHistory` is the only history entry point that knows about
 pending transactions: it merges the indexed history of the account with the
@@ -404,7 +425,8 @@ watchDeploy(deployId, callbacks?, options?): IDeployWatchHandle  // poll deploy 
 ```
 
 `transfer` and `deploy` both go through the wallet's reservation adapter, so both
-lock funds (`phloLimit * phloPrice` for a deploy) and both return an
+lock funds (`phloLimit * phloPrice` for a deploy, computed in `bigint`) and both
+return an
 `IReservedOperationResult` — the `deployId` plus a `subscribe` that attaches
 deploy-watch callbacks to that reservation. Both also run inside
 `ApiClientManager.runNetworkOperation`, which marks the network busy for the
@@ -434,31 +456,58 @@ itself pairs it with
 [`addTransactionReservation`](#external-reservations) to lock the funds locally.
 
 ```ts
+type PhloPrice = number | string | bigint;
+
+interface IDeployRequest {
+    walletId: string;
+    accountId: string;
+    term: string;
+    phloLimit?: number;     // defaults to DEFAULT_PHLO_LIMIT
+    phloPrice?: PhloPrice;  // defaults to DEFAULT_PHLO_PRICE
+    shardId?: string;       // defaults to "root"
+}
+
 interface ISignDeployRequest {
     walletId: string;
     accountId: string;
     term: string;
-    phloLimit?: number; // defaults to DEFAULT_PHLO_LIMIT
-    phloPrice?: number; // defaults to DEFAULT_PHLO_PRICE
-    shardId?: string;   // defaults to "root"
+    phloLimit?: number;     // defaults to DEFAULT_PHLO_LIMIT
+    phloPrice?: PhloPrice;  // defaults to DEFAULT_PHLO_PRICE
+    shardId?: string;       // defaults to "root"
 }
 
 interface SignedResult {
-    data: DeployData;
+    data: any; // the signed DeployData; TODO(next-major): type it as DeployData
     deployer: string;
     signature: string;
     sigAlgorithm: string;
 }
 ```
 
-Unlike `deploy`, the request carries `phloPrice` and `shardId`: the caller owns
-the submission, so it owns the full deploy shape. `validAfterBlockNumber` and
-`timestamp` are still filled in by the SDK from the current chain head, which is
-why the call needs the network and is wrapped in `runNetworkOperation`. The
-payload is validated at the signing boundary by `validateDeployPayload` — a
-blank `term`, a `phloLimit` or `phloPrice` outside the positive safe-integer
-range, or a blank `shardId` are rejected before anything is signed. Session
-rules are the same as for `transfer`.
+Both requests carry the full phlo settings and `shardId`. `phloPrice` accepts a
+number, a decimal string or a `bigint`, so a price above
+`Number.MAX_SAFE_INTEGER` can be passed exactly. Its upper bound depends on the
+node API profile of the current network: `Number.MAX_SAFE_INTEGER` on `scala`,
+`MAX_UINT256` on `rust`, and `phloLimit * phloPrice` must not exceed
+`MAX_UINT256`. In the signed `DeployData` the price is a number on `scala` and a
+decimal string on `rust`, as each node expects; read it with
+`BigInt(data.phloPrice)`.
+
+`validAfterBlockNumber` and `timestamp` are filled in by the SDK from the
+current chain head, which is why the call needs the network and is wrapped in
+`runNetworkOperation`. The payload is validated at the signing boundary by
+`validateDeployPayload` — a blank `term`, a `phloLimit` outside the positive
+safe-integer range, a `phloPrice` below `1` or above the profile bound, or a blank
+`shardId` are rejected before anything is signed, and an overflowing phlo charge
+is rejected before the chain head is read. Session rules are the same as for
+`transfer`.
+
+A `SignedResult` is bound to the profile it was signed for (see
+[NodeApiAdapter](#nodeapiadapter-srcdomainsnodeapiadapterindexts-nodeapiadapterscala-nodeapiadapterrust)):
+the `rust` profile signs the price as a 32-byte uint256 field, `scala` as an
+int64 field. A deploy signed for one profile does not verify on the other, and a
+`rust` deploy signed by an earlier SDK version (price in the int64 field) is
+refused by a Rust node with the #881 API; sign it again.
 
 ### External reservations
 
@@ -679,12 +728,28 @@ contract is resolved (issue #173). To export the rows already loaded through
 `getTransactionsHistory`, pass them to `ExportKeyfileService.exportTransactions`
 (see SERVICES.md).
 
-Amount helpers (bound to the native token decimals):
+Amount helpers (bound to the `nativeTokenDecimals` of the current network):
 
 ```ts
+toExactAtomicAmount(amount: string): bigint     // exact, string only, rejects nonzero digits beyond the decimals
 toDisplayAmount(atomicAmount: bigint): string
-toAtomicAmount(amount: number | string): bigint
+toAtomicAmount(amount: number | string): bigint // @deprecated, use toExactAtomicAmount
+getTransferGasReserve(): bigint                 // the gas a transfer on the current network reserves
 ```
+
+All three conversions read the decimals of the network selected **at the time of
+the call**, so a value converted before a network switch must not be reused
+after it. `toExactAtomicAmount` is the converter for user input: it never goes
+through a floating-point `Number`, and an amount with more fractional digits
+than the network supports throws instead of being truncated (see
+[UTILS.md](UTILS.md#amount-conversion)). `toAtomicAmount` is kept for
+compatibility and truncates excess digits.
+
+`getTransferGasReserve` is `ReservationAdapter.getTransferGasReserve()` for the
+current network with the default phlo: `GasFee.MAX` on `scala`,
+`DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` on `rust`. The native token decimals
+themselves are read from the network record:
+`client.getCurrentNetwork().config.nativeTokenDecimals`.
 
 Persistence & teardown:
 
@@ -812,8 +877,9 @@ after `setNetwork`.
 
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
-`ITransferRequest` (`{ walletId, accountId, to, amount }`),
-`IDeployRequest` (`{ walletId, accountId, term, phloLimit? }`).
+`ITransferRequest` (`{ walletId, accountId, to, amount }`, `amount` in atomic
+units of the current network),
+`IDeployRequest` (`{ walletId, accountId, term, phloLimit?, phloPrice?, shardId? }`).
 
 ---
 
@@ -1022,6 +1088,14 @@ the indexer as is, so it carries the paging limitation described under
 Associated record shape:
 `IAccountRecord = { id, signerId, name, index }`.
 
+The asset portfolio of an `Account` is not bound to a network: it starts from
+`DEFAULT_ASSET` (8 decimals), and the `asset` that `getBalance` returns is that
+descriptor, not the native asset of the selected network. The amount itself is
+correct atomic units; read the precision from the network
+(`client.getCurrentNetwork().config.nativeTokenDecimals`) or format with
+`Client.toDisplayAmount`. The redesign of the portfolio is tracked in
+[#227](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/227).
+
 `getFingerprint` returns `sha256(publicKey)` in hex, computed once in the
 constructor by
 [KeyFingerprintService](SERVICES.md#keyfingerprintservice-srcserviceskeyfingerprintindexts).
@@ -1043,6 +1117,17 @@ getContractAddress(): string | null
 ```
 
 Associated types: `AssetId = string`, `Assets = Map<AssetId, Asset>`.
+
+```ts
+DEFAULT_ASSET: Asset                                     // "ASI", 8 decimals
+getNativeAsset(config: IResolvedNetworkConfig): Asset    // "ASI" with the network's nativeTokenDecimals
+```
+
+`getNativeAsset` builds the native asset of a network from its resolved config:
+the id and name of `DEFAULT_ASSET` with the network's `nativeTokenDecimals`.
+`Client` uses it for balance reads and transfers, so amounts are formatted with
+the precision of the network they belong to. `DEFAULT_ASSET` keeps 8 decimals
+until Dev and DevNet both run with 18 (`TODO`).
 
 ---
 
@@ -1797,6 +1882,11 @@ interface INetworkEndpoints {
 
 interface INetworkConfig extends INetworkEndpoints {
     nodeApiProfile: NodeApiProfile; // required: which node implementation this network runs
+    nativeTokenDecimals?: number;   // 0…18, defaults to 8; TODO(next-major): required
+}
+
+interface IResolvedNetworkConfig extends INetworkConfig {
+    nativeTokenDecimals: number;    // always set on a record the SDK returns
 }
 
 type TNetworksConfig = Record<NetworkName, INetworkConfig>; // built-in config keyed by name
@@ -1804,8 +1894,12 @@ type TNetworksConfig = Record<NetworkName, INetworkConfig>; // built-in config k
 interface INetworkRecord {
     id: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     isDefault: boolean; // true = built-in (immutable); false = custom (editable/removable)
+}
+
+interface INetworkRecordInput extends Omit<INetworkRecord, "config"> {
+    config: INetworkConfig; // accepted where a record is passed in; TODO(next-major): remove
 }
 
 interface IPersistedNetworkRecord {
@@ -1827,14 +1921,20 @@ interface INetworksState {
 interface INetworkContext {
     networkId: NetworkId;
     name: NetworkName;
-    config: INetworkConfig;
+    config: IResolvedNetworkConfig;
     clients: IApiClients;
     api: NodeApiAdapter;
 }
 
+interface INetworkContextInput extends Omit<INetworkContext, "config"> {
+    config: INetworkConfig; // accepted by ApiWorker / DeployStatusPoller; TODO(next-major): remove
+}
+
 type TNetworkBusyListener = (networkId: NetworkId, isBusy: boolean) => void;
 
-const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[]; // allowlist used by URL validation
+const NETWORK_URL_FIELDS: (keyof INetworkEndpoints)[];   // allowlist used by URL validation
+const NETWORK_CONNECTION_FIELDS: (keyof INetworkConfig)[]; // URLs + nodeApiProfile
+const NETWORK_CONFIG_FIELDS: (keyof INetworkConfig)[];     // connection fields + nativeTokenDecimals
 ```
 
 Built-in networks come from the `TNetworksConfig` passed to `Client.create`
@@ -1851,6 +1951,32 @@ map, so adding a fourth endpoint without updating the allowlist fails to compile
 decides which HTTP contract and which Rholang terms are used, and a silent
 default would send legacy-shaped requests to a new node. See
 [NodeApiProfile](#nodeapiprofile-srcdomainsnodeapiprofileindexts).
+
+`nativeTokenDecimals` is the precision of the network's native token: 1 ASI is
+`10^nativeTokenDecimals` atomic units. It is a setting of the network, not of
+the node API profile, and it comes only from the network config; the SDK does
+not ask the node for it. An integer from `0` to `MAX_NATIVE_TOKEN_DECIMALS`
+(18) is accepted. The field is optional in `INetworkConfig` for compatibility:
+a network without it, and a custom network stored before it existed, gets 8
+decimals. The default is applied once, when the record is built
+(`createNetworkConfigSnapshot`), so every record the SDK returns carries an
+`IResolvedNetworkConfig` with the value set, and readers take
+`config.nativeTokenDecimals` directly. Records the SDK returns are copies with a
+frozen `config`.
+
+Inputs that take a record or a context from the caller
+(`NetworkConfigProvider.set`, `ApiClientManager.applyNetwork`,
+`StorageManager.saveCustomNetwork` / `updateCustomNetwork`,
+`validateNetworkUniqueness`, `ApiWorker`, `DeployStatusPoller`) accept the
+`INetworkRecordInput` / `INetworkContextInput` shapes, so code written against
+the previous types still compiles. An object of the output types built by hand
+(a test double, for example) must set `nativeTokenDecimals`.
+
+`NETWORK_CONNECTION_FIELDS` are the fields that decide where and how the SDK
+talks to a node; `NETWORK_CONFIG_FIELDS` adds the precision. Network uniqueness
+compares all config fields, while clearing reservations on an update looks at
+the connection fields only (see `isNetworkConnectionChanged` in
+[UTILS.md](UTILS.md#network-config-comparison)).
 
 `INetworkContext` is a self-contained bundle of one network's identity, config,
 transport clients, and node API adapter, built by
@@ -1877,7 +2003,7 @@ get(id: NetworkId): INetworkRecord                  // @EnsureNetworkExist
 getIds(): NetworkId[]
 
 add(name: NetworkName, config: INetworkConfig): INetworkRecord // generates id, isDefault: false
-set(record: INetworkRecord): void                              // insert or replace a prepared custom record
+set(record: INetworkRecordInput): void                         // insert or replace a prepared custom record
 update(id: NetworkId, update: INetworkUpdate): void            // @EnsureNetworkNotDefault
 remove(id: NetworkId): INetworkRecord                          // @EnsureNetworkNotDefault
 isReady(): boolean
@@ -1886,20 +2012,28 @@ isReady(): boolean
 `set` is the write path used by `NetworkManager`: the record is built and
 validated first by the network fabric (`createNetworkRecord` /
 `createUpdatedNetworkRecord`, see [Fabrics](UTILS.md#fabrics)), persisted, and
-only then applied here. `set` validates it once more (URLs, profile, and name and
-config uniqueness against the other networks) and refuses built-in records through
-`@EnsureNetworkRecordNotDefault`.
+only then applied here. `set` validates it once more (URLs, profile, decimals,
+and name and config uniqueness against the other networks) and refuses built-in
+records through `@EnsureNetworkRecordNotDefault`. It accepts a record without
+`nativeTokenDecimals` and stores the resolved snapshot; uniqueness is checked on
+that snapshot, so a missing precision and an explicit 8 are the same network.
 
 `initialize`/`add` validate URLs with `validateUrl` over `NETWORK_URL_FIELDS`
 (must be non-empty http/https for custom networks; built-in seed config may
-contain empty placeholder URLs) and the profile with `validateNodeApiProfile`,
-throwing `Invalid nodeApiProfile: …` on an unknown value. `update` validates
-whatever fields it receives; an absent `nodeApiProfile` keeps the stored one, so
-a partial update never resets the profile.
+contain empty placeholder URLs), the profile with `validateNodeApiProfile`,
+throwing `Invalid nodeApiProfile: …` on an unknown value, and the precision with
+`validateNativeTokenDecimals`. `update` validates whatever fields it receives; an
+absent `nodeApiProfile` or `nativeTokenDecimals` keeps the stored one, so a
+partial update never resets the profile or the precision. Every record goes
+through `createNetworkConfigSnapshot`, and `get` / `getAll` return copies.
 
 `restoreCustomNetworks` is the only lenient path, because storage rows are not
-typed by us: a record whose `nodeApiProfile` is unknown or missing is skipped
-with a `console.warn` rather than dropped into a default. Falling back to a
+typed by us: a record whose `nodeApiProfile` is unknown or missing, or whose
+`nativeTokenDecimals` is present but invalid, is skipped with a `console.warn`
+rather than dropped into a default (the decimals warning names only the network,
+so a malformed stored value cannot break the message).
+A row without `nativeTokenDecimals` is a network stored before the field existed
+and is restored with 8 decimals. Falling back to a
 default here would reintroduce the silent wrong-contract guess; throwing would
 brick `Client.create` over one stale row. URLs on this path are still trusted
 verbatim, exactly as before this profile work.
@@ -1932,7 +2066,7 @@ getNetworkIds(): NetworkId[]
 getNetworks(): INetworkRecord[]
 getNetworksState(): INetworksState                          // list + selected network in one read
 getNetwork(id: NetworkId): INetworkRecord
-applyNetwork(record: INetworkRecord): void                  // insert/replace a prepared record, re-switches if active
+applyNetwork(record: INetworkRecordInput): void             // insert/replace a prepared record, re-switches if active
 addNetwork(name: NetworkName, config: INetworkConfig): INetworkRecord
 updateNetwork(id: NetworkId, update: INetworkUpdate): void  // re-switches clients if it's the active network
 removeNetwork(id: NetworkId): void                          // falls back to the first network if the active one is removed
@@ -2027,7 +2161,7 @@ in the adapter graph.
 ```ts
 enum NodeApiProfile {
     SCALA = "scala", // legacy f1r3node
-    RUST = "rust",   // new f1r3node
+    RUST = "rust",   // new f1r3node, the API of node #881 and later
 }
 
 enum NodeApiProfileStability {
@@ -2053,6 +2187,13 @@ The profile identifies the *implementation*, not its maturity: `STABLE` /
 leave no name for a third profile. Maturity is a descriptor attribute instead, and
 the playground reads its select label and badge from there.
 
+The `rust` profile targets the Rust node with the uint256 API of node #881 and
+later: the phlo price is signed as a 32-byte uint256 field and sent as a decimal
+string, amounts and balances come back as decimal strings, the latest block
+number is read from `blockInfo.blockNumber`, and finalization from
+`finalizationState`. A Rust node older than #881 is not supported by this
+profile. The `scala` profile is unchanged.
+
 `DEFAULT_NODE_API_PROFILE` is a UI default only — nothing in the domain
 substitutes it. The playground uses it to preselect the profile in the add-network
 form. Validation lives in `validateNodeApiProfile` (`src/utils/validators`) with
@@ -2069,37 +2210,84 @@ default; a subclass overrides only what its node does differently.
 
 ```ts
 abstract class NodeApiAdapter {
-    constructor(apiClientManager: ApiClientManager)
+    constructor(clients: IApiClients)
 
-    protected get clients(): IApiClients          // resolved on every access
+    protected readonly clients: IApiClients
     abstract getProfile(): NodeApiProfile
+
+    // protocol differences between profiles
+    getMaxPhloPrice(): bigint                                    // base: MAX_CLASSIC_PHLO_PRICE
+    toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] // base: Number(phloPrice)
+    serializeDeployData(deployData: DeployData): Uint8Array      // base: classic protobuf (price in field 7)
+    getTransferGasReserve(maxPhloCharge: bigint): bigint         // base: GasFee.MAX
 
     submitDeploy(deploy: SignedResult): Promise<unknown>
     exploreDeploy(term: string): Promise<unknown>
     getDeploy(deployHash: string): Promise<unknown>
+    isDeployFinalized(deploy: IDeployInfo): boolean              // base: faultTolerance >= SCALA_FAULT_TOLERANCE_THRESHOLD
+    getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
     getBlock(blockHash: string): Promise<IBlockDto>
     getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]>
+    getLatestBlockNumber(): Promise<number>                      // base: blockNumber of GET /api/blocks
     getValidatorStatus(): Promise<unknown>
     getTransactionHistory(address, publicKey, pagination?): Promise<TransactionHistoryQueryData>
 
     // override points
-    protected getExploreDeployClient(): IExploratoryDeployClient // base: clients.validator
+    protected getExploreDeployClient(): IExploratoryDeployClient // base: clients.observer
     protected buildExploreDeployBody(term: string): unknown      // base: the raw term
 }
 ```
 
-Every public member performs one request and returns the node's response
+The request members perform one request and return the node's response
 untouched. Response interpretation stays in the services — `DeployService` reads
-`expr` and extracts the deploy id, `BlockService` reads `blockInfo` and picks the
-latest block, `AssetsService` parses `ExprInt` / `ExprString`.
+`expr` and extracts the deploy id, `AssetsService` parses `ExprInt` /
+`ExprBigInt` / `ExprString` — except where the response shape itself differs
+between profiles: the latest block number and deploy finalization are read by
+the adapter.
 
-`protected get clients()` is the load-bearing detail: the adapter holds no client,
-no URL, and no network id, so `switchNetwork` cannot make it stale and it never
-needs invalidating.
+The adapter holds the clients of the network it was built for and no other
+network state.
+
+The four protocol members are where everything that differs between the node
+contracts lives, so nothing above the adapter (`Client`, `Wallet`,
+`ReservationAdapter`, `TransactionService`, `SignerService`, the validators and
+fabrics) checks the profile:
+
+| Member | `scala` (base) | `rust` |
+| --- | --- | --- |
+| `getMaxPhloPrice()` | `Number.MAX_SAFE_INTEGER` | `MAX_UINT256` |
+| `toDeployPhloPrice(price)` | number | decimal string |
+| `serializeDeployData(data)` | `deployDataProtobufSerialize`: price as int64 in field 7 | `deployDataUint256ProtobufSerialize`: price as 32 bytes in field 15 |
+| `getTransferGasReserve(maxPhloCharge)` | `GasFee.MAX` | `maxPhloCharge` (`phloLimit * phloPrice`) |
+| `getLatestBlockNumber()` | `GET /api/blocks`, flat `blockNumber`; `INVALID_BLOCK_NUMBER` when missing | `GET /api/blocks/1?view=summary`, `blockInfo.blockNumber` checked by `validateBlockNumber`; throws when invalid |
+| `isDeployFinalized(deploy)` | `faultTolerance >= 0.99` | `finalizationState === "Finalized"` |
+
+`TransactionService.signDeploy` takes the price bound, the signed price format
+and the signing bytes from the adapter of the current network, and
+`ReservationAdapter` takes the transfer gas reserve from it, so the reserved
+amount always matches the budget the deploy was signed with.
+
+`RustNodeApiAdapter` reads the latest block through the path with a depth
+(`/api/blocks/1`), because the TestNet gateway does not serve `/api/blocks`
+without one; the result is the same block on the other Rust networks. A missing
+or malformed `blockInfo.blockNumber` (including the flat Scala shape) is a
+validation error, which `BlockService.getLatestBlockNumber` turns into
+`INVALID_BLOCK_NUMBER`.
+
+Rust deploy finalization follows the node's deploy lifecycle,
+`DeployFinalizationState` (`Finalized`, `Failed`, `Pending`, `Expired`, exported
+from the Rust adapter module only). A Rust node with the #881 API reports no
+`faultTolerance`, and its `isFinalized` flag describes the **block**: a deploy
+whose block is finalized may still be `Pending`, or `Failed` after a merge.
+Only `Finalized` confirms a deploy. Known limitation
+([#230](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/230)): a
+`Failed` or `Expired` deploy is not treated as terminal, so the poller keeps
+polling until `DeployTimeoutError`, and a deploy not yet in a block (HTTP 404
+`deploy_not_found`) reports `CHECK_ERROR`, as before.
 
 `ScalaNodeApiAdapter` is `getProfile()` and nothing else — the base *is* the Scala
-behavior. `RustNodeApiAdapter` overrides three members: the profile, the
-exploratory-deploy target (read-only observer instead of validator), and the body
+behavior. `RustNodeApiAdapter` overrides the profile, the protocol members
+above, finalization, the latest block number, and the exploratory-deploy body
 shape (`{ term }`, the node's `SimpleExploreDeployRequest`). `Content-Type:
 application/json` needs no override; `DEFAULT_AXIOS_CONFIG` applies it to every
 client.
@@ -2116,8 +2304,7 @@ subclass. Nothing in the service layer changes.
 
 ## NodeApiProvider (`src/domains/NodeApiProvider/index.ts`)
 
-Singleton that resolves the adapter for the active network and caches adapters by
-profile.
+Singleton that resolves the adapter for the active network.
 
 ```ts
 NodeApiProvider.getInstance(apiClientManager?: ApiClientManager): NodeApiProvider
@@ -2125,9 +2312,11 @@ getApi(): NodeApiAdapter
 ```
 
 `getApi()` reads `apiClientManager.getCurrentNetwork().config.nodeApiProfile` on
-every call, so services see the right adapter immediately after `switchNetwork`
-without anything being rebuilt. Services hold the provider and resolve per call
-through a private getter:
+every call and builds a fresh adapter over the current clients
+(`createNodeApiAdapter(profile, apiClientManager.getClients())`), so services see
+the right adapter immediately after `switchNetwork`. Adapters are cheap and hold
+no state beyond the clients, so nothing is cached. Services hold the provider and
+resolve per call through a private getter:
 
 ```ts
 private get api(): NodeApiAdapter {
@@ -2135,10 +2324,10 @@ private get api(): NodeApiAdapter {
 }
 ```
 
-The cache is keyed by profile, not by network, because adapters carry no
-per-network state: two networks on the same profile share one instance, at most
-one instance exists per profile, and the cache survives an
-`ApiClientManager.close()` / re-`initialize()` cycle without going stale.
+A caller that needs the adapter of the current network for a whole operation
+(`TransactionService.signDeploy`, `ReservationAdapter.transfer` / `deploy`)
+resolves it once at the start and keeps it, so the price bound, the signed price
+format and the reserve come from the same profile.
 
 ---
 
@@ -2148,7 +2337,7 @@ Abstract base for anything that must stay bound to one network for its whole
 lifetime instead of following the active one.
 
 ```ts
-constructor(networkContext: INetworkContext)
+constructor(networkContext: INetworkContextInput) // accepts a context without nativeTokenDecimals
 
 getApi(): NodeApiAdapter
 getNetworkId(): NetworkId
@@ -2235,11 +2424,31 @@ getStatus(): Promise<any>                       // GET  /status
 ```ts
 getDeploy(deployHash): Promise<any>         // GET /api/deploy/:hash
 getBlock(blockHash): Promise<IBlockDto>     // GET /api/block/:hash
-getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> // GET /api/blocks
+getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> // GET /api/blocks, or /api/blocks/{depth}
 submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
 ```
 
-`IBlockDto = { blockInfo: string; blockNumber: number }`.
+```ts
+interface IGetBlocksParams {
+    start?: number;
+    end?: number;
+    depth?: number;          // appended as a path segment: /api/blocks/{depth}
+    view?: TBlocksView;      // "summary" | "full", sent as the view query parameter
+}
+
+interface IBalanceResponse {
+    balance: number | string; // the Rust node returns a decimal string
+}
+```
+
+`IBlockDto = { blockInfo: string; blockNumber: number }` describes the Scala
+response. The Rust node returns `blockInfo` as an object with the number in
+`blockInfo.blockNumber`; `getBlocks` keeps its declared type for compatibility
+(`TODO(next-major)`: type the response for both profiles), and
+`RustNodeApiAdapter` reads the Rust shape through guards. Without `depth`,
+`getBlocks` requests `/api/blocks` exactly as before; the TestNet gateway answers
+that path without a depth with 404, so a direct `getBlocks()` /
+`BlockService.getLatestBlock()` call fails there.
 
 Both `submitExploratoryDeploy` methods take an already-built request body. The
 clients do not know that one profile sends a raw term string and another sends
@@ -2279,8 +2488,19 @@ interface Transaction {
     contractCode?: string;
     networkId: NetworkId;
     detectedBy?: TransactionDetectedBy; // "balance_change" | "manual" | "auto"
+    nativeTokenDecimals?: number;       // set on pending rows: the reservation's precision
 }
 ```
+
+`amount` and `gasCost` are display strings in ASI, not atomic units. A pending
+row carries the `nativeTokenDecimals` of its reservation; an executed row has
+none, and its precision is that of its network. Executed amounts are passed on
+as the indexer returns them: a decimal string is kept as is (the TestNet indexer
+returns `amount_asi` with 77 fractional digits; trim it for display with
+`fromAtomicAmount(toExactAtomicAmount(amount, decimals), decimals)`), and a
+JSON number from the DevNet indexer is turned into a string only when it is
+finite and within the safe range (`TODO`: accept strings only once that indexer
+stops returning numbers).
 
 The four unions are derived from exported `as const` tuples rather than written
 out twice, so a runtime guard can check a value against the same source the type
@@ -2314,6 +2534,7 @@ interface ITransactionReservationDetails {
 }
 
 interface ITransactionReservationPrivateData {
+    nativeTokenDecimals?: number; // absent in reservations stored before the field existed
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
@@ -2321,11 +2542,23 @@ interface ITransactionReservationPrivateData {
     details: ITransactionReservationDetails;
 }
 
-interface ITransactionReservation
+interface ITransactionReservationInput
     extends ITransactionReservationPrivateData, ITableRecord {
-    networkId: NetworkId;
+    networkId: NetworkId; // accepted by the ReservationAdapter constructor; TODO(next-major): remove
+}
+
+interface ITransactionReservation extends ITransactionReservationInput {
+    nativeTokenDecimals: number; // always set on a reservation the SDK returns
 }
 ```
+
+Every reservation carries the precision of the network it was created on,
+`nativeTokenDecimals`; `details.amount` and `details.gasCost` are formatted with
+it. A reservation stored before the field existed is restored with 8 decimals,
+the precision every network had then. Inputs (`ReservationAdapter` constructor,
+`add`, `update`, `validateReservationUpdateTarget`) accept a reservation or
+payload without it and fill it from the reservation's network; a hand-built
+`ITransactionReservation` must set it.
 
 A reservation no longer embeds a whole `Transaction`. It used to, and that baked
 the **sender's perspective** into stored data: `type: "send"` and
@@ -2385,7 +2618,18 @@ remove(id: string): Promise<ITransactionReservation>
 transfer(wallet: Wallet, accountId: string, details: ITransferDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 deploy(wallet: Wallet, accountId: string, details: TDeployDetails, passwordProvider?: SecretsProvider): Promise<IReservedOperationResult>
 dispose(): void
+
+// the transfer gas reserve of the current network
+ReservationAdapter.getTransferGasReserve(phlo?: Pick<TDeployDetails, "phloLimit" | "phloPrice">): bigint
 ```
+
+`getTransferGasReserve` validates the phlo settings against the price bound of
+the current network's adapter, resolves them with the defaults
+(`createDeployPhlo`), and returns `NodeApiAdapter.getTransferGasReserve` for the
+maximum phlo charge: `GasFee.MAX` on `scala`, `phloLimit * phloPrice` on `rust`.
+Invalid phlo settings throw with the prefix
+`ReservationAdapter.getTransferGasReserve`. `Client.getTransferGasReserve()`
+calls it with the defaults, which is what `Client.transfer` signs with.
 
 `transfer` and `deploy` take the target `accountId` next to the wallet instead of
 reading the wallet's active account, and `add` and `update` read it from
@@ -2393,9 +2637,16 @@ reading the wallet's active account, and `add` and `update` read it from
 so the account is marked busy for the whole reservation action, not just for the
 signing step inside it.
 
-`pendingAmount` already carries the whole locked cost — `amount + GasFee.MAX` for
-a transfer, `phloLimit * phloPrice` for a deploy — so the reserved balance is a
-plain sum with nothing added on top of it.
+`pendingAmount` already carries the whole locked cost — `amount` plus the
+transfer gas reserve of the network for a transfer (`GasFee.MAX` on `scala`,
+`phloLimit * phloPrice` on `rust`), `phloLimit * phloPrice` for a deploy — so the
+reserved balance is a plain sum with nothing added on top of it. The phlo values
+are read from `details` **once**, when the operation starts: `transfer` and
+`deploy` validate them against the price bound of the current network, resolve
+them with `createDeployPhlo`, and sign and reserve from that snapshot, so a
+caller changing the `details` object afterwards cannot make the reservation and
+the signed deploy disagree. Each reservation is created with the precision of
+the current network.
 
 `getPendingTransactions(accountId?)` is gone. It rendered stored reservations as
 transactions directly, which only worked for the sender; it is replaced by
@@ -2416,7 +2667,11 @@ two parallel transfers cannot both pass the balance check against the same funds
 `add` and `update` additionally validate their payload before taking the guard
 and reject a duplicate `deployId` on the same network. `update` also refuses to
 move a reservation to another account or network
-(`validateReservationUpdateTarget`).
+(`validateReservationUpdateTarget`). A payload without `nativeTokenDecimals`
+gets the precision of its `networkId` before validation (`TODO(next-major)`:
+required in the payload); an update rebuilds the reservation with the precision
+of its network, so a reservation created before a precision change can still be
+updated.
 
 Both reading and writing reservations need the signer's data key, resolved
 through `Signer.resolveDataKey(passwordProvider?)`: an active session covers it,
@@ -2485,15 +2740,21 @@ record shape inline.
 Deploy data structure and RhoLang code generators.
 
 ```ts
+type PhloPrice = number | string | bigint; // accepted wherever a phlo price is passed in
+
 interface DeployData {
     term: string;
     phloLimit: number;
-    phloPrice: number;
+    phloPrice: number | string; // number on scala, decimal string on rust
     validAfterBlockNumber: number;
     timestamp: number;
     shardId?: string;
 }
 ```
+
+`DeployData` is what is signed and submitted, so `phloPrice` has the form the
+node of the profile expects: the Rust node with the #881 API takes the price as
+a decimal string of up to 256 bits, the Scala node a JSON number.
 
 Factory helpers (`Deploy/factory/index.ts`) — the Scala-profile terms, plus the
 shared escaper and the contract both profiles implement:
@@ -2512,7 +2773,10 @@ createTransferDeploy(fromAddress: Address, toAddress: Address, amount: bigint): 
 `Deploy/factory/rust.ts` provides `createRustCheckBalanceDeploy` and
 `createRustTransferDeploy`, which address the `rho:vault:system` registry and
 `rho:system:deployerId` instead of `rho:rchain:asiVault` and
-`rho:rchain:deployerId`.
+`rho:rchain:deployerId`. `createRustTransferDeploy` accepts an amount up to
+`MAX_UINT256` ("Transfer amount exceeds uint256" above it) and writes an amount
+above `MAX_INT64` as a Rholang BigInt literal (`123n`), which the Rust node
+needs for values outside int64.
 
 `createDeployTermFactory(profile)`
 (`src/fabrics/deployTermFactory.ts`) selects between the two sets. It
@@ -2543,11 +2807,27 @@ Minimal protobuf-style writer used by deploy signing serialization.
 
 ```ts
 writeString(fieldNumber: number, value: string): void
+writeBytes(fieldNumber: number, value: Uint8Array): void // length-delimited bytes (the uint256 price field)
 writeInt64(fieldNumber: number, value: number): void
 getResultBuffer(): Uint8Array
 ```
 
 Empty/zero values are skipped (protobuf default-value semantics).
+
+`writeInt64` throws `RangeError` ("Integer field must be a safe integer") for a
+value that is not a safe integer: a fraction, `NaN`, `undefined`, or anything
+beyond `Number.MAX_SAFE_INTEGER`. Such values used to produce bytes that did not
+match the deploy JSON, so the node refused the signature, or were silently
+skipped. Through the SDK only safe integers reach it. A negative value is written
+as its 64-bit two's complement in 10 bytes, as protobuf requires; it used to be a
+single invalid byte. This matters for `validAfterBlockNumber = -1` (a chain whose
+latest block is 0): the bytes and the signature of such a deploy differ from what
+earlier versions produced, and only now does the node accept it. For every other
+value the classic serialization is byte for byte unchanged.
+
+`writeString` and `writeBytes` copy the bytes one by one instead of spreading
+them into `push`, so a large value cannot overflow the call stack and leave a
+half-written field behind.
 
 ---
 
@@ -2630,6 +2910,9 @@ caller.
   runtime-registered custom networks survive a reload. `config` is a full
   `INetworkConfig`, `nodeApiProfile` included; rows written before that field
   existed are skipped with a warning on restore (no schema migration).
+  `nativeTokenDecimals` is stored when the network sets it; a row without it is
+  restored with 8 decimals, and a row with an invalid value is skipped with a
+  warning.
 - **InsensitiveCacheStorageRepository** (`INSENSITIVE_CACHE` table) — persists
   `IInsensitiveCacheRecord` (`{ id, address }`) for the optional address cache.
 - **StorageMetadataStorageRepository** (`STORAGE_METADATA` table) — holds the

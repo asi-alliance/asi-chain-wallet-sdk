@@ -56,7 +56,9 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Explicit Account Targeting** - No active-account state: every call names its wallet and account, so concurrent operations on one wallet cannot sign for the wrong account, via [Client](docs/DOMAINS.md#no-active-account)
 - **Typed Failures** - Decryption, storage, and node errors carry a machine-readable code and structured fields instead of an assembled message string, via [CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
-- **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
+- **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface, including the uint256 deploy signing of the Rust node API, via [NodeApiAdapter](docs/DOMAINS.md)
+- **Per-Network Token Precision** - Each network declares its native token decimals (8 by default, up to 18), and balances, transfers, reservations, and conversions follow the precision of their network, via [Network](docs/DOMAINS.md#network-srcdomainsnetworkindexts)
+- **Exact Wide Amounts** - Amounts, balances, and phlo prices up to `2^256 - 1` are handled as `bigint` and exact decimal strings, never rounded through `Number`, via [amount conversion](docs/UTILS.md#amount-conversion)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
 
 ---
@@ -95,6 +97,7 @@ const networksConfig: TNetworksConfig = {
         ReadOnlyURL: "",
         IndexerURL: "",
         nodeApiProfile: NodeApiProfile.RUST,
+        nativeTokenDecimals: 18, // optional, defaults to 8
     },
     MainNet: {
         ValidatorURL: "",
@@ -129,7 +132,15 @@ one — and that choice drives the HTTP request shape, the endpoint a given call
 targets, and which Rholang vault contract the built-in terms address. There is no
 default: an omitted or unknown profile throws at `Client.create`, because guessing
 it would silently send legacy-shaped requests to a new node. Custom networks added
-at runtime through `client.addNetwork` must supply it too.
+at runtime through `client.addNetwork` must supply it too. The `RUST` profile
+targets the Rust node API with uint256 deploy signing (node #881 and later);
+older Rust nodes are not supported.
+
+`nativeTokenDecimals` is the precision of the network's native token: 1 ASI is
+`10^nativeTokenDecimals` atomic units. It is optional, an integer from `0` to
+`18`, and defaults to `8`; the SDK takes it from the config and does not ask the
+node. Every network record the SDK returns has it set, so read it as
+`client.getCurrentNetwork().config.nativeTokenDecimals`.
 
 ### Create Wallets
 
@@ -316,13 +327,13 @@ const available = await client.getAvailableBalance(
 );
 console.log("Balance:", client.toDisplayAmount(balance));
 
-// Transfer tokens (amount in atomic units)
+// Transfer tokens (amount in atomic units of the current network)
 const reserved = await client.transfer(
     {
         walletId: hdWallet.getId(),
         accountId: account.getId(),
         to: recipientAddress,
-        amount: client.toAtomicAmount("10"), // 10 ASI
+        amount: client.toExactAtomicAmount("10"), // 10 ASI
     },
     "wallet-password",
 );
@@ -357,7 +368,19 @@ A node that is unreachable, a vault that reports an error, and an account with n
 funds are three different outcomes, so handle the error rather than reading a
 falsy balance as "empty".
 
-See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
+Amounts are atomic `bigint` values in the precision of the current network.
+`client.toExactAtomicAmount(string)` converts user input exactly and rejects
+more fractional digits than the network supports; `client.toDisplayAmount`
+formats back. Both read the decimals of the network selected at the time of the
+call. `client.toAtomicAmount` still works but is deprecated: it accepts numbers
+and truncates excess digits.
+
+A transfer reserves `amount` plus the transfer gas reserve of the current
+network: `GasFee.MAX` on `SCALA`, the signed budget `phloLimit * phloPrice` on
+`RUST`. Use `client.getTransferGasReserve()` for a "Max" button or a
+confirmation total, so the UI shows exactly what the SDK will lock.
+
+See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md#amount-conversion).
 
 ### Reserve Funds for a Deploy You Submit Yourself
 
@@ -373,9 +396,9 @@ const request = {
     kind: "transfer" as const,
     deployId, // the deploy you submitted yourself
     to: recipientAddress,
-    amount: client.toAtomicAmount("10"),
-    gasCost: client.toAtomicAmount("0.1"),
-    pendingAmount: client.toAtomicAmount("10.1"), // must cover amount + gasCost
+    amount: client.toExactAtomicAmount("10"),
+    gasCost: client.toExactAtomicAmount("0.1"),
+    pendingAmount: client.toExactAtomicAmount("10.1"), // must cover amount + gasCost
 };
 
 const reservation = await client.addTransactionReservation(
@@ -386,8 +409,8 @@ const reservation = await client.addTransactionReservation(
 // Correct it while it is still pending, keeping the same reservation id
 await client.updateTransactionReservation(reservation.id, {
     ...request,
-    amount: client.toAtomicAmount("12"),
-    pendingAmount: client.toAtomicAmount("12.1"),
+    amount: client.toExactAtomicAmount("12"),
+    pendingAmount: client.toExactAtomicAmount("12.1"),
 });
 
 // Or release the funds early
@@ -418,7 +441,7 @@ const signed = await client.signDeploy(
         accountId: account.getId(),
         term: rholangTerm,
         phloLimit: 500_000, // optional, defaults from config
-        phloPrice: 1, // optional, defaults from config
+        phloPrice: 1, // optional, defaults from config; a number, decimal string, or bigint
         shardId: "root", // optional, defaults to "root"
     },
     "wallet-password", // omit while a signing session is active
@@ -430,8 +453,17 @@ await submitToNode(signed);
 
 `validAfterBlockNumber` and `timestamp` are filled in by the SDK from the current
 chain head, so the call still needs the network. The payload is validated before
-anything is signed: a blank term, a non-positive or unsafe `phloLimit` /
-`phloPrice`, or a blank `shardId` are rejected.
+anything is signed: a blank term, a non-positive or unsafe `phloLimit`, a
+`phloPrice` below 1 or above the bound of the profile (`Number.MAX_SAFE_INTEGER`
+on `SCALA`, `2^256 - 1` on `RUST`), a `phloLimit * phloPrice` above `2^256 - 1`,
+or a blank `shardId` are rejected.
+
+The signed bytes follow the node API profile of the current network: on `RUST`
+the price is signed as a 32-byte uint256 field and `signed.data.phloPrice` is a
+decimal string, on `SCALA` it is an int64 field and a number. Submit a signed
+deploy to a node of the profile it was signed for, and do not switch networks
+between signing and submitting. `client.deploy` accepts the same `phloPrice`
+and `shardId` options.
 
 ---
 
@@ -736,6 +768,9 @@ npm install
 # VITE_DEVNET_VALIDATOR_URL=...
 # VITE_DEVNET_READONLY_URL=...
 # VITE_DEVNET_INDEXER_URL=...
+# VITE_DEVNET_NODE_API_PROFILE=scala
+# VITE_DEV_NODE_API_PROFILE=rust
+# VITE_DEV_NATIVE_TOKEN_DECIMALS=18   # optional per network, defaults to 8
 
 npm run dev
 ```
