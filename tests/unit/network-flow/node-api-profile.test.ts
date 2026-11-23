@@ -285,7 +285,7 @@ test("rust profile reads the latest block number from the summary block envelope
     console.log("    Latest block number:", blockNumber);
 
     assert.equal(blockNumber, LATEST_BLOCK_NUMBER);
-    assert.deepEqual(calls, [{ view: "summary" }]);
+    assert.deepEqual(calls, [{ depth: 1, view: "summary" }]);
 });
 
 test("rust profile does not read the flat block number", async () => {
