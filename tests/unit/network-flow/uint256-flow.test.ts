@@ -85,6 +85,9 @@ const getLastSubmittedDeploy = (): SignedResult => {
     return submittedDeploys[submittedDeploys.length - 1];
 };
 
+const getDeploysSubmittedSince = (submittedCount: number): SignedResult[] =>
+    node.getSubmittedDeploys().slice(submittedCount);
+
 test.before(async () => {
     node = await startPrecisionNode(NATIVE_TOKEN_DECIMALS);
 });
@@ -180,9 +183,9 @@ test("direct reservations sign and reserve the phlo read when the operation star
         phloPrice: STARTING_PHLO_PRICE,
     };
 
-    const submittedCount: number = node.getSubmittedDeploys().length;
-
     try {
+        const transferStartCount: number = node.getSubmittedDeploys().length;
+
         const transferring: Promise<IReservedOperationResult> =
             reservationAdapter.transfer(
                 wallet,
@@ -194,6 +197,17 @@ test("direct reservations sign and reserve the phlo read when the operation star
 
         await transferring;
 
+        const transferDeploys: SignedResult[] =
+            getDeploysSubmittedSince(transferStartCount);
+
+        console.log("    Transfer deploys submitted:", transferDeploys.length);
+
+        assert.equal(transferDeploys.length, 1);
+
+        const [transferDeploy]: SignedResult[] = transferDeploys;
+
+        const deployStartCount: number = node.getSubmittedDeploys().length;
+
         const deploying: Promise<IReservedOperationResult> =
             reservationAdapter.deploy(wallet, account.getId(), deployDetails);
 
@@ -201,10 +215,14 @@ test("direct reservations sign and reserve the phlo read when the operation star
 
         await deploying;
 
-        const submittedDeploys: SignedResult[] = node
-            .getSubmittedDeploys()
-            .slice(submittedCount);
-        const [transferDeploy, deployDeploy]: SignedResult[] = submittedDeploys;
+        const deployDeploys: SignedResult[] =
+            getDeploysSubmittedSince(deployStartCount);
+
+        console.log("    Deploy deploys submitted:", deployDeploys.length);
+
+        assert.equal(deployDeploys.length, 1);
+
+        const [deployDeploy]: SignedResult[] = deployDeploys;
 
         const pendingAmounts: string[] = reservationAdapter
             .getReservations()
@@ -213,16 +231,17 @@ test("direct reservations sign and reserve the phlo read when the operation star
                     reservation.pendingAmount,
             );
 
-        console.log("    Submitted deploys:", submittedDeploys.length);
         console.log("    Transfer phlo price:", transferDeploy.data.phloPrice);
+        console.log("    Deploy term:", deployDeploy.data.term);
         console.log("    Deploy phlo price:", deployDeploy.data.phloPrice);
         console.log("    Reserved amounts:", pendingAmounts);
 
-        assert.equal(submittedDeploys.length, 2);
+        assert.notEqual(transferDeploy.data.term, DEPLOY_TERM);
         assert.equal(
             transferDeploy.data.phloPrice,
             String(STARTING_PHLO_PRICE),
         );
+        assert.equal(deployDeploy.data.term, DEPLOY_TERM);
         assert.equal(deployDeploy.data.phloPrice, String(STARTING_PHLO_PRICE));
         assert.deepEqual(pendingAmounts, [
             (
