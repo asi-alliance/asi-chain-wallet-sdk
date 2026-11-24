@@ -43,9 +43,9 @@ export const NETWORKS_CONFIG: TNetworksConfig = {
         ),
     },
     TestNet: {
-        ValidatorURL: "",
-        ReadOnlyURL: "",
-        IndexerURL: "",
+        ValidatorURL: env.VITE_TESTNET_VALIDATOR_URL ?? "",
+        ReadOnlyURL: env.VITE_TESTNET_READONLY_URL ?? "",
+        IndexerURL: env.VITE_TESTNET_INDEXER_URL ?? "",
         nodeApiProfile: toNodeApiProfile(env.VITE_TESTNET_NODE_API_PROFILE),
         nativeTokenDecimals: toNativeTokenDecimals(
             env.VITE_TESTNET_NATIVE_TOKEN_DECIMALS,

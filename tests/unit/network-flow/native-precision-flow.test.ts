@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import {
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+    GasFee,
+    MAX_NATIVE_TOKEN_DECIMALS,
+    NATIVE_TOKEN_DECIMALS_AMOUNT,
+} from "@config/index";
 import Account from "@domains/Account";
 import ApiClientManager from "@domains/ApiClientManager";
 import Client, { TTransactionReservationRequest } from "@domains/Client";
@@ -35,8 +42,51 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/native-precision-flow" };
 const NATIVE_18_NETWORK: string = "Wide";
 const NATIVE_8_NETWORK: string = "Legacy";
 
+const NATIVE_18_DECIMALS: number = MAX_NATIVE_TOKEN_DECIMALS;
+const NATIVE_8_DECIMALS: number = NATIVE_TOKEN_DECIMALS_AMOUNT;
+
 const NATIVE_18_BALANCE: bigint = 100000000000000000000n;
 const NATIVE_8_BALANCE: bigint = 150000000n;
+
+const NATIVE_18_DISPLAY_BALANCE: string = "100";
+const NATIVE_8_DISPLAY_BALANCE: string = "1.5";
+
+const WIDE_AMOUNT: string = "10.000000000000000001";
+const WIDE_ATOMIC_AMOUNT: bigint = 10000000000000000001n;
+const WIDE_AMOUNT_LITERAL: string = "10000000000000000001n";
+const WIDE_AVAILABLE_BALANCE: string = "89.999999999999499999";
+const WIDE_TRANSFER_GAS_COST: string = "0.0000000000005";
+
+const NATIVE_8_AMOUNT: string = "1.5";
+const NATIVE_8_ATOMIC_AMOUNT: bigint = 150000000n;
+
+const GAS_COST: bigint = GasFee.MAX;
+const NATIVE_18_GAS_COST: string = "0.00000000000025";
+const NATIVE_8_GAS_COST: string = "0.0025";
+
+const EXTERNAL_DEPLOY_ID: string = "external";
+const EXTERNAL_AMOUNT: bigint = 1n;
+const EXTERNAL_PENDING_AMOUNT: bigint = EXTERNAL_AMOUNT + GAS_COST;
+const EXTERNAL_NATIVE_18_AMOUNT: string = "0.000000000000000001";
+const EXTERNAL_NATIVE_8_AMOUNT: string = "0.00000001";
+
+const DEPLOY_TERM: string = "Nil";
+const DEPLOY_PHLO_LIMIT: number = 1000000;
+const DEPLOY_GAS_COST: string = "0.000000000001";
+
+const RESERVATION_LIFETIME_MS: number = 5 * 60 * 1000;
+
+const NODE_STATUS_PATH: string = "status";
+
+const HISTORY_ADDRESS: string = "recipient";
+const HISTORY_PUBLIC_KEY: string = "key";
+const NATIVE_8_HISTORY_AMOUNT: string = "1.50000000";
+
+const INVALID_NATIVE_TOKEN_DECIMALS: number[] = [
+    MAX_NATIVE_TOKEN_DECIMALS + 1,
+    -1,
+    1.5,
+];
 
 const INVALID_NATIVE_TOKEN_DECIMALS_ERROR: RegExp =
     /Native token decimals must be an integer from 0 to 18/;
@@ -96,9 +146,22 @@ const getStoredNetworkDecimals = async (
     )?.config.nativeTokenDecimals;
 };
 
+const createExternalReservationRequest = ({
+    request,
+    account,
+}: IFundedWallet): TTransactionReservationRequest => ({
+    ...request,
+    kind: "transfer",
+    deployId: EXTERNAL_DEPLOY_ID,
+    to: account.getAddress(),
+    amount: EXTERNAL_AMOUNT,
+    gasCost: GAS_COST,
+    pendingAmount: EXTERNAL_PENDING_AMOUNT,
+});
+
 test.before(async () => {
-    native18Node = await startPrecisionNode(18);
-    native8Node = await startPrecisionNode(8);
+    native18Node = await startPrecisionNode(NATIVE_18_DECIMALS);
+    native8Node = await startPrecisionNode(NATIVE_8_DECIMALS);
 });
 
 test.beforeEach(async () => {
@@ -136,13 +199,17 @@ test("selected precision reaches facade, balances and fees", async () => {
         client.toDisplayAmount(native18Balance),
     );
 
-    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 18);
     assert.equal(
-        client.toAtomicAmount("10.000000000000000001"),
-        10000000000000000001n,
+        client.getCurrentNetwork().config.nativeTokenDecimals,
+        NATIVE_18_DECIMALS,
     );
-    assert.equal(client.toDisplayAmount(native18Balance), "100");
-    assert.equal(client.toDisplayAmount(250000n), "0.00000000000025");
+    assert.equal(client.toAtomicAmount(WIDE_AMOUNT), WIDE_ATOMIC_AMOUNT);
+    assert.equal(client.toExactAtomicAmount(WIDE_AMOUNT), WIDE_ATOMIC_AMOUNT);
+    assert.equal(
+        client.toDisplayAmount(native18Balance),
+        NATIVE_18_DISPLAY_BALANCE,
+    );
+    assert.equal(client.toDisplayAmount(GAS_COST), NATIVE_18_GAS_COST);
 
     client.setNetwork(NATIVE_8_NETWORK);
 
@@ -155,14 +222,28 @@ test("selected precision reaches facade, balances and fees", async () => {
         client.toDisplayAmount(native8Balance),
     );
 
-    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
-    assert.equal(client.toAtomicAmount("1.5"), 150000000n);
-    assert.equal(client.toDisplayAmount(native8Balance), "1.5");
-    assert.equal(client.toDisplayAmount(250000n), "0.0025");
     assert.equal(
-        native18Node.requests.some((url: string) => url.includes("status")),
-        false,
+        client.getCurrentNetwork().config.nativeTokenDecimals,
+        NATIVE_8_DECIMALS,
     );
+    assert.equal(client.toAtomicAmount(NATIVE_8_AMOUNT), NATIVE_8_ATOMIC_AMOUNT);
+    assert.equal(
+        client.toExactAtomicAmount(NATIVE_8_AMOUNT),
+        NATIVE_8_ATOMIC_AMOUNT,
+    );
+    assert.equal(
+        client.toDisplayAmount(native8Balance),
+        NATIVE_8_DISPLAY_BALANCE,
+    );
+    assert.equal(client.toDisplayAmount(GAS_COST), NATIVE_8_GAS_COST);
+
+    const isStatusRequested: boolean = native18Node.requests.some(
+        (url: string) => url.includes(NODE_STATUS_PATH),
+    );
+
+    console.log("    Precision read from the node status:", isStatusRequested);
+
+    assert.equal(isStatusRequested, false);
 });
 
 test("wide transfer term, available balance and pending history retain every atomic unit", async () => {
@@ -171,7 +252,7 @@ test("wide transfer term, available balance and pending history retain every ato
     const { wallet, account, request }: IFundedWallet =
         await createFundedWallet();
 
-    const amount: bigint = client.toAtomicAmount("10.000000000000000001");
+    const amount: bigint = client.toExactAtomicAmount(WIDE_AMOUNT);
 
     const sent: IReservedOperationResult = await client.transfer({
         ...request,
@@ -181,10 +262,15 @@ test("wide transfer term, available balance and pending history retain every ato
 
     const submittedDeploys: SignedResult[] =
         native18Node.getSubmittedDeploys();
-    const submittedTerm: string =
-        submittedDeploys[submittedDeploys.length - 1].data.term;
+    const submitted: SignedResult =
+        submittedDeploys[submittedDeploys.length - 1];
 
-    assert.ok(submittedTerm.includes("10000000000000000001n"));
+    console.log("    Submitted phlo price:", submitted.data.phloPrice);
+
+    assert.ok(submitted.data.term.includes(WIDE_AMOUNT_LITERAL));
+    assert.equal(submitted.data.phloPrice, String(DEFAULT_PHLO_PRICE));
+    assert.equal(submitted.data.phloLimit, DEFAULT_PHLO_LIMIT);
+    assert.equal("nodeApiProfile" in submitted, false);
 
     const availableBalance: bigint = await client.getAvailableBalance(
         request.walletId,
@@ -198,15 +284,15 @@ test("wide transfer term, available balance and pending history retain every ato
 
     assert.equal(
         client.toDisplayAmount(availableBalance),
-        "89.999999999999499999",
+        WIDE_AVAILABLE_BALANCE,
     );
 
     const [reservation]: ITransactionReservation[] =
         await client.getReservations(wallet.getId());
 
-    assert.equal(reservation.nativeTokenDecimals, 18);
-    assert.equal(reservation.details.amount, "10.000000000000000001");
-    assert.equal(reservation.details.gasCost, "0.0000000000005");
+    assert.equal(reservation.nativeTokenDecimals, NATIVE_18_DECIMALS);
+    assert.equal(reservation.details.amount, WIDE_AMOUNT);
+    assert.equal(reservation.details.gasCost, WIDE_TRANSFER_GAS_COST);
     assert.equal(
         reservation.details.gasCost,
         client.toDisplayAmount(client.getTransferGasReserve()),
@@ -231,9 +317,11 @@ test("wide transfer term, available balance and pending history retain every ato
     );
 
     console.log("    Restored pending amount:", pendingTransfer?.amount);
+    console.log("    Restored pending fee:", pendingTransfer?.gasCost);
 
-    assert.equal(pendingTransfer?.amount, "10.000000000000000001");
-    assert.equal(pendingTransfer?.nativeTokenDecimals, 18);
+    assert.equal(pendingTransfer?.amount, WIDE_AMOUNT);
+    assert.equal(pendingTransfer?.gasCost, WIDE_TRANSFER_GAS_COST);
+    assert.equal(pendingTransfer?.nativeTokenDecimals, NATIVE_18_DECIMALS);
 
     client.setNetwork(NATIVE_8_NETWORK);
 
@@ -255,16 +343,20 @@ test("deploy reservations format fee products using the captured precision", asy
 
     const { request }: IFundedWallet = await createFundedWallet();
 
-    await client.deploy({ ...request, term: "Nil", phloLimit: 1000000 });
+    await client.deploy({
+        ...request,
+        term: DEPLOY_TERM,
+        phloLimit: DEPLOY_PHLO_LIMIT,
+    });
 
     const [reservation]: ITransactionReservation[] =
         await client.getReservations(request.walletId);
 
     console.log("    Deploy fee:", reservation.details.gasCost);
 
-    assert.equal(reservation.pendingAmount, "1000000");
-    assert.equal(reservation.details.gasCost, "0.000000000001");
-    assert.equal(reservation.nativeTokenDecimals, 18);
+    assert.equal(reservation.pendingAmount, String(DEPLOY_PHLO_LIMIT));
+    assert.equal(reservation.details.gasCost, DEPLOY_GAS_COST);
+    assert.equal(reservation.nativeTokenDecimals, NATIVE_18_DECIMALS);
 });
 
 test("custom precision is persisted, can be corrected and survives a client restart", async () => {
@@ -274,42 +366,38 @@ test("custom precision is persisted, can be corrected and survives a client rest
 
     client.setNetwork(custom.id);
 
-    const { wallet, account, request }: IFundedWallet =
-        await createFundedWallet();
+    const fundedWallet: IFundedWallet = await createFundedWallet();
 
-    await client.addTransactionReservation({
-        ...request,
-        kind: "transfer",
-        deployId: "external",
-        to: account.getAddress(),
-        amount: 1n,
-        gasCost: 250000n,
-        pendingAmount: 250001n,
-    });
-
-    const [stored]: ITransactionReservation[] = await client.getReservations(
-        wallet.getId(),
+    await client.addTransactionReservation(
+        createExternalReservationRequest(fundedWallet),
     );
 
-    assert.equal(stored.details.amount, "0.000000000000000001");
+    const [stored]: ITransactionReservation[] = await client.getReservations(
+        fundedWallet.wallet.getId(),
+    );
 
-    client.closeWallet(wallet.getId());
+    assert.equal(stored.details.amount, EXTERNAL_NATIVE_18_AMOUNT);
+
+    client.closeWallet(fundedWallet.wallet.getId());
 
     await client.updateNetwork(custom.id, {
-        config: { nativeTokenDecimals: 8 },
+        config: { nativeTokenDecimals: NATIVE_8_DECIMALS },
     });
 
     console.log("    Corrected decimals:", getNetworkDecimals(custom.id));
 
-    assert.equal(getNetworkDecimals(custom.id), 8);
-    assert.equal(await getStoredNetworkDecimals(custom.id), 8);
+    assert.equal(getNetworkDecimals(custom.id), NATIVE_8_DECIMALS);
+    assert.equal(await getStoredNetworkDecimals(custom.id), NATIVE_8_DECIMALS);
 
     await client.close();
 
     client = await createClient();
     client.setNetwork(custom.id);
 
-    assert.equal(client.getCurrentNetwork().config.nativeTokenDecimals, 8);
+    assert.equal(
+        client.getCurrentNetwork().config.nativeTokenDecimals,
+        NATIVE_8_DECIMALS,
+    );
 });
 
 test("precision change keeps open reservations and their update takes the network precision", async () => {
@@ -319,34 +407,26 @@ test("precision change keeps open reservations and their update takes the networ
 
     client.setNetwork(custom.id);
 
-    const { wallet, account, request }: IFundedWallet =
-        await createFundedWallet();
+    const fundedWallet: IFundedWallet = await createFundedWallet();
 
-    const reservationRequest: TTransactionReservationRequest = {
-        ...request,
-        kind: "transfer",
-        deployId: "external",
-        to: account.getAddress(),
-        amount: 1n,
-        gasCost: 250000n,
-        pendingAmount: 250001n,
-    };
+    const reservationRequest: TTransactionReservationRequest =
+        createExternalReservationRequest(fundedWallet);
 
     await client.addTransactionReservation(reservationRequest);
 
     await client.updateNetwork(custom.id, {
-        config: { nativeTokenDecimals: 8 },
+        config: { nativeTokenDecimals: NATIVE_8_DECIMALS },
     });
 
     const [kept]: ITransactionReservation[] = await client.getReservations(
-        wallet.getId(),
+        fundedWallet.wallet.getId(),
     );
 
     console.log("    Kept reservation precision:", kept.nativeTokenDecimals);
 
-    assert.equal(kept.nativeTokenDecimals, 18);
-    assert.equal(kept.pendingAmount, "250001");
-    assert.equal(kept.details.amount, "0.000000000000000001");
+    assert.equal(kept.nativeTokenDecimals, NATIVE_18_DECIMALS);
+    assert.equal(kept.pendingAmount, String(EXTERNAL_PENDING_AMOUNT));
+    assert.equal(kept.details.amount, EXTERNAL_NATIVE_18_AMOUNT);
 
     const updated: ITransactionReservation =
         await client.updateTransactionReservation(kept.id, reservationRequest);
@@ -356,9 +436,9 @@ test("precision change keeps open reservations and their update takes the networ
         updated.nativeTokenDecimals,
     );
 
-    assert.equal(updated.nativeTokenDecimals, 8);
-    assert.equal(updated.pendingAmount, "250001");
-    assert.equal(updated.details.amount, "0.00000001");
+    assert.equal(updated.nativeTokenDecimals, NATIVE_8_DECIMALS);
+    assert.equal(updated.pendingAmount, String(EXTERNAL_PENDING_AMOUNT));
+    assert.equal(updated.details.amount, EXTERNAL_NATIVE_8_AMOUNT);
 });
 
 test("a reservation payload without precision takes the precision of its network", async () => {
@@ -369,12 +449,12 @@ test("a reservation payload without precision takes the precision of its network
 
     const payload: TCreateTransactionReservationPayload = {
         kind: "transfer",
-        deployId: "external",
+        deployId: EXTERNAL_DEPLOY_ID,
         networkId: client.getCurrentNetwork().id,
         account,
-        pendingAmount: 250001n,
-        gasCost: 250000n,
-        details: { to: account.getAddress(), amount: 1n },
+        pendingAmount: EXTERNAL_PENDING_AMOUNT,
+        gasCost: GAS_COST,
+        details: { to: account.getAddress(), amount: EXTERNAL_AMOUNT },
     };
 
     try {
@@ -388,15 +468,20 @@ test("a reservation payload without precision takes the precision of its network
             added.nativeTokenDecimals,
         );
 
-        assert.equal(added.nativeTokenDecimals, 18);
-        assert.equal(added.details.amount, "0.000000000000000001");
-        assert.equal(added.details.gasCost, "0.00000000000025");
+        assert.equal(added.nativeTokenDecimals, NATIVE_18_DECIMALS);
+        assert.equal(added.details.amount, EXTERNAL_NATIVE_18_AMOUNT);
+        assert.equal(added.details.gasCost, NATIVE_18_GAS_COST);
 
         const updated: ITransactionReservation =
             await reservationAdapter.update(wallet, added.id, payload);
 
-        assert.equal(updated.nativeTokenDecimals, 18);
-        assert.equal(updated.details.amount, "0.000000000000000001");
+        console.log(
+            "    Updated reservation precision:",
+            updated.nativeTokenDecimals,
+        );
+
+        assert.equal(updated.nativeTokenDecimals, NATIVE_18_DECIMALS);
+        assert.equal(updated.details.amount, EXTERNAL_NATIVE_18_AMOUNT);
     } finally {
         reservationAdapter.dispose();
     }
@@ -412,7 +497,7 @@ test("reservations passed to the adapter without precision take the precision of
         networkId,
         accountId: "account-id",
         pendingAmount: "1000",
-        expirationTime: Date.now() + 5 * 60 * 1000,
+        expirationTime: Date.now() + RESERVATION_LIFETIME_MS,
         kind: "deploy",
         details: {
             deployId: `deploy-${networkId}`,
@@ -440,8 +525,11 @@ test("reservations passed to the adapter without precision take the precision of
             native8Reservation.nativeTokenDecimals,
         );
 
-        assert.equal(native18Reservation.nativeTokenDecimals, 18);
-        assert.equal(native8Reservation.nativeTokenDecimals, 8);
+        assert.equal(
+            native18Reservation.nativeTokenDecimals,
+            NATIVE_18_DECIMALS,
+        );
+        assert.equal(native8Reservation.nativeTokenDecimals, NATIVE_8_DECIMALS);
     } finally {
         reservationAdapter.dispose();
     }
@@ -452,7 +540,9 @@ test("invalid updates fail before configuration is written", async () => {
 
     const custom: INetworkRecord = await addCustomNetwork();
 
-    for (const nativeTokenDecimals of [19, -1, 1.5]) {
+    for (const nativeTokenDecimals of INVALID_NATIVE_TOKEN_DECIMALS) {
+        console.log("    Rejecting precision:", nativeTokenDecimals);
+
         await assert.rejects(
             client.updateNetwork(custom.id, {
                 config: { nativeTokenDecimals },
@@ -460,7 +550,7 @@ test("invalid updates fail before configuration is written", async () => {
             INVALID_NATIVE_TOKEN_DECIMALS_ERROR,
         );
 
-        assert.equal(getNetworkDecimals(custom.id), 18);
+        assert.equal(getNetworkDecimals(custom.id), NATIVE_18_DECIMALS);
     }
 
     await client.updateNetwork(custom.id, {
@@ -472,7 +562,7 @@ test("invalid updates fail before configuration is written", async () => {
         getNetworkDecimals(custom.id),
     );
 
-    assert.equal(getNetworkDecimals(custom.id), 18);
+    assert.equal(getNetworkDecimals(custom.id), NATIVE_18_DECIMALS);
 });
 
 test("history queries bind endpoints and precision-independent recorded amounts to the requested network", async () => {
@@ -482,8 +572,8 @@ test("history queries bind endpoints and precision-independent recorded amounts 
 
     const native8History: Transaction[] =
         await accountDataService.getTransactionHistory(
-            "recipient",
-            "key",
+            HISTORY_ADDRESS,
+            HISTORY_PUBLIC_KEY,
             {},
             NATIVE_8_NETWORK,
         );
@@ -492,19 +582,19 @@ test("history queries bind endpoints and precision-independent recorded amounts 
 
     assert.equal(client.getCurrentNetworkId(), NATIVE_18_NETWORK);
     assert.equal(native8History[0].networkId, NATIVE_8_NETWORK);
-    assert.equal(native8History[0].amount, "1.50000000");
+    assert.equal(native8History[0].amount, NATIVE_8_HISTORY_AMOUNT);
 
     const native18History: Transaction[] =
         await accountDataService.getTransactionHistory(
-            "recipient",
-            "key",
+            HISTORY_ADDRESS,
+            HISTORY_PUBLIC_KEY,
             {},
             NATIVE_18_NETWORK,
         );
 
     console.log("    18-decimal history amount:", native18History[0].amount);
 
-    assert.equal(native18History[0].amount, "10.000000000000000001");
+    assert.equal(native18History[0].amount, WIDE_AMOUNT);
 });
 
 test("history without a network id is read through the injected node API provider", async () => {
@@ -523,20 +613,25 @@ test("history without a network id is read through the injected node API provide
     );
 
     const providerHistory: Transaction[] =
-        await accountDataService.getTransactionHistory("recipient", "key");
+        await accountDataService.getTransactionHistory(
+            HISTORY_ADDRESS,
+            HISTORY_PUBLIC_KEY,
+        );
 
     console.log("    Provider history amount:", providerHistory[0].amount);
 
     assert.equal(client.getCurrentNetworkId(), NATIVE_18_NETWORK);
-    assert.equal(providerHistory[0].amount, "1.50000000");
+    assert.equal(providerHistory[0].amount, NATIVE_8_HISTORY_AMOUNT);
 
     const requestedHistory: Transaction[] =
         await accountDataService.getTransactionHistory(
-            "recipient",
-            "key",
+            HISTORY_ADDRESS,
+            HISTORY_PUBLIC_KEY,
             {},
             NATIVE_18_NETWORK,
         );
 
-    assert.equal(requestedHistory[0].amount, "10.000000000000000001");
+    console.log("    Requested history amount:", requestedHistory[0].amount);
+
+    assert.equal(requestedHistory[0].amount, WIDE_AMOUNT);
 });

@@ -5,6 +5,8 @@ import { GraphqlParser } from "@services/GraphqlParser";
 import { Transaction } from "@domains/Transaction";
 import { INetworkContext, NetworkId } from "@domains/Network";
 
+type THistorySource = Pick<INetworkContext, "api" | "networkId">;
+
 export default class AccountDataService {
     private readonly nodeApiProvider: NodeApiProvider;
     private readonly apiClientManager: ApiClientManager;
@@ -19,9 +21,7 @@ export default class AccountDataService {
             apiClientManager ?? ApiClientManager.getInstance();
     }
 
-    private getHistorySource(
-        networkId?: NetworkId,
-    ): Pick<INetworkContext, "api" | "networkId"> {
+    private getHistorySource(networkId?: NetworkId): THistorySource {
         if (networkId === undefined) {
             return {
                 api: this.nodeApiProvider.getApi(),
@@ -39,8 +39,7 @@ export default class AccountDataService {
         networkId?: NetworkId,
     ): Promise<Transaction[]> {
         try {
-            const source: Pick<INetworkContext, "api" | "networkId"> =
-                this.getHistorySource(networkId);
+            const source: THistorySource = this.getHistorySource(networkId);
 
             const response = await source.api.getTransactionHistory(
                 address,

@@ -24,6 +24,7 @@ export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
 
 export const MAX_INT64: bigint = (1n << 63n) - 1n;
 export const MAX_UINT256: bigint = (1n << 256n) - 1n;
+export const MAX_CLASSIC_PHLO_PRICE: bigint = BigInt(Number.MAX_SAFE_INTEGER);
 
 export const SCALA_FAULT_TOLERANCE_THRESHOLD: number = 0.99;
 // TODO(next-major): Remove; the rust node reports finalization through

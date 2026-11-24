@@ -16,6 +16,7 @@ import {
     DomainClosedError,
     OperationsSuspendedError,
 } from "@domains/CustomError";
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import {
     FAKE_NETWORK,
     IFakeNode,
@@ -97,7 +98,7 @@ const createReservation = (
 ): ITransactionReservation => ({
     id,
     networkId,
-    nativeTokenDecimals: 8,
+    nativeTokenDecimals: NATIVE_TOKEN_DECIMALS_AMOUNT,
     accountId: "account-id",
     pendingAmount: "1000",
     expirationTime: Date.now() + 5 * 60 * 1000,

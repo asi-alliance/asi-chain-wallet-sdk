@@ -31,7 +31,10 @@ interface IRustDeployInfo extends IDeployInfo {
     finalizationState?: DeployFinalizationState;
 }
 
+const LATEST_BLOCK_DEPTH: number = 1;
+
 const LATEST_BLOCK_PARAMS: IGetBlocksParams = {
+    depth: LATEST_BLOCK_DEPTH,
     view: "summary",
 };
 

@@ -10,6 +10,9 @@ export const FAKE_NETWORK: NetworkName = "FakeTestNet";
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
+const LATEST_BLOCK_PATH: string = "/api/blocks/1";
+const URL_QUERY_SEPARATOR: string = "?";
+
 export type TSubmitOutcome =
     | { kind: "accepted" }
     | { kind: "admission"; code: DeployAdmissionCode }
@@ -63,6 +66,9 @@ export interface IFakeNode {
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
+
+export const isLatestBlockRequest = (url: string): boolean =>
+    url.split(URL_QUERY_SEPARATOR)[0] === LATEST_BLOCK_PATH;
 
 export const readBody = async (
     request: http.IncomingMessage,
@@ -187,7 +193,7 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
             return;
         }
 
-        if (url.startsWith("/api/blocks")) {
+        if (isLatestBlockRequest(url)) {
             sendJson(response, [
                 { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);

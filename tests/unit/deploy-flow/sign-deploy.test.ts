@@ -12,6 +12,7 @@ import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
 import NodeApiProvider from "@domains/NodeApiProvider";
+import { IGetBlocksParams } from "@domains/ObserverClient";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { WalletTypes } from "@domains/Signer";
 import BlockService from "@services/BlockService";
@@ -44,6 +45,16 @@ const LARGE_FIELD_CHAR_CODE = 0x61;
 const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
 const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
 const PREVIOUS_BLOCK_MINUS_ONE_HEX = "50ffffffffffffffffff01";
+const CLASSIC_PREVIOUS_BLOCK = 99;
+const GENESIS_PREVIOUS_BLOCK = -1;
+const ZERO_BLOCK_NUMBERS: unknown[] = [0, "0"];
+const OVERFLOW_PHLO_LIMIT = 2;
+const PHLO_CHARGE_OVERFLOW_ERROR: RegExp = /charge exceeds uint256/;
+
+const RUST_LATEST_BLOCK_PARAMS: IGetBlocksParams = {
+    depth: 1,
+    view: "summary",
+};
 
 interface ISigningContext {
     account: Account;
@@ -78,8 +89,8 @@ const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
             timestamp: CLASSIC_TIMESTAMP,
             phloPrice: 1,
             phloLimit: 1,
-            validAfterBlockNumber: 99,
-            shardId: "root",
+            validAfterBlockNumber: CLASSIC_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
         },
         protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}380140015063${CLASSIC_ROOT_SHARD_HEX}`,
     },
@@ -90,8 +101,8 @@ const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
             timestamp: CLASSIC_TIMESTAMP,
             phloPrice: 1000,
             phloLimit: 500000,
-            validAfterBlockNumber: 99,
-            shardId: "root",
+            validAfterBlockNumber: CLASSIC_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
         },
         protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}38e80740a0c21e5063${CLASSIC_ROOT_SHARD_HEX}`,
     },
@@ -102,14 +113,12 @@ const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
             timestamp: CLASSIC_TIMESTAMP,
             phloPrice: 1,
             phloLimit: 1,
-            validAfterBlockNumber: -1,
-            shardId: "root",
+            validAfterBlockNumber: GENESIS_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
         },
         protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}3801400150ffffffffffffffffff01${CLASSIC_ROOT_SHARD_HEX}`,
     },
 ];
-
-const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 class StubBlockService extends BlockService {
     public requests: number = 0;
@@ -323,29 +332,22 @@ test("signDeploy never submits the deploy", async () => {
     assert.equal(deployService.submitted.length, 0);
 });
 
-test("scala adapter serializes deploy data into the classic protobuf bytes", () => {
+test("scala adapter and the classic serializer keep the classic protobuf bytes", () => {
     console.log("\n=== SCALA CLASSIC SERIALIZATION ===");
 
     for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
-        const bytes: Uint8Array = scalaApi.serializeDeployData(data);
+        const adapterHex: string = encodeBase16(
+            scalaApi.serializeDeployData(data),
+        );
+        const serializerHex: string = encodeBase16(
+            SignerService.deployDataProtobufSerialize(data),
+        );
 
         console.log("    Case:", name);
-        console.log("    Protobuf:", toHex(bytes));
+        console.log("    Protobuf:", adapterHex);
 
-        assert.equal(toHex(bytes), protobufHex);
-    }
-});
-
-test("classic deploy serializer keeps the protobuf bytes", () => {
-    console.log("\n=== CLASSIC SERIALIZER ===");
-
-    for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
-        const bytes: Uint8Array =
-            SignerService.deployDataProtobufSerialize(data);
-
-        console.log("    Case:", name);
-
-        assert.equal(toHex(bytes), protobufHex);
+        assert.equal(adapterHex, protobufHex);
+        assert.equal(serializerHex, protobufHex);
     }
 });
 
@@ -378,11 +380,11 @@ test("binary writer writes byte and string fields of a million bytes", () => {
 
     assert.equal(bytes.length, fieldLength * 2);
     assert.equal(
-        toHex(bytes.subarray(0, LARGE_FIELD_HEADER_LENGTH)),
+        encodeBase16(bytes.subarray(0, LARGE_FIELD_HEADER_LENGTH)),
         LARGE_BYTES_FIELD_HEADER_HEX,
     );
     assert.equal(
-        toHex(
+        encodeBase16(
             bytes.subarray(fieldLength, fieldLength + LARGE_FIELD_HEADER_LENGTH),
         ),
         LARGE_STRING_FIELD_HEADER_HEX,
@@ -463,10 +465,16 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
     const { account, signer }: ISigningContext =
         await createPrivateKeyContext();
 
-    for (const blockNumber of [0, "0"]) {
+    for (const blockNumber of ZERO_BLOCK_NUMBERS) {
+        const calls: (IGetBlocksParams | undefined)[] = [];
+
         const api: NodeApiAdapter = new RustNodeApiAdapter({
             observer: {
-                getBlocks: async () => [{ blockInfo: { blockNumber } }],
+                getBlocks: async (params?: IGetBlocksParams) => {
+                    calls.push(params);
+
+                    return [{ blockInfo: { blockNumber } }];
+                },
             },
         } as unknown as IApiClients);
         const nodeApiProvider: NodeApiProvider = {
@@ -488,14 +496,19 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
         const bytes: Uint8Array = api.serializeDeployData(signed.data);
         const hash: string = blake2bHex(bytes, undefined, DEPLOY_HASH_LENGTH);
 
+        console.log("    Blocks request params:", JSON.stringify(calls[0]));
         console.log("    Block number:", JSON.stringify(blockNumber));
         console.log(
             "    Previous block:",
             signed.data.validAfterBlockNumber,
         );
 
-        assert.equal(signed.data.validAfterBlockNumber, -1);
-        assert.equal(toHex(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX), true);
+        assert.deepEqual(calls, [RUST_LATEST_BLOCK_PARAMS]);
+        assert.equal(signed.data.validAfterBlockNumber, GENESIS_PREVIOUS_BLOCK);
+        assert.equal(
+            encodeBase16(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX),
+            true,
+        );
         assert.equal(verify(signed.signature, hash, signed.deployer), true);
     }
 });
@@ -518,11 +531,11 @@ test("signDeploy rejects a phlo charge above uint256 before requesting the block
             account,
             signer,
             term: TERM,
-            phloLimit: 2,
+            phloLimit: OVERFLOW_PHLO_LIMIT,
             phloPrice: MAX_UINT256,
             passwordProvider: createPasswordProvider(),
         }),
-        /charge exceeds uint256/,
+        PHLO_CHARGE_OVERFLOW_ERROR,
     );
 
     console.log("    Block height requests:", blockService.requests);

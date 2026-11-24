@@ -34,6 +34,7 @@ const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
 const REGEX_EXACT_AMOUNT_FORMAT: RegExp = /^(-?)(\d+)(?:\.(\d+))?$/;
 const REGEX_NONZERO_DIGIT: RegExp = /[1-9]/;
+const REGEX_TRAILING_SLASHES: RegExp = /\/+$/;
 
 // TODO(next-major, Issue #218): make this function as strict as
 // toExactAtomicAmount (reject inexact numbers and nonzero digits beyond
@@ -193,6 +194,7 @@ export type IUrlValue = string | number | boolean | undefined;
 
 export interface IUrlParams {
     path?: Record<string, IUrlValue>;
+    pathSegments?: IUrlValue[];
     query?: Record<string, IUrlValue | undefined | null>;
 }
 
@@ -208,6 +210,14 @@ export const buildUrl = (
         }
 
         url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+    });
+
+    params.pathSegments?.forEach((segment) => {
+        if (segment === undefined || segment === "") {
+            return;
+        }
+
+        url = `${url.replace(REGEX_TRAILING_SLASHES, "")}/${encodeURIComponent(String(segment))}`;
     });
 
     const query = new URLSearchParams();
