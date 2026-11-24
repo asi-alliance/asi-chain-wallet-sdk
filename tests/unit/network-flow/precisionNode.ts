@@ -1,17 +1,28 @@
 import http from "node:http";
 import { AddressInfo } from "node:net";
 
+import { MAX_NATIVE_TOKEN_DECIMALS } from "@config/index";
 import { INetworkConfig } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { SignedResult } from "@services/Signer";
-import { readBody, sendJson } from "../reservation-flow/fakeNode";
+import {
+    isLatestBlockRequest,
+    readBody,
+    sendJson,
+} from "../reservation-flow/fakeNode";
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
 const INITIAL_BALANCE: bigint = 100000000000000000000n;
 
+const NATIVE_18_DECIMALS: number = MAX_NATIVE_TOKEN_DECIMALS;
+
 const NATIVE_18_HISTORY_AMOUNT: string = "10.000000000000000001";
 const NATIVE_8_HISTORY_AMOUNT: string = "1.50000000";
+
+const HISTORY_SENDER: string = "sender";
+const HISTORY_RECIPIENT: string = "recipient";
+const HISTORY_TIMESTAMP: string = "2026-11-06T12:00:00Z";
 
 export interface IPrecisionNode {
     config: INetworkConfig;
@@ -29,7 +40,6 @@ const sendNotFound = (response: http.ServerResponse): void => {
 
 export const startPrecisionNode = async (
     nativeTokenDecimals: number,
-    nodeApiProfile: NodeApiProfile = NodeApiProfile.RUST,
 ): Promise<IPrecisionNode> => {
     let balance: bigint = INITIAL_BALANCE;
     let balanceResponse: unknown;
@@ -38,7 +48,7 @@ export const startPrecisionNode = async (
     const submittedDeploys: SignedResult[] = [];
 
     const historyAmount: string =
-        nativeTokenDecimals === 18
+        nativeTokenDecimals === NATIVE_18_DECIMALS
             ? NATIVE_18_HISTORY_AMOUNT
             : NATIVE_8_HISTORY_AMOUNT;
 
@@ -82,7 +92,7 @@ export const startPrecisionNode = async (
             return;
         }
 
-        if (url.startsWith("/api/blocks")) {
+        if (isLatestBlockRequest(url)) {
             sendJson(response, [
                 { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);
@@ -110,10 +120,10 @@ export const startPrecisionNode = async (
                     transfers: [
                         {
                             deploy_id: `history-${nativeTokenDecimals}`,
-                            from_address: "sender",
-                            to_address: "recipient",
+                            from_address: HISTORY_SENDER,
+                            to_address: HISTORY_RECIPIENT,
                             amount_asi: historyAmount,
-                            timestamp: "2026-11-06T12:00:00Z",
+                            timestamp: HISTORY_TIMESTAMP,
                         },
                     ],
                     deployments: [],
@@ -148,7 +158,7 @@ export const startPrecisionNode = async (
         ValidatorURL: baseUrl,
         ReadOnlyURL: baseUrl,
         IndexerURL: `${baseUrl}/v1/graphql`,
-        nodeApiProfile,
+        nodeApiProfile: NodeApiProfile.RUST,
         nativeTokenDecimals,
     };
 

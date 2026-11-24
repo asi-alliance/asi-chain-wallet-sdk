@@ -16,12 +16,24 @@ import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 import DeployStatusPoller from "@services/DeployStatusPoller";
 import ReservationAdapter from "@domains/ReservationAdapter";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE, GasFee } from "@config/index";
-import { MAX_UINT256 } from "@utils/constants";
+import {
+    MAX_UINT256,
+    SCALA_FAULT_TOLERANCE_THRESHOLD,
+} from "@utils/constants";
 import { NETWORKS_CONFIG, RUST_NETWORK, SCALA_NETWORK } from "./networks";
 
 interface IExploreCall {
     client: string;
     body: unknown;
+}
+
+interface IDeployResponse {
+    blockHash: string;
+    deployId?: string;
+    blockNumber?: number;
+    isFinalized?: boolean;
+    finalizationState?: DeployFinalizationState;
+    faultTolerance?: number;
 }
 
 interface IRustBlockNumberCase {
@@ -42,27 +54,37 @@ const INVALID_TRANSFER_PHLO_PRICE_ERROR: RegExp =
 
 const DEPLOY_ID: string = "3044022012ab";
 const BLOCK_HASH: string = "bcd950e8b296";
+const DEPLOY_BLOCK_NUMBER: number = 524;
 
-const RUST_PENDING_DEPLOY = {
+const FULL_FAULT_TOLERANCE: number = 1;
+const BELOW_SCALA_FAULT_TOLERANCE: number = 0.5;
+
+const INVALID_BLOCK_RESPONSES: unknown[][] = [
+    [],
+    [null],
+    [{ blockInfo: null }],
+];
+
+const RUST_PENDING_DEPLOY: IDeployResponse = {
     deployId: DEPLOY_ID,
     blockHash: BLOCK_HASH,
-    blockNumber: 524,
+    blockNumber: DEPLOY_BLOCK_NUMBER,
     isFinalized: false,
     finalizationState: DeployFinalizationState.PENDING,
 };
 
-const RUST_FINALIZED_DEPLOY = {
+const RUST_FINALIZED_DEPLOY: IDeployResponse = {
     ...RUST_PENDING_DEPLOY,
     isFinalized: true,
     finalizationState: DeployFinalizationState.FINALIZED,
 };
 
-const RUST_FINALIZED_BLOCK_DEPLOY = {
+const RUST_FINALIZED_BLOCK_DEPLOY: IDeployResponse = {
     ...RUST_PENDING_DEPLOY,
     isFinalized: true,
 };
 
-const RUST_FAILED_DEPLOY = {
+const RUST_FAILED_DEPLOY: IDeployResponse = {
     ...RUST_PENDING_DEPLOY,
     isFinalized: true,
     finalizationState: DeployFinalizationState.FAILED,
@@ -82,7 +104,7 @@ const createBlocksClients = (
         },
     }) as unknown as IApiClients;
 
-const createDeployClients = (deploy: unknown): IApiClients =>
+const createDeployClients = (deploy: IDeployResponse): IApiClients =>
     ({
         observer: {
             getDeploy: async () => deploy,
@@ -91,7 +113,7 @@ const createDeployClients = (deploy: unknown): IApiClients =>
 
 const readDeployStatus = async (
     profile: NodeApiProfile,
-    deploy: unknown,
+    deploy: IDeployResponse,
 ): Promise<DeployStatus> => {
     const result: IDeployStatusResult = await createNodeApiAdapter(
         profile,
@@ -285,7 +307,7 @@ test("rust profile reads the latest block number from the summary block envelope
     console.log("    Latest block number:", blockNumber);
 
     assert.equal(blockNumber, LATEST_BLOCK_NUMBER);
-    assert.deepEqual(calls, [{ view: "summary" }]);
+    assert.deepEqual(calls, [{ depth: 1, view: "summary" }]);
 });
 
 test("rust profile does not read the flat block number", async () => {
@@ -361,7 +383,9 @@ test("rust profile rejects block numbers that are not safe non-negative integers
         );
     }
 
-    for (const blocks of [[], [null], [{ blockInfo: null }]]) {
+    for (const blocks of INVALID_BLOCK_RESPONSES) {
+        console.log("    Rejecting response:", JSON.stringify(blocks));
+
         await assert.rejects(
             readRustLatestBlockNumber(blocks),
             INVALID_BLOCK_NUMBER_ERROR,
@@ -390,7 +414,7 @@ test("rust profile reads deploy finalization from the deploy finalization state"
     );
     const faultToleranceStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.RUST,
-        { blockHash: BLOCK_HASH, faultTolerance: 1 },
+        { blockHash: BLOCK_HASH, faultTolerance: FULL_FAULT_TOLERANCE },
     );
 
     console.log("    Pending:", pendingStatus);
@@ -411,19 +435,25 @@ test("scala profile keeps reading deploy finalization from fault tolerance", asy
 
     const finalizedStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.SCALA,
-        { blockHash: BLOCK_HASH, faultTolerance: 0.99 },
+        {
+            blockHash: BLOCK_HASH,
+            faultTolerance: SCALA_FAULT_TOLERANCE_THRESHOLD,
+        },
     );
     const includedStatus: DeployStatus = await readDeployStatus(
         NodeApiProfile.SCALA,
         {
             blockHash: BLOCK_HASH,
-            faultTolerance: 0.5,
+            faultTolerance: BELOW_SCALA_FAULT_TOLERANCE,
             finalizationState: DeployFinalizationState.FINALIZED,
         },
     );
 
-    console.log("    Fault tolerance 0.99:", finalizedStatus);
-    console.log("    Fault tolerance 0.5 with Finalized state:", includedStatus);
+    console.log("    Fault tolerance at the threshold:", finalizedStatus);
+    console.log(
+        "    Fault tolerance below the threshold with Finalized state:",
+        includedStatus,
+    );
 
     assert.equal(finalizedStatus, DeployStatus.FINALIZED);
     assert.equal(includedStatus, DeployStatus.INCLUDED_IN_BLOCK);

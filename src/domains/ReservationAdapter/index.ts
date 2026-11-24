@@ -127,6 +127,11 @@ export default class ReservationAdapter {
         return remoteBalance - totalReservedAmount >= 0n;
     }
 
+    private static getNetworkPrecision(networkId: NetworkId): number {
+        return ApiClientManager.getInstance().getNetwork(networkId).config
+            .nativeTokenDecimals;
+    }
+
     private static withNetworkPrecision<
         T extends { networkId: NetworkId; nativeTokenDecimals?: number },
     >(value: T): TWithNativeTokenDecimals<T> {
@@ -134,8 +139,7 @@ export default class ReservationAdapter {
             ...value,
             nativeTokenDecimals:
                 value.nativeTokenDecimals ??
-                ApiClientManager.getInstance().getNetwork(value.networkId)
-                    .config.nativeTokenDecimals,
+                ReservationAdapter.getNetworkPrecision(value.networkId),
         };
     }
 
@@ -581,8 +585,7 @@ export default class ReservationAdapter {
             ApiClientManager.getInstance().getCurrentNetworkId();
 
         const nativeTokenDecimals: number =
-            ApiClientManager.getInstance().getNetwork(networkId).config
-                .nativeTokenDecimals;
+            ReservationAdapter.getNetworkPrecision(networkId);
 
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
@@ -659,8 +662,7 @@ export default class ReservationAdapter {
             ApiClientManager.getInstance().getCurrentNetworkId();
 
         const nativeTokenDecimals: number =
-            ApiClientManager.getInstance().getNetwork(networkId).config
-                .nativeTokenDecimals;
+            ReservationAdapter.getNetworkPrecision(networkId);
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
         const {

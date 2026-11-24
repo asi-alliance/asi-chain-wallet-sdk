@@ -71,7 +71,7 @@ import {
     EnsureWithInsensitiveCacheStorage,
     TrackOperation,
 } from "@utils/decorators";
-import Asset, { getNativeAsset as createNativeAsset } from "@domains/Asset";
+import { getNativeAsset } from "@domains/Asset";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
@@ -825,7 +825,7 @@ export default class Client extends ClosableDomain {
         const balance =
             await ApiServiceRegistry.getInstance().assets.getBalance(
                 address,
-                this.getNativeAsset(),
+                getNativeAsset(this.getCurrentNetwork().config),
             );
 
         return balance.amount;
@@ -900,7 +900,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
-                        this.getNativeAsset().getDecimals(),
+                        this.getCurrentNetwork().config.nativeTokenDecimals,
                     );
 
                 const reservation: ITransactionReservation =
@@ -949,7 +949,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
-                        this.getNativeAsset().getDecimals(),
+                        this.getCurrentNetwork().config.nativeTokenDecimals,
                     );
 
                 const reservation: ITransactionReservation =
@@ -1073,7 +1073,11 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    { to, amount, asset: this.getNativeAsset() },
+                    {
+                        to,
+                        amount,
+                        asset: getNativeAsset(this.getCurrentNetwork().config),
+                    },
                     passwordProvider,
                 );
             },
@@ -1179,26 +1183,26 @@ export default class Client extends ClosableDomain {
         );
     }
 
-    private getNativeAsset(): Asset {
-        return createNativeAsset(
-            ApiClientManager.getInstance().getCurrentNetwork().config,
-        );
-    }
-
     public toDisplayAmount(atomicAmount: bigint): string {
         return fromAtomicAmount(
             atomicAmount,
-            this.getNativeAsset().getDecimals(),
+            this.getCurrentNetwork().config.nativeTokenDecimals,
         );
     }
 
     /** @deprecated Use {@link Client.toExactAtomicAmount} instead. */
     public toAtomicAmount(amount: number | string): bigint {
-        return toAtomicAmount(amount, this.getNativeAsset().getDecimals());
+        return toAtomicAmount(
+            amount,
+            this.getCurrentNetwork().config.nativeTokenDecimals,
+        );
     }
 
     public toExactAtomicAmount(amount: string): bigint {
-        return toExactAtomicAmount(amount, this.getNativeAsset().getDecimals());
+        return toExactAtomicAmount(
+            amount,
+            this.getCurrentNetwork().config.nativeTokenDecimals,
+        );
     }
 
     public getTransferGasReserve(): bigint {
