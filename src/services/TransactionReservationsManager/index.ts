@@ -275,17 +275,21 @@ export default class TransactionReservationsManager
                     this.notify(reservation.id, (callbacks) =>
                         callbacks.onVerdict?.(verdict),
                     );
+
+                    this.handleReleased(reservation, verdict);
                 },
                 onError: (error: Error) => {
                     this.notify(reservation.id, (callbacks) =>
                         callbacks.onError?.(error),
                     );
 
-                    if (error instanceof DeployVerdictError) {
-                        this.handleReleased(reservation, error);
-                    } else {
-                        this.handleFailed(reservation, error);
+                    if (!this.has(reservation.id)) {
+                        this.stopWatch(reservation.id);
+
+                        return;
                     }
+
+                    this.handleFailed(reservation, error);
                 },
             },
             this.watchOptions,
@@ -390,7 +394,6 @@ export default class TransactionReservationsManager
         reservation: ITransactionReservation,
         verdict: DeployVerdictError,
     ): void {
-        this.stopWatch(reservation.id);
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 

@@ -362,8 +362,8 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
     assert.deepEqual(events, [
         "throwing:onVerdict",
         `second:onVerdict:${DeployStatus.REJECTED}`,
-        "second:onError:DeployVerdictError",
         `onReleased:${DeployStatus.REJECTED}`,
+        "second:onError:DeployVerdictError",
     ]);
     assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
 
