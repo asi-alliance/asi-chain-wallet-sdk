@@ -2249,12 +2249,15 @@ the adapter.
 The adapter holds the clients of the network it was built for and no other
 network state.
 
-The six members below are where everything that differs between the node
-contracts lives, so nothing above the adapter (`Client`, `Wallet`,
-`ReservationAdapter`, `TransactionService`, `SignerService`, the validators and
-fabrics) checks the profile:
+The table below lists everything that differs between the two profiles. The
+first seven rows are adapter members, so nothing above the adapter (`Client`,
+`Wallet`, `ReservationAdapter`, `TransactionService`, `SignerService`, the
+validators and fabrics) checks the profile for them. The last two are resolved
+outside the adapter: the Rholang terms by `createDeployTermFactory` (see the Deploy section), which `AssetsService` and
+`TransactionService` call with `getApi().getProfile()`, and the request headers
+by `createApiClients` when the clients of a network are built.
 
-| Member | `scala` (base) | `rust` |
+| Difference | `scala` (base) | `rust` |
 | --- | --- | --- |
 | `getMaxPhloPrice()` | `Number.MAX_SAFE_INTEGER` | `MAX_UINT256` |
 | `toDeployPhloPrice(price)` | number | decimal string |
@@ -2262,6 +2265,9 @@ fabrics) checks the profile:
 | `getTransferGasReserve(maxPhloCharge)` | `GasFee.MAX` | `maxPhloCharge` (`phloLimit * phloPrice`) |
 | `getLatestBlockNumber()` | `GET /api/blocks`, flat `blockNumber`; `INVALID_BLOCK_NUMBER` when missing | `GET /api/blocks/1?view=summary`, `blockInfo.blockNumber` checked by `validateBlockNumber`; throws when invalid |
 | `isDeployFinalized(deploy)` | `faultTolerance >= 0.99` | `finalizationState === "Finalized"` |
+| `buildExploreDeployBody(term)` (exploratory deploy request body) | the raw Rholang term | `{ term }` (`SimpleExploreDeployRequest`) |
+| Rholang terms for the balance check and the transfer (`createDeployTermFactory`) | `createCheckBalanceDeploy` / `createTransferDeploy`: `rho:rchain:asiVault`, `rho:rchain:deployerId` | `createRustCheckBalanceDeploy` / `createRustTransferDeploy`: `rho:vault:system`, `rho:system:deployerId`; amount up to `MAX_UINT256`, BigInt literal above `MAX_INT64` |
+| Validator and observer request headers (`createApiClients`) | timeout only | `Content-Type: application/json` and timeout |
 
 `TransactionService.signDeploy` takes the price bound, the signed price format
 and the signing bytes from the adapter of the current network, and
@@ -2291,9 +2297,10 @@ polling until `DeployTimeoutError`, and a deploy not yet in a block (HTTP 404
 `ScalaNodeApiAdapter` is `getProfile()` and nothing else — the base *is* the Scala
 behavior. `RustNodeApiAdapter` overrides the profile, the protocol members
 above, finalization, the latest block number, and the exploratory-deploy body
-shape (`{ term }`, the node's `SimpleExploreDeployRequest`). `Content-Type:
-application/json` needs no override; `DEFAULT_AXIOS_CONFIG` applies it to every
-client.
+shape (`{ term }`, the node's `SimpleExploreDeployRequest`). The adapter does
+not set headers: `createApiClients` (`src/fabrics/apiClients.ts`) adds
+`Content-Type: application/json` to the validator and observer clients of a
+`rust` network only.
 
 Subclasses are not re-exported from the barrel, following `Signer/HD` and
 `Signer/PK`; instances come from `createNodeApiAdapter`
