@@ -1,11 +1,20 @@
 import { useState, type ReactElement } from "react";
 import { useAppContext } from "@components/Application/context";
 import { Modals } from "@components/Application/meta";
-import { Account, ExportKeyfileService, type Address } from "asi-wallet-sdk";
+import {
+    Account,
+    ExportKeyfileService,
+    type Address,
+    type Asset,
+} from "asi-wallet-sdk";
 import ReservationStatus from "@components/ReservationStatus";
 import "./style.css";
 import type { UseSdkValue } from "../../sdk-react-kit";
-import { formatAssetAmount, toErrorText } from "../../sdk-react-kit";
+import {
+    formatAssetAmount,
+    toErrorText,
+    useNativeAsset,
+} from "../../sdk-react-kit";
 import { useWalletBalance } from "../../sdk-react-kit/hooks/useWalletBalance";
 import { downloadTextFile } from "@utils/functions";
 import useSecureAction from "@hooks/useSecureAction";
@@ -20,6 +29,7 @@ export interface IAccountCardProps {
 
 const getBalanceLabel = (
     available: bigint | null,
+    asset: Asset,
     isFetching: boolean,
     error: string | null,
 ): string => {
@@ -31,7 +41,7 @@ const getBalanceLabel = (
         return "balance unavailable";
     }
 
-    return formatAssetAmount(available);
+    return formatAssetAmount(available, asset);
 };
 
 const AccountCard = ({
@@ -51,6 +61,8 @@ const AccountCard = ({
     const { balance, reservationCount, isFetching, error, reload } =
         useWalletBalance(sdk, walletId, accountId, address);
 
+    const asset: Asset = useNativeAsset(sdk.currentNetwork);
+
     const [isCopied, setIsCopied] = useState<boolean>(false);
     const [isSending, setIsSending] = useState<boolean>(false);
 
@@ -65,7 +77,7 @@ const AccountCard = ({
             const reserved = await runSecureAction({
                 walletId,
                 passwordTitle: "Enter wallet password to send",
-                confirmMessage: `Send ${formatAssetAmount(amount)} to ${toAddress}?`,
+                confirmMessage: `Send ${formatAssetAmount(amount, asset)} to ${toAddress}?`,
                 action: (password?: string) =>
                     withLoader(async () => {
                         const result = await sdk.transfer(
@@ -95,6 +107,7 @@ const AccountCard = ({
                     fromAddress: address,
                     toAddress,
                     amount,
+                    asset,
                     onClose: closeModal,
                 },
             });
@@ -112,6 +125,7 @@ const AccountCard = ({
             props: {
                 fromAddress: address,
                 availableBalance: balance.available ?? 0n,
+                asset,
                 onConfirm: (toAddress: Address, amount: bigint) => {
                     closeModal();
                     void transfer(toAddress, amount);
@@ -161,11 +175,17 @@ const AccountCard = ({
                 <div className="account-card-address">{address}</div>
                 <div className="account-card-balance">
                     balance:{" "}
-                    {getBalanceLabel(balance.available, isFetching, error)}
+                    {getBalanceLabel(
+                        balance.available,
+                        asset,
+                        isFetching,
+                        error,
+                    )}
                 </div>
                 <ReservationStatus
                     balance={balance}
                     reservationCount={reservationCount}
+                    asset={asset}
                     isFetching={isFetching}
                     error={error}
                 />

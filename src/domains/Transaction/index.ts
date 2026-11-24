@@ -34,6 +34,7 @@ export interface Transaction {
     contractCode?: string;
     networkId: NetworkId;
     detectedBy?: TransactionDetectedBy;
+    nativeTokenDecimals?: number;
 }
 
 export type TSerializedTransaction = Omit<Transaction, "timestamp"> & {
@@ -58,6 +59,7 @@ export type TSerializedTransactionReservationDetails = Omit<
 };
 
 export interface ITransactionReservationPrivateData {
+    nativeTokenDecimals?: number;
     accountId: string;
     pendingAmount: string;
     expirationTime: number;
@@ -70,9 +72,15 @@ export interface ISerializedTransactionReservationPrivateData
     details: TSerializedTransactionReservationDetails;
 }
 
-export interface ITransactionReservation
+// TODO(next-major): remove together with the optional nativeTokenDecimals
+// in reservation inputs and accept ITransactionReservation again.
+export interface ITransactionReservationInput
     extends ITransactionReservationPrivateData, ITableRecord {
     networkId: NetworkId;
+}
+
+export interface ITransactionReservation extends ITransactionReservationInput {
+    nativeTokenDecimals: number;
 }
 
 export type TReservationsByWallet = Record<string, ITransactionReservation[]>;

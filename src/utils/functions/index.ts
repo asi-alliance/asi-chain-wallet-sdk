@@ -1,6 +1,10 @@
-import { ASI_BASE_UNIT, POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
+import { POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
 import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
-import { INetworkConfig, NETWORK_CONFIG_FIELDS } from "@domains/Network";
+import {
+    INetworkConfig,
+    NETWORK_CONFIG_FIELDS,
+    NETWORK_CONNECTION_FIELDS,
+} from "@domains/Network";
 import { TransactionType } from "@domains/Transaction";
 import { CorruptedDataError, CorruptedDataSource } from "@domains/CustomError";
 import { ITableRecord } from "@domains/TableService";
@@ -19,12 +23,19 @@ const REGEX_THOUSANDS: RegExp = /[,\s]+/g;
 const REGEX_AMOUNT_FORMAT: RegExp = /^\d+(?:\.\d+)?$/;
 const REGEX_TRIM_TRAILING_ZEROS: RegExp = /(\.\d*?[1-9])0+$/;
 const REGEX_DOT_ZERO: RegExp = /\.0+$/;
+const REGEX_EXACT_AMOUNT_FORMAT: RegExp = /^(-?)(\d+)(?:\.(\d+))?$/;
+const REGEX_NONZERO_DIGIT: RegExp = /[1-9]/;
+const REGEX_TRAILING_SLASHES: RegExp = /\/+$/;
 
+// TODO(next-major, Issue #218): make this function as strict as
+// toExactAtomicAmount (reject inexact numbers and nonzero digits beyond
+// decimals instead of truncating) or remove it in favor of toExactAtomicAmount.
+/** @deprecated Use {@link toExactAtomicAmount} instead. */
 export const toAtomicAmount = (
     amount: number | string,
     decimals: number,
 ): bigint => {
-    const baseUnit: BigInt = BigInt(POWER_BASE) ** BigInt(decimals);
+    const baseUnit: bigint = BigInt(POWER_BASE) ** BigInt(decimals);
     const currentDecimals: number = baseUnit.toString().length - 1;
 
     if (typeof amount === "number") {
@@ -70,9 +81,42 @@ export const toAtomicAmount = (
     fraction = fraction.padEnd(currentDecimals, "0");
 
     const result: bigint =
-        BigInt(integerPart) * ASI_BASE_UNIT + BigInt(fraction || "0");
+        BigInt(integerPart) * baseUnit + BigInt(fraction || "0");
 
     return isNegative ? -result : result;
+};
+
+export const toExactAtomicAmount = (
+    amount: string,
+    decimals: number,
+): bigint => {
+    if (!Number.isSafeInteger(decimals) || decimals < 0) {
+        throw new RangeError("Decimals must be a non-negative safe integer");
+    }
+
+    const match: RegExpExecArray | null = REGEX_EXACT_AMOUNT_FORMAT.exec(
+        amount.trim(),
+    );
+
+    if (!match) {
+        throw new Error("Invalid amount format");
+    }
+
+    const [, sign, integerPart, fractionRaw = ""] = match;
+
+    if (REGEX_NONZERO_DIGIT.test(fractionRaw.slice(decimals))) {
+        throw new RangeError(`Amount has more than ${decimals} decimal places`);
+    }
+
+    const fraction: string = fractionRaw
+        .slice(0, decimals)
+        .padEnd(decimals, "0");
+
+    const result: bigint =
+        BigInt(integerPart) * BigInt(POWER_BASE) ** BigInt(decimals) +
+        BigInt(fraction || "0");
+
+    return sign ? -result : result;
 };
 
 const fromAtomicAmountToString = (
@@ -141,6 +185,7 @@ export type IUrlValue = string | number | boolean | undefined;
 
 export interface IUrlParams {
     path?: Record<string, IUrlValue>;
+    pathSegments?: IUrlValue[];
     query?: Record<string, IUrlValue | undefined | null>;
 }
 
@@ -156,6 +201,14 @@ export const buildUrl = (
         }
 
         url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+    });
+
+    params.pathSegments?.forEach((segment) => {
+        if (segment === undefined || segment === "") {
+            return;
+        }
+
+        url = `${url.replace(REGEX_TRAILING_SLASHES, "")}/${encodeURIComponent(String(segment))}`;
     });
 
     const query = new URLSearchParams();
@@ -271,7 +324,8 @@ export const selectByField = <T, K extends keyof T>(
     return { selected, missingValues };
 };
 
-export const isNetworkConfigChanged = (
+const isNetworkFieldChanged = (
+    fields: (keyof INetworkConfig)[],
     current: INetworkConfig,
     update?: Partial<INetworkConfig>,
 ): boolean => {
@@ -279,11 +333,22 @@ export const isNetworkConfigChanged = (
         return false;
     }
 
-    return NETWORK_CONFIG_FIELDS.some(
+    return fields.some(
         (field: keyof INetworkConfig) =>
             update[field] !== undefined && update[field] !== current[field],
     );
 };
+
+export const isNetworkConfigChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean => isNetworkFieldChanged(NETWORK_CONFIG_FIELDS, current, update);
+
+export const isNetworkConnectionChanged = (
+    current: INetworkConfig,
+    update?: Partial<INetworkConfig>,
+): boolean =>
+    isNetworkFieldChanged(NETWORK_CONNECTION_FIELDS, current, update);
 
 export const isSameNetworkConfig = (
     first: INetworkConfig,

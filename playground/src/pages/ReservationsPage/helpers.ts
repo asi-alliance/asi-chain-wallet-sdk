@@ -3,6 +3,7 @@ import {
     DEFAULT_PHLO_PRICE,
     GasFee,
     isAddress,
+    type Asset,
     type ITransactionReservation,
     type TTransactionReservationMeta,
     type TransactionReservationKind,
@@ -13,19 +14,27 @@ import {
     toAddressError,
 } from "../../sdk-react-kit";
 
-export const MIN_GAS_COST: string = formatAmount(GasFee.MIN);
-export const MAX_GAS_COST: string = formatAmount(GasFee.MAX);
+const DEFAULT_DEPLOY_GAS_BUDGET: bigint =
+    BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE);
 
-export const DEFAULT_DEPLOY_GAS_COST: string = formatAmount(
-    BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE),
-);
+export const toMinGasCost = (asset: Asset): string =>
+    formatAmount(GasFee.MIN, asset);
 
-export const toDefaultGasCost = (kind: TransactionReservationKind): string =>
-    kind === "deploy" ? DEFAULT_DEPLOY_GAS_COST : MAX_GAS_COST;
+export const toDefaultDeployGasCost = (asset: Asset): string =>
+    formatAmount(DEFAULT_DEPLOY_GAS_BUDGET, asset);
 
-const toAmountOrNull = (value: string): bigint | null => {
+export const toDefaultGasCost = (
+    kind: TransactionReservationKind,
+    asset: Asset,
+    transferGasReserve: bigint,
+): string =>
+    kind === "deploy"
+        ? toDefaultDeployGasCost(asset)
+        : formatAmount(transferGasReserve, asset);
+
+const toAmountOrNull = (value: string, asset: Asset): bigint | null => {
     try {
-        return parseAmount(value);
+        return parseAmount(value, asset);
     } catch {
         return null;
     }
@@ -40,19 +49,23 @@ export interface IReservationFormState {
     term: string;
 }
 
-export const EMPTY_FORM_STATE: IReservationFormState = {
+export const createEmptyFormState = (
+    asset: Asset,
+    transferGasReserve: bigint,
+): IReservationFormState => ({
     kind: "transfer",
     deployId: "",
-    gasCost: toDefaultGasCost("transfer"),
+    gasCost: toDefaultGasCost("transfer", asset, transferGasReserve),
     to: "",
     amount: "",
     term: "",
-};
+});
 
 export const toReservedAmount = (
     form: IReservationFormState,
+    asset: Asset,
 ): bigint | null => {
-    const gasCost: bigint | null = toAmountOrNull(form.gasCost);
+    const gasCost: bigint | null = toAmountOrNull(form.gasCost, asset);
 
     if (gasCost === null) {
         return null;
@@ -62,7 +75,7 @@ export const toReservedAmount = (
         return gasCost;
     }
 
-    const amount: bigint | null = toAmountOrNull(form.amount);
+    const amount: bigint | null = toAmountOrNull(form.amount, asset);
 
     if (amount === null) {
         return null;
@@ -71,27 +84,11 @@ export const toReservedAmount = (
     return amount + gasCost;
 };
 
-export const isGasCostAllowed = (
-    kind: TransactionReservationKind,
-    value: string,
-): boolean => {
-    if (kind === "deploy") {
-        return true;
-    }
-
-    const gasCost: bigint | null = toAmountOrNull(value);
-
-    if (gasCost === null) {
-        return true;
-    }
-
-    return gasCost <= GasFee.MAX;
-};
-
 export const toGasCostError = (
     form: IReservationFormState,
+    asset: Asset,
 ): string | null => {
-    const gasCost: bigint | null = toAmountOrNull(form.gasCost);
+    const gasCost: bigint | null = toAmountOrNull(form.gasCost, asset);
 
     if (gasCost === null) {
         return "Gas cost is required";
@@ -104,7 +101,7 @@ export const toGasCostError = (
     }
 
     if (gasCost < GasFee.MIN) {
-        return `Gas cost must be at least ${MIN_GAS_COST}`;
+        return `Gas cost must be at least ${toMinGasCost(asset)}`;
     }
 
     return null;
@@ -152,9 +149,10 @@ export const toFormState = (
 export const toReservationMeta = (
     form: IReservationFormState,
     pendingAmount: bigint,
+    asset: Asset,
 ): TTransactionReservationMeta => {
     const deployId: string = form.deployId.trim();
-    const gasCost: bigint = parseAmount(form.gasCost);
+    const gasCost: bigint = parseAmount(form.gasCost, asset);
 
     if (form.kind === "deploy") {
         return {
@@ -178,7 +176,7 @@ export const toReservationMeta = (
         pendingAmount,
         gasCost,
         to,
-        amount: parseAmount(form.amount),
+        amount: parseAmount(form.amount, asset),
     };
 };
 

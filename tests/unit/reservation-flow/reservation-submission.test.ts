@@ -16,7 +16,11 @@ import {
     WalletAction,
     WalletActionInProgressError,
 } from "@domains/CustomError";
-import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
+import {
+    DEFAULT_PHLO_LIMIT,
+    DEFAULT_PHLO_PRICE,
+    SUBMISSION_SETTLE_TIMEOUT_MS,
+} from "@config/index";
 import { SignedResult } from "@services/Signer";
 import { isRejectedByServer } from "@utils/index";
 import {
@@ -36,8 +40,9 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/reservation-submission" };
 
 const BALANCE: bigint = 1_000_000_000n;
 const TRANSFER_AMOUNT: bigint = 100_000_000n;
-const GAS_MAX: bigint = 250_000n;
-const RESERVED: bigint = TRANSFER_AMOUNT + GAS_MAX;
+const MAX_PHLO_CHARGE: bigint =
+    BigInt(DEFAULT_PHLO_LIMIT) * BigInt(DEFAULT_PHLO_PRICE);
+const RESERVED: bigint = TRANSFER_AMOUNT + MAX_PHLO_CHARGE;
 
 const RESTORE_GRACE_MS = 500;
 const SETTLE_WAIT_LIMIT_MS = 15_000;

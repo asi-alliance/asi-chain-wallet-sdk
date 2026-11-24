@@ -4,9 +4,13 @@ import { Transaction } from "asi-wallet-sdk";
 
 interface TxListProps {
     transactions: Transaction[] | null;
+    nativeTokenDecimals: number;
 }
 
-const TxContent = (transactions: TxListProps["transactions"]): ReactElement => {
+const TxContent = (
+    transactions: TxListProps["transactions"],
+    nativeTokenDecimals: TxListProps["nativeTokenDecimals"],
+): ReactElement => {
     if (!transactions) {
         return (
             <p className="tx-history-page__empty">
@@ -40,6 +44,7 @@ const TxContent = (transactions: TxListProps["transactions"]): ReactElement => {
                         <TxListItem
                             key={transaction.id}
                             transaction={transaction}
+                            nativeTokenDecimals={nativeTokenDecimals}
                         />
                     ))}
                 </tbody>
@@ -48,8 +53,11 @@ const TxContent = (transactions: TxListProps["transactions"]): ReactElement => {
     );
 };
 
-const TxList = ({ transactions }: TxListProps): ReactElement => {
-    return TxContent(transactions);
+const TxList = ({
+    transactions,
+    nativeTokenDecimals,
+}: TxListProps): ReactElement => {
+    return TxContent(transactions, nativeTokenDecimals);
 };
 
 export default TxList;

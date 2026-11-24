@@ -1,5 +1,4 @@
 import {
-    DEFAULT_ASSET,
     DEFAULT_NODE_API_PROFILE,
     genRandomHex,
     isIntegerInRange,
@@ -19,6 +18,16 @@ export const toNodeApiProfile = (value: unknown): NodeApiProfile => {
     return DEFAULT_NODE_API_PROFILE;
 };
 
+export const toNativeTokenDecimals = (
+    value: string | undefined,
+): number | undefined => {
+    if (value === undefined || !value.trim()) {
+        return undefined;
+    }
+
+    return Number(value);
+};
+
 const SIGNATURE_HEX_LENGTH: number = 142;
 
 export const SIGNATURE_HEX_MIN_LENGTH: number = 128;
@@ -28,14 +37,17 @@ const AMOUNT_INPUT_REGEX: RegExp = /^\d*(?:\.\d*)?$/;
 
 const HEX_REGEX: RegExp = /^[0-9a-fA-F]+$/;
 
-export const isAmountInputAllowed = (value: string): boolean => {
+export const isAmountInputAllowed = (
+    value: string,
+    decimals: number,
+): boolean => {
     if (!AMOUNT_INPUT_REGEX.test(value)) {
         return false;
     }
 
     const fraction: string = value.split(".")[1] ?? "";
 
-    return fraction.length <= DEFAULT_ASSET.getDecimals();
+    return fraction.length <= decimals;
 };
 
 export const isIntegerInputAllowed = (
