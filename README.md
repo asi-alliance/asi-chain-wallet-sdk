@@ -369,8 +369,9 @@ funds are three different outcomes, so handle the error rather than reading a
 falsy balance as "empty".
 
 Amounts are atomic `bigint` values in the precision of the current network.
-`client.toExactAtomicAmount(string)` converts user input exactly and rejects
-more fractional digits than the network supports; `client.toDisplayAmount`
+`client.toExactAtomicAmount(string)` converts user input exactly: extra
+fractional zeros are accepted, and a nonzero digit beyond the network's decimals
+is rejected; `client.toDisplayAmount`
 formats back. Both read the decimals of the network selected at the time of the
 call. `client.toAtomicAmount` still works but is deprecated: it accepts numbers
 and truncates excess digits.

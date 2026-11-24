@@ -1007,8 +1007,10 @@ with the bound of their node profile first.
 overflow is refused without a network request. `ReservationAdapter` uses it to
 compute a deploy's `pendingAmount` (the maximum phlo charge) and a transfer's
 gas reserve (`NodeApiAdapter.getTransferGasReserve(maxPhloCharge)`), and passes
-the resolved `phloLimit` / `phloPrice` to signing, so the reservation and the
-signed deploy always describe the same budget.
+the resolved `phloLimit` / `phloPrice` to signing, so both come from one
+snapshot of the phlo values. A deploy reserves exactly its signed budget, and so
+does a transfer on `rust`; a transfer on `scala` reserves `GasFee.MAX`
+(250000) while it is signed with a default budget of 500000.
 
 ### Client fabrics (`src/fabrics/client/`)
 

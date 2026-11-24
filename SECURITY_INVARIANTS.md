@@ -194,7 +194,9 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
 10. The bytes that are signed must be the bytes the node of the current profile
     verifies: the price bound, the signed price format and the serialization
     come from one node API adapter, resolved once per signature, and the funds a
-    reservation locks are computed from the same phlo values that are signed.
+    reservation locks are computed by that adapter from the same snapshot of
+    phlo values that is signed (on `scala` a transfer still reserves the
+    `GasFee.MAX` estimate rather than its signed budget).
 
 ### 3a. Reservation Invariants
 

@@ -294,8 +294,8 @@ The amount helpers take the decimals from `asset.getDecimals()`, and `asset` is
 **required**: there is no `DEFAULT_ASSET` fallback, because a default of 8
 decimals would silently misformat an 18-decimal network. Callers pass the asset
 of the current network from `useNativeAsset`. `parseAmount` uses the SDK's
-`toExactAtomicAmount`, so input with more fractional digits than the network
-supports is rejected instead of truncated. `formatAssetAmount` is what UI
+`toExactAtomicAmount`, so extra fractional zeros are accepted and a nonzero
+digit beyond the network's decimals is rejected instead of truncated. `formatAssetAmount` is what UI
 surfaces use, so the unit comes from `asset.getName()` rather than a hardcoded
 `"ASI"`.
 
@@ -303,7 +303,8 @@ surfaces use, so the unit comes from `asset.getName()` rather than a hardcoded
 the indexer returned it (the TestNet indexer sends 77 fractional digits). It
 converts exactly with the SDK (`fromAtomicAmount(toExactAtomicAmount(amount,
 decimals), decimals)`), which drops trailing zeros; a missing amount renders as
-`-`, and a value that cannot be parsed is shown as is. The decimals are the
+`-`, and a value the conversion rejects (malformed, or with a nonzero digit
+beyond the decimals) is shown as the original string. The decimals are the
 transaction's own `nativeTokenDecimals` for a pending row and the current
 network's otherwise.
 

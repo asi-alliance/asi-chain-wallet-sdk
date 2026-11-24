@@ -740,8 +740,9 @@ getTransferGasReserve(): bigint                 // the gas a transfer on the cur
 All three conversions read the decimals of the network selected **at the time of
 the call**, so a value converted before a network switch must not be reused
 after it. `toExactAtomicAmount` is the converter for user input: it never goes
-through a floating-point `Number`, and an amount with more fractional digits
-than the network supports throws instead of being truncated (see
+through a floating-point `Number`; extra fractional zeros are accepted, and a
+nonzero digit beyond the network's decimals throws instead of being truncated
+(see
 [UTILS.md](UTILS.md#amount-conversion)). `toAtomicAmount` is kept for
 compatibility and truncates excess digits.
 
@@ -2248,7 +2249,7 @@ the adapter.
 The adapter holds the clients of the network it was built for and no other
 network state.
 
-The four protocol members are where everything that differs between the node
+The six members below are where everything that differs between the node
 contracts lives, so nothing above the adapter (`Client`, `Wallet`,
 `ReservationAdapter`, `TransactionService`, `SignerService`, the validators and
 fabrics) checks the profile:
@@ -2264,8 +2265,10 @@ fabrics) checks the profile:
 
 `TransactionService.signDeploy` takes the price bound, the signed price format
 and the signing bytes from the adapter of the current network, and
-`ReservationAdapter` takes the transfer gas reserve from it, so the reserved
-amount always matches the budget the deploy was signed with.
+`ReservationAdapter` takes the transfer gas reserve from it. On `rust` the gas a
+transfer reserves equals the budget it is signed with (`phloLimit * phloPrice`,
+500000 by default). On `scala` it does not: a default transfer is signed with a
+budget of 500000 but reserves `GasFee.MAX` (250000), as before.
 
 `RustNodeApiAdapter` reads the latest block through the path with a depth
 (`/api/blocks/1`), because the TestNet gateway does not serve `/api/blocks`
@@ -2497,7 +2500,9 @@ row carries the `nativeTokenDecimals` of its reservation; an executed row has
 none, and its precision is that of its network. Executed amounts are passed on
 as the indexer returns them: a decimal string is kept as is (the TestNet indexer
 returns `amount_asi` with 77 fractional digits; trim it for display with
-`fromAtomicAmount(toExactAtomicAmount(amount, decimals), decimals)`), and a
+`fromAtomicAmount(toExactAtomicAmount(amount, decimals), decimals)`, and show
+the original string when that throws, for example on a nonzero digit beyond the
+network's decimals), and a
 JSON number from the DevNet indexer is turned into a string only when it is
 finite and within the safe range (`TODO`: accept strings only once that indexer
 stops returning numbers).
