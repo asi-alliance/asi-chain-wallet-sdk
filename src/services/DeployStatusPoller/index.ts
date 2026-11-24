@@ -38,6 +38,7 @@ export interface IDeployWatchHandle {
 
 const DEFAULT_INTERVAL_IN_MILLISECOND: number = 5000;
 const DEFAULT_TIMEOUT_IN_MILLISECONDS: number = 180000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export default class DeployStatusPoller extends ApiWorker {
     public watch(
@@ -48,11 +49,10 @@ export default class DeployStatusPoller extends ApiWorker {
             timeoutMs = DEFAULT_TIMEOUT_IN_MILLISECONDS,
         }: IDeployWatchOptions = {},
     ): IDeployWatchHandle {
-        const deadline = Date.now() + timeoutMs;
-
         let checking: boolean = false;
         let finished: boolean = false;
         let timer: ReturnType<typeof setInterval>;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
         let resolveDone!: (result: IDeployConfirmedResult) => void;
         let rejectDone!: (error: Error) => void;
 
@@ -76,6 +76,7 @@ export default class DeployStatusPoller extends ApiWorker {
 
             finished = true;
             clearInterval(timer);
+            clearTimeout(timeout);
         };
 
         const succeed = (result: IDeployConfirmedResult): void => {
@@ -137,10 +138,6 @@ export default class DeployStatusPoller extends ApiWorker {
 
                     return;
                 }
-
-                if (Date.now() > deadline) {
-                    fail(new DeployTimeoutError(deployId, timeoutMs));
-                }
             } catch (error: unknown) {
                 fail(
                     isErrorWithMessage(error)
@@ -159,7 +156,19 @@ export default class DeployStatusPoller extends ApiWorker {
             }
         };
 
+        const deadline = Date.now() + timeoutMs;
+        const scheduleTimeout = (): void => {
+            const remaining = deadline - Date.now();
+            // Larger delays overflow the platform timer and fire almost immediately.
+            timeout = remaining > MAX_TIMER_DELAY_MS
+                ? setTimeout(scheduleTimeout, MAX_TIMER_DELAY_MS)
+                : setTimeout(() => fail(new DeployTimeoutError(deployId, timeoutMs)), remaining);
+        };
+
         timer = setInterval(tick, intervalMs);
+        if (Number.isFinite(timeoutMs)) {
+            scheduleTimeout();
+        }
 
         void tick();
 

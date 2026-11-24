@@ -68,6 +68,12 @@ const ADMISSION_CODES: DeployAdmissionCode[] = [
 
 const REJECTION_CASES: IRejectionCase[] = [
     {
+        status: 503,
+        code: "validator_not_bonded",
+        errorCode: CustomErrorCode.VALIDATOR_NOT_BONDED,
+        retryable: false,
+    },
+    {
         status: 413,
         code: "deploy_too_large",
         errorCode: CustomErrorCode.DEPLOY_TOO_LARGE,
@@ -94,6 +100,7 @@ const GENERIC_REJECTION_CASES: IFailureCase[] = [
 ];
 
 const UNKNOWN_OUTCOME_CASES: IFailureCase[] = [
+    { status: 500, body: { error: "validator_not_bonded", message: "upstream failure" } },
     { status: 503, body: "proxy unavailable" },
     { status: 503, body: {} },
     { status: 503, body: { error: "observer_busy" } },
@@ -198,6 +205,7 @@ for (const code of ADMISSION_CODES) {
         assert.ok(error instanceof DeployRefusalError);
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.equal(error.admissionCode, code);
+        assert.equal(error.reason, "not accepted");
         assert.equal(error.code, CustomErrorCode.DEPLOY_ADMISSION_REFUSED);
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(error.status, 503);
@@ -224,6 +232,7 @@ for (const { status, code, errorCode, retryable } of REJECTION_CASES) {
         assert.ok(error instanceof DeployRefusalError);
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.equal(error.rejectionCode, code);
+        assert.equal(error.reason, "not accepted");
         assert.equal(error.code, errorCode);
         assert.equal(error.status, status);
         assert.equal(error.deployId, SIGNATURE);
@@ -315,6 +324,18 @@ for (const body of MALFORMED_ACCEPTANCE_BODIES) {
     });
 }
 
+test("a typed refusal falls back to the transport reason for an unusable node message", async () => {
+    for (const message of [undefined, "   ", 123]) {
+        const error = await captureSubmissionError(
+            failWith(503, { error: "validator_not_bonded", message }),
+            [],
+        );
+
+        assert.ok(error instanceof DeployRefusedError);
+        assert.equal(error.reason, NODE_FAILURE_REASON);
+    }
+});
+
 for (const { cause, expectedCause, message } of QUEUE_FULL_CASES) {
     test(`503 deploy_queue_full (${cause}) classifies the structured cause independently of the message`, async () => {
         console.log(`\n=== 503 DEPLOY QUEUE FULL (${cause}) ===`);
@@ -340,6 +361,7 @@ for (const { cause, expectedCause, message } of QUEUE_FULL_CASES) {
         assert.equal(error.status, 503);
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
+        assert.equal(error.reason, message);
         assert.equal(error.cause, expectedCause);
         assert.equal(error.retryable, cause === "deployer_share");
         assert.equal(submitted.length, 1);

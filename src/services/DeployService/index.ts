@@ -82,13 +82,16 @@ export default class DeployService {
         );
         const response: AxiosResponse | undefined = getErrorResponse(error);
         const kind: unknown = getResponseDataField(response, "error");
+        const message: unknown = getResponseDataField(response, "message");
+        const refusalReason: string =
+            typeof message === "string" && message.trim() ? message : reason;
         const isServiceUnavailable: boolean =
             response?.status === HTTP_SERVICE_UNAVAILABLE_STATUS;
 
         if (isServiceUnavailable && isDeployAdmissionCode(kind)) {
             return new DeployAdmissionRefusedError(
                 SUBMIT_OPERATION,
-                reason,
+                refusalReason,
                 kind,
                 deployId,
             );
@@ -98,7 +101,7 @@ export default class DeployService {
             const cause = getResponseDataField(response, "cause");
             return new DeployQueueRefusedError(
                 SUBMIT_OPERATION,
-                reason,
+                refusalReason,
                 kind,
                 deployId,
                 parseRetryAfterMs(response?.headers["retry-after"]),
@@ -112,7 +115,7 @@ export default class DeployService {
         ) {
             return new DeployRefusedError(
                 SUBMIT_OPERATION,
-                reason,
+                refusalReason,
                 kind,
                 deployId,
                 response.status,

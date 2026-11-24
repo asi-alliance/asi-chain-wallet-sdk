@@ -39,6 +39,7 @@ export enum CustomErrorCode {
     DEPLOY_TOO_LARGE = "DEPLOY_TOO_LARGE",
     DEPLOY_EXPIRED = "DEPLOY_EXPIRED",
     DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
+    VALIDATOR_NOT_BONDED = "VALIDATOR_NOT_BONDED",
     DEPLOY_QUEUE_FULL = "DEPLOY_QUEUE_FULL",
     DEPLOY_VERDICT_REJECTED = "DEPLOY_VERDICT_REJECTED",
     DEPLOY_VERDICT_EXPIRED = "DEPLOY_VERDICT_EXPIRED",
@@ -304,6 +305,7 @@ const DEPLOY_REJECTION_ERROR_CODES: Readonly<Record<DeployRejectionCode, CustomE
     deploy_too_large: CustomErrorCode.DEPLOY_TOO_LARGE,
     deploy_expired: CustomErrorCode.DEPLOY_EXPIRED,
     invalid_deploy_window: CustomErrorCode.DEPLOY_WINDOW_INVALID,
+    validator_not_bonded: CustomErrorCode.VALIDATOR_NOT_BONDED,
 };
 
 export class DeployRefusedError extends DeployRefusalError {

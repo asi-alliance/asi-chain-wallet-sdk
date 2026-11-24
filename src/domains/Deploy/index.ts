@@ -43,6 +43,7 @@ export const DEPLOY_REJECTION_CODES = [
     "deploy_too_large",
     "deploy_expired",
     "invalid_deploy_window",
+    "validator_not_bonded",
 ] as const;
 
 export type DeployRejectionCode = (typeof DEPLOY_REJECTION_CODES)[number];
@@ -53,6 +54,7 @@ export const DEPLOY_REJECTION_STATUSES: Readonly<
     deploy_too_large: 413,
     deploy_expired: 400,
     invalid_deploy_window: 400,
+    validator_not_bonded: 503,
 };
 
 export const DEPLOY_QUEUE_REFUSAL_CODES = [

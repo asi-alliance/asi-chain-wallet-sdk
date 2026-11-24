@@ -13,6 +13,7 @@ import {
     DeployVerdictError,
 } from "@domains/CustomError";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
+import ValidatorClient from "@domains/ValidatorClient";
 import { DeployFinalizationState } from "@domains/NodeApiAdapter/Rust";
 import { INetworkConfig, INetworkContextInput } from "@domains/Network";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
@@ -243,6 +244,31 @@ for (const { name, finalization } of OBSERVER_FALLBACK_CASES) {
         assert.deepEqual(calls.observer, [DEPLOY_ID]);
     });
 }
+
+test("a validator probe uses the shorter timeout and preserves observer progress", async () => {
+    for (const [configured, expected] of [[30_000, 2_000], [100, 100], [0, 2_000]]) {
+        const timeouts: Array<number | undefined> = [];
+        const validator = new ValidatorClient({
+            baseUrl: NETWORK_CONFIG.ValidatorURL,
+            axiosConfig: {
+                timeout: configured,
+                adapter: async (config) => {
+                    timeouts.push(config.timeout);
+                    throw new Error("Validator probe timed out");
+                },
+            },
+        });
+        const api = createNodeApiAdapter(NodeApiProfile.RUST, {
+            ...createClients(neverAnswers, pendingInBlock),
+            validator,
+        });
+
+        assert.deepEqual(await api.getDeployStatus(DEPLOY_ID), {
+            status: DeployStatus.INCLUDED_IN_BLOCK,
+        });
+        assert.deepEqual(timeouts, [expected]);
+    }
+});
 
 test("a finalized observer answer is reported while the validator stalls", async () => {
     console.log("\n=== OBSERVER FINALIZED WHILE VALIDATOR STALLS ===");
@@ -507,6 +533,38 @@ test("the poller does not call onVerdict when the watch times out", async () => 
     console.log("    Calls:", calls);
 
     assert.deepEqual(calls, ["onError:DeployTimeoutError"]);
+});
+
+test("a stalled watch reaches its deadline and ignores late finalization", { timeout: 2_000 }, async () => {
+    let finishObserver!: (answer: unknown) => void;
+    const observer = new Promise<unknown>((resolve) => { finishObserver = resolve; });
+    const events: string[] = [];
+    const handle = createPoller([neverAnswers], () => observer).watch(
+        DEPLOY_ID,
+        {
+            onStatus: (result) => events.push(result.status),
+            onConfirmed: () => events.push("confirmed"),
+            onError: (error) => events.push(error.constructor.name),
+        },
+        { intervalMs: POLL_INTERVAL_MS, timeoutMs: SHORT_WATCH_TIMEOUT_MS },
+    );
+
+    await assert.rejects(handle.done, DeployTimeoutError);
+    finishObserver(observedInBlock(DeployFinalizationState.FINALIZED));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(events, ["DeployTimeoutError"]);
+});
+
+test("a long or unlimited watch can still observe confirmation", async () => {
+    for (const timeoutMs of [2 ** 31, Infinity]) {
+        const poller = createPoller([neverAnswers], async () => {
+            await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+            return observedInBlock(DeployFinalizationState.FINALIZED);
+        });
+
+        assert.deepEqual(await poller.waitFor(DEPLOY_ID, { timeoutMs }), { deployId: DEPLOY_ID });
+    }
 });
 
 test("the poller still times out while the deploy stays pending", async () => {

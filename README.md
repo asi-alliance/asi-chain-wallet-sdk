@@ -335,22 +335,22 @@ const unsubscribe = reserved.subscribe({
 });
 ```
 
-`transfer` and `deploy` store the reservation **before** they send the deploy,
-and `deployId` is the deploy signature, known before the node answers. If the
-submission fails, what happens to the locked funds depends on the error:
+The SDK stores the reservation before submitting the deploy. The signed deploy ID
+is available even if the node never answers.
 
-- `DeploySubmissionRejectedError` (`400`): the node refused the deploy, the
-  reservation is released;
-- `ApiRequestError` (`502`): the outcome is unknown (dropped connection,
-  timeout, `5xx`), the reservation is kept until the deploy is confirmed or the
-  reservation expires;
-- `DomainClosedError` (`410`): the wallet was closed before the deploy was sent,
-  nothing reached the node and the reservation is released.
+- A matching acknowledgement or HTTP `409 duplicate_deploy` starts the watch.
+- `DeploySubmissionRejectedError` releases the reservation. This includes
+  recognized admission and queue refusals, HTTP `503 validator_not_bonded`,
+  and other HTTP `4xx` refusals.
+- `DeploySubmissionUnknownError` carries the local `deployId`. A timeout,
+  unrecognized server error or mismatched acknowledgement leaves the reservation
+  active while the SDK watches that ID.
+- `DomainClosedError` releases the reservation if the wallet closed before submission.
 
-`DeploySubmissionRejectedError` extends `ApiRequestError`, so existing
-`ApiRequestError` handling keeps working. See
-[Client](docs/DOMAINS.md#client-srcdomainsclientindexts).
-
+A watched `Rejected`, `Expired` or `Failed` verdict releases the reservation.
+A watch timeout keeps it until expiry. The [error reference](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
+lists the refusal classes and codes. The [poller reference](docs/SERVICES.md#deploystatuspoller-srcservicesdeploystatuspollerindexts)
+describes the watch callbacks and the balance impact of a failed deploy.
 A balance read that cannot be trusted now throws `BalanceUnavailableError`
 (status `502`) carrying the address and a reason, instead of resolving to `0n`.
 A node that is unreachable, a vault that reports an error, and an account with no

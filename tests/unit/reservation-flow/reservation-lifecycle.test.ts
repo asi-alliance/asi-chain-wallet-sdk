@@ -261,10 +261,10 @@ test("a deploy verdict releases a tracked reservation through onReleased", async
     const networkId: NetworkId = client.getNetworks()[0].id;
     const events: string[] = [];
 
-    let markFailed!: () => void;
+    let markReleased!: () => void;
 
-    const failed: Promise<void> = new Promise<void>((resolve) => {
-        markFailed = resolve;
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
     });
 
     fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
@@ -276,10 +276,10 @@ test("a deploy verdict releases a tracked reservation through onReleased", async
                 verdict: DeployVerdictError,
             ) => {
                 events.push(`onReleased:${verdict.state}`);
+                markReleased();
             },
             onFailed: (_reservation: ITransactionReservation, error: Error) => {
                 events.push(`onFailed:${error.constructor.name}`);
-                markFailed();
             },
             watchOptions: { intervalMs: WATCH_INTERVAL_MS },
         });
@@ -289,15 +289,12 @@ test("a deploy verdict releases a tracked reservation through onReleased", async
         createReservation(VERDICT_RESERVATION_ID, networkId),
     );
 
-    await failed;
+    await released;
 
     console.log("    Events:", events);
     console.log("    Tracked after verdict:", manager.getAll().length);
 
-    assert.deepEqual(events, [
-        `onReleased:${DeployStatus.REJECTED}`,
-        "onFailed:DeployVerdictError",
-    ]);
+    assert.deepEqual(events, [`onReleased:${DeployStatus.REJECTED}`]);
     assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
 
     manager.close();
@@ -312,10 +309,10 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
     const networkId: NetworkId = client.getNetworks()[0].id;
     const events: string[] = [];
 
-    let markFailed!: () => void;
+    let markReleased!: () => void;
 
-    const failed: Promise<void> = new Promise<void>((resolve) => {
-        markFailed = resolve;
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
     });
 
     fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
@@ -327,10 +324,10 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
                 verdict: DeployVerdictError,
             ) => {
                 events.push(`onReleased:${verdict.state}`);
+                markReleased();
             },
             onFailed: (_reservation: ITransactionReservation, error: Error) => {
                 events.push(`onFailed:${error.constructor.name}`);
-                markFailed();
             },
             watchOptions: { intervalMs: WATCH_INTERVAL_MS },
         });
@@ -357,7 +354,7 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
         },
     });
 
-    await failed;
+    await released;
 
     console.log("    Events:", events);
     console.log("    Tracked after verdict:", manager.getAll().length);
@@ -365,9 +362,8 @@ test("a throwing verdict subscriber does not block the other subscriber or the r
     assert.deepEqual(events, [
         "throwing:onVerdict",
         `second:onVerdict:${DeployStatus.REJECTED}`,
-        `onReleased:${DeployStatus.REJECTED}`,
         "second:onError:DeployVerdictError",
-        "onFailed:DeployVerdictError",
+        `onReleased:${DeployStatus.REJECTED}`,
     ]);
     assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
 
