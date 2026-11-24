@@ -7,13 +7,14 @@ import {
 } from "react";
 import {
     Account,
+    type Asset,
     ClientEvent,
     ExportFormat,
     ExportKeyfileService,
     THistorySource,
     Transaction,
 } from "asi-wallet-sdk";
-import { useSdkContext } from "../../sdk-react-kit";
+import { useNativeAsset, useSdkContext } from "../../sdk-react-kit";
 import {
     useRelevantResultGuard,
     type TIsResultRelevant,
@@ -54,6 +55,7 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 
 const TxHistoryPage = (): ReactElement => {
     const { client, openWallets, currentNetwork } = useSdkContext();
+    const asset: Asset = useNativeAsset(currentNetwork);
 
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [historyMode, setHistoryMode] = useState<HistoryMode>("all");
@@ -255,7 +257,10 @@ const TxHistoryPage = (): ReactElement => {
                         Loading transactions...
                     </p>
                 ) : (
-                    <TxList transactions={transactions} />
+                    <TxList
+                        transactions={transactions}
+                        nativeTokenDecimals={asset.getDecimals()}
+                    />
                 )}
             </section>
         </main>

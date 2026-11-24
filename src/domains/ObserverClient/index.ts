@@ -13,11 +13,13 @@ export interface IBlockDto {
 export type TBlocksView = "summary" | "full";
 
 export interface IGetBlocksParams {
-    depth?: number;
     start?: number;
     end?: number;
+    depth?: number;
     view?: TBlocksView;
 }
+
+const BLOCKS_PATH: string = "api/blocks";
 
 export default class ObserverClient extends BaseHttpClient {
     public getDeploy(deployHash: string) {
@@ -31,15 +33,15 @@ export default class ObserverClient extends BaseHttpClient {
     // TODO(next-major): type the response for both node API profiles; the
     // Rust node returns the block number in blockInfo.blockNumber.
     public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
-        const { depth, start, end, view } = params;
-        const basePath = depth === undefined ? "api/blocks" : `api/blocks/${depth}`;
+        const { start, end, depth, view } = params;
 
-        const path: string = buildUrl(basePath, {
+        const path: string = buildUrl(BLOCKS_PATH, {
             path: {
                 start,
                 end,
                 view,
             },
+            pathSegments: [depth],
         });
 
         return this.get(path, view ? { params: { view } } : undefined);

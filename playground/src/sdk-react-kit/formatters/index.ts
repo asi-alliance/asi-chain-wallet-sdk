@@ -37,6 +37,24 @@ export const formatAssetAmount = (
 export const parseAmount = (amount: string, asset: Asset): bigint =>
     toExactAtomicAmount(amount, asset.getDecimals());
 
+export const formatTransactionAmount = (
+    amount: string | undefined,
+    decimals: number,
+): string => {
+    if (amount === undefined) {
+        return "-";
+    }
+
+    try {
+        return fromAtomicAmount(
+            toExactAtomicAmount(amount, decimals),
+            decimals,
+        );
+    } catch {
+        return amount;
+    }
+};
+
 export const formatDate = (date: Date): string => {
     return new Date(date).toLocaleString();
 };
