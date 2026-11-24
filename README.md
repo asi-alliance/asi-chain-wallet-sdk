@@ -359,6 +359,21 @@ falsy balance as "empty".
 
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
 
+### Deploy queue refusals
+
+On HTTP 503 with `error: "deploy_queue_full"`, `DeployQueueRefusedError.cause`
+can be `validator`, `validator_idle`, `shard`, `storage` or `deployer_share`.
+Older queues and unrecognized causes leave the field undefined. Only
+`deployer_share` allows resending the original signed deploy after `retryAfterMs`.
+For the other known causes, sign again with a current `validAfterBlockNumber`.
+
+`client.transfer` and `client.deploy` accept an optional synchronous
+`confirmDeployerShareRetry(error)` callback on the request. Returning `true`
+authorizes one resend after the queue's wait, using the same signature and
+reservation. Omitting the callback or declining returns the original refusal.
+Locking or closing the wallet cancels a pending resend. A second refusal is
+returned to the caller. Low-level `submitSignedDeploy` always submits once.
+
 ### Reserve Funds for a Deploy You Submit Yourself
 
 `transfer` and `deploy` reserve funds on their own. When the deploy is submitted

@@ -3,6 +3,7 @@ import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import {
     DEPLOY_REJECTION_STATUSES,
+    DEPLOY_QUEUE_CAUSES,
     DUPLICATE_DEPLOY_CODE,
     IDeployInfo,
     IDeployStatusResult,
@@ -26,6 +27,7 @@ import {
     getResponseDataField,
     isDeployAdmissionCode,
     isDeployQueueRefusalCode,
+    isValueInConst,
     isDeployRejectionCode,
     isRejectedByServer,
     parseRetryAfterMs,
@@ -93,12 +95,14 @@ export default class DeployService {
         }
 
         if (isServiceUnavailable && isDeployQueueRefusalCode(kind)) {
+            const cause = getResponseDataField(response, "cause");
             return new DeployQueueRefusedError(
                 SUBMIT_OPERATION,
                 reason,
                 kind,
                 deployId,
                 parseRetryAfterMs(response?.headers["retry-after"]),
+                isValueInConst(cause, DEPLOY_QUEUE_CAUSES) ? cause : undefined,
             );
         }
 

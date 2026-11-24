@@ -31,6 +31,7 @@ import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
+    DeployQueueRefusedError,
     DeployVerdictError,
     DomainClosedError,
     IErrorContext,
@@ -53,6 +54,9 @@ import {
     validateReservationUpdateTarget,
 } from "@utils/index";
 
+/** Called once on an explicit per-deployer refusal, before resending the original signature. */
+export type ConfirmDeployerShareRetry = (error: DeployQueueRefusedError) => boolean;
+
 export interface IReservedOperationResult {
     deployId: string;
     subscribe: (callbacks: IDeployWatchCallbacks) => () => void;
@@ -72,6 +76,7 @@ export default class ReservationAdapter {
     private static readonly submissionsGuard: KeyedLifecycleGuardService =
         new KeyedLifecycleGuardService();
 
+    private retryController = new AbortController();
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
@@ -473,7 +478,13 @@ export default class ReservationAdapter {
         );
     }
 
+    public cancelPendingRetries(): void {
+        this.retryController.abort();
+        this.retryController = new AbortController();
+    }
+
     public dispose(): void {
+        this.cancelPendingRetries();
         this.reservationsManager.close();
     }
 
@@ -555,11 +566,61 @@ export default class ReservationAdapter {
         );
     }
 
+    private async submitWithConfirmedRetry(
+        signedDeploy: SignedResult,
+        confirmRetry?: ConfirmDeployerShareRetry,
+    ): Promise<void> {
+        const signal = this.retryController.signal;
+        try {
+            await this.submit(signedDeploy);
+        } catch (error) {
+            if (
+                !(error instanceof DeployQueueRefusedError) ||
+                error.cause !== "deployer_share" || !confirmRetry || signal.aborted
+            ) {
+                throw error;
+            }
+
+            const delay = error.retryAfterMs;
+            // A missing or unrepresentable timer must never trigger an immediate resend.
+            if (delay === undefined || !Number.isSafeInteger(delay) || delay < 0 || delay > 0x7fffffff) {
+                throw error;
+            }
+            const retryAt = Date.now() + delay;
+            let confirmed: boolean;
+            try {
+                confirmed = confirmRetry(error);
+            } catch {
+                throw error;
+            }
+            if (confirmed !== true) {
+                throw error;
+            }
+            const remaining = retryAt - Date.now();
+            if (remaining > 0 && !signal.aborted) {
+                await new Promise<void>((resolve) => {
+                    const finish = () => {
+                        clearTimeout(timer);
+                        signal.removeEventListener("abort", finish);
+                        resolve();
+                    };
+                    const timer = setTimeout(finish, remaining);
+                    signal.addEventListener("abort", finish, { once: true });
+                });
+            }
+            if (signal.aborted) {
+                throw error;
+            }
+            await this.submit(signedDeploy);
+        }
+    }
+
     private async reserveAndSubmit(
         wallet: Wallet,
         signedDeploy: SignedResult,
         reservation: ITransactionReservation,
         passwordProvider?: SecretsProvider,
+        confirmRetry?: ConfirmDeployerShareRetry,
     ): Promise<IReservedOperationResult> {
         await ReservationAdapter.submissionsGuard.track(
             wallet.getSigner().getId(),
@@ -571,7 +632,7 @@ export default class ReservationAdapter {
                 );
 
                 try {
-                    await this.submit(signedDeploy);
+                    await this.submitWithConfirmedRetry(signedDeploy, confirmRetry);
                 } catch (error: unknown) {
                     await this.settleFailedSubmission(reservation, error);
 
@@ -622,6 +683,7 @@ export default class ReservationAdapter {
         accountId: string,
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
+        confirmRetry?: ConfirmDeployerShareRetry,
     ): Promise<IReservedOperationResult> {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
@@ -687,6 +749,7 @@ export default class ReservationAdapter {
                                 signedDeploy,
                                 reservation,
                                 passwordProvider,
+                                confirmRetry,
                             );
                         },
                         { networkId },
@@ -700,6 +763,7 @@ export default class ReservationAdapter {
         accountId: string,
         details: TDeployDetails,
         passwordProvider?: SecretsProvider,
+        confirmRetry?: ConfirmDeployerShareRetry,
     ): Promise<IReservedOperationResult> {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
@@ -763,6 +827,7 @@ export default class ReservationAdapter {
                                 signedDeploy,
                                 reservation,
                                 passwordProvider,
+                                confirmRetry,
                             );
                         },
                         { networkId },

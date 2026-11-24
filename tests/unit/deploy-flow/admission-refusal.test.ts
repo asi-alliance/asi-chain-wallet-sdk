@@ -50,8 +50,9 @@ interface IFailureCase {
 }
 
 interface IQueueFullCase {
-    cause: string;
+    cause?: string;
     message: string;
+    expectedCause?: string;
 }
 
 interface IQueueUnavailableCase {
@@ -107,8 +108,11 @@ const MALFORMED_ACCEPTANCE_BODIES: unknown[] = [
 ];
 
 const QUEUE_FULL_CASES: IQueueFullCase[] = [
-    { cause: "validator", message: VALIDATOR_QUEUE_FULL_MESSAGE },
-    { cause: "deployer share", message: DEPLOYER_SHARE_QUEUE_FULL_MESSAGE },
+    ...["validator", "validator_idle", "shard", "storage", "deployer_share"].map((cause) => ({
+        cause, expectedCause: cause, message: VALIDATOR_QUEUE_FULL_MESSAGE,
+    })),
+    { cause: "future", message: DEPLOYER_SHARE_QUEUE_FULL_MESSAGE },
+    { message: DEPLOYER_SHARE_QUEUE_FULL_MESSAGE },
 ];
 
 const QUEUE_UNAVAILABLE_CASES: IQueueUnavailableCase[] = [
@@ -311,8 +315,8 @@ for (const body of MALFORMED_ACCEPTANCE_BODIES) {
     });
 }
 
-for (const { cause, message } of QUEUE_FULL_CASES) {
-    test(`503 deploy_queue_full (${cause}) needs a newly signed deploy whatever its message`, async () => {
+for (const { cause, expectedCause, message } of QUEUE_FULL_CASES) {
+    test(`503 deploy_queue_full (${cause}) classifies the structured cause independently of the message`, async () => {
         console.log(`\n=== 503 DEPLOY QUEUE FULL (${cause}) ===`);
 
         const submitted: SignedResult[] = [];
@@ -320,7 +324,7 @@ for (const { cause, message } of QUEUE_FULL_CASES) {
         const error: unknown = await captureSubmissionError(
             failWith(
                 503,
-                { error: "deploy_queue_full", message },
+                { error: "deploy_queue_full", message, cause },
                 { "retry-after": QUEUE_RETRY_AFTER },
             ),
             submitted,
@@ -336,7 +340,8 @@ for (const { cause, message } of QUEUE_FULL_CASES) {
         assert.equal(error.status, 503);
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
-        assert.equal(error.retryable, false);
+        assert.equal(error.cause, expectedCause);
+        assert.equal(error.retryable, cause === "deployer_share");
         assert.equal(submitted.length, 1);
     });
 }

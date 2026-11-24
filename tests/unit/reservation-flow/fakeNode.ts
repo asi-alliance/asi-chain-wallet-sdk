@@ -13,7 +13,7 @@ const LATEST_BLOCK_NUMBER: number = 100;
 export type TSubmitOutcome =
     | { kind: "accepted" }
     | { kind: "admission"; code: DeployAdmissionCode }
-    | { kind: "queueFull"; retryAfterSecs: number; message: string }
+    | { kind: "queueFull"; retryAfterSecs: number; message: string; cause?: string }
     | { kind: "duplicate" }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }
@@ -127,6 +127,7 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
                 JSON.stringify({
                     error: "deploy_queue_full",
                     message: submitOutcome.message,
+                    cause: submitOutcome.cause,
                 }),
             );
 
