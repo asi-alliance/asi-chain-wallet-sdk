@@ -9,6 +9,9 @@ export const FAKE_NETWORK: NetworkName = "FakeTestNet";
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
+const LATEST_BLOCK_PATH: string = "/api/blocks/1";
+const URL_QUERY_SEPARATOR: string = "?";
+
 export type TSubmitOutcome =
     | { kind: "accepted" }
     | { kind: "refused"; status: number }
@@ -53,7 +56,12 @@ export interface IFakeNode {
     close: () => Promise<void>;
 }
 
-const readBody = async (request: http.IncomingMessage): Promise<string> => {
+export const isLatestBlockRequest = (url: string): boolean =>
+    url.split(URL_QUERY_SEPARATOR)[0] === LATEST_BLOCK_PATH;
+
+export const readBody = async (
+    request: http.IncomingMessage,
+): Promise<string> => {
     const chunks: Buffer[] = [];
 
     for await (const chunk of request) {
@@ -63,7 +71,10 @@ const readBody = async (request: http.IncomingMessage): Promise<string> => {
     return Buffer.concat(chunks).toString("utf8");
 };
 
-const sendJson = (response: http.ServerResponse, payload: unknown): void => {
+export const sendJson = (
+    response: http.ServerResponse,
+    payload: unknown,
+): void => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(payload));
 };
@@ -120,9 +131,9 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
             return;
         }
 
-        if (url.startsWith("/api/blocks")) {
+        if (isLatestBlockRequest(url)) {
             sendJson(response, [
-                { blockInfo: "", blockNumber: LATEST_BLOCK_NUMBER },
+                { blockInfo: { blockNumber: String(LATEST_BLOCK_NUMBER) } },
             ]);
 
             return;

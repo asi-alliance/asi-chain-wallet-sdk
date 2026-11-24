@@ -513,6 +513,11 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const getTransferGasReserve = useCallback(
+        (): bigint => requireClient().getTransferGasReserve(),
+        [requireClient],
+    );
+
     const getReservations = useCallback(
         (walletId: string): Promise<ITransactionReservation[]> =>
             requireClient().getReservations(walletId),
@@ -620,6 +625,7 @@ const useSdk = () => {
         importKeyfileAccounts,
         getBalance,
         getAvailableBalance,
+        getTransferGasReserve,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,

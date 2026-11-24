@@ -1,15 +1,20 @@
 import { IBlockDto, IGetBlocksParams } from "@domains/ObserverClient";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import {
+    DeployData,
     DeployStatus,
     IDeployInfo,
     IDeployStatusResult,
 } from "@domains/Deploy";
 import {
     getErrorMessage,
+    INVALID_BLOCK_NUMBER,
+    MAX_CLASSIC_PHLO_PRICE,
     SCALA_FAULT_TOLERANCE_THRESHOLD,
 } from "@utils/index";
+import { GasFee } from "@config/index";
 import { UnknownErrorReason } from "@domains/CustomError";
+import SignerService from "@services/Signer";
 import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
@@ -27,6 +32,22 @@ export default abstract class NodeApiAdapter {
     }
 
     public abstract getProfile(): NodeApiProfile;
+
+    public getMaxPhloPrice(): bigint {
+        return MAX_CLASSIC_PHLO_PRICE;
+    }
+
+    public toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] {
+        return Number(phloPrice);
+    }
+
+    public serializeDeployData(deployData: DeployData): Uint8Array {
+        return SignerService.deployDataProtobufSerialize(deployData);
+    }
+
+    public getTransferGasReserve(_maxPhloCharge: bigint): bigint {
+        return GasFee.MAX;
+    }
 
     public submitDeploy(deploy: SignedResult): Promise<unknown> {
         return this.clients.validator.submitDeploy(deploy);
@@ -88,6 +109,12 @@ export default abstract class NodeApiAdapter {
 
     public getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]> {
         return this.clients.observer.getBlocks(params);
+    }
+
+    public async getLatestBlockNumber(): Promise<number> {
+        const [latestBlock]: IBlockDto[] = await this.getBlocks();
+
+        return latestBlock?.blockNumber ?? INVALID_BLOCK_NUMBER;
     }
 
     public getValidatorStatus(): Promise<unknown> {

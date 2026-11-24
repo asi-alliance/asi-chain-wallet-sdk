@@ -6,7 +6,7 @@ import { INetworkModalPayload } from "@components/NetworkModal";
 import {
     INetworkRecord,
     NetworkId,
-    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
 } from "asi-wallet-sdk";
 
 const RESERVATIONS_DROP_WARNING: string =
@@ -76,7 +76,7 @@ export const createNetworksPageHandlers = ({
                     onSubmit: (payload: INetworkModalPayload) =>
                         withLoader(async () => {
                             const isEndpointsChanged: boolean =
-                                isNetworkConfigChanged(
+                                isNetworkConnectionChanged(
                                     network.config,
                                     payload.config,
                                 );

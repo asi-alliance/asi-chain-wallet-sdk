@@ -13,6 +13,7 @@ import {
     DomainClosedError,
     OperationsSuspendedError,
 } from "@domains/CustomError";
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
 import { FAKE_NETWORK, IFakeNode, IHeldStep, startFakeNode } from "./fakeNode";
 
 const PRIVATE_KEY_HEX =
@@ -83,6 +84,7 @@ const createReservation = (
 ): ITransactionReservation => ({
     id,
     networkId,
+    nativeTokenDecimals: NATIVE_TOKEN_DECIMALS_AMOUNT,
     accountId: "account-id",
     pendingAmount: "1000",
     expirationTime: Date.now() + 5 * 60 * 1000,
