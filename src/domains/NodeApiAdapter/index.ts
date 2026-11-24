@@ -9,6 +9,7 @@ import {
 import {
     getErrorMessage,
     INVALID_BLOCK_NUMBER,
+    MAX_CLASSIC_PHLO_PRICE,
     SCALA_FAULT_TOLERANCE_THRESHOLD,
 } from "@utils/index";
 import { GasFee } from "@config/index";
@@ -23,8 +24,6 @@ export interface IExploratoryDeployClient {
     submitExploratoryDeploy(body: unknown): Promise<unknown>;
 }
 
-const MAX_SAFE_PHLO_PRICE: bigint = BigInt(Number.MAX_SAFE_INTEGER);
-
 export default abstract class NodeApiAdapter {
     protected readonly clients: IApiClients;
 
@@ -35,7 +34,7 @@ export default abstract class NodeApiAdapter {
     public abstract getProfile(): NodeApiProfile;
 
     public getMaxPhloPrice(): bigint {
-        return MAX_SAFE_PHLO_PRICE;
+        return MAX_CLASSIC_PHLO_PRICE;
     }
 
     public toDeployPhloPrice(phloPrice: bigint): DeployData["phloPrice"] {

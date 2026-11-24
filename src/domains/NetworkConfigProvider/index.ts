@@ -17,7 +17,7 @@ import {
     validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
-import { isNativeTokenDecimals, isNodeApiProfile } from "@utils/guards";
+import { isNodeApiProfile } from "@utils/guards";
 import { createNetworkConfigSnapshot } from "@fabrics/network";
 import {
     EnsureNetworkConfigProviderReady,
@@ -68,11 +68,9 @@ export default class NetworkConfigProvider {
                 return;
             }
 
-            const { nativeTokenDecimals } = record.config;
-
             if (
-                nativeTokenDecimals !== undefined &&
-                !isNativeTokenDecimals(nativeTokenDecimals)
+                !validateNativeTokenDecimals(record.config.nativeTokenDecimals)
+                    .isValid
             ) {
                 console.warn(
                     `NetworkConfigProvider: Skipped stored network "${record.name}" with invalid nativeTokenDecimals`,
