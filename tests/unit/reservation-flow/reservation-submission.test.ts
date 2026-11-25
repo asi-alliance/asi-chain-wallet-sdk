@@ -37,6 +37,7 @@ import {
     createHeldStep,
     FAKE_NETWORK,
     IFakeNode,
+    IFinalizationStatus,
     IHeldStep,
     startFakeNode,
 } from "./fakeNode";
@@ -76,7 +77,11 @@ interface IVerdictCase {
 const VERDICT_CASES: IVerdictCase[] = [
     { state: DeployStatus.REJECTED, detail: "rholang_bad_term: syntax error" },
     { state: DeployStatus.EXPIRED, detail: undefined },
-    { state: DeployStatus.FAILED, detail: undefined },
+];
+
+const HOLDING_VALIDATOR_STATES: IFinalizationStatus["state"][] = [
+    "Pending",
+    DeployStatus.FAILED,
 ];
 
 const privateKey: Uint8Array = Uint8Array.from(
@@ -494,30 +499,33 @@ for (const { state, detail } of VERDICT_CASES) {
     });
 }
 
-test("a pending validator verdict keeps the reservation", async () => {
-    console.log("\n=== PENDING VERDICT KEEPS THE RESERVATION ===");
+for (const state of HOLDING_VALIDATOR_STATES) {
+    test(`a ${state} validator answer without an observer block keeps the reservation`, async () => {
+        console.log(`\n=== ${state} VALIDATOR ANSWER KEEPS THE RESERVATION ===`);
 
-    const funded: IFundedWallet = await createFundedWallet();
+        const funded: IFundedWallet = await createFundedWallet();
 
-    const operation: IReservedOperationResult = await funded.transfer();
+        fakeNode.setFinalizationStatus({ state });
 
-    const status: IDeployStatusResult = await new Promise<IDeployStatusResult>(
-        (resolve) => {
-            operation.subscribe({ onStatus: resolve });
-        },
-    );
+        const operation: IReservedOperationResult = await funded.transfer();
 
-    const reservations: ITransactionReservation[] =
-        await funded.client.getReservations(funded.walletId);
+        const status: IDeployStatusResult =
+            await new Promise<IDeployStatusResult>((resolve) => {
+                operation.subscribe({ onStatus: resolve });
+            });
 
-    console.log("    First status:", status.status);
-    console.log("    Reservations:", reservations.length);
+        const reservations: ITransactionReservation[] =
+            await funded.client.getReservations(funded.walletId);
 
-    assert.ok(!isDeployVerdictStatus(status.status));
-    assert.equal(reservations.length, 1);
+        console.log("    First status:", status.status);
+        console.log("    Reservations:", reservations.length);
 
-    await funded.client.close();
-});
+        assert.ok(!isDeployVerdictStatus(status.status));
+        assert.equal(reservations.length, 1);
+
+        await funded.client.close();
+    });
+}
 
 test("a dropped connection keeps the reservation and the held funds", async () => {
     console.log("\n=== DROPPED CONNECTION KEEPS THE RESERVATION ===");

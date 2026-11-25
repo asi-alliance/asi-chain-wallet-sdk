@@ -17,7 +17,7 @@ import {
     FailSubscriptionWhenInactive,
 } from "@utils/decorators/transactionReservationsManager";
 import { SkipWhenInactive } from "@utils/decorators";
-import { runProtected } from "@utils/index";
+import { runProtected, setLongTimeout, TCancelTimer } from "@utils/index";
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
@@ -41,10 +41,7 @@ export default class TransactionReservationsManager
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
     private readonly subscribers: Map<string, Set<IDeployWatchCallbacks>> =
         new Map();
-    private readonly expirationTimers: Map<
-        string,
-        ReturnType<typeof setTimeout>
-    > = new Map();
+    private readonly expirationTimers: Map<string, TCancelTimer> = new Map();
     private readonly exclusiveIds: Set<string> = new Set();
     private active: boolean = true;
 
@@ -330,12 +327,12 @@ export default class TransactionReservationsManager
             return;
         }
 
-        const timer: ReturnType<typeof setTimeout> = setTimeout(
+        const cancelTimer: TCancelTimer = setLongTimeout(
             () => this.handleExpired(reservation),
             delay,
         );
 
-        this.expirationTimers.set(reservation.id, timer);
+        this.expirationTimers.set(reservation.id, cancelTimer);
     }
 
     @SkipWhenInactive
@@ -361,11 +358,11 @@ export default class TransactionReservationsManager
     }
 
     private clearExpiration(id: string): void {
-        const timer: ReturnType<typeof setTimeout> | undefined =
+        const cancelTimer: TCancelTimer | undefined =
             this.expirationTimers.get(id);
 
-        if (timer) {
-            clearTimeout(timer);
+        if (cancelTimer) {
+            cancelTimer();
             this.expirationTimers.delete(id);
         }
     }

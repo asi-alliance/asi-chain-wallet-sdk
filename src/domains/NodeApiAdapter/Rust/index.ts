@@ -101,7 +101,11 @@ export default class RustNodeApiAdapter extends NodeApiAdapter {
             return undefined;
         }
 
-        if (!isRecord(answer) || !isDeployVerdictStatus(answer.state)) {
+        if (
+            !isRecord(answer) ||
+            !isDeployVerdictStatus(answer.state) ||
+            answer.state === DeployStatus.FAILED
+        ) {
             return undefined;
         }
 

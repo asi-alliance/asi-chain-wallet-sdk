@@ -2,6 +2,7 @@ import axios, { AxiosResponse } from "axios";
 import {
     POWER_BASE,
     DIGITS_ONLY_REGEX,
+    MAX_TIMER_DELAY_MS,
     MILLISECONDS_IN_SECOND,
 } from "@utils/constants";
 import {
@@ -336,6 +337,30 @@ export const runProtected = (
     } catch (error: unknown) {
         onFailure(error);
     }
+};
+
+export type TCancelTimer = () => void;
+
+export const setLongTimeout = (
+    callback: () => void,
+    delayMs: number,
+): TCancelTimer => {
+    const deadline: number = Date.now() + delayMs;
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const schedule = (): void => {
+        const remaining: number = deadline - Date.now();
+
+        timer =
+            remaining > MAX_TIMER_DELAY_MS
+                ? setTimeout(schedule, MAX_TIMER_DELAY_MS)
+                : setTimeout(callback, remaining);
+    };
+
+    schedule();
+
+    return () => clearTimeout(timer);
 };
 
 export interface IFieldSelection<T, V> {

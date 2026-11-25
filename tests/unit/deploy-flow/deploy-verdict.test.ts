@@ -53,7 +53,7 @@ interface IObserverFallbackCase {
     finalization: () => Promise<unknown>;
 }
 
-const VERDICT_CASES: IVerdictCase[] = [
+const VALIDATOR_VERDICT_CASES: IVerdictCase[] = [
     {
         state: DeployStatus.REJECTED,
         code: CustomErrorCode.DEPLOY_VERDICT_REJECTED,
@@ -62,11 +62,9 @@ const VERDICT_CASES: IVerdictCase[] = [
         state: DeployStatus.EXPIRED,
         code: CustomErrorCode.DEPLOY_VERDICT_EXPIRED,
     },
-    {
-        state: DeployStatus.FAILED,
-        code: CustomErrorCode.DEPLOY_VERDICT_FAILED,
-    },
 ];
+
+const IN_CHAIN_VALIDATOR_STATES: string[] = ["Finalized", DeployStatus.FAILED];
 
 const OBSERVED_TERMINAL_CASES: IObservedTerminalCase[] = [
     {
@@ -201,7 +199,7 @@ const createPoller = (
     return new DeployStatusPoller(networkContext);
 };
 
-for (const { state } of VERDICT_CASES) {
+for (const { state } of VALIDATOR_VERDICT_CASES) {
     test(`a Rust validator verdict ${state} takes precedence over the observer status`, async () => {
         console.log(`\n=== RUST VERDICT ${state} OVER OBSERVER ===`);
 
@@ -317,18 +315,62 @@ for (const { state, status } of OBSERVED_TERMINAL_CASES) {
     });
 }
 
-test("a validator Finalized answer waits for the observer block", async () => {
-    console.log("\n=== VALIDATOR FINALIZED WITHOUT AN OBSERVER BLOCK ===");
+for (const state of IN_CHAIN_VALIDATOR_STATES) {
+    test(`a validator ${state} answer waits for the observer block`, async () => {
+        console.log(`\n=== VALIDATOR ${state} WITHOUT AN OBSERVER BLOCK ===`);
 
-    const result: IDeployStatusResult = await createAdapter(
-        NodeApiProfile.RUST,
-        async () => ({ state: "Finalized" }),
-        notInBlock,
-    ).getDeployStatus(DEPLOY_ID);
+        const result: IDeployStatusResult = await createAdapter(
+            NodeApiProfile.RUST,
+            async () => ({ state, detail: VERDICT_DETAIL }),
+            notInBlock,
+        ).getDeployStatus(DEPLOY_ID);
 
-    console.log("    Status:", result);
+        console.log("    Status:", result);
 
-    assert.deepEqual(result, { status: DeployStatus.DEPLOYING });
+        assert.deepEqual(result, { status: DeployStatus.DEPLOYING });
+    });
+}
+
+test("a validator Failed answer ends the watch once the observer reports it", async () => {
+    console.log("\n=== VALIDATOR FAILED WAITS FOR THE OBSERVER ===");
+
+    const seen: DeployStatus[] = [];
+
+    let observerCalls: number = 0;
+
+    const poller: DeployStatusPoller = createPoller(
+        [async () => createVerdictAnswer(DeployStatus.FAILED)],
+        async () =>
+            observerCalls++ === 0
+                ? pendingInBlock()
+                : observedInBlock(DeployFinalizationState.FAILED),
+    );
+
+    const error: unknown = await poller
+        .watch(
+            DEPLOY_ID,
+            {
+                onStatus: (result: IDeployStatusResult) => {
+                    seen.push(result.status);
+                },
+            },
+            {
+                intervalMs: POLL_INTERVAL_MS,
+                timeoutMs: LONG_WATCH_TIMEOUT_MS,
+            },
+        )
+        .done.catch((reason: unknown) => reason);
+
+    console.log("    Statuses:", seen);
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.ok(error instanceof DeployVerdictError);
+    assert.equal(error.code, CustomErrorCode.DEPLOY_VERDICT_FAILED);
+    assert.equal(error.detail, undefined);
+    assert.deepEqual(seen, [
+        DeployStatus.INCLUDED_IN_BLOCK,
+        DeployStatus.FAILED,
+    ]);
 });
 
 test("a verdict without detail carries no detail field", async () => {
@@ -362,7 +404,7 @@ test("the Scala profile does not ask the validator for a verdict", async () => {
     assert.deepEqual(calls.validator, []);
 });
 
-for (const { state, code } of VERDICT_CASES) {
+for (const { state, code } of VALIDATOR_VERDICT_CASES) {
     test(`the poller ends a watch at once on the verdict ${state}`, async () => {
         console.log(`\n=== POLLER ENDS ON VERDICT ${state} ===`);
 

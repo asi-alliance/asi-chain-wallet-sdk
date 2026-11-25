@@ -40,6 +40,7 @@ export const HTTP_CONFLICT_STATUS: number = 409;
 export const HTTP_SERVICE_UNAVAILABLE_STATUS: number = 503;
 
 export const MILLISECONDS_IN_SECOND: number = 1000;
+export const MAX_TIMER_DELAY_MS: number = 2_147_483_647;
 
 export const DIGITS_ONLY_REGEX: RegExp = /^\d+$/;
 export const CANONICAL_INTEGER_REGEX: RegExp = /^(0|[1-9]\d*)$/;

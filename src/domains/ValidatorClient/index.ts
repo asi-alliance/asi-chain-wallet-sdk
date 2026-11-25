@@ -1,7 +1,5 @@
 import BaseHttpClient from "@domains/BaseHttpClient";
-
-// Leave time for an observer result within the default five-second poll interval.
-const VERDICT_REQUEST_TIMEOUT_MS = 2_000;
+import { DEPLOY_VERDICT_REQUEST_TIMEOUT } from "@config/index";
 
 export default class ValidatorClient extends BaseHttpClient {
     public submitDeploy(deploy: any) {
@@ -21,8 +19,9 @@ export default class ValidatorClient extends BaseHttpClient {
             `/api/deploy-finalization-status/${encodeURIComponent(deploySignature)}`,
             {
                 timeout: Math.min(
-                    this.client.defaults.timeout || VERDICT_REQUEST_TIMEOUT_MS,
-                    VERDICT_REQUEST_TIMEOUT_MS,
+                    this.client.defaults.timeout ||
+                        DEPLOY_VERDICT_REQUEST_TIMEOUT,
+                    DEPLOY_VERDICT_REQUEST_TIMEOUT,
                 ),
             },
         );
