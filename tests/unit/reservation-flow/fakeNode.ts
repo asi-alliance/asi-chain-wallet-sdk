@@ -15,8 +15,16 @@ const URL_QUERY_SEPARATOR: string = "?";
 
 export type TSubmitOutcome =
     | { kind: "accepted" }
-    | { kind: "admission"; code: DeployAdmissionCode | "validator_not_bonded" }
-    | { kind: "queueFull"; retryAfterSecs: number; message: string; cause?: string }
+    | {
+          kind: "admission";
+          code: DeployAdmissionCode | "validator_not_bonded";
+      }
+    | {
+          kind: "queueFull";
+          retryAfterSecs: number;
+          message: string;
+          cause?: string;
+      }
     | { kind: "duplicate" }
     | { kind: "refused"; status: number }
     | { kind: "unavailable"; status: number }

@@ -358,20 +358,28 @@ for (const code of ADMISSION_CODES) {
 }
 
 test("an unbonded validator releases the stored reservation after one submission", async () => {
-    const funded: IFundedWallet = await createFundedWallet();
-    fakeNode.setSubmitOutcome({ kind: "admission", code: "validator_not_bonded" });
+    console.log("\n=== UNBONDED VALIDATOR ROLLS BACK ===");
 
-    try {
-        const error = await captureError(funded.transfer);
-        assert.ok(error instanceof DeployRefusedError);
-        assert.equal(error.code, CustomErrorCode.VALIDATOR_NOT_BONDED);
-        assert.equal(error.retryable, false);
-        assert.equal(countSubmissions(error.deployId), 1);
-        assert.equal((await readStoredReservations(funded.signerId)).length, 0);
-        await assertFundsReleased(funded);
-    } finally {
-        await funded.client.close();
-    }
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({
+        kind: "admission",
+        code: "validator_not_bonded",
+    });
+
+    const error: unknown = await captureError(funded.transfer);
+
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.ok(error instanceof DeployRefusedError);
+    assert.equal(error.code, CustomErrorCode.VALIDATOR_NOT_BONDED);
+    assert.equal(error.retryable, false);
+    assert.equal(countSubmissions(error.deployId), 1);
+    assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+    await assertFundsReleased(funded);
+
+    await funded.client.close();
 });
 
 test("a full deploy queue rolls the reservation back and reports its wait", async () => {
