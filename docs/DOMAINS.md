@@ -417,17 +417,15 @@ funds. What happens next depends on how the submission ends:
 
 | Submission outcome | Reservation | Error |
 | --- | --- | --- |
-| Matching acknowledgement or HTTP `409 duplicate_deploy` | held while the SDK watches the signed deploy ID | — |
-| Recognized admission, queue or deploy refusal (including HTTP `503 validator_not_bonded`) | released | a typed `DeployRefusalError` subclass |
-| Other HTTP `4xx` refusal | released | `DeploySubmissionRejectedError` |
-| Timeout, missing response, unrecognized server error or missing/mismatched acknowledgement ID | held while the watcher tracks the local signature | `DeploySubmissionUnknownError` (`502`, `deployId`) |
-| Wallet closed before submission | released | `DomainClosedError` (`410`) |
+| Accepted by the node | kept live, funds held until confirmation or expiry | — |
+| Refused by the node (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`) |
+| Outcome unknown (dropped connection, timeout, HTTP `5xx`) | kept, funds held | `ApiRequestError` (`502`) |
+| Wallet closed or removed before the deploy left | removed from storage, nothing is sent | `DomainClosedError` (`410`) |
 
-A synchronous request callback `confirmDeployerShareRetry(error)` can authorize
-one resend of the same signed deploy after the reported wait for a
-`deploy_queue_full` refusal with cause `deployer_share`. The reservation stays
-active during that wait. Omitting the callback or declining releases it and
-returns the refusal. See [Deploy queue refusals](../README.md#deploy-queue-refusals).
+Only an explicit refusal releases the funds. A deploy whose outcome is unknown may
+still land on chain, so its reservation stays and is settled by the deploy
+watcher or by expiry. `DeploySubmissionRejectedError` extends `ApiRequestError`,
+so code that already handled `ApiRequestError` keeps working.
 
 `signDeploy` stops one step earlier: it builds the `DeployData`, signs it, and
 returns the signed envelope for the caller to submit. Nothing is sent to the
@@ -815,9 +813,7 @@ after `setNetwork`.
 Key payload types: `ICreateHDWalletPayload` (`{ mnemonic, accountName, index? }`),
 `ICreatePrivateKeyWalletPayload` (`{ privateKey, accountName }`),
 `ITransferRequest` (`{ walletId, accountId, to, amount }`),
-`IDeployRequest` (`{ walletId, accountId, term, phloLimit? }`). Both accept the
-optional synchronous `confirmDeployerShareRetry(error)` callback described in
-[Deploy queue refusals](../README.md#deploy-queue-refusals).
+`IDeployRequest` (`{ walletId, accountId, term, phloLimit? }`).
 
 ---
 
@@ -1392,13 +1388,6 @@ Runtime and network errors:
 | `DeployTimeoutError` | `DEPLOY_TIMEOUT` | `408` | `deployId`, `timeoutMs` |
 | `ApiRequestError` | `API_REQUEST_FAILED` | `502` | `source`, `operation`, `reason` |
 | `DeploySubmissionRejectedError` | `DEPLOY_SUBMISSION_REJECTED` | `400` | `source`, `operation`, `reason` (extends `ApiRequestError`) |
-| `DeployAdmissionRefusedError` | `DEPLOY_ADMISSION_REFUSED` | `503` | `admissionCode` |
-| `DeployRefusedError` | `DEPLOY_TOO_LARGE` | `413` | `rejectionCode` |
-| `DeployRefusedError` | `DEPLOY_EXPIRED`, `DEPLOY_WINDOW_INVALID` | `400` | `rejectionCode` |
-| `DeployRefusedError` | `VALIDATOR_NOT_BONDED` | `503` | `rejectionCode` |
-| `DeployQueueRefusedError` | `DEPLOY_QUEUE_FULL`, `DEPLOY_QUEUE_UNAVAILABLE` | `503` | `queueCode`, optional `cause` |
-| `DeploySubmissionUnknownError` | `API_REQUEST_FAILED` | `502` | `deployId` (extends `ApiRequestError`) |
-| `DeployVerdictError` | `DEPLOY_VERDICT_REJECTED`, `DEPLOY_VERDICT_EXPIRED`, `DEPLOY_VERDICT_FAILED` | `422` | `state`, `deployId`, optional `detail` |
 | `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
 
 Supporting enums:
@@ -1588,13 +1577,13 @@ underlying request reported. An aborted transaction reports
 `errors` array is joined into one `reason` rather than being stringified as raw
 JSON.
 
-A recognized refusal inherits `deployId`, `retryable` and optional
-`retryAfterMs` from `DeployRefusalError`, a subclass of
-`DeploySubmissionRejectedError`. The SDK checks the node's structured error
-code together with its HTTP status. The node's nonblank `message` supplies
-the reason when present. A generic HTTP `4xx` refusal also releases the
-reservation. For an ambiguous submission, `DeploySubmissionUnknownError`
-preserves the local deploy ID so the caller can track it before sending again.
+`DeploySubmissionRejectedError` (`400`) is the one `ApiRequestError` that is
+known to be final: the node answered a deploy submission with a client-error
+status (`4xx`). The deploy did not and will not land, so the reservation behind
+it is released. Every other submission failure stays a plain `ApiRequestError`
+and keeps the reservation, because the deploy may still have been accepted.
+`isRejectedByServer(error)` (see [Guards](UTILS.md#guards-srcutilsguardsindexts))
+is the classification rule.
 
 `DeployTimeoutError` (`408`) is raised by `DeployStatusPoller` when a deploy is
 not finalized within the watch timeout. Its message says explicitly that the
@@ -2450,19 +2439,23 @@ run in this order:
    `RESERVATION_EXPIRATION_TIME`);
 4. **submit** the signed deploy, refusing with `DomainClosedError` if the
    adapter was closed meanwhile (`@EnsureReservationsManagerActive`);
-5. on success, track the reservation until confirmation, a terminal verdict or local expiry.
+5. on success, track the reservation until confirmation or expiry.
 
-On a definite submission refusal or closure before sending, the adapter deletes
-the stored reservation and rethrows the error. An ambiguous submission keeps the
-reservation in memory and storage. See the [submission outcomes](#client-srcdomainsclientindexts).
+When step 4 fails, `settleFailedSubmission` decides what to keep: a
+`DeploySubmissionRejectedError` (the node refused the deploy) or a
+`DomainClosedError` (nothing was sent) deletes the stored record; any other error
+keeps the reservation in memory and storage, because the deploy may still land.
+The original error is rethrown either way. See the submission table under
+[Client](#client-srcdomainsclientindexts).
 
-Both operations return an `IReservedOperationResult` with the `deployId` and a
-`subscribe` method for watch callbacks. A terminal `Rejected`, `Expired` or
-`Failed` verdict releases the reservation. The adapter calls
-`onReleased(reservation, verdict)` once storage deletion succeeds, or
-`onReleaseFailed(reservation, error)` if deletion fails. A watch timeout keeps
-the reservation until its expiration timer fires. `ReservationAdapterManager`
-owns the adapter and closes its reservations manager on disposal.
+Both return an `IReservedOperationResult`: the `deployId` plus a `subscribe` that
+attaches deploy-watch callbacks to that reservation's poller. Apart from a refused
+or cancelled submission, only confirmation and expiry delete the stored record —
+a failed deploy watch leaves the reservation to its expiration timer, so memory
+and storage never disagree. Implements `IDisposable`, so it is owned by
+`ReservationAdapterManager` (a `DisposableItemManager`); `dispose()` closes its
+reservations manager, which is what turns a later submission into a
+`DomainClosedError`.
 
 Steps 3 to 4 are tracked per signer by a shared `KeyedLifecycleGuardService`.
 `create` drains that signer's submissions (bounded by

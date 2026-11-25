@@ -462,12 +462,13 @@ rethrown as-is or has to be wrapped.
 `instanceof Promise`, so `runProtected` also catches rejections from async
 listeners returning a foreign thenable.
 
-`isRejectedByServer` identifies an Axios response with an HTTP status in the
-`400–499` range. `DeployService.submitSignedDeploy` first checks for a known
-duplicate and recognized status/error-code pairs, including definite refusals
-returned with HTTP `503`. It uses this guard for the remaining HTTP `4xx`
-refusals. Unrecognized server errors and missing responses leave the submission
-outcome unknown.
+`isRejectedByServer` decides whether a failed deploy submission is final. It is
+`true` only for an axios error that carries a response with a status between
+`HTTP_CLIENT_ERROR_MIN_STATUS` and `HTTP_CLIENT_ERROR_MAX_STATUS`: the node read
+the deploy and refused it. A missing response (dropped connection, timeout), a
+`5xx`, or a non-axios error is `false`, because the deploy may still have been
+accepted. `DeployService.submitSignedDeploy` maps `true` to
+`DeploySubmissionRejectedError`.
 
 `isRestorableReservationData` is the restore-time filter for a stored
 reservation: well-formed private data (`isSerializedReservationPrivateData`), not
