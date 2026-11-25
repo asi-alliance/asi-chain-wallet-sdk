@@ -4,9 +4,17 @@ import {
     ApiRequestError,
     ApiSource,
     DeployTimeoutError,
+    DeployVerdictError,
     UnknownErrorReason,
 } from "@domains/CustomError";
-import { getErrorMessage, isErrorWithMessage } from "@utils/index";
+import {
+    getErrorMessage,
+    isDeployVerdictStatus,
+    isErrorWithMessage,
+    runProtected,
+    setLongTimeout,
+    TCancelTimer,
+} from "@utils/index";
 
 export interface IDeployConfirmedResult {
     deployId: string;
@@ -17,6 +25,7 @@ export interface IDeployWatchCallbacks {
     onConfirmed?: (result: IDeployConfirmedResult) => void;
     onError?: (error: Error) => void;
     onStatus?: (status: IDeployStatusResult, deployId: string) => void;
+    onVerdict?: (error: DeployVerdictError) => void;
 }
 
 export interface IDeployWatchOptions {
@@ -41,11 +50,10 @@ export default class DeployStatusPoller extends ApiWorker {
             timeoutMs = DEFAULT_TIMEOUT_IN_MILLISECONDS,
         }: IDeployWatchOptions = {},
     ): IDeployWatchHandle {
-        const deadline = Date.now() + timeoutMs;
-
         let checking: boolean = false;
         let finished: boolean = false;
         let timer: ReturnType<typeof setInterval>;
+        let cancelTimeout: TCancelTimer;
         let resolveDone!: (result: IDeployConfirmedResult) => void;
         let rejectDone!: (error: Error) => void;
 
@@ -54,6 +62,14 @@ export default class DeployStatusPoller extends ApiWorker {
             rejectDone = reject;
         });
 
+        const notify = (callback: () => void): void =>
+            runProtected(callback, (error: unknown) =>
+                console.error(
+                    `DeployStatusPoller: watch callback failed for the deploy ${deployId}:`,
+                    error,
+                ),
+            );
+
         const stop = (): void => {
             if (finished) {
                 return;
@@ -61,6 +77,7 @@ export default class DeployStatusPoller extends ApiWorker {
 
             finished = true;
             clearInterval(timer);
+            cancelTimeout();
         };
 
         const succeed = (result: IDeployConfirmedResult): void => {
@@ -70,19 +87,20 @@ export default class DeployStatusPoller extends ApiWorker {
 
             stop();
 
-            callbacks.onConfirmed?.(result);
+            notify(() => callbacks.onConfirmed?.(result));
 
             resolveDone(result);
         };
 
-        const fail = (error: Error): void => {
+        const fail = (error: Error, notifyCause?: () => void): void => {
             if (finished) {
                 return;
             }
 
             stop();
 
-            callbacks.onError?.(error);
+            notify(() => notifyCause?.());
+            notify(() => callbacks.onError?.(error));
 
             rejectDone(error);
         };
@@ -102,7 +120,7 @@ export default class DeployStatusPoller extends ApiWorker {
                     return;
                 }
 
-                callbacks.onStatus?.(status, deployId);
+                notify(() => callbacks.onStatus?.(status, deployId));
 
                 if (status.status === DeployStatus.FINALIZED) {
                     succeed({ deployId });
@@ -110,8 +128,16 @@ export default class DeployStatusPoller extends ApiWorker {
                     return;
                 }
 
-                if (Date.now() > deadline) {
-                    fail(new DeployTimeoutError(deployId, timeoutMs));
+                if (isDeployVerdictStatus(status.status)) {
+                    const verdict: DeployVerdictError = new DeployVerdictError(
+                        deployId,
+                        status.status,
+                        "detail" in status ? status.detail : undefined,
+                    );
+
+                    fail(verdict, () => callbacks.onVerdict?.(verdict));
+
+                    return;
                 }
             } catch (error: unknown) {
                 fail(
@@ -132,6 +158,10 @@ export default class DeployStatusPoller extends ApiWorker {
         };
 
         timer = setInterval(tick, intervalMs);
+        cancelTimeout = setLongTimeout(
+            () => fail(new DeployTimeoutError(deployId, timeoutMs)),
+            timeoutMs,
+        );
 
         void tick();
 

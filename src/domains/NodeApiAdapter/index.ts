@@ -75,6 +75,14 @@ export default abstract class NodeApiAdapter {
         return (deploy.faultTolerance ?? 0) >= SCALA_FAULT_TOLERANCE_THRESHOLD;
     }
 
+    protected getIncludedDeployStatus(deploy: IDeployInfo): IDeployStatusResult {
+        return {
+            status: this.isDeployFinalized(deploy)
+                ? DeployStatus.FINALIZED
+                : DeployStatus.INCLUDED_IN_BLOCK,
+        };
+    }
+
     public async getDeployStatus(
         deployHash: string,
     ): Promise<IDeployStatusResult> {
@@ -87,11 +95,7 @@ export default abstract class NodeApiAdapter {
                 };
             }
 
-            return {
-                status: this.isDeployFinalized(deploy)
-                    ? DeployStatus.FINALIZED
-                    : DeployStatus.INCLUDED_IN_BLOCK,
-            };
+            return this.getIncludedDeployStatus(deploy);
         } catch (error) {
             return {
                 status: DeployStatus.CHECK_ERROR,

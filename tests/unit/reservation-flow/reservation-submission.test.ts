@@ -7,11 +7,21 @@ import Account from "@domains/Account";
 import StorageManager from "@services/StorageManager";
 import { IReservedOperationResult } from "@domains/ReservationAdapter";
 import { ITransactionReservation } from "@domains/Transaction";
+import {
+    DeployAdmissionCode,
+    DeployStatus,
+    DeployVerdictStatus,
+    IDeployStatusResult,
+} from "@domains/Deploy";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import {
     ApiRequestError,
     CustomErrorCode,
     DeploySubmissionRejectedError,
+    DeployAdmissionRefusedError,
+    DeployQueueRefusedError,
+    DeployRefusedError,
+    DeployVerdictError,
     DomainClosedError,
     WalletAction,
     WalletActionInProgressError,
@@ -22,11 +32,12 @@ import {
     SUBMISSION_SETTLE_TIMEOUT_MS,
 } from "@config/index";
 import { SignedResult } from "@services/Signer";
-import { isRejectedByServer } from "@utils/index";
+import { isDeployVerdictStatus, isRejectedByServer } from "@utils/index";
 import {
     createHeldStep,
     FAKE_NETWORK,
     IFakeNode,
+    IFinalizationStatus,
     IHeldStep,
     startFakeNode,
 } from "./fakeNode";
@@ -46,6 +57,32 @@ const RESERVED: bigint = TRANSFER_AMOUNT + MAX_PHLO_CHARGE;
 
 const RESTORE_GRACE_MS = 500;
 const SETTLE_WAIT_LIMIT_MS = 15_000;
+const STORAGE_POLL_INTERVAL_MS = 10;
+
+const QUEUE_RETRY_AFTER_SECS = 9;
+const QUEUE_RETRY_AFTER_MS = 9_000;
+const QUEUE_FULL_MESSAGE =
+    "deploy queue is full: the shard's finality is holding the validator back, so ...";
+
+const ADMISSION_CODES: DeployAdmissionCode[] = [
+    "deploy_pool_busy",
+    "deploy_admission_busy",
+];
+
+interface IVerdictCase {
+    state: DeployVerdictStatus;
+    detail: string | undefined;
+}
+
+const VERDICT_CASES: IVerdictCase[] = [
+    { state: DeployStatus.REJECTED, detail: "rholang_bad_term: syntax error" },
+    { state: DeployStatus.EXPIRED, detail: undefined },
+];
+
+const HOLDING_VALIDATOR_STATES: IFinalizationStatus["state"][] = [
+    "Pending",
+    DeployStatus.FAILED,
+];
 
 const privateKey: Uint8Array = Uint8Array.from(
     Buffer.from(PRIVATE_KEY_HEX, "hex"),
@@ -141,6 +178,42 @@ const waitUntilOpening = async (
     }
 };
 
+const hasStoredReservations = (signerId: string): Promise<boolean> =>
+    readStoredReservations(signerId).then(
+        (records: ITransactionReservationsStorageRecord[]) =>
+            records.length > 0,
+        () => true,
+    );
+
+const waitUntilNoStoredReservations = async (
+    signerId: string,
+): Promise<void> => {
+    while (await hasStoredReservations(signerId)) {
+        await wait(STORAGE_POLL_INTERVAL_MS);
+    }
+};
+
+const assertFundsReleased = async (funded: IFundedWallet): Promise<void> => {
+    const reservations: ITransactionReservation[] =
+        await funded.client.getReservations(funded.walletId);
+    const available: bigint = await funded.client.getAvailableBalance(
+        funded.walletId,
+        funded.accountId,
+    );
+
+    console.log("    Reservations left:", reservations.length);
+    console.log("    Available balance:", available);
+
+    assert.equal(reservations.length, 0);
+    assert.equal(available, BALANCE);
+};
+
+const countSubmissions = (deployId: string): number =>
+    fakeNode
+        .getSubmittedDeploys()
+        .filter((deploy: SignedResult) => deploy.signature === deployId)
+        .length;
+
 test.before(async () => {
     fakeNode = await startFakeNode();
 });
@@ -152,6 +225,7 @@ test.after(async () => {
 test.beforeEach(() => {
     fakeNode.setBalance(BALANCE);
     fakeNode.setSubmitOutcome({ kind: "accepted" });
+    fakeNode.setFinalizationStatus({ state: "Pending" });
     fakeNode.onBeforeSubmitResponse(async () => {});
 });
 
@@ -259,6 +333,207 @@ test("an explicit node refusal rolls the reservation back", async () => {
 
     await funded.client.close();
 });
+
+for (const code of ADMISSION_CODES) {
+    test(`an explicit ${code} rolls the reservation back without retrying`, async () => {
+        console.log(`\n=== ${code} ROLLS BACK ===`);
+
+        const funded: IFundedWallet = await createFundedWallet();
+
+        fakeNode.setSubmitOutcome({ kind: "admission", code });
+
+        const error: unknown = await captureError(funded.transfer);
+
+        console.log("    Error:", (error as Error).constructor.name);
+
+        assert.ok(error instanceof DeployAdmissionRefusedError);
+        assert.equal(error.admissionCode, code);
+        assert.equal(countSubmissions(error.deployId), 1);
+        assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+        await assertFundsReleased(funded);
+
+        await funded.client.close();
+    });
+}
+
+test("an unbonded validator releases the stored reservation after one submission", async () => {
+    console.log("\n=== UNBONDED VALIDATOR ROLLS BACK ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({
+        kind: "admission",
+        code: "validator_not_bonded",
+    });
+
+    const error: unknown = await captureError(funded.transfer);
+
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.ok(error instanceof DeployRefusedError);
+    assert.equal(error.code, CustomErrorCode.VALIDATOR_NOT_BONDED);
+    assert.equal(error.retryable, false);
+    assert.equal(countSubmissions(error.deployId), 1);
+    assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+    await assertFundsReleased(funded);
+
+    await funded.client.close();
+});
+
+test("a full deploy queue rolls the reservation back and reports its wait", async () => {
+    console.log("\n=== FULL DEPLOY QUEUE ROLLS BACK ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({
+        kind: "queueFull",
+        retryAfterSecs: QUEUE_RETRY_AFTER_SECS,
+        message: QUEUE_FULL_MESSAGE,
+    });
+
+    const error: unknown = await captureError(funded.transfer);
+
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.ok(error instanceof DeployQueueRefusedError);
+    assert.equal(error.queueCode, "deploy_queue_full");
+    assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
+    assert.equal(error.retryable, false);
+    assert.equal(countSubmissions(error.deployId), 1);
+    assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+    await assertFundsReleased(funded);
+
+    await funded.client.close();
+});
+
+test("a deployer share refusal is submitted once and leaves the retry to the caller", async () => {
+    console.log("\n=== DEPLOYER SHARE REFUSAL IS NOT RESENT ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({
+        kind: "queueFull",
+        cause: "deployer_share",
+        retryAfterSecs: QUEUE_RETRY_AFTER_SECS,
+        message: QUEUE_FULL_MESSAGE,
+    });
+
+    const error: unknown = await captureError(funded.transfer);
+
+    console.log("    Error:", (error as Error).constructor.name);
+
+    assert.ok(error instanceof DeployQueueRefusedError);
+    assert.equal(error.queueCause, "deployer_share");
+    assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
+    assert.equal(error.retryable, true);
+    assert.equal(countSubmissions(error.deployId), 1);
+    assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+    await assertFundsReleased(funded);
+
+    await funded.client.close();
+});
+
+test("409 duplicate_deploy keeps the reservation and watches the deploy", async () => {
+    console.log("\n=== 409 DUPLICATE DEPLOY KEEPS THE RESERVATION ===");
+
+    const funded: IFundedWallet = await createFundedWallet();
+
+    fakeNode.setSubmitOutcome({ kind: "duplicate" });
+
+    const operation: IReservedOperationResult = await funded.transfer();
+
+    const status: IDeployStatusResult = await new Promise<IDeployStatusResult>(
+        (resolve) => {
+            operation.subscribe({ onStatus: resolve });
+        },
+    );
+
+    const reservations: ITransactionReservation[] =
+        await funded.client.getReservations(funded.walletId);
+    const stored: ITransactionReservationsStorageRecord[] =
+        await readStoredReservations(funded.signerId);
+    const available: bigint = await funded.client.getAvailableBalance(
+        funded.walletId,
+        funded.accountId,
+    );
+
+    console.log("    Deploy id:", operation.deployId);
+    console.log("    First watched status:", status.status);
+    console.log("    Reservations:", reservations.length);
+    console.log("    Available balance:", available);
+
+    assert.equal(countSubmissions(operation.deployId), 1);
+    assert.equal(reservations.length, 1);
+    assert.equal(reservations[0].details.deployId, operation.deployId);
+    assert.equal(stored.length, 1);
+    assert.equal(available, BALANCE - RESERVED);
+
+    await funded.client.close();
+});
+
+for (const { state, detail } of VERDICT_CASES) {
+    test(`a validator verdict ${state} ends the watch and releases the reservation`, async () => {
+        console.log(`\n=== VERDICT ${state} RELEASES THE RESERVATION ===`);
+
+        const funded: IFundedWallet = await createFundedWallet();
+
+        fakeNode.setFinalizationStatus({
+            state,
+            queue_state: state.toLowerCase(),
+            detail: detail ?? null,
+        });
+
+        const operation: IReservedOperationResult = await funded.transfer();
+
+        const error: Error = await new Promise<Error>((resolve) => {
+            operation.subscribe({ onError: resolve });
+        });
+
+        console.log("    Error:", error.constructor.name);
+
+        assert.ok(error instanceof DeployVerdictError);
+        assert.equal(error.state, state);
+        assert.equal(error.deployId, operation.deployId);
+        assert.equal(error.detail, detail);
+
+        await assertFundsReleased(funded);
+        await waitUntilNoStoredReservations(funded.signerId);
+
+        await funded.client.close();
+    });
+}
+
+for (const state of HOLDING_VALIDATOR_STATES) {
+    test(`a ${state} validator answer without an observer block keeps the reservation`, async () => {
+        console.log(`\n=== ${state} VALIDATOR ANSWER KEEPS THE RESERVATION ===`);
+
+        const funded: IFundedWallet = await createFundedWallet();
+
+        fakeNode.setFinalizationStatus({ state });
+
+        const operation: IReservedOperationResult = await funded.transfer();
+
+        const status: IDeployStatusResult =
+            await new Promise<IDeployStatusResult>((resolve) => {
+                operation.subscribe({ onStatus: resolve });
+            });
+
+        const reservations: ITransactionReservation[] =
+            await funded.client.getReservations(funded.walletId);
+
+        console.log("    First status:", status.status);
+        console.log("    Reservations:", reservations.length);
+
+        assert.ok(!isDeployVerdictStatus(status.status));
+        assert.equal(reservations.length, 1);
+
+        await funded.client.close();
+    });
+}
 
 test("a dropped connection keeps the reservation and the held funds", async () => {
     console.log("\n=== DROPPED CONNECTION KEEPS THE RESERVATION ===");
