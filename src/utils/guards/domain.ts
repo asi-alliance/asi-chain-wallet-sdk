@@ -15,10 +15,12 @@ import type { NetworkId } from "@domains/Network";
 import { NODE_API_PROFILES, NodeApiProfile } from "@domains/NodeApiProfile";
 import {
     DEPLOY_ADMISSION_CODES,
+    DEPLOY_QUEUE_CAUSES,
     DEPLOY_QUEUE_REFUSAL_CODES,
     DEPLOY_REJECTION_CODES,
     DEPLOY_VERDICT_STATUSES,
     DeployAdmissionCode,
+    DeployQueueCause,
     DeployQueueRefusalCode,
     DeployRejectionCode,
     DeployStatus,
@@ -75,6 +77,12 @@ export const isDeployQueueRefusalCode = (
     value: unknown,
 ): value is DeployQueueRefusalCode => {
     return isValueInConst(value, DEPLOY_QUEUE_REFUSAL_CODES);
+};
+
+export const isDeployQueueCause = (
+    value: unknown,
+): value is DeployQueueCause => {
+    return isValueInConst(value, DEPLOY_QUEUE_CAUSES);
 };
 
 export const isDeployVerdictStatus = (

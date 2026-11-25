@@ -67,7 +67,11 @@ export type DeployQueueRefusalCode =
     (typeof DEPLOY_QUEUE_REFUSAL_CODES)[number];
 
 export const DEPLOY_QUEUE_CAUSES = [
-    "validator", "validator_idle", "shard", "storage", "deployer_share",
+    "validator",
+    "validator_idle",
+    "shard",
+    "storage",
+    "deployer_share",
 ] as const;
 
 export type DeployQueueCause = (typeof DEPLOY_QUEUE_CAUSES)[number];

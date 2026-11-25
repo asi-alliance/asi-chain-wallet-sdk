@@ -30,7 +30,6 @@ import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
 import type { ISignerRecord } from "@domains/Signer";
 import ReservationAdapter, {
-    ConfirmDeployerShareRetry,
     IReservedOperationResult,
 } from "@domains/ReservationAdapter";
 import {
@@ -105,7 +104,6 @@ export interface ICreatePrivateKeyWalletPayload {
 }
 
 export interface ITransferRequest {
-    confirmDeployerShareRetry?: ConfirmDeployerShareRetry;
     walletId: string;
     accountId: string;
     to: Address;
@@ -113,7 +111,6 @@ export interface ITransferRequest {
 }
 
 export interface IDeployRequest {
-    confirmDeployerShareRetry?: ConfirmDeployerShareRetry;
     walletId: string;
     accountId: string;
     term: string;
@@ -476,7 +473,8 @@ export default class Client extends ClosableDomain {
     ): Promise<void> {
         await wallet.unlock(passwordProvider, {
             autoLockMs: this.autoLockMs,
-            onAutoLock: () => this.onWalletLocked(wallet.getId()),
+            onAutoLock: () =>
+                this.eventBus.emit(ClientEvent.WALLET_LOCKED, wallet.getId()),
         });
     }
 
@@ -587,11 +585,7 @@ export default class Client extends ClosableDomain {
         const wallet: Wallet = this.getOpenWallet(walletId);
 
         wallet.lock();
-        this.onWalletLocked(walletId);
-    }
 
-    private onWalletLocked(walletId: string): void {
-        this.reservationAdapterManager.get(walletId)?.cancelPendingRetries();
         this.eventBus.emit(ClientEvent.WALLET_LOCKED, walletId);
     }
 
@@ -1053,7 +1047,7 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public transfer(
-        { walletId, accountId, to, amount, confirmDeployerShareRetry }: ITransferRequest,
+        { walletId, accountId, to, amount }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1085,7 +1079,6 @@ export default class Client extends ClosableDomain {
                         asset: getNativeAsset(this.getCurrentNetwork().config),
                     },
                     passwordProvider,
-                    confirmDeployerShareRetry,
                 );
             },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },
@@ -1102,7 +1095,6 @@ export default class Client extends ClosableDomain {
             phloLimit,
             phloPrice,
             shardId,
-            confirmDeployerShareRetry,
         }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
@@ -1131,7 +1123,6 @@ export default class Client extends ClosableDomain {
                     accountId,
                     { term, phloLimit, phloPrice, shardId },
                     passwordProvider,
-                    confirmDeployerShareRetry,
                 );
             },
             { onBusyChanged: this.emitNetworkBusyChanged.bind(this) },

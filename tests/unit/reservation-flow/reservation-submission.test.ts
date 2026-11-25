@@ -88,7 +88,7 @@ interface IFundedWallet {
     walletId: string;
     accountId: string;
     signerId: string;
-    transfer: (confirmRetry?: (error: DeployQueueRefusedError) => boolean) => Promise<IReservedOperationResult>;
+    transfer: () => Promise<IReservedOperationResult>;
 }
 
 let fakeNode: IFakeNode;
@@ -116,9 +116,8 @@ const createFundedWallet = async (): Promise<IFundedWallet> => {
         walletId,
         accountId,
         signerId: wallet.getSigner().getId(),
-        transfer: (confirmDeployerShareRetry) =>
+        transfer: () =>
             client.transfer({
-                confirmDeployerShareRetry,
                 walletId,
                 accountId,
                 to: account.getAddress(),
@@ -397,56 +396,33 @@ test("a full deploy queue rolls the reservation back and reports its wait", asyn
     await funded.client.close();
 });
 
-test("confirmed deployer-share retry submits identical bytes and keeps one reservation", async () => {
-    const funded = await createFundedWallet();
-    fakeNode.setSubmitOutcome({
-        kind: "queueFull", cause: "deployer_share", retryAfterSecs: 0, message: "busy",
-    });
-    const operation = await funded.transfer((error) => {
-        assert.equal(error.cause, "deployer_share");
-        fakeNode.setSubmitOutcome({ kind: "accepted" });
-        return true;
-    });
-    const submissions = fakeNode.getSubmittedDeploys().filter((deploy) => deploy.signature === operation.deployId);
-    assert.equal(submissions.length, 2);
-    assert.deepEqual(submissions[0], submissions[1]);
-    assert.equal((await readStoredReservations(funded.signerId)).length, 1);
-    await funded.client.close();
-});
+test("a deployer share refusal is submitted once and leaves the retry to the caller", async () => {
+    console.log("\n=== DEPLOYER SHARE REFUSAL IS NOT RESENT ===");
 
-test("locking the wallet cancels a confirmed retry during the queue wait", async () => {
-    const funded = await createFundedWallet();
+    const funded: IFundedWallet = await createFundedWallet();
+
     fakeNode.setSubmitOutcome({
-        kind: "queueFull", cause: "deployer_share", retryAfterSecs: 60, message: "busy",
+        kind: "queueFull",
+        cause: "deployer_share",
+        retryAfterSecs: QUEUE_RETRY_AFTER_SECS,
+        message: QUEUE_FULL_MESSAGE,
     });
-    const error = await captureError(() => funded.transfer(() => {
-        setImmediate(() => funded.client.lockWallet(funded.walletId));
-        return true;
-    }));
+
+    const error: unknown = await captureError(funded.transfer);
+
+    console.log("    Error:", (error as Error).constructor.name);
+
     assert.ok(error instanceof DeployQueueRefusedError);
+    assert.equal(error.queueCause, "deployer_share");
+    assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
+    assert.equal(error.retryable, true);
     assert.equal(countSubmissions(error.deployId), 1);
     assert.equal((await readStoredReservations(funded.signerId)).length, 0);
+
+    await assertFundsReleased(funded);
+
     await funded.client.close();
 });
-
-for (const confirm of [true, false]) {
-    test('persistent deployer-share refusal honors confirmation ' + confirm, async () => {
-        const funded = await createFundedWallet();
-        fakeNode.setSubmitOutcome({
-            kind: "queueFull", cause: "deployer_share", retryAfterSecs: 0, message: "busy",
-        });
-        let prompts = 0;
-        const error = await captureError(() => funded.transfer(() => {
-            prompts++;
-            return confirm;
-        }));
-        assert.ok(error instanceof DeployQueueRefusedError);
-        assert.equal(prompts, 1);
-        assert.equal(countSubmissions(error.deployId), confirm ? 2 : 1);
-        await assertFundsReleased(funded);
-        await funded.client.close();
-    });
-}
 
 test("409 duplicate_deploy keeps the reservation and watches the deploy", async () => {
     console.log("\n=== 409 DUPLICATE DEPLOY KEEPS THE RESERVATION ===");

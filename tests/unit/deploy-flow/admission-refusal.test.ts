@@ -362,7 +362,7 @@ for (const { cause, expectedCause, message } of QUEUE_FULL_CASES) {
         assert.equal(error.deployId, SIGNATURE);
         assert.equal(error.retryAfterMs, QUEUE_RETRY_AFTER_MS);
         assert.equal(error.reason, message);
-        assert.equal(error.cause, expectedCause);
+        assert.equal(error.queueCause, expectedCause);
         assert.equal(error.retryable, cause === "deployer_share");
         assert.equal(submitted.length, 1);
     });

@@ -333,7 +333,7 @@ export class DeployRefusedError extends DeployRefusalError {
 
 export class DeployQueueRefusedError extends DeployRefusalError {
     public readonly queueCode: DeployQueueRefusalCode;
-    public readonly cause?: DeployQueueCause;
+    public readonly queueCause?: DeployQueueCause;
 
     constructor(
         operation: string,
@@ -341,7 +341,7 @@ export class DeployQueueRefusedError extends DeployRefusalError {
         queueCode: DeployQueueRefusalCode,
         deployId: string,
         retryAfterMs: number | undefined,
-        cause?: DeployQueueCause,
+        queueCause?: DeployQueueCause,
     ) {
         super(
             operation,
@@ -351,12 +351,14 @@ export class DeployQueueRefusedError extends DeployRefusalError {
                 : CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE,
             503,
             deployId,
-            queueCode !== "deploy_queue_full" || cause === "deployer_share",
+            queueCode !== "deploy_queue_full" ||
+                queueCause === "deployer_share",
             retryAfterMs,
         );
 
         this.queueCode = queueCode;
-        this.cause = queueCode === "deploy_queue_full" ? cause : undefined;
+        this.queueCause =
+            queueCode === "deploy_queue_full" ? queueCause : undefined;
     }
 }
 
