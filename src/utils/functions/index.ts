@@ -1,5 +1,15 @@
-import { POWER_BASE, DIGITS_ONLY_REGEX } from "@utils/constants";
-import { isPromiseLike, isRecordWithMessage } from "@utils/guards/primitives";
+import axios, { AxiosResponse } from "axios";
+import {
+    POWER_BASE,
+    DIGITS_ONLY_REGEX,
+    MAX_TIMER_DELAY_MS,
+    MILLISECONDS_IN_SECOND,
+} from "@utils/constants";
+import {
+    isPromiseLike,
+    isRecord,
+    isRecordWithMessage,
+} from "@utils/guards/primitives";
 import {
     INetworkConfig,
     NETWORK_CONFIG_FIELDS,
@@ -262,6 +272,38 @@ export const getErrorMessage = (error: unknown, fallback: string): string => {
     return fallback;
 };
 
+export const getErrorResponse = (
+    error: unknown,
+): AxiosResponse | undefined => {
+    return axios.isAxiosError(error) ? error.response : undefined;
+};
+
+export const getResponseDataField = (
+    response: AxiosResponse | undefined,
+    field: string,
+): unknown => {
+    return isRecord(response?.data) ? response.data[field] : undefined;
+};
+
+export const parseRetryAfterMs = (
+    value: unknown,
+    now: number = Date.now(),
+): number | undefined => {
+    if (typeof value !== "string" && typeof value !== "number") {
+        return undefined;
+    }
+
+    const text: string = String(value).trim();
+
+    if (DIGITS_ONLY_REGEX.test(text)) {
+        return Number(text) * MILLISECONDS_IN_SECOND;
+    }
+
+    const retryAt: number = Date.parse(text);
+
+    return Number.isNaN(retryAt) ? undefined : Math.max(0, retryAt - now);
+};
+
 export const parseDecryptedJson = <T>(
     payload: string,
     source: CorruptedDataSource,
@@ -295,6 +337,30 @@ export const runProtected = (
     } catch (error: unknown) {
         onFailure(error);
     }
+};
+
+export type TCancelTimer = () => void;
+
+export const setLongTimeout = (
+    callback: () => void,
+    delayMs: number,
+): TCancelTimer => {
+    const deadline: number = Date.now() + delayMs;
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const schedule = (): void => {
+        const remaining: number = deadline - Date.now();
+
+        timer =
+            remaining > MAX_TIMER_DELAY_MS
+                ? setTimeout(schedule, MAX_TIMER_DELAY_MS)
+                : setTimeout(callback, remaining);
+    };
+
+    schedule();
+
+    return () => clearTimeout(timer);
 };
 
 export interface IFieldSelection<T, V> {
