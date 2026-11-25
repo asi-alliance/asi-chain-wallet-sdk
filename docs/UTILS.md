@@ -9,15 +9,27 @@ the runtime constants in `src/config`.
 
 Runtime defaults used across the SDK.
 
-- `NATIVE_TOKEN_DECIMALS_AMOUNT: number` — decimals for the native token (8).
-- `DEFAULT_ASSET: Asset` — the default `ASI` asset instance.
+- `NATIVE_TOKEN_DECIMALS_AMOUNT: number` — native token decimals of a network
+  whose config does not set `nativeTokenDecimals` (8). The default is applied
+  once, when the network record is built (`createNetworkConfigSnapshot`), and
+  for a stored reservation saved before reservations carried their precision.
+- `MAX_NATIVE_TOKEN_DECIMALS: number` — the largest accepted
+  `nativeTokenDecimals` (18). The accepted range is `0 … 18`.
+- `DEFAULT_ASSET: Asset` — the default `ASI` asset instance (8 decimals); the
+  native asset of a network is built by `getNativeAsset(config)` (see
+  `DOMAINS.md`).
 - `DEFAULT_PHLO_LIMIT: number` — default phlo limit for deploys (500000).
 - `DEFAULT_PHLO_PRICE: number` — default phlo price (1).
 - `DEFAULT_NODE_STORAGE_DIR: string` — default `node-persist` directory (`./storage`).
-- `GasFee: { MIN: 170000n; MAX: 250000n }` — gas fee bounds (`bigint`); `MAX` is
-  reserved per pending transfer when computing available balance.
+- `GasFee: { MIN: 170000n; MAX: 250000n }` — gas fee bounds (`bigint`). `MAX` is
+  the transfer gas reserve on the `scala` profile; on `rust` a transfer reserves
+  its signed budget, `phloLimit * phloPrice` (see `NodeApiAdapter` in
+  `DOMAINS.md`).
 - `DEPLOY_STATUS_POLLING_TIMEOUT: number` — reservation deploy watch timeout (3 min).
 - `RESERVATION_EXPIRATION_TIME: number` — reservation TTL (5 min).
+- `DEPLOY_VERDICT_REQUEST_TIMEOUT: number` — the longest a validator verdict
+  request may take (2s); a client configured with a shorter timeout keeps its
+  own (see `ValidatorClient` in `DOMAINS.md`).
 
 Signing-session policy:
 
@@ -71,11 +83,28 @@ Data export:
 - `HEX_BYTE_PADDING: number` — hex padding width for buffer conversion (64).
 - `POWER_BASE: number` — base for power calculations (10).
 - `ASI_BASE_UNIT: bigint` — atomic multiplier `BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS)`.
+- `MAX_INT64: bigint` — `2^63 - 1`. A Rust transfer amount above it is written
+  as a Rholang BigInt literal (`n` suffix).
+- `MAX_UINT256: bigint` — `2^256 - 1`, the upper bound of a single amount, a
+  balance, a phlo price and a maximum phlo charge on the `rust` profile.
+- `MAX_CLASSIC_PHLO_PRICE: bigint` — `Number.MAX_SAFE_INTEGER` as a `bigint`,
+  the phlo price bound of the `scala` profile and the default bound of
+  `validateDeployPayload`.
 - `SCALA_FAULT_TOLERANCE_THRESHOLD: number` — finalization threshold (0.99).
+- `RUST_FAULT_TOLERANCE_THRESHOLD: number` — **deprecated** (0.33). The `rust`
+  profile no longer reads `faultTolerance`; finalization comes from
+  `finalizationState`. Kept for compatibility, removed in the next major
+  (`TODO(next-major)`).
 - `INVALID_BLOCK_NUMBER: number` — sentinel for a failed block-number read (-1).
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
 - `HTTP_CLIENT_ERROR_MIN_STATUS` / `HTTP_CLIENT_ERROR_MAX_STATUS` — `400` and
   `499`, the status range `isRejectedByServer` treats as a final refusal.
+- `HTTP_CONFLICT_STATUS` / `HTTP_SERVICE_UNAVAILABLE_STATUS` — `409` and `503`,
+  the statuses of a duplicate deploy and of the node's admission, queue and
+  `validator_not_bonded` refusals.
+- `MILLISECONDS_IN_SECOND: number` — `1000`, converts a `Retry-After` in seconds.
+- `MAX_TIMER_DELAY_MS: number` — `2_147_483_647` (`2^31 - 1`), the longest delay
+  a single `setTimeout` can hold; `setLongTimeout` re-arms past it.
 - `ACCOUNT_KEY_PREFIX: string` — `"ACCOUNT"`, namespaces account fingerprints in
   the wallet operation guard. It lives here rather than in `Wallet` so that the
   guards can import it without importing `Wallet`.
@@ -137,22 +166,48 @@ generateRandomId(): string  // `res_${Date.now()}_${genRandomHex(8)}`
 
 ### Amount conversion
 
-The amount helpers are now **decimals-parametric** — the token decimals are passed
-explicitly (previously hard-coded). `Client.toAtomicAmount` / `toDisplayAmount`
-pass `NATIVE_TOKEN_DECIMALS_AMOUNT` for you.
+The amount helpers are **decimals-parametric** — the token decimals are passed
+explicitly. `Client.toExactAtomicAmount` / `toAtomicAmount` / `toDisplayAmount`
+pass the `nativeTokenDecimals` of the current network for you.
 
 ```ts
-toAtomicAmount(amount: number | string, decimals: number): bigint
+toExactAtomicAmount(amount: string, decimals: number): bigint
+toAtomicAmount(amount: number | string, decimals: number): bigint // @deprecated
 fromAtomicAmountToNumber(atomicAmount: bigint, decimals: number): number
 fromAtomicAmount(atomicAmount: bigint, decimals: number): string // = fromAtomicAmountToString
 parseAtomicAmount(value: unknown): bigint | null
 ```
 
+`toExactAtomicAmount` is the exact converter for user input and any decimal
+string. It takes a **string only**, so an amount never passes through a
+floating-point `Number`, and it converts without rounding or truncating:
+
+- the accepted form is an optional `-`, digits, and an optional fraction
+  (`/^(-?)(\d+)(?:\.(\d+))?$/`) after trimming surrounding whitespace;
+  thousands separators, inner spaces, a leading `+`, `.5`, `5.` and exponent
+  notation throw `Error('Invalid amount format')`;
+- fractional digits beyond `decimals` are accepted only when they are zeros
+  (`"1.50000000000"` is fine at 8 decimals); a nonzero digit there throws
+  `RangeError('Amount has more than N decimal places')`;
+- `decimals` must be a non-negative safe integer, otherwise it throws
+  `RangeError`.
+
+The result is not bounded: callers that need a uint256 amount check it with
+`isUint256`.
+
+`toAtomicAmount` is **deprecated** in favour of `toExactAtomicAmount` and kept
+for compatibility (`TODO(next-major, Issue #218)`: make it as strict or remove
+it). It now scales the integer part by the `decimals` it is given; it used to
+scale by `10^8` whatever `decimals` was, which gave a wrong result for any other
+precision. For 8 decimals the result is unchanged.
+
 `parseAtomicAmount` is the strict inbound parser for an atomic amount of unknown
 provenance. It accepts a non-negative safe integer `number` or a string of digits
 only, and returns `null` for everything else — floats, negatives, values beyond
-`Number.MAX_SAFE_INTEGER`, and non-numeric input. `AssetsService` uses it on the
-node's balance expression so an unparsable value becomes
+`Number.MAX_SAFE_INTEGER`, and non-numeric input. A digit string is not bounded,
+so a wide balance sent as a string keeps its exact value. `AssetsService` uses it
+on the node's balance expression, and additionally rejects a value above
+`MAX_UINT256`, so an unparsable or out-of-range value becomes
 `BalanceUnavailableError` rather than a silently wrong `BigInt`.
 
 `toAtomicAmount` handles negatives and thousands separators, validates format,
@@ -173,11 +228,26 @@ Secret decryption is not a util: `decryptSignerData` lives on `CryptoService`
 ### URL & address helpers
 
 ```ts
-buildUrl(pathPrefix: string, params?: IUrlParams): string // fills :path params + query string
+buildUrl(pathPrefix: string, params?: IUrlParams): string // fills :path params, appends path segments, adds the query string
 normalizeAddress(address: string | undefined): string     // trim + lowercase
 isSameAddress(address: string | undefined, other: string | undefined): boolean
 resolveTransferType(from: string, viewerAddress: string): TransactionType // "send" | "receive"
 ```
+
+```ts
+interface IUrlParams {
+    path?: Record<string, IUrlValue>;          // replaces :name placeholders
+    pathSegments?: IUrlValue[];                // appended as /segment, in order
+    query?: Record<string, IUrlValue | undefined | null>;
+}
+```
+
+`pathSegments` appends each value to the end of the path as its own URL-encoded
+segment. An `undefined` or empty value means "no segment" and is skipped, so an
+optional segment can be passed as is; trailing slashes of the path are dropped
+before a segment is appended, so no double slash appears. Without the field
+`buildUrl` behaves exactly as before. `ObserverClient.getBlocks` uses it for the
+optional `depth` (`/api/blocks/{depth}`).
 
 `isSameAddress` compares two addresses after normalization and is **false for two
 blanks**: an empty or missing address is not equal to another missing one, which
@@ -189,6 +259,24 @@ is `send` when its `from` is the address of whoever is reading it, and `receive`
 otherwise. Both the indexer mapper and the reservation fabric call it, which is
 what lets one stored reservation be rendered correctly for the sender and for the
 recipient.
+
+### Network config comparison
+
+```ts
+isNetworkConfigChanged(current: INetworkConfig, update?: Partial<INetworkConfig>): boolean
+isNetworkConnectionChanged(current: INetworkConfig, update?: Partial<INetworkConfig>): boolean
+isSameNetworkConfig(first: INetworkConfig, second: INetworkConfig): boolean
+```
+
+`isNetworkConfigChanged` reports whether an update changes any field of
+`NETWORK_CONFIG_FIELDS` (the endpoint URLs, `nodeApiProfile` and
+`nativeTokenDecimals`); `isNetworkConnectionChanged` looks only at
+`NETWORK_CONNECTION_FIELDS` (the URLs and `nodeApiProfile`). A field the update
+leaves `undefined` counts as unchanged. `Client.updateNetwork` drops the
+reservations of open wallets only on a connection change: every reservation
+carries its own precision, so a change of `nativeTokenDecimals` alone keeps
+them. `isSameNetworkConfig` (behind `validateNetworkUniqueness`) still compares
+the precision, so two networks that differ only in decimals are distinct.
 
 ### Error messages
 
@@ -203,6 +291,19 @@ The fallback is normally an `UnknownErrorReason` member naming the subsystem tha
 failed silently, so a caught `undefined` from browser storage still produces a
 sentence. It is the reason no SDK error can now surface with an empty message or
 as `[object Object]`.
+
+```ts
+getErrorResponse(error: unknown): AxiosResponse | undefined
+getResponseDataField(response: AxiosResponse | undefined, field: string): unknown
+parseRetryAfterMs(value: unknown, now?: number): number | undefined
+```
+
+`getErrorResponse` returns the response of an axios error and `undefined` for
+anything else; `getResponseDataField` reads one field of a JSON object body.
+`DeployService` reads the node's `error`, `message` and `cause` through them.
+`parseRetryAfterMs` turns a `Retry-After` header into milliseconds: a number of
+seconds, or an HTTP date counted from `now` (never negative). Anything else is
+`undefined`.
 
 ### Decrypted payload parsing
 
@@ -258,7 +359,24 @@ is caught; a returned thenable (detected through the `isPromiseLike` guard) gets
 a `.catch`, so a rejected promise reaches `onFailure` too. It returns `void`
 without awaiting anything, which is the point: the caller keeps going regardless.
 `ClientEventBus` uses it for every listener invocation and for the error handler
-itself.
+itself, `DeployStatusPoller` for every watch callback, and
+`TransactionReservationsManager` and `ReservationAdapter` for every reservation
+callback and subscriber.
+
+### Long timers
+
+```ts
+type TCancelTimer = () => void;
+setLongTimeout(callback: () => void, delayMs: number): TCancelTimer
+```
+
+A `setTimeout` that also works for delays longer than `MAX_TIMER_DELAY_MS`
+(`2^31 - 1` ms, about 24.8 days), which a plain `setTimeout` fires almost
+immediately. The deadline is fixed at `Date.now() + delayMs`, and the timer
+re-arms in steps of at most `MAX_TIMER_DELAY_MS` until it is reached; `Infinity`
+never fires. The returned function cancels the timer. `DeployStatusPoller` uses
+it for the watch timeout and `TransactionReservationsManager` for reservation
+expiry.
 
 ---
 
@@ -287,9 +405,24 @@ isPrivateKeyValid(privateKey: Uint8Array): boolean              // boolean short
 validateUrl(url: string): { isValid: boolean; error?: string } // non-empty http/https URL with a host
 isValidUrl(url: string): boolean                               // boolean shorthand
 validateNodeApiProfile(profile: unknown): { isValid: boolean; error?: string } // membership in NodeApiProfile
+validateNativeTokenDecimals(decimals: unknown): { isValid: boolean; error?: string } // undefined or an integer 0…MAX_NATIVE_TOKEN_DECIMALS
+validateBlockNumber(blockNumber: unknown): { isValid: boolean; error?: string }       // non-negative safe integer, number or canonical digit string
 validateNetworkConfigUrls(config: Partial<INetworkConfig>, options: { allowEmpty: boolean }): { isValid: boolean; error?: string }
-validateNetworkUniqueness(name: NetworkName, config: INetworkConfig, otherRecords: INetworkRecord[]): { isValid: boolean; error?: string }
+validateNetworkUniqueness(name: NetworkName, config: INetworkConfig, otherRecords: INetworkRecordInput[]): { isValid: boolean; error?: string }
 ```
+
+`validateNativeTokenDecimals` treats `undefined` as "not set" and accepts it; any
+explicit value must be an integer from `0` to `MAX_NATIVE_TOKEN_DECIMALS`
+("Native token decimals must be an integer from 0 to 18"). It runs, through
+`ensureValid`, on every network write boundary (the network fabric and
+`NetworkConfigProvider.initialize` / `set` / `add` / `update`) and on a
+reservation payload. `restoreCustomNetworks` uses its `isValid` to skip a stored
+network with a broken value instead of failing the whole restore.
+
+`validateBlockNumber` checks the latest block number read from a Rust node
+(`blockInfo.blockNumber`), which may come as a number or as a string. Leading
+zeros (`"0123"`) are rejected. `RustNodeApiAdapter.getLatestBlockNumber` throws
+on a failed check, and `BlockService` turns that into `INVALID_BLOCK_NUMBER`.
 
 `validateNetworkConfigUrls` runs `validateUrl` over every endpoint field present
 in the config (`NETWORK_URL_FIELDS`); `allowEmpty` lets the built-in seed config
@@ -336,12 +469,15 @@ Amount, reservation, and deploy validation:
 ensureValid(result: { isValid: boolean; error?: string }, context: IErrorContext): void
 validatePositiveAmount(amount: bigint): { isValid: boolean; error?: string }
 validateReservationPayload(payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
-validateReservationUpdateTarget(currentReservation: ITransactionReservation, payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
-validateDeployPayload(payload: TDeployDetails): { isValid: boolean; error?: string }
+validateReservationUpdateTarget(currentReservation: ITransactionReservationInput, payload: TCreateTransactionReservationPayload): { isValid: boolean; error?: string }
+validatePhloSettings(phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">, options: { maxPhloPrice: bigint }): { isValid: boolean; error?: string }
+validateDeployPayload(payload: TDeployDetails, options?: { maxPhloPrice: bigint }): { isValid: boolean; error?: string } // default maxPhloPrice: MAX_CLASSIC_PHLO_PRICE
 ```
 
 `validateReservationUpdateTarget` is the update-only rule: the new payload must
-name the same account and the same network as the reservation it replaces.
+name the same account and the same network as the reservation it replaces. The
+precision may differ: an update rebuilds the reservation with the precision of
+its network.
 
 `ensureValid` turns any `{ isValid, error }` result into a throw prefixed with
 the caller's `context`, so a validator can be written once and used both as a
@@ -349,7 +485,9 @@ predicate and as an assertion without every call site repeating the same three
 lines.
 
 `validateReservationPayload` is the boundary check for an externally managed
-reservation, run before anything is persisted. In order: a non-empty `deployId`;
+reservation, run before anything is persisted. In order: a valid
+`nativeTokenDecimals` when the payload sets one (`ReservationAdapter` fills a
+missing one from the reservation network before the check); a non-empty `deployId`;
 a `pendingAmount` above zero; a `gasCost` that is neither negative nor larger
 than the amount being reserved. For a `transfer` it then requires a valid
 recipient address (full `validateAddress`, so checksum and canonical form
@@ -361,11 +499,23 @@ overspend, so it is refused rather than clamped. `gasCost` defaults to
 
 `validateDeployPayload` is the boundary check every signed deploy passes through,
 called from `TransactionService.signDeploy` and therefore covering `deploy` and
-`transfer` as well. It rejects a blank `term`, a `phloLimit` or `phloPrice` that
-is not an integer between `1` and `Number.MAX_SAFE_INTEGER` (both optional; an
-omitted value falls back to the configured default), and a `shardId` that is
-present but blank. Putting it at the signing boundary means a caller cannot reach
-the signer with a payload the node would reject, whichever entry point it used.
+`transfer` as well. It rejects a blank `term`, phlo settings that fail
+`validatePhloSettings`, and a `shardId` that is present but blank. Putting it at
+the signing boundary means a caller cannot reach the signer with a payload the
+node would reject, whichever entry point it used.
+
+`validatePhloSettings` checks the phlo pair on its own; `ReservationAdapter` runs
+it before it computes a reservation, and `validateDeployPayload` delegates to it.
+Both values are optional (an omitted value falls back to the configured
+default). `phloLimit` must be an integer between `1` and
+`Number.MAX_SAFE_INTEGER`. `phloPrice` (`PhloPrice`: `number | string | bigint`)
+must be a canonical non-negative integer (`isUint256`) between `1` and
+`maxPhloPrice`; the error is "Phlo price must be a positive integer not greater
+than N". The validator does not know about node profiles: the bound comes from
+the caller, which reads it from the node API adapter of the current network
+(`NodeApiAdapter.getMaxPhloPrice()`: `MAX_CLASSIC_PHLO_PRICE` on `scala`,
+`MAX_UINT256` on `rust`). On `scala` a string price within the bound is now
+accepted as well and signed as a number.
 
 `validateUrl` powers custom-network endpoint validation in
 `NetworkConfigProvider`; `validateNodeApiProfile` guards the `nodeApiProfile`
@@ -419,6 +569,15 @@ Domain:
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
 isNodeApiProfile(value: unknown): value is NodeApiProfile
+isDeployAdmissionCode(value: unknown): value is DeployAdmissionCode
+isDeployRejectionCode(value: unknown): value is DeployRejectionCode
+isDeployQueueRefusalCode(value: unknown): value is DeployQueueRefusalCode
+isDeployQueueCause(value: unknown): value is DeployQueueCause
+isDeployVerdictStatus(value: unknown): value is DeployVerdictStatus  // REJECTED, EXPIRED, FAILED
+isDeployTerminalStatus(status: DeployStatus): boolean               // FINALIZED or a verdict
+isNativeTokenDecimals(value: unknown): value is number               // integer 0…MAX_NATIVE_TOKEN_DECIMALS
+isBlockNumber(value: unknown): value is number | string              // non-negative safe integer, number or canonical digit string
+isUint256(value: unknown): value is number | string | bigint         // canonical integer 0…MAX_UINT256
 isStoredSecret(value: unknown): value is TStoredSecret
 isSerializedReservationPrivateData(value: unknown): value is ISerializedTransactionReservationPrivateData
 isRestorableReservationData(value: unknown, networkId: NetworkId, knownNetworkIds: Set<NetworkId>): value is ISerializedTransactionReservationPrivateData
@@ -428,10 +587,23 @@ isKeyfileAccount(value: unknown): value is IKeyfileAccount
 isKeyfileWalletAccount(value: unknown): value is IKeyfileWalletAccount
 ```
 
+`isUint256` is the single uint256 check of the SDK. A `number` must be a safe
+non-negative integer, a `string` must match `CANONICAL_INTEGER_REGEX` (no sign,
+no leading zeros, no fraction or exponent) and a `bigint` must be non-negative;
+the value must not exceed `MAX_UINT256`. It bounds a Rust transfer amount, a
+balance read from the node, a phlo price, the maximum phlo charge, and the price
+written by the uint256 deploy serializer.
+
+`isNativeTokenDecimals` and `isBlockNumber` are the guards behind
+`validateNativeTokenDecimals` and `validateBlockNumber`.
+
 `isValueInConst` is what lets a union derived from an `as const` tuple be checked
-at runtime against that same tuple — `TRANSACTION_RESERVATION_KINDS` and
-`NODE_API_PROFILES` are both used this way, so the type and the check can never
-drift apart.
+at runtime against that same tuple — `TRANSACTION_RESERVATION_KINDS`,
+`NODE_API_PROFILES` and the deploy refusal and verdict tuples of the `Deploy`
+domain (`isDeployAdmissionCode` and the guards after it) are used this way, so
+the type and the check can never drift apart. The deploy guards narrow the
+untyped `error` and `cause` fields of a node response and the validator's
+`state`.
 
 `isStoredSecret` and `isSerializedReservationPrivateData` guard the **decrypt
 boundary**. A record that decrypts is not thereby trustworthy: it may have been
@@ -441,7 +613,9 @@ the wrong record. `isStoredSecret` requires either a private key that survives
 with a parseable BIP-44 root path. `isSerializedReservationPrivateData` checks
 the account id, the serialized amount, a finite expiration, a known `kind`, and
 the details block, where the amounts must match the serialized-decimal form and
-the timestamp must parse. Both are called through `parseDecryptedJson`, so a
+the timestamp must parse; a `nativeTokenDecimals`, when present, must pass
+`isNativeTokenDecimals` (a reservation stored before the field existed has none
+and is restored with 8 decimals). Both are called through `parseDecryptedJson`, so a
 failure becomes `CorruptedDataError` rather than a malformed object entering the
 domain.
 
@@ -462,13 +636,15 @@ rethrown as-is or has to be wrapped.
 `instanceof Promise`, so `runProtected` also catches rejections from async
 listeners returning a foreign thenable.
 
-`isRejectedByServer` decides whether a failed deploy submission is final. It is
-`true` only for an axios error that carries a response with a status between
-`HTTP_CLIENT_ERROR_MIN_STATUS` and `HTTP_CLIENT_ERROR_MAX_STATUS`: the node read
-the deploy and refused it. A missing response (dropped connection, timeout), a
-`5xx`, or a non-axios error is `false`, because the deploy may still have been
-accepted. `DeployService.submitSignedDeploy` maps `true` to
-`DeploySubmissionRejectedError`.
+`isRejectedByServer` is `true` only for an axios error that carries a response
+with a status between `HTTP_CLIENT_ERROR_MIN_STATUS` and
+`HTTP_CLIENT_ERROR_MAX_STATUS`: the node read the deploy and refused it.
+`DeployService.submitSignedDeploy` uses it as the last refusal rule: it first
+checks a duplicate deploy (`409`) and the refusals it recognizes by status and
+`error` code (including the ones sent with `503`), and only then maps any other
+`4xx` to a plain `DeploySubmissionRejectedError`. A missing response (dropped
+connection, timeout), an unrecognized `5xx`, or a non-axios error is `false`,
+and the outcome stays unknown (`DeploySubmissionUnknownError`).
 
 `isRestorableReservationData` is the restore-time filter for a stored
 reservation: well-formed private data (`isSerializedReservationPrivateData`), not
@@ -557,7 +733,7 @@ Network-registry guards (`src/utils/decorators/networkConfigProvider`):
 EnsureNetworkConfigProviderReady; // throws before the registry is initialized
 EnsureNetworkExist; // throws when the network id is unknown
 EnsureNetworkNotDefault; // throws when mutating/removing a built-in network
-EnsureNetworkRecordNotDefault; // same, for a whole record passed as the first argument (set)
+EnsureNetworkRecordNotDefault; // same, for a whole record (INetworkRecordInput) passed as the first argument (set)
 ```
 
 Network-busy guards (`src/utils/decorators/apiClientManager`):
@@ -632,7 +808,7 @@ missing. No-op outside the browser. Called by `MnemonicService` and
 
 All fabrics live under `src/fabrics`, a top-level folder next to `src/utils`. Its
 `index.ts` re-exports the signer, storage, and client fabrics; the transaction
-reservation and network fabrics are imported by their own paths. The folder is internal —
+reservation, network, and deploy phlo fabrics are imported by their own paths. The folder is internal —
 `src/index.ts` does not re-export it, so fabrics are not part of the package
 public surface; SDK code reaches them through the `@fabrics/*` alias.
 
@@ -688,7 +864,7 @@ Builds the `NodeApiAdapter` subclass for a profile — see the adapter section o
 `DOMAINS.md`.
 
 ```ts
-createNodeApiAdapter(profile: NodeApiProfile, apiClientManager: ApiClientManager): NodeApiAdapter
+createNodeApiAdapter(profile: NodeApiProfile, clients: IApiClients): NodeApiAdapter
 ```
 
 ### Deploy term fabric (`src/fabrics/deployTermFactory.ts`)
@@ -720,15 +896,26 @@ Builds a validated `INetworkRecord` for a network write, without touching the
 registry or storage.
 
 ```ts
+createNetworkConfigSnapshot(config: INetworkConfig): IResolvedNetworkConfig
 createNetworkRecord(payload: ICreateNetworkRecordPayload): INetworkRecord        // { name, config, networks }
 createUpdatedNetworkRecord(payload: IUpdateNetworkRecordPayload): INetworkRecord // { record, update, networks }
 ```
 
+`createNetworkConfigSnapshot` is the one place where a missing
+`nativeTokenDecimals` becomes `NATIVE_TOKEN_DECIMALS_AMOUNT` (8). It copies the
+config and freezes the copy, so a record never shares an object with the caller
+and readers take `config.nativeTokenDecimals` directly, without a fallback.
+`NetworkConfigProvider` uses it for the built-in networks, restored custom
+networks and every write. The 8-decimal fallback stays until Dev and DevNet run
+the Rust node with 18 decimals (`TODO`).
+
 `createNetworkRecord` validates the endpoint URLs (`allowEmpty: false`), the
-`nodeApiProfile`, and name and config uniqueness against `networks`, then returns
-a custom record with a generated id. `createUpdatedNetworkRecord` refuses a
-built-in record, validates whatever the update carries, merges it into the
-current record (an absent `nodeApiProfile` keeps the stored one), and checks
+`nodeApiProfile`, `nativeTokenDecimals`, and name and config uniqueness against
+`networks` (on the snapshot, so a missing precision and an explicit 8 are the
+same network), then returns a custom record with a generated id.
+`createUpdatedNetworkRecord` refuses a built-in record, validates whatever the
+update carries, merges it into the current record (an absent or `undefined`
+`nodeApiProfile` or `nativeTokenDecimals` keeps the stored one), and checks
 uniqueness against every other network.
 
 The fabric is what makes `NetworkManager` writes transactional: the full record
@@ -742,14 +929,15 @@ never assembles the record inline. It also owns both directions of the storage
 serialization boundary.
 
 ```ts
-TransactionReservationFabric.create(payload: TCreateTransactionReservationPayload, id?: string): ITransactionReservation
-TransactionReservationFabric.createTransfer(payload: ICreateTransferReservationPayload, id?: string): ITransactionReservation
-TransactionReservationFabric.createDeploy(payload: ICreateDeployReservationPayload, id?: string): ITransactionReservation
+TransactionReservationFabric.create(payload: TWithNativeTokenDecimals<TCreateTransactionReservationPayload>, id?: string): ITransactionReservation
+TransactionReservationFabric.createTransfer(payload: TWithNativeTokenDecimals<ICreateTransferReservationPayload>, id?: string): ITransactionReservation
+TransactionReservationFabric.createDeploy(payload: TWithNativeTokenDecimals<ICreateDeployReservationPayload>, id?: string): ITransactionReservation
 
 TransactionReservationFabric.toCreatePayload(
     meta: TTransactionReservationMeta,
     account: Account,
     networkId: NetworkId,
+    nativeTokenDecimals: number,
 ): TCreateTransactionReservationPayload
 
 TransactionReservationFabric.toPendingTransaction(
@@ -772,6 +960,7 @@ covers both:
 
 ```ts
 interface IReservationPayload {
+    nativeTokenDecimals?: number; // TODO(next-major): required
     deployId: string;
     networkId: NetworkId;
     account: Account;
@@ -779,6 +968,8 @@ interface IReservationPayload {
     kind: TransactionReservationKind;
     gasCost?: bigint;
 }
+
+type TWithNativeTokenDecimals<T> = T & { nativeTokenDecimals: number };
 
 interface ICreateTransferReservationPayload extends IReservationPayload {
     kind: "transfer";
@@ -807,15 +998,27 @@ and the caller's handle all stay valid.
 that knows its real cost can now state it, and the defaults only apply when it is
 omitted.
 
+Every reservation carries the **precision of its network**,
+`nativeTokenDecimals`. The builders take it as a required field
+(`TWithNativeTokenDecimals`) and format `details.amount` and `details.gasCost`
+with it instead of a fixed 8 decimals; the public input keeps it optional until
+the next major, and `ReservationAdapter` fills a missing value from the
+reservation network (`payload.networkId`) before it calls the fabric. The
+precision is stored with the reservation, so a later change of the network
+decimals does not reinterpret the atomic amounts it already holds.
+
 `toCreatePayload` is the adapter between the public request shape
 (`TTransactionReservationMeta`, which carries plain values) and the internal
-payload (which carries a resolved `Account` and network id). `Client` uses it so
-the request coming from an integrator never has to contain SDK objects.
+payload (which carries a resolved `Account`, network id and precision). `Client`
+uses it so the request coming from an integrator never has to contain SDK
+objects.
 
 `toPendingTransaction` renders a stored reservation as a `Transaction` for one
 reader: `status` is always `"pending"` and `detectedBy` always `"manual"`, while
 `type` is `"deploy"` for a deploy reservation and otherwise comes from
-`resolveTransferType(details.from, viewerAddress)`. This is the function that
+`resolveTransferType(details.from, viewerAddress)`; the transaction also carries
+the reservation's `nativeTokenDecimals`, which `amount` and `gasCost` are
+formatted with. This is the function that
 replaced the embedded `transaction` field — the reservation stores facts, the
 fabric renders a point of view.
 
@@ -823,7 +1026,41 @@ fabric renders a point of view.
 the record itself) and serializes `details.timestamp` into an ISO string, so
 the payload survives `JSON.stringify` and an `IndexedDB` round trip.
 `fromStorage` is its inverse: it recombines a stored record with its decrypted
-private data and revives `details.timestamp` into a `Date`.
+private data and revives `details.timestamp` into a `Date`. Private data written
+before reservations carried their precision has no `nativeTokenDecimals`;
+`fromStorage` restores it with `NATIVE_TOKEN_DECIMALS_AMOUNT` (8), the precision
+every reservation had then (`TODO`: drop once such reservations have expired and
+Dev and DevNet run with 18 decimals).
+
+### Deploy phlo fabric (`src/fabrics/deployPhlo.ts`)
+
+Resolves the phlo values a deploy is signed and reserved with.
+
+```ts
+interface IDeployPhlo {
+    phloLimit: number;
+    phloPrice: bigint;
+    maxPhloCharge: bigint; // phloLimit * phloPrice
+}
+
+createDeployPhlo(details: Pick<TDeployDetails, "phloLimit" | "phloPrice">): IDeployPhlo
+```
+
+`createDeployPhlo` applies `DEFAULT_PHLO_LIMIT` / `DEFAULT_PHLO_PRICE` once,
+turns the price into a `bigint`, and computes the maximum phlo charge in
+`bigint`, never through `Number`. A charge above `MAX_UINT256` throws
+"createDeployPhlo: Maximum phlo charge exceeds uint256". It does not validate
+the values: callers run `validatePhloSettings` (or `validateDeployPayload`)
+with the bound of their node profile first.
+
+`TransactionService.signDeploy` uses it before reading the latest block, so an
+overflow is refused without a network request. `ReservationAdapter` uses it to
+compute a deploy's `pendingAmount` (the maximum phlo charge) and a transfer's
+gas reserve (`NodeApiAdapter.getTransferGasReserve(maxPhloCharge)`), and passes
+the resolved `phloLimit` / `phloPrice` to signing, so both come from one
+snapshot of the phlo values. A deploy reserves exactly its signed budget, and so
+does a transfer on `rust`; a transfer on `scala` reserves `GasFee.MAX`
+(250000) while it is signed with a default budget of 500000.
 
 ### Client fabrics (`src/fabrics/client/`)
 
