@@ -348,20 +348,37 @@ const unsubscribe = reserved.subscribe({
 ```
 
 `transfer` and `deploy` store the reservation **before** they send the deploy,
-and `deployId` is the deploy signature, known before the node answers. If the
-submission fails, what happens to the locked funds depends on the error:
+and `deployId` is the deploy signature, known before the node answers. What
+happens to the locked funds depends on how the submission ends:
 
-- `DeploySubmissionRejectedError` (`400`): the node refused the deploy, the
-  reservation is released;
-- `ApiRequestError` (`502`): the outcome is unknown (dropped connection,
-  timeout, `5xx`), the reservation is kept until the deploy is confirmed or the
-  reservation expires;
+- the node acknowledged the same deploy id, or answered HTTP `409`
+  `duplicate_deploy`: the reservation is kept and the deploy is watched;
+- `DeploySubmissionRejectedError`: the node refused the deploy, the reservation
+  is released. A refusal the SDK recognizes by the node's error code is one of
+  the typed `DeployRefusalError` subclasses (`DeployAdmissionRefusedError`,
+  `DeployRefusedError`, `DeployQueueRefusedError`), which carry `deployId`,
+  `retryable` and `retryAfterMs`; any other HTTP `4xx` stays a plain
+  `DeploySubmissionRejectedError`;
+- `DeploySubmissionUnknownError` (`502`, code `API_REQUEST_FAILED`, extends
+  `ApiRequestError`): the outcome is unknown (dropped connection, timeout, an
+  unrecognized server error, or an acknowledgement without the expected deploy
+  id). It carries `deployId`, and the reservation is kept until the deploy is
+  confirmed, gets a verdict or the reservation expires;
 - `DomainClosedError` (`410`): the wallet was closed before the deploy was sent,
   nothing reached the node and the reservation is released.
 
-`DeploySubmissionRejectedError` extends `ApiRequestError`, so existing
-`ApiRequestError` handling keeps working. See
-[Client](docs/DOMAINS.md#client-srcdomainsclientindexts).
+The SDK never resends a refused deploy on its own. When `retryable` is `true`,
+the caller may try again after `retryAfterMs` (when the node sent one) with a
+new `transfer` or `deploy`, which signs a new deploy.
+
+While the deploy is watched, a `Rejected`, `Expired` or `Failed` verdict ends
+the watch with `DeployVerdictError` (passed to `onVerdict`, then `onError`) and
+releases the reservation. A watch timeout (`DeployTimeoutError`) keeps the
+reservation until it expires, because the deploy may still land. Both
+`DeploySubmissionRejectedError` and `DeploySubmissionUnknownError` extend
+`ApiRequestError`, so existing `ApiRequestError` handling keeps working. See
+[Client](docs/DOMAINS.md#client-srcdomainsclientindexts) and
+[CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts).
 
 A balance read that cannot be trusted now throws `BalanceUnavailableError`
 (status `502`) carrying the address and a reason, instead of resolving to `0n`.

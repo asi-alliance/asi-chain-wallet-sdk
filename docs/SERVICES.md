@@ -209,7 +209,9 @@ This manager owns the reservation change notification. `Client` passes a single
 the picture re-fires it: `create`, `remove`, `removeByFilter`, `clear`,
 `removeNetworkReservations` (in a `finally`, so a partial failure still notifies),
 plus the `onAdded` / `onReplaced` / `onRemoved` / `onConfirmed` / `onExpired`
-callbacks it subscribes on each adapter. `Client` turns that one callback into
+/ `onReleased` / `onReleaseFailed` callbacks it subscribes on each adapter (a
+verdict release notifies like a confirmation, and so does a release whose
+storage delete failed, because the reservation already left memory). `Client` turns that one callback into
 the `reservationsChanged` event with `getReservationsByWallet()` as the payload,
 so no caller has to wire adapter callbacks itself. `onReplaced` and `onRemoved`
 are new: an externally managed reservation can be rewritten or dropped without
@@ -246,10 +248,13 @@ reads.
 In-memory tracker for active reservations. Each reservation is watched by a
 `DeployStatusPoller` bound to that reservation's own network (through
 `ApiClientManager.createNetworkContext`) and also gets an expiration timer;
-confirmation or expiry removes it and fires the matching callback. A poller
-failure (error or watch timeout) only stops the watcher and fires `onFailed` —
-the reservation and its expiration timer stay, so the deploy status being unknown
-keeps the funds locked until the reservation genuinely expires. Implements
+confirmation, a deploy verdict (`Rejected`, `Expired`, `Failed`) or expiry
+removes it and fires the matching callback. Any other poller failure (a polling
+error or the watch timeout) only stops the watcher and fires `onFailed` — the
+reservation and its expiration timer stay, so the deploy status being unknown
+keeps the funds locked until the reservation genuinely expires. The expiration
+timer is set through `setLongTimeout`, so an expiry further away than
+`MAX_TIMER_DELAY_MS` (about 24.8 days) does not fire early. Implements
 `IClosable` (see [ClosableDomain](DOMAINS.md#closabledomain-srcdomainsclosabledomainindexts)).
 
 It extends `ItemManager<ITransactionReservation>`, so the map, the filtered
@@ -317,6 +322,7 @@ interface ITransactionReservationsManagerOptions {
     onConfirmed?(reservation): void;
     onExpired?(reservation): void;
     onFailed?(reservation, error: Error): void;
+    onReleased?(reservation, verdict: DeployVerdictError): void;
     watchCallbacks?: IDeployWatchCallbacks;
     watchOptions?: IDeployWatchOptions;
 }
@@ -329,8 +335,16 @@ does not fire `onRemoved` per reservation: it is the bulk path behind a network
 wipe, which notifies once at the manager level instead of once per record.
 
 `onFailed` is a notification, not a release signal: the reservation survives it
-and is dropped only by `onConfirmed` or `onExpired`, which are the two callbacks
-`ReservationAdapter` uses to delete the stored record.
+and is dropped only by `onConfirmed`, `onExpired` or `onReleased`, which are the
+callbacks `ReservationAdapter` uses to delete the stored record.
+
+On a verdict the manager notifies the watch subscribers' `onVerdict`, releases
+the reservation and fires `onReleased(reservation, verdict)`, then notifies the
+subscribers' `onError` with the same `DeployVerdictError`. Because the
+reservation is already released at that point, that `onError` does not fire
+`onFailed`. Every option callback and every subscriber is called in isolation
+(`runProtected`, failures go to `console.error`), so a throwing or rejecting
+callback neither blocks the other subscribers nor the release.
 
 ---
 
@@ -1169,7 +1183,7 @@ request, the service owns response interpretation and its own fallbacks.
 Submits deploys and reads deploy status through the node API adapter.
 
 ```ts
-submitSignedDeploy(deploy: SignedResult): Promise<string | undefined> // returns extracted deployId
+submitSignedDeploy(signedDeploy: SignedResult): Promise<string>       // the acknowledged deployId
 exploreDeployData(rholangCode: string): Promise<any>                  // returns result.expr
 getDeploy(deployHash: string): Promise<any>
 isDeployFinalized(deploy: IDeployInfo): Promise<boolean>              // NodeApiAdapter.isDeployFinalized of the active profile
@@ -1182,27 +1196,42 @@ enum DeployStatus {
     INCLUDED_IN_BLOCK,
     FINALIZED,
     CHECK_ERROR,
+    REJECTED,
+    EXPIRED,
+    FAILED,
 }
 type IDeployStatusResult =
     | { status: DEPLOYING | INCLUDED_IN_BLOCK | FINALIZED }
-    | { status: CHECK_ERROR; errorMessage: string };
+    | { status: CHECK_ERROR; errorMessage: string }
+    | { status: REJECTED | EXPIRED | FAILED; detail?: string };
 ```
 
 `submitSignedDeploy` and `exploreDeployData` throw `ApiRequestError`
-(`source: ApiSource.NODE`) instead of a `DeployService.*: <message>` string, so a
-caller can tell a node failure from a validation failure without parsing text.
-`submitSignedDeploy` narrows one case further: when the node answered with a
-client-error status (`isRejectedByServer`, HTTP `4xx`), it throws
-`DeploySubmissionRejectedError` (a subclass of `ApiRequestError`, status `400`),
-which means the deploy was refused for good. A missing response, a timeout, or a
-`5xx` stays a plain `ApiRequestError`, because the deploy may still have been
-accepted.
+(`source: ApiSource.NODE`) or one of its subclasses instead of a
+`DeployService.*: <message>` string, so a caller can tell a node failure from a
+validation failure without parsing text.
+
+`submitSignedDeploy` returns the deploy id the node acknowledged, after checking
+it against the signature (case-insensitive); HTTP `409` `duplicate_deploy`
+returns the signature, because the node already has the deploy. It no longer
+resolves to `undefined`: a missing, non-string or different id in a successful
+answer throws `DeploySubmissionUnknownError`. A failed request is classified
+from the node's status and `error` code into `DeployAdmissionRefusedError`,
+`DeployQueueRefusedError` (with `retryAfterMs` from `Retry-After` and
+`queueCause` from the body), `DeployRefusedError`, a plain
+`DeploySubmissionRejectedError` for any other `4xx`, or
+`DeploySubmissionUnknownError` when the deploy may still have been accepted.
+The refusal `reason` is the node's `message` when the body has one. The full
+order is under
+[CustomError](DOMAINS.md#customerror-srcdomainscustomerrorindexts). The service
+submits once and never resends.
 `NodeApiAdapter.getDeployStatus` fills `errorMessage` through `getErrorMessage`,
 so a `CHECK_ERROR` never carries `[object Object]` or an empty string.
 
 Finalization depends on the profile: `scala` compares `faultTolerance` with
 `SCALA_FAULT_TOLERANCE_THRESHOLD`, `rust` requires
-`finalizationState === "Finalized"` (see
+`finalizationState === "Finalized"`. On `rust`, `getDeployStatus` also asks the
+validator for its verdict and can return `REJECTED`, `EXPIRED` or `FAILED` (see
 [NodeApiAdapter](DOMAINS.md#nodeapiadapter-srcdomainsnodeapiadapterindexts-nodeapiadapterscala-nodeapiadapterrust)).
 
 ### BlockService (`src/services/BlockService/index.ts`)
@@ -1339,8 +1368,9 @@ not let the current network change between signing and submission, because a
 deploy signed for one profile is refused by the node of the other.
 
 `deploy` is `signDeploy` followed by `submitSignedDeploy`, which pushes the
-signed envelope through `DeployService` and fails when the response carries no
-deploy id. `transfer` is the same split: `signTransfer` validates the recipient,
+signed envelope through `DeployService` and returns its result unchanged
+(`DeployService` already fails with `DeploySubmissionUnknownError` when the
+response carries no matching deploy id). `transfer` is the same split: `signTransfer` validates the recipient,
 builds the transfer term, and signs it through `signDeploy`. Because validation
 lives in `signDeploy`, every path that signs a deploy is validated the same way —
 the ad-hoc phlo checks that used to sit in `transfer` are gone, along with the
@@ -1348,14 +1378,14 @@ the ad-hoc phlo checks that used to sit in `transfer` are gone, along with the
 
 `signTransfer` and `submitSignedDeploy` are public so that `ReservationAdapter`
 can sign first, persist the reservation under the known deploy id, and submit
-afterwards. When the node answers a submission with a `4xx` status,
-`DeployService` raises `DeploySubmissionRejectedError` instead of the generic
-`ApiRequestError`, which is the signal the adapter uses to release the
-reservation.
+afterwards. A refusal (`DeploySubmissionRejectedError` and its
+`DeployRefusalError` subclasses) is the signal the adapter uses to release the
+reservation; `DeploySubmissionUnknownError` keeps it, and the adapter watches
+the locally signed deploy id.
 
 ### DeployStatusPoller (`src/services/DeployStatusPoller/index.ts`)
 
-Polls a deploy until finalized or timed out. Extends `ApiWorker`, so it is
+Polls a deploy until it is finalized, gets a verdict, or times out. Extends `ApiWorker`, so it is
 constructed with the `INetworkContext` of the network the deploy was submitted
 to and keeps polling that network even after the active one changes.
 
@@ -1366,20 +1396,46 @@ watch(deployId, callbacks?: IDeployWatchCallbacks, options?: IDeployWatchOptions
 waitFor(deployId, options?: IDeployWatchOptions): Promise<IDeployConfirmedResult>
 ```
 
+```ts
+interface IDeployWatchCallbacks {
+    onConfirmed?: (result: IDeployConfirmedResult) => void;
+    onError?: (error: Error) => void;
+    onStatus?: (status: IDeployStatusResult, deployId: string) => void;
+    onVerdict?: (error: DeployVerdictError) => void;
+}
+```
+
 `IDeployWatchHandle = { cancel(): void; done: Promise<IDeployConfirmedResult> }`.
 Defaults: 5s interval, 180s timeout. Re-entrancy is guarded so ticks never overlap.
+The timeout is a timer of its own (`setLongTimeout`), so it fires on time even
+while a status request is still outstanding, and a timeout above
+`MAX_TIMER_DELAY_MS` (about 24.8 days, or `Infinity`) does not fire early.
 
 Deploy status comes from the node, which runs ahead of the indexer that serves
 transaction history: a deploy is confirmed here before the transaction shows up
 in `Client.getTransactionsHistory`.
 
-The two ways a watch ends badly are now distinct types. Exhausting the timeout
+A status `REJECTED`, `EXPIRED` or `FAILED` (on `rust`, from the observer or the
+validator, see
+[NodeApiAdapter](DOMAINS.md#nodeapiadapter-srcdomainsnodeapiadapterindexts-nodeapiadapterscala-nodeapiadapterrust))
+is a verdict: the watch stops, calls `onVerdict` and then `onError` with the same
+`DeployVerdictError`, and rejects `done` with it. The verdict releases the
+reservation (see `onReleased` above). A `Failed` deploy was executed and may
+have consumed phlo, so until the node reports the charge the available balance
+can exceed the on-chain balance by that fee.
+
+The other ways a watch ends badly are distinct types too. Exhausting the timeout
 raises `DeployTimeoutError` (`408`) carrying the `deployId` and `timeoutMs`, and
 its message says the deploy may still be processed — a timeout here means the
 poller stopped looking, not that the deploy failed. A poll that throws propagates
 the original error when it already carries a readable message, and is otherwise
-wrapped in `ApiRequestError` naming the deploy it was watching. Either way a
-reservation is not released on failure; see `onFailed` above.
+wrapped in `ApiRequestError` naming the deploy it was watching. In both cases the
+reservation is not released; see `onFailed` above.
+
+Every callback is called in isolation (`runProtected`, a failure goes to
+`console.error`), so a throwing or rejecting `onStatus`, `onVerdict`,
+`onConfirmed` or `onError` cannot leave the watch hanging: `done` always settles
+with the original result or error.
 
 ### GraphqlParser (`src/services/GraphqlParser/`)
 

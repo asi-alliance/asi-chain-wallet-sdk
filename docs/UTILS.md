@@ -27,6 +27,9 @@ Runtime defaults used across the SDK.
   `DOMAINS.md`).
 - `DEPLOY_STATUS_POLLING_TIMEOUT: number` — reservation deploy watch timeout (3 min).
 - `RESERVATION_EXPIRATION_TIME: number` — reservation TTL (5 min).
+- `DEPLOY_VERDICT_REQUEST_TIMEOUT: number` — the longest a validator verdict
+  request may take (2s); a client configured with a shorter timeout keeps its
+  own (see `ValidatorClient` in `DOMAINS.md`).
 
 Signing-session policy:
 
@@ -96,6 +99,12 @@ Data export:
 - `DEFAULT_BIP_44_PATH_OPTIONS` — `{ coinType: ASI_COIN_TYPE, account: 0, change: 0, index: 0 }`.
 - `HTTP_CLIENT_ERROR_MIN_STATUS` / `HTTP_CLIENT_ERROR_MAX_STATUS` — `400` and
   `499`, the status range `isRejectedByServer` treats as a final refusal.
+- `HTTP_CONFLICT_STATUS` / `HTTP_SERVICE_UNAVAILABLE_STATUS` — `409` and `503`,
+  the statuses of a duplicate deploy and of the node's admission, queue and
+  `validator_not_bonded` refusals.
+- `MILLISECONDS_IN_SECOND: number` — `1000`, converts a `Retry-After` in seconds.
+- `MAX_TIMER_DELAY_MS: number` — `2_147_483_647` (`2^31 - 1`), the longest delay
+  a single `setTimeout` can hold; `setLongTimeout` re-arms past it.
 - `ACCOUNT_KEY_PREFIX: string` — `"ACCOUNT"`, namespaces account fingerprints in
   the wallet operation guard. It lives here rather than in `Wallet` so that the
   guards can import it without importing `Wallet`.
@@ -283,6 +292,19 @@ failed silently, so a caught `undefined` from browser storage still produces a
 sentence. It is the reason no SDK error can now surface with an empty message or
 as `[object Object]`.
 
+```ts
+getErrorResponse(error: unknown): AxiosResponse | undefined
+getResponseDataField(response: AxiosResponse | undefined, field: string): unknown
+parseRetryAfterMs(value: unknown, now?: number): number | undefined
+```
+
+`getErrorResponse` returns the response of an axios error and `undefined` for
+anything else; `getResponseDataField` reads one field of a JSON object body.
+`DeployService` reads the node's `error`, `message` and `cause` through them.
+`parseRetryAfterMs` turns a `Retry-After` header into milliseconds: a number of
+seconds, or an HTTP date counted from `now` (never negative). Anything else is
+`undefined`.
+
 ### Decrypted payload parsing
 
 ```ts
@@ -337,7 +359,24 @@ is caught; a returned thenable (detected through the `isPromiseLike` guard) gets
 a `.catch`, so a rejected promise reaches `onFailure` too. It returns `void`
 without awaiting anything, which is the point: the caller keeps going regardless.
 `ClientEventBus` uses it for every listener invocation and for the error handler
-itself.
+itself, `DeployStatusPoller` for every watch callback, and
+`TransactionReservationsManager` and `ReservationAdapter` for every reservation
+callback and subscriber.
+
+### Long timers
+
+```ts
+type TCancelTimer = () => void;
+setLongTimeout(callback: () => void, delayMs: number): TCancelTimer
+```
+
+A `setTimeout` that also works for delays longer than `MAX_TIMER_DELAY_MS`
+(`2^31 - 1` ms, about 24.8 days), which a plain `setTimeout` fires almost
+immediately. The deadline is fixed at `Date.now() + delayMs`, and the timer
+re-arms in steps of at most `MAX_TIMER_DELAY_MS` until it is reached; `Infinity`
+never fires. The returned function cancels the timer. `DeployStatusPoller` uses
+it for the watch timeout and `TransactionReservationsManager` for reservation
+expiry.
 
 ---
 
@@ -530,6 +569,12 @@ Domain:
 isCustomCreateHDWalletOptions(options: TCreateHDPathWalletOptions): options is { customHDPath: Bip44Path }
 isPrivateKeySecretData(secretData: IPrivateKeyCredentials | IHDSecret): secretData is IPrivateKeyCredentials
 isNodeApiProfile(value: unknown): value is NodeApiProfile
+isDeployAdmissionCode(value: unknown): value is DeployAdmissionCode
+isDeployRejectionCode(value: unknown): value is DeployRejectionCode
+isDeployQueueRefusalCode(value: unknown): value is DeployQueueRefusalCode
+isDeployQueueCause(value: unknown): value is DeployQueueCause
+isDeployVerdictStatus(value: unknown): value is DeployVerdictStatus  // REJECTED, EXPIRED, FAILED
+isDeployTerminalStatus(status: DeployStatus): boolean               // FINALIZED or a verdict
 isNativeTokenDecimals(value: unknown): value is number               // integer 0…MAX_NATIVE_TOKEN_DECIMALS
 isBlockNumber(value: unknown): value is number | string              // non-negative safe integer, number or canonical digit string
 isUint256(value: unknown): value is number | string | bigint         // canonical integer 0…MAX_UINT256
@@ -553,9 +598,12 @@ written by the uint256 deploy serializer.
 `validateNativeTokenDecimals` and `validateBlockNumber`.
 
 `isValueInConst` is what lets a union derived from an `as const` tuple be checked
-at runtime against that same tuple — `TRANSACTION_RESERVATION_KINDS` and
-`NODE_API_PROFILES` are both used this way, so the type and the check can never
-drift apart.
+at runtime against that same tuple — `TRANSACTION_RESERVATION_KINDS`,
+`NODE_API_PROFILES` and the deploy refusal and verdict tuples of the `Deploy`
+domain (`isDeployAdmissionCode` and the guards after it) are used this way, so
+the type and the check can never drift apart. The deploy guards narrow the
+untyped `error` and `cause` fields of a node response and the validator's
+`state`.
 
 `isStoredSecret` and `isSerializedReservationPrivateData` guard the **decrypt
 boundary**. A record that decrypts is not thereby trustworthy: it may have been
@@ -588,13 +636,15 @@ rethrown as-is or has to be wrapped.
 `instanceof Promise`, so `runProtected` also catches rejections from async
 listeners returning a foreign thenable.
 
-`isRejectedByServer` decides whether a failed deploy submission is final. It is
-`true` only for an axios error that carries a response with a status between
-`HTTP_CLIENT_ERROR_MIN_STATUS` and `HTTP_CLIENT_ERROR_MAX_STATUS`: the node read
-the deploy and refused it. A missing response (dropped connection, timeout), a
-`5xx`, or a non-axios error is `false`, because the deploy may still have been
-accepted. `DeployService.submitSignedDeploy` maps `true` to
-`DeploySubmissionRejectedError`.
+`isRejectedByServer` is `true` only for an axios error that carries a response
+with a status between `HTTP_CLIENT_ERROR_MIN_STATUS` and
+`HTTP_CLIENT_ERROR_MAX_STATUS`: the node read the deploy and refused it.
+`DeployService.submitSignedDeploy` uses it as the last refusal rule: it first
+checks a duplicate deploy (`409`) and the refusals it recognizes by status and
+`error` code (including the ones sent with `503`), and only then maps any other
+`4xx` to a plain `DeploySubmissionRejectedError`. A missing response (dropped
+connection, timeout), an unrecognized `5xx`, or a non-axios error is `false`,
+and the outcome stays unknown (`DeploySubmissionUnknownError`).
 
 `isRestorableReservationData` is the restore-time filter for a stored
 reservation: well-formed private data (`isSerializedReservationPrivateData`), not

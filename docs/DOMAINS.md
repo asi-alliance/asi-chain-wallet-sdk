@@ -439,15 +439,20 @@ funds. What happens next depends on how the submission ends:
 
 | Submission outcome | Reservation | Error |
 | --- | --- | --- |
-| Accepted by the node | kept live, funds held until confirmation or expiry | — |
-| Refused by the node (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`) |
-| Outcome unknown (dropped connection, timeout, HTTP `5xx`) | kept, funds held | `ApiRequestError` (`502`) |
+| Accepted: the node acknowledged the same deploy id, or answered HTTP `409` `duplicate_deploy` | kept live, funds held until confirmation, a verdict or expiry | — |
+| Refusal recognized by the node's error code (admission, queue or deploy refusal, including HTTP `503` `validator_not_bonded`) | removed from memory and storage, funds released | a `DeployRefusalError` subclass (see [CustomError](#customerror-srcdomainscustomerrorindexts)) |
+| Any other refusal (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`) |
+| Outcome unknown (dropped connection, timeout, unrecognized server error, acknowledgement without the expected deploy id) | kept, funds held | `DeploySubmissionUnknownError` (`502`, code `API_REQUEST_FAILED`, `deployId`) |
 | Wallet closed or removed before the deploy left | removed from storage, nothing is sent | `DomainClosedError` (`410`) |
 
-Only an explicit refusal releases the funds. A deploy whose outcome is unknown may
-still land on chain, so its reservation stays and is settled by the deploy
-watcher or by expiry. `DeploySubmissionRejectedError` extends `ApiRequestError`,
-so code that already handled `ApiRequestError` keeps working.
+Only an explicit refusal releases the funds at submission. A deploy whose outcome
+is unknown may still land on chain, so its reservation stays and is settled by
+the deploy watcher (confirmation or a `Rejected`, `Expired` or `Failed` verdict)
+or by expiry. The SDK does not resend a refused deploy: when the error is
+`retryable`, the caller repeats the operation after `retryAfterMs`, which signs
+a new deploy. `DeploySubmissionRejectedError` and `DeploySubmissionUnknownError`
+both extend `ApiRequestError`, so code that already handled `ApiRequestError`
+keeps working.
 
 `signDeploy` stops one step earlier: it builds the `DeployData`, signs it, and
 returns the signed envelope for the caller to submit. Nothing is sent to the
@@ -1474,6 +1479,14 @@ Runtime and network errors:
 | `DeployTimeoutError` | `DEPLOY_TIMEOUT` | `408` | `deployId`, `timeoutMs` |
 | `ApiRequestError` | `API_REQUEST_FAILED` | `502` | `source`, `operation`, `reason` |
 | `DeploySubmissionRejectedError` | `DEPLOY_SUBMISSION_REJECTED` | `400` | `source`, `operation`, `reason` (extends `ApiRequestError`) |
+| `DeployRefusalError` | set by the subclass | set by the subclass | `deployId`, `retryable`, `retryAfterMs` (extends `DeploySubmissionRejectedError`) |
+| `DeployAdmissionRefusedError` | `DEPLOY_ADMISSION_REFUSED` | `503` | `admissionCode` (extends `DeployRefusalError`) |
+| `DeployRefusedError` | `DEPLOY_TOO_LARGE` | `413` | `rejectionCode` (extends `DeployRefusalError`) |
+| `DeployRefusedError` | `DEPLOY_EXPIRED`, `DEPLOY_WINDOW_INVALID` | `400` | `rejectionCode` |
+| `DeployRefusedError` | `VALIDATOR_NOT_BONDED` | `503` | `rejectionCode` |
+| `DeployQueueRefusedError` | `DEPLOY_QUEUE_FULL`, `DEPLOY_QUEUE_UNAVAILABLE` | `503` | `queueCode`, `queueCause` (extends `DeployRefusalError`) |
+| `DeploySubmissionUnknownError` | `API_REQUEST_FAILED` | `502` | `deployId` (extends `ApiRequestError`) |
+| `DeployVerdictError` | `DEPLOY_VERDICT_REJECTED`, `DEPLOY_VERDICT_EXPIRED`, `DEPLOY_VERDICT_FAILED` | `422` | `deployId`, `state`, `detail` |
 | `BalanceUnavailableError` | `BALANCE_UNAVAILABLE` | `502` | `address`, `reason` |
 
 Supporting enums:
@@ -1663,13 +1676,53 @@ underlying request reported. An aborted transaction reports
 `errors` array is joined into one `reason` rather than being stringified as raw
 JSON.
 
-`DeploySubmissionRejectedError` (`400`) is the one `ApiRequestError` that is
-known to be final: the node answered a deploy submission with a client-error
-status (`4xx`). The deploy did not and will not land, so the reservation behind
-it is released. Every other submission failure stays a plain `ApiRequestError`
-and keeps the reservation, because the deploy may still have been accepted.
-`isRejectedByServer(error)` (see [Guards](UTILS.md#guards-srcutilsguardsindexts))
-is the classification rule.
+`DeploySubmissionRejectedError` is the `ApiRequestError` that is known to be
+final: the node refused the deploy, so it did not and will not land, and the
+reservation behind it is released. `DeployService.submitSignedDeploy` classifies
+a failed submission in this order:
+
+1. HTTP `409` with `error: "duplicate_deploy"` is not an error: the node already
+   has this deploy, and the local signature is returned as the deploy id.
+2. HTTP `503` with an admission code (`deploy_pool_busy`,
+   `deploy_admission_busy`) is `DeployAdmissionRefusedError`, `retryable: true`.
+3. HTTP `503` with a queue code is `DeployQueueRefusedError`:
+   `deploy_queue_full` is `DEPLOY_QUEUE_FULL`, `node_unavailable` and
+   `deploy_queue_stopped` are `DEPLOY_QUEUE_UNAVAILABLE`. `retryAfterMs` comes
+   from the `Retry-After` header (seconds or an HTTP date, `parseRetryAfterMs`).
+   For a full queue, `queueCause` is the node's `cause` (`validator`,
+   `validator_idle`, `shard`, `storage`, `deployer_share`) and stays
+   `undefined` for an older node or an unknown cause. A full queue is
+   `retryable` only with the cause `deployer_share`; an unavailable queue is
+   always `retryable`.
+4. A rejection code together with its status is `DeployRefusedError`:
+   `deploy_too_large` (`413`), `deploy_expired` and `invalid_deploy_window`
+   (`400`), `validator_not_bonded` (`503`). Only `invalid_deploy_window` is
+   `retryable`.
+5. Any other HTTP `4xx` (`isRejectedByServer`, see
+   [Guards](UTILS.md#guards-srcutilsguardsindexts)) is a plain
+   `DeploySubmissionRejectedError`.
+6. Anything else (no response, a timeout, an unrecognized `5xx`) is
+   `DeploySubmissionUnknownError` carrying the local `deployId`, and so is a
+   successful answer whose deploy id is missing, not a string, or differs from
+   the signature ("Unexpected acceptance response").
+
+The refusal classes share `DeployRefusalError` (`deployId`, `retryable`,
+`retryAfterMs`), and their `reason` is the node's non-blank `message` from the
+response body when it has one. `retryable` means the same request may succeed
+later; the SDK never resends on its own, and a retry is a new signed deploy.
+`DeploySubmissionUnknownError` keeps the `API_REQUEST_FAILED` code, status `502`
+and the upstream `reason` that a failed submission had before, so existing
+handling keeps working; recognize it with `instanceof`. Every other submission
+failure keeps the reservation, because the deploy may still have been accepted.
+
+`DeployVerdictError` (`422`) ends a deploy watch, not a submission: the node
+accepted the deploy and later reported it `Rejected` (released from the queue
+and refused, never executed), `Expired` (its effects did not reach finalized
+state) or `Failed` (executed and failed). `state` is the verdict, `detail` the
+validator's explanation when it sent one, and each verdict has its own code
+(`DEPLOY_VERDICT_REJECTED`, `DEPLOY_VERDICT_EXPIRED`, `DEPLOY_VERDICT_FAILED`).
+A verdict releases the reservation (see
+[DeployStatusPoller](SERVICES.md#deploystatuspoller-srcservicesdeploystatuspollerindexts)).
 
 `DeployTimeoutError` (`408`) is raised by `DeployStatusPoller` when a deploy is
 not finalized within the watch timeout. Its message says explicitly that the
@@ -2226,7 +2279,7 @@ abstract class NodeApiAdapter {
     exploreDeploy(term: string): Promise<unknown>
     getDeploy(deployHash: string): Promise<unknown>
     isDeployFinalized(deploy: IDeployInfo): boolean              // base: faultTolerance >= SCALA_FAULT_TOLERANCE_THRESHOLD
-    getDeployStatus(deployHash: string): Promise<IDeployStatusResult>
+    getDeployStatus(deployHash: string): Promise<IDeployStatusResult> // base: observer only
     getBlock(blockHash: string): Promise<IBlockDto>
     getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]>
     getLatestBlockNumber(): Promise<number>                      // base: blockNumber of GET /api/blocks
@@ -2236,8 +2289,13 @@ abstract class NodeApiAdapter {
     // override points
     protected getExploreDeployClient(): IExploratoryDeployClient // base: clients.observer
     protected buildExploreDeployBody(term: string): unknown      // base: the raw term
+    protected getIncludedDeployStatus(deploy: IDeployInfo): IDeployStatusResult // base: FINALIZED or INCLUDED_IN_BLOCK by isDeployFinalized
 }
 ```
+
+`getDeployStatus` reads the deploy from the observer: no `blockHash` is
+`DEPLOYING`, a deploy in a block is mapped by `getIncludedDeployStatus`, and a
+failed request is `CHECK_ERROR` with a readable `errorMessage`.
 
 The request members perform one request and return the node's response
 untouched. Response interpretation stays in the services — `DeployService` reads
@@ -2250,7 +2308,7 @@ The adapter holds the clients of the network it was built for and no other
 network state.
 
 The table below lists everything that differs between the two profiles. The
-first seven rows are adapter members, so nothing above the adapter (`Client`,
+first nine rows are adapter members, so nothing above the adapter (`Client`,
 `Wallet`, `ReservationAdapter`, `TransactionService`, `SignerService`, the
 validators and fabrics) checks the profile for them. The last two are resolved
 outside the adapter: the Rholang terms by `createDeployTermFactory` (see the Deploy section), which `AssetsService` and
@@ -2265,6 +2323,8 @@ by `createApiClients` when the clients of a network are built.
 | `getTransferGasReserve(maxPhloCharge)` | `GasFee.MAX` | `maxPhloCharge` (`phloLimit * phloPrice`) |
 | `getLatestBlockNumber()` | `GET /api/blocks`, flat `blockNumber`; `INVALID_BLOCK_NUMBER` when missing | `GET /api/blocks/1?view=summary`, `blockInfo.blockNumber` checked by `validateBlockNumber`; throws when invalid |
 | `isDeployFinalized(deploy)` | `faultTolerance >= 0.99` | `finalizationState === "Finalized"` |
+| `getIncludedDeployStatus(deploy)` (status of a deploy in a block) | `FINALIZED` or `INCLUDED_IN_BLOCK` | by `finalizationState`: `Finalized` is `FINALIZED`, `Failed` is `FAILED`, `Expired` is `EXPIRED`, anything else `INCLUDED_IN_BLOCK` |
+| `getDeployStatus(deployHash)` | observer only | validator verdict and observer status requested in parallel, see below |
 | `buildExploreDeployBody(term)` (exploratory deploy request body) | the raw Rholang term | `{ term }` (`SimpleExploreDeployRequest`) |
 | Rholang terms for the balance check and the transfer (`createDeployTermFactory`) | `createCheckBalanceDeploy` / `createTransferDeploy`: `rho:rchain:asiVault`, `rho:rchain:deployerId` | `createRustCheckBalanceDeploy` / `createRustTransferDeploy`: `rho:vault:system`, `rho:system:deployerId`; amount up to `MAX_UINT256`, BigInt literal above `MAX_INT64` |
 | Validator and observer request headers (`createApiClients`) | timeout only | `Content-Type: application/json` and timeout |
@@ -2288,16 +2348,30 @@ Rust deploy finalization follows the node's deploy lifecycle,
 from the Rust adapter module only). A Rust node with the #881 API reports no
 `faultTolerance`, and its `isFinalized` flag describes the **block**: a deploy
 whose block is finalized may still be `Pending`, or `Failed` after a merge.
-Only `Finalized` confirms a deploy. Known limitation
+Only `Finalized` confirms a deploy; `Failed` and `Expired` in a block are
+verdicts that end the watch with `DeployVerdictError`.
+
+`RustNodeApiAdapter.getDeployStatus` asks two sources at once: the observer
+status above and the validator verdict
+(`ValidatorClient.getDeployFinalizationStatus`, bounded by
+`DEPLOY_VERDICT_REQUEST_TIMEOUT`, 2 s, or the client's shorter timeout). It
+resolves with whichever answer is terminal first: an observer `FINALIZED`,
+`EXPIRED` or `FAILED`, or a validator `Rejected` or `Expired`
+(with the validator's `detail` when it sent one). Otherwise it waits for both
+and returns the observer status. The validator alone never confirms a deploy:
+`Finalized` is confirmed by the observer, and a validator `Failed` is ignored
+until the observer reports it, so the observer decides on execution. A failed
+or malformed validator answer is ignored as well.
+
+Known limitation
 ([#230](https://github.com/asi-alliance/asi-chain-wallet-sdk/issues/230)): a
-`Failed` or `Expired` deploy is not treated as terminal, so the poller keeps
-polling until `DeployTimeoutError`, and a deploy not yet in a block (HTTP 404
-`deploy_not_found`) reports `CHECK_ERROR`, as before.
+deploy not yet in a block (HTTP 404 `deploy_not_found` from the observer)
+reports `CHECK_ERROR`, as before.
 
 `ScalaNodeApiAdapter` is `getProfile()` and nothing else — the base *is* the Scala
 behavior. `RustNodeApiAdapter` overrides the profile, the protocol members
-above, finalization, the latest block number, and the exploratory-deploy body
-shape (`{ term }`, the node's `SimpleExploreDeployRequest`). The adapter does
+above, finalization, the deploy status, the latest block number, and the
+exploratory-deploy body shape (`{ term }`, the node's `SimpleExploreDeployRequest`). The adapter does
 not set headers: `createApiClients` (`src/fabrics/apiClients.ts`) adds
 `Content-Type: application/json` to the validator and observer clients of a
 `rust` network only.
@@ -2426,8 +2500,15 @@ branches on `code` and reads `reason` instead of parsing JSON out of a message.
 ```ts
 submitDeploy(deploy): Promise<any>              // POST /api/deploy
 submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
+getDeployFinalizationStatus(deploySignature: string): Promise<unknown> // GET /api/deploy-finalization-status/:signature
 getStatus(): Promise<any>                       // GET  /status
 ```
+
+`getDeployFinalizationStatus` asks the validator for its verdict on a deploy
+(`state` and an optional `detail`). Only the Rust node serves it, so only
+`RustNodeApiAdapter` calls it. The request timeout is
+`DEPLOY_VERDICT_REQUEST_TIMEOUT` (2 s), or the client's own timeout when that
+is shorter, so a slow validator cannot hold up a status poll.
 
 ### ObserverClient (`src/domains/ObserverClient/index.ts`)
 
@@ -2612,7 +2693,7 @@ by a pending transfer or deploy, so the _available_ balance excludes them, and
 they double as the only local source of pending transactions.
 
 ```ts
-ReservationAdapter.create(wallet, passwordProvider?, reservationsManagerOptions?): Promise<ReservationAdapter>
+ReservationAdapter.create(wallet, passwordProvider?, options?: IReservationAdapterOptions): Promise<ReservationAdapter>
 
 getBalance(account: Account): Promise<IBalanceData> // total minus the current network's reservations
 getReservations(): ITransactionReservation[]
@@ -2706,20 +2787,33 @@ run in this order:
    `RESERVATION_EXPIRATION_TIME`);
 4. **submit** the signed deploy, refusing with `DomainClosedError` if the
    adapter was closed meanwhile (`@EnsureReservationsManagerActive`);
-5. on success, track the reservation until confirmation or expiry.
+5. on success, track the reservation until confirmation, a verdict or expiry.
 
 When step 4 fails, `settleFailedSubmission` decides what to keep: a
-`DeploySubmissionRejectedError` (the node refused the deploy) or a
-`DomainClosedError` (nothing was sent) deletes the stored record; any other error
-keeps the reservation in memory and storage, because the deploy may still land.
-The original error is rethrown either way. See the submission table under
-[Client](#client-srcdomainsclientindexts).
+`DeploySubmissionRejectedError` (the node refused the deploy, including every
+`DeployRefusalError` subclass) or a `DomainClosedError` (nothing was sent)
+deletes the stored record; any other error, `DeploySubmissionUnknownError`
+included, keeps the reservation in memory and storage, because the deploy may
+still land. A failed delete is only logged, so the original error is rethrown
+either way. The adapter does not resend a refused deploy. See the submission
+table under [Client](#client-srcdomainsclientindexts).
 
 Both return an `IReservedOperationResult`: the `deployId` plus a `subscribe` that
 attaches deploy-watch callbacks to that reservation's poller. Apart from a refused
-or cancelled submission, only confirmation and expiry delete the stored record —
-a failed deploy watch leaves the reservation to its expiration timer, so memory
-and storage never disagree. Implements `IDisposable`, so it is owned by
+or cancelled submission, only confirmation, a verdict (`Rejected`, `Expired`,
+`Failed`) and expiry delete the stored record — a watch timeout or a polling
+error leaves the reservation to its expiration timer, so memory and storage
+never disagree.
+
+`IReservationAdapterOptions` (accepted by the constructor and by `create`)
+extends `ITransactionReservationsManagerOptions` with
+`onReleaseFailed(reservation, error)`. The adapter wraps `onConfirmed`,
+`onExpired` and `onReleased(reservation, verdict)`: it deletes the stored record
+first and calls the consumer's callback only after the delete succeeded. When
+the delete fails, it logs the error and calls `onReleaseFailed` instead; the
+reservation is already gone from memory, and the stored record is restored by
+the next `create` and released again by its watch or its expiry. A consumer callback that throws or rejects is logged and
+does not affect the release. Implements `IDisposable`, so it is owned by
 `ReservationAdapterManager` (a `DisposableItemManager`); `dispose()` closes its
 reservations manager, which is what turns a later submission into a
 `DomainClosedError`.
@@ -2767,6 +2861,37 @@ interface DeployData {
 `DeployData` is what is signed and submitted, so `phloPrice` has the form the
 node of the profile expects: the Rust node with the #881 API takes the price as
 a decimal string of up to 256 bits, the Scala node a JSON number.
+
+Deploy status and the node's refusal vocabulary also live here:
+
+```ts
+enum DeployStatus {
+    DEPLOYING = "Deploying",
+    INCLUDED_IN_BLOCK = "IncludedInBlock",
+    FINALIZED = "Finalized",
+    CHECK_ERROR = "CheckingError",
+    REJECTED = "Rejected",
+    EXPIRED = "Expired",
+    FAILED = "Failed",
+}
+
+DEPLOY_VERDICT_STATUSES    // REJECTED, EXPIRED, FAILED; type DeployVerdictStatus
+DEPLOY_ADMISSION_CODES     // "deploy_pool_busy", "deploy_admission_busy"; type DeployAdmissionCode
+DEPLOY_REJECTION_CODES     // "deploy_too_large", "deploy_expired", "invalid_deploy_window", "validator_not_bonded"; type DeployRejectionCode
+DEPLOY_REJECTION_STATUSES  // the HTTP status each rejection code comes with: 413, 400, 400, 503
+DEPLOY_QUEUE_REFUSAL_CODES // "deploy_queue_full", "node_unavailable", "deploy_queue_stopped"; type DeployQueueRefusalCode
+DEPLOY_QUEUE_CAUSES        // "validator", "validator_idle", "shard", "storage", "deployer_share"; type DeployQueueCause
+DUPLICATE_DEPLOY_CODE      // "duplicate_deploy"
+```
+
+`IDeployStatusResult` has a third variant, `{ status: DeployVerdictStatus;
+detail?: string }`, next to the plain statuses and
+`{ status: CHECK_ERROR; errorMessage }`. The codes are the `error` values of the
+node's response body; `DeployService` maps them to the error classes described
+under [CustomError](#customerror-srcdomainscustomerrorindexts), and the guards
+`isDeployAdmissionCode`, `isDeployRejectionCode`, `isDeployQueueRefusalCode`,
+`isDeployQueueCause`, `isDeployVerdictStatus` and `isDeployTerminalStatus`
+narrow them.
 
 Factory helpers (`Deploy/factory/index.ts`) — the Scala-profile terms, plus the
 shared escaper and the contract both profiles implement:

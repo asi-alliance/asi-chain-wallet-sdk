@@ -149,8 +149,11 @@ Current controls:
     holds at most one reservation per network, and a per-network reader/writer
     lock serializes reservation writes against each other and against network
     cleanup. A reservation is persisted before its deploy is submitted and is
-    released on a failed submission only when the node explicitly refused it;
-    reopening a wallet waits for its in-flight submissions before restoring.
+    released on a failed submission only when the node explicitly refused it
+    (an unknown outcome keeps it, and the SDK never resends a refused deploy);
+    after submission only confirmation, a terminal verdict of the node or
+    expiry releases it, never a watch timeout. Reopening a wallet waits for its
+    in-flight submissions before restoring.
 17. Typed failures: decryption, storage, and API errors carry machine-readable
     codes and structured fields, and a password check reports `false` only for an
     actual password failure.
