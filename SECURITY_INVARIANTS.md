@@ -184,8 +184,12 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    integer range on `scala`, uint256 on `rust`), a maximum phlo charge within
    uint256, and a non-blank shard id must be established before a deploy is
    hashed and signed, so no caller can reach the signer with a payload that was
-   validated by a different rule or not at all. Amounts and prices are computed
-   in `bigint`, never through a floating-point `Number`.
+   validated by a different rule or not at all. Amounts, prices and the maximum
+   phlo charge are computed in `bigint`, and no amount or price outside the
+   exact integer range is converted through a floating-point `Number`: the only
+   such conversion is the price signed as a JSON number on `scala`, which is
+   bounded by `Number.MAX_SAFE_INTEGER`. The deprecated `toAtomicAmount` still
+   accepts a `number` input; `toExactAtomicAmount` takes a string only.
 9. Signing a deploy without submitting it must be held to the same rules as
    submitting one: the same payload validation, the same session or password
    requirement, and the same account addressing. A returned signed payload is a
@@ -193,10 +197,12 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    around a check that the submitting path performs.
 10. The bytes that are signed must be the bytes the node of the current profile
     verifies: the price bound, the signed price format and the serialization
-    come from one node API adapter, resolved once per signature, and the funds a
-    reservation locks are computed by that adapter from the same snapshot of
-    phlo values that is signed (on `scala` a transfer still reserves the
-    `GasFee.MAX` estimate rather than its signed budget).
+    come from one node API adapter, resolved once per signature. The gas a
+    reservation locks comes from the adapter of the same network: a deploy
+    reserves exactly its signed budget (`phloLimit * phloPrice`), and so does a
+    transfer on `rust`, both computed from the same snapshot of phlo values that
+    is signed. A transfer on `scala` reserves the fixed `GasFee.MAX` estimate
+    instead of its signed budget.
 
 ### 3a. Reservation Invariants
 

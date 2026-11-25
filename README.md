@@ -109,7 +109,8 @@ const networksConfig: TNetworksConfig = {
         ValidatorURL: "",
         ReadOnlyURL: "",
         IndexerURL: "",
-        nodeApiProfile: NodeApiProfile.SCALA,
+        nodeApiProfile: NodeApiProfile.RUST,
+        nativeTokenDecimals: 18,
     },
 };
 

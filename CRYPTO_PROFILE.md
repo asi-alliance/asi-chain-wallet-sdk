@@ -46,7 +46,7 @@ parsed and structurally validated before use:
   (integers `0 … 255`), and an index-keyed object must carry contiguous ordered
   keys, so the decoded bytes cannot differ from what the record declares;
 - a stored reservation must match its serialized structure, including
-  digits-only amounts, a parseable timestamp, and, when present, a native token
+  serialized decimal amounts, a parseable timestamp, and, when present, a native token
   precision that is an integer from `0` to `18`.
 
 A failure raises `CorruptedDataError`, never `InvalidPasswordError`.
