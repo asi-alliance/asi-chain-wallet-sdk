@@ -4,6 +4,7 @@ import { DEPLOY_STATUS_POLLING_TIMEOUT } from "@config/index";
 import ApiClientManager from "@domains/ApiClientManager";
 import { NetworkId } from "@domains/Network";
 import { IDeployStatusResult } from "@domains/Deploy";
+import { DeployVerdictError } from "@domains/CustomError";
 import { ITransactionReservation } from "@domains/Transaction";
 import DeployStatusPoller, {
     IDeployConfirmedResult,
@@ -16,6 +17,7 @@ import {
     FailSubscriptionWhenInactive,
 } from "@utils/decorators/transactionReservationsManager";
 import { SkipWhenInactive } from "@utils/decorators";
+import { runProtected, setLongTimeout, TCancelTimer } from "@utils/index";
 
 export interface ITransactionReservationsManagerOptions {
     onAdded?: (reservation: ITransactionReservation) => void;
@@ -24,6 +26,10 @@ export interface ITransactionReservationsManagerOptions {
     onConfirmed?: (reservation: ITransactionReservation) => void;
     onExpired?: (reservation: ITransactionReservation) => void;
     onFailed?: (reservation: ITransactionReservation, error: Error) => void;
+    onReleased?: (
+        reservation: ITransactionReservation,
+        verdict: DeployVerdictError,
+    ) => void;
     watchCallbacks?: IDeployWatchCallbacks;
     watchOptions?: IDeployWatchOptions;
 }
@@ -35,10 +41,7 @@ export default class TransactionReservationsManager
     private readonly watchers: Map<string, IDeployWatchHandle> = new Map();
     private readonly subscribers: Map<string, Set<IDeployWatchCallbacks>> =
         new Map();
-    private readonly expirationTimers: Map<
-        string,
-        ReturnType<typeof setTimeout>
-    > = new Map();
+    private readonly expirationTimers: Map<string, TCancelTimer> = new Map();
     private readonly exclusiveIds: Set<string> = new Set();
     private active: boolean = true;
 
@@ -55,6 +58,10 @@ export default class TransactionReservationsManager
         reservation: ITransactionReservation,
         error: Error,
     ) => void;
+    private readonly onReleased?: (
+        reservation: ITransactionReservation,
+        verdict: DeployVerdictError,
+    ) => void;
     private readonly watchCallbacks?: IDeployWatchCallbacks;
     private readonly watchOptions?: IDeployWatchOptions;
 
@@ -70,6 +77,7 @@ export default class TransactionReservationsManager
         this.onConfirmed = options.onConfirmed;
         this.onExpired = options.onExpired;
         this.onFailed = options.onFailed;
+        this.onReleased = options.onReleased;
         this.watchCallbacks = options.watchCallbacks;
         this.watchOptions = {
             ...options.watchOptions,
@@ -260,10 +268,23 @@ export default class TransactionReservationsManager
 
                     this.handleConfirmed(reservation);
                 },
+                onVerdict: (verdict: DeployVerdictError) => {
+                    this.notify(reservation.id, (callbacks) =>
+                        callbacks.onVerdict?.(verdict),
+                    );
+
+                    this.handleReleased(reservation, verdict);
+                },
                 onError: (error: Error) => {
                     this.notify(reservation.id, (callbacks) =>
                         callbacks.onError?.(error),
                     );
+
+                    if (!this.has(reservation.id)) {
+                        this.stopWatch(reservation.id);
+
+                        return;
+                    }
 
                     this.handleFailed(reservation, error);
                 },
@@ -274,15 +295,27 @@ export default class TransactionReservationsManager
         this.watchers.set(reservation.id, handle);
     }
 
+    private static runCallback(callback: () => void): void {
+        runProtected(callback, (error: unknown) =>
+            console.error(
+                "TransactionReservationsManager: callback failed:",
+                error,
+            ),
+        );
+    }
+
     private notify(
         reservationId: string,
         invoke: (callbacks: IDeployWatchCallbacks) => void,
     ): void {
+        const invokeProtected = (callbacks: IDeployWatchCallbacks): void =>
+            TransactionReservationsManager.runCallback(() => invoke(callbacks));
+
         if (this.watchCallbacks) {
-            invoke(this.watchCallbacks);
+            invokeProtected(this.watchCallbacks);
         }
 
-        this.subscribers.get(reservationId)?.forEach(invoke);
+        this.subscribers.get(reservationId)?.forEach(invokeProtected);
     }
 
     private scheduleExpiration(reservation: ITransactionReservation): void {
@@ -294,12 +327,12 @@ export default class TransactionReservationsManager
             return;
         }
 
-        const timer: ReturnType<typeof setTimeout> = setTimeout(
+        const cancelTimer: TCancelTimer = setLongTimeout(
             () => this.handleExpired(reservation),
             delay,
         );
 
-        this.expirationTimers.set(reservation.id, timer);
+        this.expirationTimers.set(reservation.id, cancelTimer);
     }
 
     @SkipWhenInactive
@@ -325,11 +358,11 @@ export default class TransactionReservationsManager
     }
 
     private clearExpiration(id: string): void {
-        const timer: ReturnType<typeof setTimeout> | undefined =
+        const cancelTimer: TCancelTimer | undefined =
             this.expirationTimers.get(id);
 
-        if (timer) {
-            clearTimeout(timer);
+        if (cancelTimer) {
+            cancelTimer();
             this.expirationTimers.delete(id);
         }
     }
@@ -339,7 +372,9 @@ export default class TransactionReservationsManager
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 
-        this.onConfirmed?.(reservation);
+        TransactionReservationsManager.runCallback(() =>
+            this.onConfirmed?.(reservation),
+        );
     }
 
     private handleExpired(reservation: ITransactionReservation): void {
@@ -347,7 +382,21 @@ export default class TransactionReservationsManager
         this.clearExpiration(reservation.id);
         this.items.delete(reservation.id);
 
-        this.onExpired?.(reservation);
+        TransactionReservationsManager.runCallback(() =>
+            this.onExpired?.(reservation),
+        );
+    }
+
+    private handleReleased(
+        reservation: ITransactionReservation,
+        verdict: DeployVerdictError,
+    ): void {
+        this.clearExpiration(reservation.id);
+        this.items.delete(reservation.id);
+
+        TransactionReservationsManager.runCallback(() =>
+            this.onReleased?.(reservation, verdict),
+        );
     }
 
     private handleFailed(
@@ -356,6 +405,8 @@ export default class TransactionReservationsManager
     ): void {
         this.stopWatch(reservation.id);
 
-        this.onFailed?.(reservation, error);
+        TransactionReservationsManager.runCallback(() =>
+            this.onFailed?.(reservation, error),
+        );
     }
 }

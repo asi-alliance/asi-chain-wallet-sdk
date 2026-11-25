@@ -46,7 +46,8 @@ parsed and structurally validated before use:
   (integers `0 … 255`), and an index-keyed object must carry contiguous ordered
   keys, so the decoded bytes cannot differ from what the record declares;
 - a stored reservation must match its serialized structure, including
-  digits-only amounts and a parseable timestamp.
+  serialized decimal amounts, a parseable timestamp, and, when present, a native token
+  precision that is an integer from `0` to `18`.
 
 A failure raises `CorruptedDataError`, never `InvalidPasswordError`.
 
@@ -174,8 +175,20 @@ would not be the one the path string names.
   - The signed digest is `blake2b-256` over the protobuf-serialized `DeployData`,
     whose `validAfterBlockNumber` and `timestamp` are filled in by the SDK from
     the current chain head rather than by the caller.
-  - The payload is validated before it is hashed: non-empty term, phlo limit and
-    phlo price within the positive safe integer range, non-blank shard id.
+  - The protobuf layout follows the node API profile of the current network:
+    `scala` writes the phlo price as int64 in field 7 (classic layout), `rust`
+    writes it as exactly 32 unsigned big-endian bytes in field 15 and leaves
+    field 7 out (uint256 layout, Rust node API #881). The same payload therefore
+    has a different digest per profile, and a signature made for one profile does
+    not verify on the other.
+  - The payload is validated before it is hashed: non-empty term, phlo limit
+    within the positive safe integer range, phlo price from 1 up to the bound of
+    the profile (`Number.MAX_SAFE_INTEGER` on `scala`, `2^256 - 1` on `rust`),
+    a maximum phlo charge (`phloLimit * phloPrice`) within `2^256 - 1`, non-blank
+    shard id. The uint256 serializer checks the price once more and refuses a
+    value that does not fit 32 bytes.
+  - Integer fields are written only from safe integers (anything else throws),
+    and a negative `validAfterBlockNumber` is encoded as a valid 10-byte varint.
   - A deploy may be signed without being submitted (`Client.signDeploy`), which
     returns the signature, the deployer public key, the algorithm name, and the
     signed `DeployData` — never key material. Submitting it is the caller's step
@@ -183,6 +196,9 @@ would not be the one the path string names.
 - Source of truth:
   - `src/services/Signer/index.ts`
   - `src/services/TransactionService/index.ts`
+  - `src/domains/NodeApiAdapter/index.ts`, `src/domains/NodeApiAdapter/Rust/index.ts`
+  - `src/domains/BinaryWriter/index.ts`
+  - `src/fabrics/deployPhlo.ts`
   - `src/domains/Signer/index.ts`
   - `src/domains/SigningSession/index.ts`
   - `src/domains/AutoTimer/index.ts`
