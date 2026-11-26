@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import Account from "@domains/Account";
 import Asset, { getNativeAsset } from "@domains/Asset";
 import Client from "@domains/Client";
@@ -22,6 +23,11 @@ interface IFundedWallet {
     wallet: Wallet;
     account: Account;
     request: { walletId: string; accountId: string };
+}
+
+interface IMinPhloPriceStatusCase {
+    status: unknown;
+    minPhloPrice: bigint;
 }
 
 const PASSWORD: string = "uint256-fixture-password";
@@ -48,6 +54,37 @@ const STARTING_PHLO_PRICE: number = 1;
 const CHANGED_PHLO_PRICE: number = 100;
 
 const MALFORMED_BALANCE: string = "1e2";
+
+const NODE_API_STATUS_PATH: string = "/api/status";
+
+const NODE_MIN_PHLO_PRICE: string = "100000000000";
+const BELOW_NODE_MIN_PHLO_PRICE: string = "99999999999";
+const SCALA_MIN_PHLO_PRICE: number = 100;
+const RAISED_MIN_PHLO_PRICE: string = "200000000000";
+
+const MIN_PHLO_CHARGE: bigint =
+    BigInt(DEFAULT_PHLO_LIMIT) * BigInt(NODE_MIN_PHLO_PRICE);
+
+const DEFAULT_MIN_PHLO_PRICE: bigint = BigInt(DEFAULT_PHLO_PRICE);
+
+const BELOW_NODE_MIN_PHLO_PRICE_ERROR: RegExp =
+    /Phlo price must not be less than the node minimum 100000000000/;
+
+const MIN_PHLO_PRICE_STATUS_CASES: IMinPhloPriceStatusCase[] = [
+    {
+        status: { minPhloPrice: NODE_MIN_PHLO_PRICE },
+        minPhloPrice: BigInt(NODE_MIN_PHLO_PRICE),
+    },
+    {
+        status: { minPhloPrice: SCALA_MIN_PHLO_PRICE },
+        minPhloPrice: BigInt(SCALA_MIN_PHLO_PRICE),
+    },
+    { status: undefined, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+    { status: {}, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+    { status: { minPhloPrice: "0" }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+    { status: { minPhloPrice: "1e11" }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+    { status: { minPhloPrice: 1.5 }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+];
 
 let node: IPrecisionNode;
 let client: Client;
@@ -88,6 +125,18 @@ const getLastSubmittedDeploy = (): SignedResult => {
 const getDeploysSubmittedSince = (submittedCount: number): SignedResult[] =>
     node.getSubmittedDeploys().slice(submittedCount);
 
+const countStatusRequests = (): number =>
+    node.requests.filter((url: string) => url === NODE_API_STATUS_PATH).length;
+
+const findReservation = (
+    reservations: ITransactionReservation[],
+    deployId: string,
+): ITransactionReservation | undefined =>
+    reservations.find(
+        (reservation: ITransactionReservation) =>
+            reservation.details.deployId === deployId,
+    );
+
 test.before(async () => {
     node = await startPrecisionNode(NATIVE_TOKEN_DECIMALS);
 });
@@ -101,7 +150,7 @@ test.beforeEach(async () => {
     client = await createClient();
 
     node.setBalance(INITIAL_BALANCE);
-    node.setPhloStatus({ minPhloPrice: "1" });
+    node.setStatusResponse(undefined);
 });
 
 test.afterEach(async () => {
@@ -308,4 +357,132 @@ test("wide balances stay exact and malformed balances never become zero", async 
 
     assert.equal(maxBalance, MAX_UINT256);
     assert.equal(zeroBalance, 0n);
+});
+
+test("operations without a phlo price sign and reserve the node minimum read once", async () => {
+    console.log("\n=== NODE MINIMUM PHLO PRICE ===");
+
+    node.setStatusResponse({ minPhloPrice: NODE_MIN_PHLO_PRICE });
+
+    const { account, request }: IFundedWallet = await createFundedWallet();
+
+    const statusRequestCount: number = countStatusRequests();
+
+    await client.transfer({
+        ...request,
+        to: account.getAddress(),
+        amount: TRANSFER_AMOUNT,
+    });
+
+    const transferDeploy: SignedResult = getLastSubmittedDeploy();
+
+    await client.deploy({ ...request, term: DEPLOY_TERM });
+
+    const deployDeploy: SignedResult = getLastSubmittedDeploy();
+
+    const reservations: ITransactionReservation[] =
+        await client.getReservations(request.walletId);
+
+    console.log("    Transfer phlo price:", transferDeploy.data.phloPrice);
+    console.log("    Deploy phlo price:", deployDeploy.data.phloPrice);
+    console.log(
+        "    Status requests:",
+        countStatusRequests() - statusRequestCount,
+    );
+
+    assert.equal(transferDeploy.data.phloPrice, NODE_MIN_PHLO_PRICE);
+    assert.equal(deployDeploy.data.phloPrice, NODE_MIN_PHLO_PRICE);
+    assert.equal(
+        findReservation(reservations, transferDeploy.signature)?.pendingAmount,
+        (TRANSFER_AMOUNT + MIN_PHLO_CHARGE).toString(),
+    );
+    assert.equal(
+        findReservation(reservations, deployDeploy.signature)?.pendingAmount,
+        MIN_PHLO_CHARGE.toString(),
+    );
+    assert.equal(client.getTransferGasReserve(), MIN_PHLO_CHARGE);
+    assert.equal(countStatusRequests() - statusRequestCount, 1);
+});
+
+test("a phlo price below the node minimum is refused before signing", async () => {
+    console.log("\n=== PHLO PRICE BELOW THE NODE MINIMUM ===");
+
+    node.setStatusResponse({ minPhloPrice: NODE_MIN_PHLO_PRICE });
+
+    const { request }: IFundedWallet = await createFundedWallet();
+
+    const submittedCount: number = node.getSubmittedDeploys().length;
+
+    await assert.rejects(
+        client.deploy({
+            ...request,
+            term: DEPLOY_TERM,
+            phloPrice: BELOW_NODE_MIN_PHLO_PRICE,
+        }),
+        BELOW_NODE_MIN_PHLO_PRICE_ERROR,
+    );
+    await assert.rejects(
+        client.signDeploy({
+            ...request,
+            term: DEPLOY_TERM,
+            phloPrice: BELOW_NODE_MIN_PHLO_PRICE,
+        }),
+        BELOW_NODE_MIN_PHLO_PRICE_ERROR,
+    );
+
+    const reservations: ITransactionReservation[] =
+        await client.getReservations(request.walletId);
+
+    console.log(
+        "    Submitted deploys:",
+        node.getSubmittedDeploys().length - submittedCount,
+    );
+    console.log("    Reservations:", reservations.length);
+
+    assert.equal(node.getSubmittedDeploys().length, submittedCount);
+    assert.equal(reservations.length, 0);
+});
+
+for (const { status, minPhloPrice } of MIN_PHLO_PRICE_STATUS_CASES) {
+    test(`node status ${JSON.stringify(status)} gives the minimum phlo price ${minPhloPrice}`, async () => {
+        console.log(
+            `\n=== MINIMUM PHLO PRICE FROM ${JSON.stringify(status)} ===`,
+        );
+
+        node.setStatusResponse(status);
+
+        const nodeMinPhloPrice: bigint = await client.getMinPhloPrice();
+
+        console.log("    Minimum phlo price:", nodeMinPhloPrice.toString());
+
+        assert.equal(nodeMinPhloPrice, minPhloPrice);
+    });
+}
+
+test("the minimum phlo price is read again after a failed read and after a network switch", async () => {
+    console.log("\n=== MINIMUM PHLO PRICE LIFETIME ===");
+
+    const unreadMinPhloPrice: bigint = await client.getMinPhloPrice();
+
+    node.setStatusResponse({ minPhloPrice: NODE_MIN_PHLO_PRICE });
+
+    const firstMinPhloPrice: bigint = await client.getMinPhloPrice();
+
+    node.setStatusResponse({ minPhloPrice: RAISED_MIN_PHLO_PRICE });
+
+    const keptMinPhloPrice: bigint = await client.getMinPhloPrice();
+
+    client.setNetwork(WIDE_NETWORK);
+
+    const switchedMinPhloPrice: bigint = await client.getMinPhloPrice();
+
+    console.log("    Without a status:", unreadMinPhloPrice.toString());
+    console.log("    First read:", firstMinPhloPrice.toString());
+    console.log("    Same network:", keptMinPhloPrice.toString());
+    console.log("    After the switch:", switchedMinPhloPrice.toString());
+
+    assert.equal(unreadMinPhloPrice, DEFAULT_MIN_PHLO_PRICE);
+    assert.equal(firstMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
+    assert.equal(keptMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
+    assert.equal(switchedMinPhloPrice, BigInt(RAISED_MIN_PHLO_PRICE));
 });

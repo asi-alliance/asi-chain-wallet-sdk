@@ -28,7 +28,8 @@ import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
     TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
-import { createDeployPhlo, IDeployPhlo, resolveDeployPhlo } from "@fabrics/deployPhlo";
+import { IDeployPhlo, resolveDeployPhlo } from "@fabrics/deployPhlo";
+import type { IValidatorPhloParameters } from "@domains/ValidatorClient";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
@@ -594,39 +595,42 @@ export default class ReservationAdapter {
         };
     }
 
-    private static validateDeployPhlo(
-        api: NodeApiAdapter,
-        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-        { context }: IErrorContext,
-    ): IDeployPhlo {
-        ensureValid(
-            validatePhloSettings(phlo, {
-                maxPhloPrice: api.getMaxPhloPrice(),
-            }),
-            { context },
-        );
-
-        return createDeployPhlo(phlo);
-    }
-
     public static getTransferGasReserve(
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
     ): bigint {
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+        const session = nodeApiProvider.getNetworkSession();
+        const parameters: IValidatorPhloParameters =
+            session.getKnownPhloParameters() ?? {
+                minPhloPrice: session.getKnownMinPhloPrice(),
+            };
 
-        const { maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.validateDeployPhlo(api, phlo, {
-                context: "ReservationAdapter.getTransferGasReserve",
-            });
+        const { maxPhloCharge }: IDeployPhlo = resolveDeployPhlo(
+            api,
+            phlo,
+            parameters,
+            { context: "ReservationAdapter.getTransferGasReserve" },
+        );
 
         return api.getTransferGasReserve(maxPhloCharge);
     }
 
-    public static async getTransferQuote(preferredPhloLimit?: number): Promise<ITransferQuote> {
-        const api = NodeApiProvider.getInstance().getApi();
-        const { phloLimit, phloPrice, maxPhloCharge } = await resolveDeployPhlo(
-            api, {}, { context: "Client.getTransferQuote" }, preferredPhloLimit,
+    public static async getTransferQuote(
+        preferredPhloLimit?: number,
+    ): Promise<ITransferQuote> {
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+        const parameters: IValidatorPhloParameters =
+            await nodeApiProvider.getNetworkSession().getPhloParameters();
+        const { phloLimit, phloPrice, maxPhloCharge } = resolveDeployPhlo(
+            api,
+            {},
+            parameters,
+            { context: "Client.getTransferQuote" },
+            preferredPhloLimit,
         );
+
         return {
             phloLimit,
             phloPrice,
@@ -647,15 +651,27 @@ export default class ReservationAdapter {
         const nativeTokenDecimals: number =
             ReservationAdapter.getNetworkPrecision(networkId);
 
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const session = nodeApiProvider.getNetworkSession();
+        const requestedDetails: ITransferDetails = { ...details };
+        const minPhloPrice: bigint = await session.getMinPhloPrice();
 
         const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-            await resolveDeployPhlo(api, requested, {
-                context: "ReservationAdapter.transfer",
-            });
+            resolveDeployPhlo(
+                api,
+                requestedDetails,
+                {
+                    minPhloPrice,
+                    maxPhloLimit:
+                        session.getKnownPhloParameters()?.maxPhloLimit,
+                },
+                { context: "ReservationAdapter.transfer" },
+            );
 
         const transferDetails: ITransferDetails = {
-            ...requested,
+            ...requestedDetails,
             phloLimit,
             phloPrice,
         };
@@ -724,18 +740,29 @@ export default class ReservationAdapter {
 
         const nativeTokenDecimals: number =
             ReservationAdapter.getNetworkPrecision(networkId);
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const session = nodeApiProvider.getNetworkSession();
+        const requestedDetails: TDeployDetails = { ...details };
+        const minPhloPrice: bigint = await session.getMinPhloPrice();
 
         const {
             phloLimit,
             phloPrice,
             maxPhloCharge: pendingAmount,
-        }: IDeployPhlo = await resolveDeployPhlo(api, requested, {
-            context: "ReservationAdapter.deploy",
-        });
+        }: IDeployPhlo = resolveDeployPhlo(
+            api,
+            requestedDetails,
+            {
+                minPhloPrice,
+                maxPhloLimit: session.getKnownPhloParameters()?.maxPhloLimit,
+            },
+            { context: "ReservationAdapter.deploy" },
+        );
 
         const deployDetails: TDeployDetails = {
-            ...requested,
+            ...requestedDetails,
             phloLimit,
             phloPrice,
         };

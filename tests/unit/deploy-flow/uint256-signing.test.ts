@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { getPublicKey, sign, verify } from "@noble/secp256k1";
 import blakejs from "blakejs";
 
+import { DEFAULT_PHLO_PRICE } from "@config/index";
 import { IApiClients } from "@domains/ApiClientManager";
 import { DeployData, PhloPrice } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
@@ -42,6 +43,8 @@ const SYNTHETIC_PRIVATE_KEY: Uint8Array = new Uint8Array(
 ).fill(SYNTHETIC_PRIVATE_KEY_BYTE);
 
 const CLASSIC_PHLO_PRICE: number = 1;
+
+const DEFAULT_MIN_PHLO_PRICE: bigint = BigInt(DEFAULT_PHLO_PRICE);
 
 const WIDE_PHLO_PRICE: string = "9007199254740993";
 const WIDE_PHLO_LIMIT: number = 3;
@@ -224,15 +227,15 @@ test("deploy phlo keeps the exact maximum charge and refuses a charge above uint
     console.log("\n=== DEPLOY PHLO CHARGE ===");
 
     const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-        createDeployPhlo({
-            phloLimit: WIDE_PHLO_LIMIT,
-            phloPrice: WIDE_PHLO_PRICE,
-        });
+        createDeployPhlo(
+            { phloLimit: WIDE_PHLO_LIMIT, phloPrice: WIDE_PHLO_PRICE },
+            DEFAULT_MIN_PHLO_PRICE,
+        );
 
-    const maxPriceCharge: bigint = createDeployPhlo({
-        phloLimit: 1,
-        phloPrice: MAX_UINT256,
-    }).maxPhloCharge;
+    const maxPriceCharge: bigint = createDeployPhlo(
+        { phloLimit: 1, phloPrice: MAX_UINT256 },
+        DEFAULT_MIN_PHLO_PRICE,
+    ).maxPhloCharge;
 
     console.log("    Maximum charge:", maxPhloCharge.toString());
 
@@ -241,7 +244,11 @@ test("deploy phlo keeps the exact maximum charge and refuses a charge above uint
     assert.equal(maxPhloCharge, WIDE_MAX_PHLO_CHARGE);
     assert.equal(maxPriceCharge, MAX_UINT256);
     assert.throws(
-        () => createDeployPhlo({ phloLimit: 2, phloPrice: MAX_UINT256 }),
+        () =>
+            createDeployPhlo(
+                { phloLimit: 2, phloPrice: MAX_UINT256 },
+                DEFAULT_MIN_PHLO_PRICE,
+            ),
         PHLO_CHARGE_OVERFLOW_ERROR,
     );
 });

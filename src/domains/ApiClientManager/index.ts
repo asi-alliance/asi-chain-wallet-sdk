@@ -3,6 +3,7 @@ import ObserverClient from "@domains/ObserverClient";
 import ValidatorClient from "@domains/ValidatorClient";
 import NetworkConfigProvider from "@domains/NetworkConfigProvider";
 import NetworkBusyRegistry from "@domains/NetworkBusyRegistry";
+import NetworkSession from "@domains/NetworkSession";
 import {
     INetworkConfig,
     INetworkContext,
@@ -46,6 +47,8 @@ export default class ApiClientManager {
     private validatorClient: ValidatorClient | null = null;
     private observerClient: ObserverClient | null = null;
     private indexerClient: IndexerClient | null = null;
+
+    private networkSession: NetworkSession | null = null;
 
     private currentNetworkId: NetworkId | null = null;
 
@@ -99,6 +102,14 @@ export default class ApiClientManager {
         this.observerClient = observer;
         this.indexerClient = indexer;
 
+        this.networkSession = new NetworkSession(
+            createNodeApiAdapter(config.nodeApiProfile, {
+                validator,
+                observer,
+                indexer,
+            }),
+        );
+
         this.currentNetworkId = networkId;
     }
 
@@ -115,6 +126,11 @@ export default class ApiClientManager {
     @EnsureApiClientManagerInitialized
     public getIndexerClient(): IndexerClient {
         return this.indexerClient!;
+    }
+
+    @EnsureApiClientManagerInitialized
+    public getNetworkSession(): NetworkSession {
+        return this.networkSession!;
     }
 
     @EnsureApiClientManagerInitialized
@@ -254,6 +270,8 @@ export default class ApiClientManager {
         this.validatorClient = null;
         this.observerClient = null;
         this.indexerClient = null;
+
+        this.networkSession = null;
 
         this.currentNetworkId = null;
 

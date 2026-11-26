@@ -13,6 +13,8 @@ import {
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
+const NODE_API_STATUS_PATH: string = "/api/status";
+
 const INITIAL_BALANCE: bigint = 100000000000000000000n;
 
 const NATIVE_18_DECIMALS: number = MAX_NATIVE_TOKEN_DECIMALS;
@@ -30,6 +32,7 @@ export interface IPrecisionNode {
     setBalance: (amount: bigint) => void;
     setBalanceResponse: (value: unknown) => void;
     setPhloStatus: (value: unknown) => void;
+    setStatusResponse: (value: unknown) => void;
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
@@ -44,7 +47,7 @@ export const startPrecisionNode = async (
 ): Promise<IPrecisionNode> => {
     let balance: bigint = INITIAL_BALANCE;
     let balanceResponse: unknown;
-    let phloStatus: unknown = { minPhloPrice: "1" };
+    let statusResponse: unknown = { minPhloPrice: "1" };
 
     const requests: string[] = [];
     const submittedDeploys: SignedResult[] = [];
@@ -75,8 +78,9 @@ export const startPrecisionNode = async (
 
         requests.push(url);
 
-        if (url === "/api/status" || url === "/status") {
-            sendJson(response, phloStatus);
+        if (url === NODE_API_STATUS_PATH && statusResponse !== undefined) {
+            sendJson(response, statusResponse);
+
             return;
         }
 
@@ -180,7 +184,10 @@ export const startPrecisionNode = async (
             balanceResponse = value;
         },
         setPhloStatus: (value: unknown) => {
-            phloStatus = value;
+            statusResponse = value;
+        },
+        setStatusResponse: (value: unknown) => {
+            statusResponse = value;
         },
         getSubmittedDeploys: () => submittedDeploys,
         close: () =>

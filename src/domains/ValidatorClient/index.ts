@@ -1,6 +1,6 @@
 import BaseHttpClient from "@domains/BaseHttpClient";
 import { DEPLOY_VERDICT_REQUEST_TIMEOUT } from "@config/index";
-import { isRecord, isUint256 } from "@utils/guards";
+import { isPhloPrice, isRecord, isUint256 } from "@utils/guards";
 
 const PHLO_PARAMETERS_TTL_MS = 60_000;
 
@@ -44,25 +44,36 @@ export default class ValidatorClient extends BaseHttpClient {
         return this.get("/status");
     }
 
+    public getApiStatus(): Promise<unknown> {
+        return this.get("/api/status");
+    }
+
     public getPhloParameters(): Promise<IValidatorPhloParameters> {
         if (this.phloParameters && Date.now() < this.phloParameters.expiresAt) {
             return this.phloParameters.result;
         }
 
-        const result = this.get<unknown>("/api/status")
+        const result = this.getApiStatus()
             .then((status) => {
                 const price = isRecord(status) ? status.minPhloPrice : undefined;
-                if (!isUint256(price)) {
-                    throw new Error("Validator returned an invalid minimum Phlo price");
+                if (!isPhloPrice(price)) {
+                    throw new Error(
+                        "Validator returned an invalid minimum Phlo price",
+                    );
                 }
                 const limit = isRecord(status) ? status.maxPhloLimit : undefined;
-                if (limit !== undefined && (!isUint256(limit) || BigInt(limit) === 0n)) {
-                    throw new Error("Validator returned an invalid maximum Phlo limit");
+                if (
+                    limit !== undefined &&
+                    (!isUint256(limit) || BigInt(limit) === 0n)
+                ) {
+                    throw new Error(
+                        "Validator returned an invalid maximum Phlo limit",
+                    );
                 }
-                const minPhloPrice = BigInt(price);
                 return {
-                    minPhloPrice: minPhloPrice > 0n ? minPhloPrice : 1n,
-                    maxPhloLimit: limit === undefined ? undefined : BigInt(limit),
+                    minPhloPrice: BigInt(price),
+                    maxPhloLimit:
+                        limit === undefined ? undefined : BigInt(limit),
                 };
             })
             .catch((error: unknown) => {

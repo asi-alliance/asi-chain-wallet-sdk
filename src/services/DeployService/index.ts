@@ -123,7 +123,10 @@ export default class DeployService {
         }
 
         if (isRejectedByServer(error)) {
-            return new DeploySubmissionRejectedError(SUBMIT_OPERATION, reason);
+            return new DeploySubmissionRejectedError(
+                SUBMIT_OPERATION,
+                refusalReason,
+            );
         }
 
         return new DeploySubmissionUnknownError(

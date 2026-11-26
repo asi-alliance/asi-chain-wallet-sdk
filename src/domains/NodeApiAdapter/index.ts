@@ -126,6 +126,10 @@ export default abstract class NodeApiAdapter {
         return this.clients.validator.getStatus();
     }
 
+    public getValidatorApiStatus(): Promise<unknown> {
+        return this.clients.validator.getApiStatus();
+    }
+
     public getPhloParameters(): Promise<IValidatorPhloParameters> {
         return this.clients.validator.getPhloParameters();
     }

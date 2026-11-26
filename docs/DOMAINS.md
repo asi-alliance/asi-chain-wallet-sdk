@@ -332,12 +332,15 @@ with a fixed number of decimals. A balance is read exactly: the node may return 
 number or a decimal string (`ExprInt` / `ExprBigInt`), and a value outside
 `0 … MAX_UINT256` is refused with `BalanceUnavailableError`.
 
-`transfer` signs with the default phlo (`DEFAULT_PHLO_LIMIT`,
-`DEFAULT_PHLO_PRICE`) and reserves `amount` plus the **transfer gas reserve** of
+`transfer` signs with the default phlo (`DEFAULT_PHLO_LIMIT` and the minimum
+phlo price of the current network, see [NetworkSession](#networksession-srcdomainsnetworksessionindexts))
+and reserves `amount` plus the **transfer gas reserve** of
 the current network: `GasFee.MAX` on `scala`, the signed budget
 `phloLimit * phloPrice` on `rust`. `getTransferGasReserve()` returns that value,
 so a UI computing "Max" or a confirmation total uses the same number the SDK
-reserves. On `rust` an amount above `MAX_INT64` is sent as a Rholang BigInt
+reserves. It is synchronous and uses the minimum phlo price already read for the
+network (`DEFAULT_PHLO_PRICE` before the first read), so await
+`getMinPhloPrice()` once after a network is selected before showing it. On `rust` an amount above `MAX_INT64` is sent as a Rholang BigInt
 literal; an amount above `MAX_UINT256` is rejected.
 
 `getTransactionsHistory` is the only history entry point that knows about
@@ -441,7 +444,7 @@ funds. What happens next depends on how the submission ends:
 | --- | --- | --- |
 | Accepted: the node acknowledged the same deploy id, or answered HTTP `409` `duplicate_deploy` | kept live, funds held until confirmation, a verdict or expiry | — |
 | Refusal recognized by the node's error code (admission, queue or deploy refusal, including HTTP `503` `validator_not_bonded`) | removed from memory and storage, funds released | a `DeployRefusalError` subclass (see [CustomError](#customerror-srcdomainscustomerrorindexts)) |
-| Any other refusal (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`) |
+| Any other refusal (HTTP `4xx`) | removed from memory and storage, funds released | `DeploySubmissionRejectedError` (`400`, code `DEPLOY_SUBMISSION_REJECTED`, `reason` is the node's `message` when the body has one) |
 | Outcome unknown (dropped connection, timeout, unrecognized server error, acknowledgement without the expected deploy id) | kept, funds held | `DeploySubmissionUnknownError` (`502`, code `API_REQUEST_FAILED`, `deployId`) |
 | Wallet closed or removed before the deploy left | removed from storage, nothing is sent | `DomainClosedError` (`410`) |
 
@@ -468,7 +471,7 @@ interface IDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;     // defaults to DEFAULT_PHLO_LIMIT
-    phloPrice?: PhloPrice;  // defaults to DEFAULT_PHLO_PRICE
+    phloPrice?: PhloPrice;  // defaults to the node minimum phlo price
     shardId?: string;       // defaults to "root"
 }
 
@@ -477,7 +480,7 @@ interface ISignDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;     // defaults to DEFAULT_PHLO_LIMIT
-    phloPrice?: PhloPrice;  // defaults to DEFAULT_PHLO_PRICE
+    phloPrice?: PhloPrice;  // defaults to the node minimum phlo price
     shardId?: string;       // defaults to "root"
 }
 
@@ -494,7 +497,10 @@ number, a decimal string or a `bigint`, so a price above
 `Number.MAX_SAFE_INTEGER` can be passed exactly. Its upper bound depends on the
 node API profile of the current network: `Number.MAX_SAFE_INTEGER` on `scala`,
 `MAX_UINT256` on `rust`, and `phloLimit * phloPrice` must not exceed
-`MAX_UINT256`. In the signed `DeployData` the price is a number on `scala` and a
+`MAX_UINT256`. Its lower bound is the minimum phlo price of the current
+network's node (`NetworkSession.getMinPhloPrice()`, `1` when the node does not
+report one); an omitted price defaults to that minimum. In the signed
+`DeployData` the price is a number on `scala` and a
 decimal string on `rust`, as each node expects; read it with
 `BigInt(data.phloPrice)`.
 
@@ -502,7 +508,8 @@ decimal string on `rust`, as each node expects; read it with
 current chain head, which is why the call needs the network and is wrapped in
 `runNetworkOperation`. The payload is validated at the signing boundary by
 `validateDeployPayload` — a blank `term`, a `phloLimit` outside the positive
-safe-integer range, a `phloPrice` below `1` or above the profile bound, or a blank
+safe-integer range, a `phloPrice` below `1`, below the node minimum or above the
+profile bound, or a blank
 `shardId` are rejected before anything is signed, and an overflowing phlo charge
 is rejected before the chain head is read. Session rules are the same as for
 `transfer`.
@@ -740,6 +747,7 @@ toExactAtomicAmount(amount: string): bigint     // exact, string only, rejects n
 toDisplayAmount(atomicAmount: bigint): string
 toAtomicAmount(amount: number | string): bigint // @deprecated, use toExactAtomicAmount
 getTransferGasReserve(): bigint                 // the gas a transfer on the current network reserves
+getMinPhloPrice(): Promise<bigint>              // the node minimum phlo price of the current network
 ```
 
 All three conversions read the decimals of the network selected **at the time of
@@ -753,8 +761,13 @@ compatibility and truncates excess digits.
 
 `getTransferGasReserve` is `ReservationAdapter.getTransferGasReserve()` for the
 current network with the default phlo: `GasFee.MAX` on `scala`,
-`DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` on `rust`. The native token decimals
-themselves are read from the network record:
+`DEFAULT_PHLO_LIMIT * minimum phlo price` on `rust`, where the minimum is the one
+already read for the network (`DEFAULT_PHLO_PRICE` before the first read).
+`getMinPhloPrice` is `ApiClientManager.getNetworkSession().getMinPhloPrice()`:
+it reads the minimum from the node on the first call after a network is
+selected and returns the kept value afterwards (see
+[NetworkSession](#networksession-srcdomainsnetworksessionindexts)). The native
+token decimals themselves are read from the network record:
 `client.getCurrentNetwork().config.nativeTokenDecimals`.
 
 Persistence & teardown:
@@ -1700,7 +1713,10 @@ a failed submission in this order:
    `retryable`.
 5. Any other HTTP `4xx` (`isRejectedByServer`, see
    [Guards](UTILS.md#guards-srcutilsguardsindexts)) is a plain
-   `DeploySubmissionRejectedError`.
+   `DeploySubmissionRejectedError`; its `reason` is the node's non-blank
+   `message` when the body has one (for example a `400` `illegal_argument`
+   "Phlo price 1 is less than minimum price ..."), otherwise the transport
+   message.
 6. Anything else (no response, a timeout, an unrecognized `5xx`) is
    `DeploySubmissionUnknownError` carrying the local `deployId`, and so is a
    successful answer whose deploy id is missing, not a string, or differs from
@@ -2100,9 +2116,10 @@ cannot be modified or deleted.
 ## ApiClientManager (`src/domains/ApiClientManager/index.ts`)
 
 Singleton that owns the transport clients (`ValidatorClient`, `ObserverClient`,
-`IndexerClient`), the `NetworkConfigProvider` registry, and the currently
-selected network id. Switching a network rebuilds the three clients from that
-network's URLs.
+`IndexerClient`), the `NetworkConfigProvider` registry, the currently
+selected network id and its `NetworkSession`. Switching a network rebuilds the
+three clients from that network's URLs and starts a new `NetworkSession` over
+them, so the data read from the previous network's node is dropped.
 
 ```ts
 ApiClientManager.getInstance(): ApiClientManager
@@ -2112,6 +2129,7 @@ getValidatorClient(): ValidatorClient
 getObserverClient(): ObserverClient
 getIndexerClient(): IndexerClient
 getClients(): IApiClients
+getNetworkSession(): NetworkSession                         // node data of the selected network, see NetworkSession
 
 // network registry
 getCurrentNetworkId(): NetworkId
@@ -2206,6 +2224,40 @@ outside `ApiClientManager` mutates it — callers reach the state through
 
 ---
 
+## NetworkSession (`src/domains/NetworkSession/index.ts`)
+
+Data of the selected network that only its node knows and that has to be
+requested. `INetworkContext` is a snapshot of the network config with clients and
+an adapter; `NetworkSession` holds what the node reported. One session is created
+by `ApiClientManager.switchNetwork` (and so by `Client.setNetwork` and by an
+update of the active network) over the `NodeApiAdapter` of that network, and is
+dropped by the next switch or by `close()`.
+
+```ts
+new NetworkSession(api: NodeApiAdapter)
+getMinPhloPrice(): Promise<bigint> // reads the node minimum once, then returns the kept value
+getKnownMinPhloPrice(): bigint     // the kept value, DEFAULT_PHLO_PRICE before a successful read
+```
+
+`getMinPhloPrice` reads `minPhloPrice` from the validator's `GET /api/status`
+(`NodeApiAdapter.getValidatorApiStatus()`): a decimal string on `rust`, a number
+on `scala`, accepted when it is a positive uint256 (`isPhloPrice`). The read is
+lazy, so creating a client or switching a network sends no request; concurrent
+first calls share one request. A successful value is kept for the life of the
+session, on the assumption that the node minimum does not change while a network
+is selected. A failed request or an unusable answer is not kept: the call returns
+`DEFAULT_PHLO_PRICE` and the next call reads again.
+
+`TransactionService.signDeploy` and `ReservationAdapter.transfer` / `deploy` use
+the minimum as the default phlo price and as the lower bound of an explicit one
+(`validatePhloSettings`), so the signed price, the reservation and the balance
+check agree. `ReservationAdapter.getTransferGasReserve` is synchronous and uses
+`getKnownMinPhloPrice()`. Services reach the session through
+`NodeApiProvider.getNetworkSession()`, `Client.getMinPhloPrice()` through
+`ApiClientManager.getNetworkSession()`.
+
+---
+
 ## NodeApiProfile (`src/domains/NodeApiProfile/index.ts`)
 
 The discriminator that says which node implementation a network runs. Data only,
@@ -2284,6 +2336,7 @@ abstract class NodeApiAdapter {
     getBlocks(params?: IGetBlocksParams): Promise<IBlockDto[]>
     getLatestBlockNumber(): Promise<number>                      // base: blockNumber of GET /api/blocks
     getValidatorStatus(): Promise<unknown>
+    getValidatorApiStatus(): Promise<unknown>                    // GET /api/status of the validator, read by NetworkSession
     getTransactionHistory(address, publicKey, pagination?): Promise<TransactionHistoryQueryData>
 
     // override points
@@ -2331,10 +2384,13 @@ by `createApiClients` when the clients of a network are built.
 
 `TransactionService.signDeploy` takes the price bound, the signed price format
 and the signing bytes from the adapter of the current network, and
-`ReservationAdapter` takes the transfer gas reserve from it. On `rust` the gas a
+`ReservationAdapter` takes the transfer gas reserve from it. The default price
+is the node minimum from `NetworkSession`. On `rust` the gas a
 transfer reserves equals the budget it is signed with (`phloLimit * phloPrice`,
-500000 by default). On `scala` it does not: a default transfer is signed with a
-budget of 500000 but reserves `GasFee.MAX` (250000), as before.
+`500000 * minimum phlo price` by default: 500000 with a minimum of 1,
+`5 * 10^16` on TestNet with `10^11`). On `scala` it does not: a default transfer
+is signed with a budget of `500000 * minimum phlo price` but reserves
+`GasFee.MAX` (250000), as before.
 
 `RustNodeApiAdapter` reads the latest block through the path with a depth
 (`/api/blocks/1`), because the TestNet gateway does not serve `/api/blocks`
@@ -2393,6 +2449,7 @@ Singleton that resolves the adapter for the active network.
 ```ts
 NodeApiProvider.getInstance(apiClientManager?: ApiClientManager): NodeApiProvider
 getApi(): NodeApiAdapter
+getNetworkSession(): NetworkSession // apiClientManager.getNetworkSession(), the session of the active network
 ```
 
 `getApi()` reads `apiClientManager.getCurrentNetwork().config.nodeApiProfile` on
@@ -2411,7 +2468,10 @@ private get api(): NodeApiAdapter {
 A caller that needs the adapter of the current network for a whole operation
 (`TransactionService.signDeploy`, `ReservationAdapter.transfer` / `deploy`)
 resolves it once at the start and keeps it, so the price bound, the signed price
-format and the reserve come from the same profile.
+format and the reserve come from the same profile. The same callers take the
+minimum phlo price from `getNetworkSession()`; unlike the adapter, the session is
+not rebuilt per call but lives until the next `switchNetwork`, which is what keeps
+the node minimum read once per network.
 
 ---
 
@@ -2502,6 +2562,7 @@ submitDeploy(deploy): Promise<any>              // POST /api/deploy
 submitExploratoryDeploy(body: unknown): Promise<any> // POST /api/explore-deploy
 getDeployFinalizationStatus(deploySignature: string): Promise<unknown> // GET /api/deploy-finalization-status/:signature
 getStatus(): Promise<any>                       // GET  /status
+getApiStatus(): Promise<unknown>                // GET  /api/status (carries minPhloPrice)
 ```
 
 `getDeployFinalizationStatus` asks the validator for its verdict on a deploy
@@ -2717,8 +2778,10 @@ ReservationAdapter.getTransferGasReserve(phlo?: Pick<TDeployDetails, "phloLimit"
 ```
 
 `getTransferGasReserve` validates the phlo settings against the price bound of
-the current network's adapter, resolves them with the defaults
-(`createDeployPhlo`), and returns `NodeApiAdapter.getTransferGasReserve` for the
+the current network's adapter and the minimum phlo price already read by the
+network's `NetworkSession` (`getKnownMinPhloPrice()`), resolves them with the
+defaults (`createDeployPhlo`, the price defaults to that minimum), and returns
+`NodeApiAdapter.getTransferGasReserve` for the
 maximum phlo charge: `GasFee.MAX` on `scala`, `phloLimit * phloPrice` on `rust`.
 Invalid phlo settings throw with the prefix
 `ReservationAdapter.getTransferGasReserve`. `Client.getTransferGasReserve()`
@@ -2735,10 +2798,12 @@ transfer gas reserve of the network for a transfer (`GasFee.MAX` on `scala`,
 `phloLimit * phloPrice` on `rust`), `phloLimit * phloPrice` for a deploy — so the
 reserved balance is a plain sum with nothing added on top of it. The phlo values
 are read from `details` **once**, when the operation starts: `transfer` and
-`deploy` validate them against the price bound of the current network, resolve
-them with `createDeployPhlo`, and sign and reserve from that snapshot, so a
-caller changing the `details` object afterwards cannot make the reservation and
-the signed deploy disagree. Each reservation is created with the precision of
+`deploy` copy `details` before anything is awaited, read the node minimum phlo
+price (`NetworkSession.getMinPhloPrice()`), validate the phlo values against the
+price bound of the current network and that minimum, resolve them with
+`createDeployPhlo` (an omitted price becomes the minimum), and sign and reserve
+from that snapshot, so a caller changing the `details` object afterwards cannot
+make the reservation and the signed deploy disagree. Each reservation is created with the precision of
 the current network.
 
 `getPendingTransactions(accountId?)` is gone. It rendered stored reservations as

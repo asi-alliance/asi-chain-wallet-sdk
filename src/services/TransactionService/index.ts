@@ -89,17 +89,25 @@ export default class TransactionService {
         passwordProvider,
     }: IDeployPayload): Promise<SignedResult> {
         const api: NodeApiAdapter = this.nodeApiProvider.getApi();
+        const session = this.nodeApiProvider.getNetworkSession();
+        const minPhloPrice: bigint = await session.getMinPhloPrice();
 
         ensureValid(
             validateDeployPayload(
                 { term, phloLimit, phloPrice, shardId },
-                { maxPhloPrice: api.getMaxPhloPrice() },
+                { maxPhloPrice: api.getMaxPhloPrice(), minPhloPrice },
             ),
             { context: "TransactionService.signDeploy" },
         );
 
-        const deployPhlo: IDeployPhlo = await resolveDeployPhlo(
-            api, { phloLimit, phloPrice }, { context: "TransactionService.signDeploy" },
+        const deployPhlo: IDeployPhlo = resolveDeployPhlo(
+            api,
+            { phloLimit, phloPrice },
+            {
+                minPhloPrice,
+                maxPhloLimit: session.getKnownPhloParameters()?.maxPhloLimit,
+            },
+            { context: "TransactionService.signDeploy" },
         );
 
         const latestBlockNumber: number =

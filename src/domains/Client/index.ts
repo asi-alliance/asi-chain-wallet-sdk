@@ -1223,13 +1223,24 @@ export default class Client extends ClosableDomain {
     }
 
     @EnsureActive
-    public getTransferQuote(preferredPhloLimit?: number): Promise<ITransferQuote> {
+    public getTransferQuote(
+        preferredPhloLimit?: number,
+    ): Promise<ITransferQuote> {
         return ReservationAdapter.getTransferQuote(preferredPhloLimit);
     }
 
     @EnsureActive
     public getValidatorPhloParameters(): Promise<IValidatorPhloParameters> {
-        return NodeApiProvider.getInstance().getApi().getPhloParameters();
+        return ApiClientManager.getInstance()
+            .getNetworkSession()
+            .getPhloParameters();
+    }
+
+    @EnsureActive
+    public getMinPhloPrice(): Promise<bigint> {
+        return ApiClientManager.getInstance()
+            .getNetworkSession()
+            .getMinPhloPrice();
     }
 
     private getOpenWallet(walletId: string): Wallet {

@@ -1,5 +1,6 @@
-import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
+import { DEFAULT_PHLO_LIMIT } from "@config/index";
 import type NodeApiAdapter from "@domains/NodeApiAdapter";
+import type { IValidatorPhloParameters } from "@domains/ValidatorClient";
 import type { IErrorContext } from "@domains/CustomError";
 import type { TDeployDetails } from "@services/TransactionService";
 import { ensureValid, isUint256, validatePhloSettings } from "@utils/index";
@@ -10,11 +11,23 @@ export interface IDeployPhlo {
     maxPhloCharge: bigint;
 }
 
+const capPhloLimit = (limit: number, maxPhloLimit?: bigint): number => {
+    if (
+        maxPhloLimit === undefined ||
+        maxPhloLimit >= BigInt(Number.MAX_SAFE_INTEGER)
+    ) {
+        return limit;
+    }
+
+    return Math.min(limit, Number(maxPhloLimit));
+};
+
 export const createDeployPhlo = (
     details: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+    defaultPhloPrice: bigint,
 ): IDeployPhlo => {
     const phloLimit: number = details.phloLimit ?? DEFAULT_PHLO_LIMIT;
-    const phloPrice: bigint = BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+    const phloPrice: bigint = BigInt(details.phloPrice ?? defaultPhloPrice);
     const maxPhloCharge: bigint = BigInt(phloLimit) * phloPrice;
 
     if (!isUint256(maxPhloCharge)) {
@@ -26,29 +39,44 @@ export const createDeployPhlo = (
     return { phloLimit, phloPrice, maxPhloCharge };
 };
 
-export const resolveDeployPhlo = async (
+/**
+ * Resolve a deploy's price and limit against the submitting validator's
+ * advertised parameters. An omitted price uses the validator minimum, an
+ * omitted limit is capped at the validator maximum, and an explicit limit
+ * above that maximum is rejected before anything is signed.
+ */
+export const resolveDeployPhlo = (
     api: NodeApiAdapter,
-    { phloLimit, phloPrice }: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-    context: IErrorContext,
+    details: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+    { minPhloPrice, maxPhloLimit }: IValidatorPhloParameters,
+    { context }: IErrorContext,
     preferredPhloLimit: number = DEFAULT_PHLO_LIMIT,
-): Promise<IDeployPhlo> => {
-    const range = { maxPhloPrice: api.getMaxPhloPrice() };
-    ensureValid(validatePhloSettings({ phloLimit, phloPrice }, range), context);
+): IDeployPhlo => {
+    ensureValid(
+        validatePhloSettings(details, {
+            maxPhloPrice: api.getMaxPhloPrice(),
+            minPhloPrice,
+        }),
+        { context },
+    );
 
-    const { minPhloPrice, maxPhloLimit } = await api.getPhloParameters();
-    const price = phloPrice === undefined ? minPhloPrice : BigInt(phloPrice);
-    const limit = phloLimit ?? preferredPhloLimit;
-    if (price < minPhloPrice) {
-        throw new Error(`Phlo price is below the validator minimum of ${minPhloPrice}`);
+    if (
+        details.phloLimit !== undefined &&
+        maxPhloLimit !== undefined &&
+        BigInt(details.phloLimit) > maxPhloLimit
+    ) {
+        throw new Error(
+            `Phlo limit exceeds the validator maximum of ${maxPhloLimit}`,
+        );
     }
-    if (phloLimit !== undefined && maxPhloLimit !== undefined && BigInt(phloLimit) > maxPhloLimit) {
-        throw new Error(`Phlo limit exceeds the validator maximum of ${maxPhloLimit}`);
-    }
-    ensureValid(validatePhloSettings({ phloLimit: limit, phloPrice: price }, range), context);
-    return createDeployPhlo({
-        phloPrice: price,
-        phloLimit: maxPhloLimit !== undefined && BigInt(limit) > maxPhloLimit
-            ? Number(maxPhloLimit)
-            : limit,
-    });
+
+    return createDeployPhlo(
+        {
+            phloPrice: details.phloPrice,
+            phloLimit:
+                details.phloLimit ??
+                capPhloLimit(preferredPhloLimit, maxPhloLimit),
+        },
+        minPhloPrice,
+    );
 };

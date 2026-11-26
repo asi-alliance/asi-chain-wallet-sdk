@@ -160,7 +160,9 @@ Current controls:
 18. Validation at the signing boundary: term, phlo limit, phlo price, and shard id
     are checked where the deploy is signed rather than at each entry point, so
     submitting a deploy, transferring, and signing without submitting are all held
-    to one rule. The phlo price bound and the serialization follow the node API
+    to one rule. The phlo price may not be below the minimum the node reports, so
+    a deploy the node would refuse for its price is not signed. The phlo price
+    bound and the serialization follow the node API
     profile (int64 price on `scala`, uint256 price on `rust`), the maximum phlo
     charge is bounded by uint256 and computed in `bigint`, and no amount or price
     outside the exact integer range is converted through a floating-point
