@@ -1,6 +1,7 @@
 import ApiClientManager from "@domains/ApiClientManager";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import { INetworkConfig } from "@domains/Network";
+import NetworkSession from "@domains/NetworkSession";
 import { createNodeApiAdapter } from "@fabrics/nodeApiAdapter";
 
 export default class NodeApiProvider {
@@ -32,5 +33,9 @@ export default class NodeApiProvider {
             config.nodeApiProfile,
             this.apiClientManager.getClients(),
         );
+    }
+
+    public getNetworkSession(): NetworkSession {
+        return this.apiClientManager.getNetworkSession();
     }
 }

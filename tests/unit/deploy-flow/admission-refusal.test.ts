@@ -28,6 +28,8 @@ const SIGNATURE = "abcdef";
 const SUBMIT_OPERATION = "DeployService.submitSignedDeploy";
 const NODE_FAILURE_REASON = "node response";
 const REFUSAL_MESSAGE = "not accepted";
+const MIN_PHLO_PRICE_MESSAGE =
+    "Phlo price 1 is less than minimum price 100000000000.";
 const QUEUE_RETRY_AFTER = "12";
 const QUEUE_RETRY_AFTER_MS = 12_000;
 const AXIOS_RETRY_AFTER = "7";
@@ -50,6 +52,10 @@ interface IRejectionCase {
 interface IFailureCase {
     status: number;
     body: unknown;
+}
+
+interface IGenericRejectionCase extends IFailureCase {
+    reason: string;
 }
 
 interface IQueueFullCase {
@@ -97,10 +103,33 @@ const REJECTION_CASES: IRejectionCase[] = [
     },
 ];
 
-const GENERIC_REJECTION_CASES: IFailureCase[] = [
-    { status: 400, body: { error: "deploy_too_large" } },
-    { status: 413, body: { error: "deploy_expired" } },
-    { status: 400, body: { error: "illegal_argument" } },
+const GENERIC_REJECTION_CASES: IGenericRejectionCase[] = [
+    {
+        status: 400,
+        body: { error: "deploy_too_large" },
+        reason: NODE_FAILURE_REASON,
+    },
+    {
+        status: 413,
+        body: { error: "deploy_expired" },
+        reason: NODE_FAILURE_REASON,
+    },
+    {
+        status: 400,
+        body: { error: "illegal_argument" },
+        reason: NODE_FAILURE_REASON,
+    },
+    {
+        status: 400,
+        body: { error: "illegal_argument", message: MIN_PHLO_PRICE_MESSAGE },
+        reason: MIN_PHLO_PRICE_MESSAGE,
+    },
+    {
+        status: 400,
+        body: { error: "illegal_argument", message: "   " },
+        reason: NODE_FAILURE_REASON,
+    },
+    { status: 400, body: "Bad request", reason: NODE_FAILURE_REASON },
 ];
 
 const UNKNOWN_OUTCOME_CASES: IFailureCase[] = [
@@ -266,7 +295,7 @@ for (const { status, code, errorCode, retryable } of REJECTION_CASES) {
     });
 }
 
-for (const { status, body } of GENERIC_REJECTION_CASES) {
+for (const { status, body, reason } of GENERIC_REJECTION_CASES) {
     test(`HTTP ${status} ${JSON.stringify(body)} stays a generic rejection`, async () => {
         console.log(`\n=== HTTP ${status} GENERIC REJECTION ===`);
 
@@ -275,10 +304,12 @@ for (const { status, body } of GENERIC_REJECTION_CASES) {
         );
 
         console.log("    Error:", (error as Error).constructor.name);
+        console.log("    Reason:", (error as ApiRequestError).reason);
 
         assert.ok(error instanceof DeploySubmissionRejectedError);
         assert.ok(!(error instanceof DeployRefusalError));
         assert.equal(error.code, CustomErrorCode.DEPLOY_SUBMISSION_REJECTED);
+        assert.equal(error.reason, reason);
     });
 }
 

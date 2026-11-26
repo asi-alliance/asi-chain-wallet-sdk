@@ -125,6 +125,10 @@ export default abstract class NodeApiAdapter {
         return this.clients.validator.getStatus();
     }
 
+    public getValidatorApiStatus(): Promise<unknown> {
+        return this.clients.validator.getApiStatus();
+    }
+
     public getTransactionHistory(
         address: string,
         publicKey: string,
