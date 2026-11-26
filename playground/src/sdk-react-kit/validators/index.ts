@@ -3,6 +3,7 @@ import {
     genRandomHex,
     isIntegerInRange,
     isNodeApiProfile,
+    isPhloPrice,
     NodeApiProfile,
     NON_NEGATIVE_INTEGER_REGEX,
     validateAccountName,
@@ -81,6 +82,25 @@ export const toIntegerRangeError = (
 
     if (!isIntegerInRange(Number(value), min, max)) {
         return `${label} must be an integer between ${min} and ${max}`;
+    }
+
+    return null;
+};
+
+export const toPhloPriceError = (
+    value: string,
+    minPhloPrice: bigint,
+): string | null => {
+    if (!value.trim()) {
+        return "Phlo price is required";
+    }
+
+    if (!isPhloPrice(value)) {
+        return "Phlo price must be a positive integer";
+    }
+
+    if (BigInt(value) < minPhloPrice) {
+        return `Phlo price must not be less than the node minimum ${minPhloPrice}`;
     }
 
     return null;

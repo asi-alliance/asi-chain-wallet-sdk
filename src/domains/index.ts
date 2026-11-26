@@ -36,6 +36,8 @@ export * from "./NetworkBusyRegistry";
 export { default as NetworkBusyRegistry } from "./NetworkBusyRegistry";
 export * from "./NetworkConfigProvider";
 export { default as NetworkConfigProvider } from "./NetworkConfigProvider";
+export * from "./NetworkSession";
+export { default as NetworkSession } from "./NetworkSession";
 export * from "./NodeApiAdapter";
 export { default as NodeApiAdapter } from "./NodeApiAdapter";
 export * from "./NodeApiProfile";

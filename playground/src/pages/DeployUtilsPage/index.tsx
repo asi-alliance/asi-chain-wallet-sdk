@@ -9,7 +9,6 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
     DEPLOY_STATUS_POLLING_TIMEOUT,
     DeployStatus,
     validateDeployPayload,
@@ -83,9 +82,13 @@ const DeployUtilsPage = (): ReactElement => {
         signDeploy,
         watchDeploy,
         exploreDeploy,
+        getMinPhloPrice,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+    const startMinPhloPriceRequest: TStartRequest = useRelevantResultGuard(
         currentNetwork?.id,
     );
 
@@ -94,6 +97,7 @@ const DeployUtilsPage = (): ReactElement => {
     const [phloLimit, setPhloLimit] = useState<string>(
         String(DEFAULT_PHLO_LIMIT),
     );
+    const [minPhloPrice, setMinPhloPrice] = useState<string>("");
     const [isSigning, setIsSigning] = useState<boolean>(false);
     const [signedResult, setSignedResult] = useState<SignedResult | null>(null);
     const [signError, setSignError] = useState<string | null>(null);
@@ -123,6 +127,22 @@ const DeployUtilsPage = (): ReactElement => {
         },
         [],
     );
+
+    useEffect(() => {
+        if (!currentNetwork) {
+            return;
+        }
+
+        const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
+
+        setMinPhloPrice("");
+
+        void getMinPhloPrice().then((price: bigint) => {
+            if (isResultRelevant()) {
+                setMinPhloPrice(price.toString());
+            }
+        });
+    }, [currentNetwork?.id]);
 
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
@@ -167,7 +187,6 @@ const DeployUtilsPage = (): ReactElement => {
         const { isValid, error } = validateDeployPayload({
             term,
             phloLimit: phloLimit.trim() ? Number(phloLimit) : undefined,
-            phloPrice: DEFAULT_PHLO_PRICE,
             shardId: FIXED_SHARD_ID,
         });
 
@@ -251,7 +270,6 @@ const DeployUtilsPage = (): ReactElement => {
                             accountId: selectedEntry.account.getId(),
                             term,
                             phloLimit: Number(phloLimit),
-                            phloPrice: DEFAULT_PHLO_PRICE,
                             shardId: FIXED_SHARD_ID,
                         },
                         password,
@@ -387,12 +405,13 @@ const DeployUtilsPage = (): ReactElement => {
                 </p>
 
                 <p className="deploy-utils-page__hint">
-                    The phlo price is pinned to {DEFAULT_PHLO_PRICE} and the
-                    shard id to <code>{FIXED_SHARD_ID}</code> here. The SDK
-                    passes both through as given, but at this stage the chain
-                    does not finalize a deploy priced differently or aimed at
-                    another shard, so such a signed payload would be rejected
-                    downstream and tell nothing about the signing itself.
+                    The phlo price is left to the SDK, which signs the minimum
+                    price the node reports in <code>/api/status</code>, and
+                    the shard id is pinned to <code>{FIXED_SHARD_ID}</code>{" "}
+                    here. At this stage the chain does not finalize a deploy
+                    aimed at another shard, so such a signed payload would be
+                    rejected downstream and tell nothing about the signing
+                    itself.
                 </p>
 
                 {accountEntries.length === 0 ? (
@@ -427,8 +446,8 @@ const DeployUtilsPage = (): ReactElement => {
                         <ConstrainedInput
                             id="sign-phlo-price"
                             label="Phlo price:"
-                            value={String(DEFAULT_PHLO_PRICE)}
-                            hint="fixed for now, the chain does not finalize deploys with another price"
+                            value={minPhloPrice}
+                            hint="the node minimum, the SDK signs it when no price is given"
                             readOnly
                         />
 

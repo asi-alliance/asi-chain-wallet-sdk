@@ -3,7 +3,6 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
     DeployStatus,
     IReservedOperationResult,
     validateDeployPayload,
@@ -12,7 +11,9 @@ import {
 } from "asi-wallet-sdk";
 import {
     formatAssetAmount,
+    isIntegerInputAllowed,
     toErrorText,
+    toPhloPriceError,
     useNativeAsset,
     useSdkContext,
 } from "../../sdk-react-kit";
@@ -26,6 +27,7 @@ import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
+import ConstrainedInput from "@components/common/ConstrainedInput";
 
 const EXAMPLE_CONTRACT = `new stdout(\`rho:io:stdout\`), deployerId(\`rho:rchain:deployerId\`) in {
   stdout!("Hello from ASI Wallet!") |
@@ -51,10 +53,14 @@ const DeployPage = (): ReactElement => {
         deploy,
         exploreDeploy,
         getAvailableBalance,
+        getMinPhloPrice,
     } = useSdkContext();
     const asset: Asset = useNativeAsset(currentNetwork);
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+    const startMinPhloPriceRequest: TStartRequest = useRelevantResultGuard(
         currentNetwork?.id,
     );
 
@@ -62,6 +68,8 @@ const DeployPage = (): ReactElement => {
     const [phloLimit, setPhloLimit] = useState<string>(
         String(DEFAULT_PHLO_LIMIT),
     );
+    const [phloPrice, setPhloPrice] = useState<string>("");
+    const [minPhloPrice, setMinPhloPrice] = useState<bigint | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -77,6 +85,28 @@ const DeployPage = (): ReactElement => {
         },
         [],
     );
+
+    useEffect(() => {
+        if (!currentNetwork) {
+            return;
+        }
+
+        const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
+
+        setMinPhloPrice(null);
+
+        void getMinPhloPrice().then((price: bigint) => {
+            if (isResultRelevant()) {
+                setMinPhloPrice(price);
+                setPhloPrice(price.toString());
+            }
+        });
+    }, [currentNetwork?.id]);
+
+    const phloPriceError: string | null =
+        minPhloPrice === null
+            ? null
+            : toPhloPriceError(phloPrice, minPhloPrice);
 
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
@@ -172,7 +202,7 @@ const DeployPage = (): ReactElement => {
 
             const reservedGasCost: bigint =
                 BigInt(parsedPhloLimit ?? DEFAULT_PHLO_LIMIT) *
-                BigInt(DEFAULT_PHLO_PRICE);
+                BigInt(phloPrice);
 
             if (balance < reservedGasCost) {
                 setError(
@@ -197,6 +227,7 @@ const DeployPage = (): ReactElement => {
                                 accountId: selectedEntry.account.getId(),
                                 term: code,
                                 phloLimit: parsedPhloLimit,
+                                phloPrice,
                             },
                             password,
                         ),
@@ -302,6 +333,25 @@ const DeployPage = (): ReactElement => {
                                 }
                             />
                         </div>
+                        <ConstrainedInput
+                            id="deploy-phlo-price"
+                            label="Phlo price:"
+                            value={phloPrice}
+                            onChange={setPhloPrice}
+                            isAllowed={(value: string) =>
+                                isIntegerInputAllowed(
+                                    value,
+                                    Number.POSITIVE_INFINITY,
+                                )
+                            }
+                            inputMode="numeric"
+                            hint={
+                                minPhloPrice === null
+                                    ? "reading the node minimum..."
+                                    : `node minimum is ${minPhloPrice}`
+                            }
+                            error={phloPriceError}
+                        />
                     </div>
                 )}
             </section>
@@ -324,7 +374,13 @@ const DeployPage = (): ReactElement => {
                         type="button"
                         className="deploy-page__action"
                         onClick={handleDeployClick}
-                        disabled={isLoading || !code.trim() || !selectedEntry}
+                        disabled={
+                            isLoading ||
+                            !code.trim() ||
+                            !selectedEntry ||
+                            minPhloPrice === null ||
+                            phloPriceError !== null
+                        }
                     >
                         Deploy
                     </button>
