@@ -644,7 +644,6 @@ export default class ReservationAdapter {
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
-        const requested = { ...details };
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
@@ -734,7 +733,6 @@ export default class ReservationAdapter {
         details: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
-        const requested = { ...details };
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
