@@ -19,6 +19,7 @@ import type { IApiClients } from "@domains/ApiClientManager";
 import type { TransactionHistoryQueryData } from "@services/GraphqlParser";
 import type { Pagination } from "@services/GraphqlParser/queryOptions";
 import type { SignedResult } from "@services/Signer";
+import type { IValidatorPhloParameters } from "@domains/ValidatorClient";
 
 export interface IExploratoryDeployClient {
     submitExploratoryDeploy(body: unknown): Promise<unknown>;
@@ -123,6 +124,10 @@ export default abstract class NodeApiAdapter {
 
     public getValidatorStatus(): Promise<unknown> {
         return this.clients.validator.getStatus();
+    }
+
+    public getPhloParameters(): Promise<IValidatorPhloParameters> {
+        return this.clients.validator.getPhloParameters();
     }
 
     public getTransactionHistory(

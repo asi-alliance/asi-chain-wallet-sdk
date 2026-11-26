@@ -25,6 +25,8 @@ import {
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
 import { PhloPrice } from "@domains/Deploy";
+import NodeApiProvider from "@domains/NodeApiProvider";
+import type { IValidatorPhloParameters } from "@domains/ValidatorClient";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -108,6 +110,14 @@ export interface ITransferRequest {
     accountId: string;
     to: Address;
     amount: bigint;
+    phloLimit?: number;
+    phloPrice?: PhloPrice;
+}
+
+export interface ITransferQuote {
+    phloLimit: number;
+    phloPrice: bigint;
+    gasReserve: bigint;
 }
 
 export interface IDeployRequest {
@@ -1047,7 +1057,7 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public transfer(
-        { walletId, accountId, to, amount }: ITransferRequest,
+        { walletId, accountId, to, amount, phloLimit, phloPrice }: ITransferRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1077,6 +1087,8 @@ export default class Client extends ClosableDomain {
                         to,
                         amount,
                         asset: getNativeAsset(this.getCurrentNetwork().config),
+                        phloLimit,
+                        phloPrice,
                     },
                     passwordProvider,
                 );
@@ -1205,8 +1217,19 @@ export default class Client extends ClosableDomain {
         );
     }
 
+    /** @deprecated Use getTransferQuote() for the active validator's terms. */
     public getTransferGasReserve(): bigint {
         return ReservationAdapter.getTransferGasReserve();
+    }
+
+    @EnsureActive
+    public getTransferQuote(preferredPhloLimit?: number): Promise<ITransferQuote> {
+        return ReservationAdapter.getTransferQuote(preferredPhloLimit);
+    }
+
+    @EnsureActive
+    public getValidatorPhloParameters(): Promise<IValidatorPhloParameters> {
+        return NodeApiProvider.getInstance().getApi().getPhloParameters();
     }
 
     private getOpenWallet(walletId: string): Wallet {

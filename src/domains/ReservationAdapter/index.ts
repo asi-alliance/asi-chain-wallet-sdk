@@ -15,6 +15,7 @@ import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
+import type { ITransferQuote } from "@domains/Client";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
@@ -27,7 +28,7 @@ import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
     TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
-import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
+import { createDeployPhlo, IDeployPhlo, resolveDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
@@ -593,7 +594,7 @@ export default class ReservationAdapter {
         };
     }
 
-    private static resolveDeployPhlo(
+    private static validateDeployPhlo(
         api: NodeApiAdapter,
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
         { context }: IErrorContext,
@@ -614,11 +615,23 @@ export default class ReservationAdapter {
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
         const { maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, phlo, {
+            ReservationAdapter.validateDeployPhlo(api, phlo, {
                 context: "ReservationAdapter.getTransferGasReserve",
             });
 
         return api.getTransferGasReserve(maxPhloCharge);
+    }
+
+    public static async getTransferQuote(preferredPhloLimit?: number): Promise<ITransferQuote> {
+        const api = NodeApiProvider.getInstance().getApi();
+        const { phloLimit, phloPrice, maxPhloCharge } = await resolveDeployPhlo(
+            api, {}, { context: "Client.getTransferQuote" }, preferredPhloLimit,
+        );
+        return {
+            phloLimit,
+            phloPrice,
+            gasReserve: api.getTransferGasReserve(maxPhloCharge),
+        };
     }
 
     public async transfer(
@@ -627,6 +640,7 @@ export default class ReservationAdapter {
         details: ITransferDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
+        const requested = { ...details };
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
@@ -636,12 +650,12 @@ export default class ReservationAdapter {
         const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
 
         const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, details, {
+            await resolveDeployPhlo(api, requested, {
                 context: "ReservationAdapter.transfer",
             });
 
         const transferDetails: ITransferDetails = {
-            ...details,
+            ...requested,
             phloLimit,
             phloPrice,
         };
@@ -704,6 +718,7 @@ export default class ReservationAdapter {
         details: TDeployDetails,
         passwordProvider?: SecretsProvider,
     ): Promise<IReservedOperationResult> {
+        const requested = { ...details };
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
@@ -715,12 +730,12 @@ export default class ReservationAdapter {
             phloLimit,
             phloPrice,
             maxPhloCharge: pendingAmount,
-        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(api, details, {
+        }: IDeployPhlo = await resolveDeployPhlo(api, requested, {
             context: "ReservationAdapter.deploy",
         });
 
         const deployDetails: TDeployDetails = {
-            ...details,
+            ...requested,
             phloLimit,
             phloPrice,
         };

@@ -20,7 +20,7 @@ import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
-import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
+import { resolveDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 
 const { blake2bHex } = blakejs;
 
@@ -98,10 +98,9 @@ export default class TransactionService {
             { context: "TransactionService.signDeploy" },
         );
 
-        const deployPhlo: IDeployPhlo = createDeployPhlo({
-            phloLimit,
-            phloPrice,
-        });
+        const deployPhlo: IDeployPhlo = await resolveDeployPhlo(
+            api, { phloLimit, phloPrice }, { context: "TransactionService.signDeploy" },
+        );
 
         const latestBlockNumber: number =
             await this.blockService.getLatestBlockNumber();

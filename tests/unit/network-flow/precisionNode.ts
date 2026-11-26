@@ -29,6 +29,7 @@ export interface IPrecisionNode {
     requests: string[];
     setBalance: (amount: bigint) => void;
     setBalanceResponse: (value: unknown) => void;
+    setPhloStatus: (value: unknown) => void;
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
@@ -43,6 +44,7 @@ export const startPrecisionNode = async (
 ): Promise<IPrecisionNode> => {
     let balance: bigint = INITIAL_BALANCE;
     let balanceResponse: unknown;
+    let phloStatus: unknown = { minPhloPrice: "1" };
 
     const requests: string[] = [];
     const submittedDeploys: SignedResult[] = [];
@@ -72,6 +74,11 @@ export const startPrecisionNode = async (
         const url: string = request.url ?? "";
 
         requests.push(url);
+
+        if (url === "/api/status" || url === "/status") {
+            sendJson(response, phloStatus);
+            return;
+        }
 
         if (url.startsWith("/api/explore-deploy")) {
             await readBody(request);
@@ -171,6 +178,9 @@ export const startPrecisionNode = async (
         },
         setBalanceResponse: (value: unknown) => {
             balanceResponse = value;
+        },
+        setPhloStatus: (value: unknown) => {
+            phloStatus = value;
         },
         getSubmittedDeploys: () => submittedDeploys,
         close: () =>
