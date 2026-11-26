@@ -180,7 +180,8 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    same key.
 8. Deploy payload validation must sit at the signing boundary, not at each entry
    point. A non-empty term, a phlo limit within the positive safe integer range, a
-   phlo price from 1 up to the bound of the node API profile (the positive safe
+   phlo price from the node minimum (1 when the node does not report one) up to
+   the bound of the node API profile (the positive safe
    integer range on `scala`, uint256 on `rust`), a maximum phlo charge within
    uint256, and a non-blank shard id must be established before a deploy is
    hashed and signed, so no caller can reach the signer with a payload that was
@@ -197,7 +198,9 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    around a check that the submitting path performs.
 10. The bytes that are signed must be the bytes the node of the current profile
     verifies: the price bound, the signed price format and the serialization
-    come from one node API adapter, resolved once per signature. The gas a
+    come from one node API adapter, resolved once per signature, and the default
+    and lower bound of the price come from the `NetworkSession` of the same
+    network. The gas a
     reservation locks comes from the adapter of the same network: a deploy
     reserves exactly its signed budget (`phloLimit * phloPrice`), and so does a
     transfer on `rust`, both computed from the same snapshot of phlo values that
