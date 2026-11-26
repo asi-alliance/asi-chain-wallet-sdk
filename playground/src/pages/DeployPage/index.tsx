@@ -46,6 +46,11 @@ const stringify = (value: unknown): string =>
         2,
     );
 
+const toPhloPriceHint = (minPhloPrice: bigint | null): string =>
+    minPhloPrice === null
+        ? "reading the node minimum..."
+        : `node minimum is ${minPhloPrice}`;
+
 const DeployPage = (): ReactElement => {
     const {
         openWallets,
@@ -346,9 +351,9 @@ const DeployPage = (): ReactElement => {
                             }
                             inputMode="numeric"
                             hint={
-                                minPhloPrice === null
-                                    ? "reading the node minimum..."
-                                    : `node minimum is ${minPhloPrice}`
+                                phloPriceError
+                                    ? undefined
+                                    : toPhloPriceHint(minPhloPrice)
                             }
                             error={phloPriceError}
                         />
