@@ -1246,6 +1246,13 @@ export default class Client extends ClosableDomain {
         return ReservationAdapter.getTransferGasReserve();
     }
 
+    @EnsureActive
+    public getMinPhloPrice(): Promise<bigint> {
+        return ApiClientManager.getInstance()
+            .getNetworkSession()
+            .getMinPhloPrice();
+    }
+
     private getOpenWallet(walletId: string): Wallet {
         const wallet: Wallet | null = this.walletManager.get(walletId);
 

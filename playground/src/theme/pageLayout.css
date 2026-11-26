@@ -84,7 +84,6 @@
     min-width: 0;
 }
 
-.deploy-page__controls,
 .tx-history-page__controls {
     align-items: flex-end;
 }
@@ -101,6 +100,7 @@
     min-width: 0;
 }
 
+.deploy-page__field > label,
 .deploy-utils-page__field > label,
 .reservations-page__field > label {
     white-space: nowrap;

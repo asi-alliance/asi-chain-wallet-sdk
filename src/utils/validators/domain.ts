@@ -409,9 +409,14 @@ export const validateReservationUpdateTarget = (
 const MIN_PHLO_VALUE: number = 1;
 const MAX_PHLO_VALUE: number = Number.MAX_SAFE_INTEGER;
 
+export interface IPhloPriceBounds {
+    maxPhloPrice: bigint;
+    minPhloPrice?: bigint;
+}
+
 export const validatePhloSettings = (
     { phloLimit, phloPrice }: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-    { maxPhloPrice }: { maxPhloPrice: bigint },
+    { maxPhloPrice, minPhloPrice = BigInt(MIN_PHLO_VALUE) }: IPhloPriceBounds,
 ): { isValid: boolean; error?: string } => {
     if (
         phloLimit !== undefined &&
@@ -438,12 +443,19 @@ export const validatePhloSettings = (
         };
     }
 
+    if (BigInt(phloPrice) < minPhloPrice) {
+        return {
+            isValid: false,
+            error: `Phlo price must not be less than the node minimum ${minPhloPrice}`,
+        };
+    }
+
     return { isValid: true };
 };
 
 export const validateDeployPayload = (
     { term, phloLimit, phloPrice, shardId }: TDeployDetails,
-    { maxPhloPrice }: { maxPhloPrice: bigint } = {
+    phloPriceBounds: IPhloPriceBounds = {
         maxPhloPrice: MAX_CLASSIC_PHLO_PRICE,
     },
 ): { isValid: boolean; error?: string } => {
@@ -452,7 +464,7 @@ export const validateDeployPayload = (
     }
 
     const phloValidation: { isValid: boolean; error?: string } =
-        validatePhloSettings({ phloLimit, phloPrice }, { maxPhloPrice });
+        validatePhloSettings({ phloLimit, phloPrice }, phloPriceBounds);
 
     if (!phloValidation.isValid) {
         return phloValidation;

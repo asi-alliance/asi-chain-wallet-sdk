@@ -1,5 +1,13 @@
 import { NetworkId } from "@domains/Network";
 import type { Address } from "@domains/Wallet";
+import {
+    DeployAdmissionCode,
+    DeployQueueCause,
+    DeployQueueRefusalCode,
+    DeployRejectionCode,
+    DeployStatus,
+    DeployVerdictStatus,
+} from "@domains/Deploy";
 
 export enum CustomErrorCode {
     WALLET_LOCKED = "WALLET_LOCKED",
@@ -27,6 +35,16 @@ export enum CustomErrorCode {
     STORAGE_OPERATION_FAILED = "STORAGE_OPERATION_FAILED",
     API_REQUEST_FAILED = "API_REQUEST_FAILED",
     DEPLOY_SUBMISSION_REJECTED = "DEPLOY_SUBMISSION_REJECTED",
+    DEPLOY_ADMISSION_REFUSED = "DEPLOY_ADMISSION_REFUSED",
+    DEPLOY_TOO_LARGE = "DEPLOY_TOO_LARGE",
+    DEPLOY_EXPIRED = "DEPLOY_EXPIRED",
+    DEPLOY_WINDOW_INVALID = "DEPLOY_WINDOW_INVALID",
+    VALIDATOR_NOT_BONDED = "VALIDATOR_NOT_BONDED",
+    DEPLOY_QUEUE_FULL = "DEPLOY_QUEUE_FULL",
+    DEPLOY_VERDICT_REJECTED = "DEPLOY_VERDICT_REJECTED",
+    DEPLOY_VERDICT_EXPIRED = "DEPLOY_VERDICT_EXPIRED",
+    DEPLOY_VERDICT_FAILED = "DEPLOY_VERDICT_FAILED",
+    DEPLOY_QUEUE_UNAVAILABLE = "DEPLOY_QUEUE_UNAVAILABLE",
     DEPLOY_TIMEOUT = "DEPLOY_TIMEOUT",
     HD_WALLET_ONLY_OPERATION = "HD_WALLET_ONLY_OPERATION",
     LAST_ACCOUNT_REMOVAL = "LAST_ACCOUNT_REMOVAL",
@@ -235,14 +253,166 @@ export class ApiRequestError extends CustomError {
 }
 
 export class DeploySubmissionRejectedError extends ApiRequestError {
-    constructor(operation: string, reason: string) {
+    constructor(
+        operation: string,
+        reason: string,
+        code: CustomErrorCode = CustomErrorCode.DEPLOY_SUBMISSION_REJECTED,
+        status: number = 400,
+    ) {
+        super(ApiSource.NODE, operation, reason, code, status);
+    }
+}
+
+export class DeployRefusalError extends DeploySubmissionRejectedError {
+    public readonly deployId: string;
+    public readonly retryable: boolean;
+    public readonly retryAfterMs: number | undefined;
+
+    constructor(
+        operation: string,
+        reason: string,
+        code: CustomErrorCode,
+        status: number,
+        deployId: string,
+        retryable: boolean,
+        retryAfterMs?: number,
+    ) {
+        super(operation, reason, code, status);
+
+        this.deployId = deployId;
+        this.retryable = retryable;
+        this.retryAfterMs = retryAfterMs;
+    }
+}
+
+export class DeployAdmissionRefusedError extends DeployRefusalError {
+    public readonly admissionCode: DeployAdmissionCode;
+
+    constructor(
+        operation: string,
+        reason: string,
+        admissionCode: DeployAdmissionCode,
+        deployId: string,
+    ) {
         super(
-            ApiSource.NODE,
             operation,
             reason,
-            CustomErrorCode.DEPLOY_SUBMISSION_REJECTED,
-            400,
+            CustomErrorCode.DEPLOY_ADMISSION_REFUSED,
+            503,
+            deployId,
+            true,
         );
+
+        this.admissionCode = admissionCode;
+    }
+}
+
+const DEPLOY_REJECTION_ERROR_CODES: Readonly<Record<DeployRejectionCode, CustomErrorCode>> = {
+    deploy_too_large: CustomErrorCode.DEPLOY_TOO_LARGE,
+    deploy_expired: CustomErrorCode.DEPLOY_EXPIRED,
+    invalid_deploy_window: CustomErrorCode.DEPLOY_WINDOW_INVALID,
+    validator_not_bonded: CustomErrorCode.VALIDATOR_NOT_BONDED,
+};
+
+export class DeployRefusedError extends DeployRefusalError {
+    public readonly rejectionCode: DeployRejectionCode;
+
+    constructor(
+        operation: string,
+        reason: string,
+        rejectionCode: DeployRejectionCode,
+        deployId: string,
+        status: number,
+    ) {
+        super(
+            operation,
+            reason,
+            DEPLOY_REJECTION_ERROR_CODES[rejectionCode],
+            status,
+            deployId,
+            rejectionCode === "invalid_deploy_window",
+        );
+
+        this.rejectionCode = rejectionCode;
+    }
+}
+
+export class DeployQueueRefusedError extends DeployRefusalError {
+    public readonly queueCode: DeployQueueRefusalCode;
+    public readonly queueCause?: DeployQueueCause;
+
+    constructor(
+        operation: string,
+        reason: string,
+        queueCode: DeployQueueRefusalCode,
+        deployId: string,
+        retryAfterMs: number | undefined,
+        queueCause?: DeployQueueCause,
+    ) {
+        super(
+            operation,
+            reason,
+            queueCode === "deploy_queue_full"
+                ? CustomErrorCode.DEPLOY_QUEUE_FULL
+                : CustomErrorCode.DEPLOY_QUEUE_UNAVAILABLE,
+            503,
+            deployId,
+            queueCode !== "deploy_queue_full" ||
+                queueCause === "deployer_share",
+            retryAfterMs,
+        );
+
+        this.queueCode = queueCode;
+        this.queueCause =
+            queueCode === "deploy_queue_full" ? queueCause : undefined;
+    }
+}
+
+const DEPLOY_VERDICT_ERROR_CODES: Readonly<
+    Record<DeployVerdictStatus, CustomErrorCode>
+> = {
+    [DeployStatus.REJECTED]: CustomErrorCode.DEPLOY_VERDICT_REJECTED,
+    [DeployStatus.EXPIRED]: CustomErrorCode.DEPLOY_VERDICT_EXPIRED,
+    [DeployStatus.FAILED]: CustomErrorCode.DEPLOY_VERDICT_FAILED,
+};
+
+const DEPLOY_VERDICT_MESSAGES: Readonly<Record<DeployVerdictStatus, string>> = {
+    [DeployStatus.REJECTED]:
+        "was rejected by the node when its deploy queue released it, and never executed",
+    [DeployStatus.EXPIRED]:
+        "expired without its effects reaching finalized state",
+    [DeployStatus.FAILED]: "executed and failed, so its effects did not apply",
+};
+
+export class DeployVerdictError extends CustomError {
+    public readonly deployId: string;
+    public readonly state: DeployVerdictStatus;
+    public readonly detail: string | undefined;
+
+    constructor(deployId: string, state: DeployVerdictStatus, detail?: string) {
+        super(
+            DEPLOY_VERDICT_ERROR_CODES[state],
+            `Deploy ${deployId} ${DEPLOY_VERDICT_MESSAGES[state]}${detail ? `: ${detail}` : ""}`,
+            422,
+        );
+
+        this.deployId = deployId;
+        this.state = state;
+        this.detail = detail;
+    }
+}
+
+export class DeploySubmissionUnknownError extends ApiRequestError {
+    public readonly deployId: string;
+
+    constructor(operation: string, reason: string, deployId: string) {
+        // TODO(next-major): Report a dedicated DEPLOY_SUBMISSION_UNKNOWN code
+        // and say in the reason that the outcome is unknown; it keeps the
+        // API_REQUEST_FAILED code and the reason that a failed submission
+        // had before.
+        super(ApiSource.NODE, operation, reason);
+
+        this.deployId = deployId;
     }
 }
 

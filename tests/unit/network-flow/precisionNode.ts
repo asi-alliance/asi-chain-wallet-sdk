@@ -13,6 +13,8 @@ import {
 
 const LATEST_BLOCK_NUMBER: number = 100;
 
+const NODE_API_STATUS_PATH: string = "/api/status";
+
 const INITIAL_BALANCE: bigint = 100000000000000000000n;
 
 const NATIVE_18_DECIMALS: number = MAX_NATIVE_TOKEN_DECIMALS;
@@ -29,6 +31,7 @@ export interface IPrecisionNode {
     requests: string[];
     setBalance: (amount: bigint) => void;
     setBalanceResponse: (value: unknown) => void;
+    setStatusResponse: (value: unknown) => void;
     getSubmittedDeploys: () => SignedResult[];
     close: () => Promise<void>;
 }
@@ -43,6 +46,7 @@ export const startPrecisionNode = async (
 ): Promise<IPrecisionNode> => {
     let balance: bigint = INITIAL_BALANCE;
     let balanceResponse: unknown;
+    let statusResponse: unknown;
 
     const requests: string[] = [];
     const submittedDeploys: SignedResult[] = [];
@@ -72,6 +76,12 @@ export const startPrecisionNode = async (
         const url: string = request.url ?? "";
 
         requests.push(url);
+
+        if (url === NODE_API_STATUS_PATH && statusResponse !== undefined) {
+            sendJson(response, statusResponse);
+
+            return;
+        }
 
         if (url.startsWith("/api/explore-deploy")) {
             await readBody(request);
@@ -171,6 +181,9 @@ export const startPrecisionNode = async (
         },
         setBalanceResponse: (value: unknown) => {
             balanceResponse = value;
+        },
+        setStatusResponse: (value: unknown) => {
+            statusResponse = value;
         },
         getSubmittedDeploys: () => submittedDeploys,
         close: () =>

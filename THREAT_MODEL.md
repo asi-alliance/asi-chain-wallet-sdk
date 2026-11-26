@@ -149,15 +149,26 @@ Current controls:
     holds at most one reservation per network, and a per-network reader/writer
     lock serializes reservation writes against each other and against network
     cleanup. A reservation is persisted before its deploy is submitted and is
-    released on a failed submission only when the node explicitly refused it;
-    reopening a wallet waits for its in-flight submissions before restoring.
+    released on a failed submission only when the node explicitly refused it
+    (an unknown outcome keeps it, and the SDK never resends a refused deploy);
+    after submission only confirmation, a terminal verdict of the node or
+    expiry releases it, never a watch timeout. Reopening a wallet waits for its
+    in-flight submissions before restoring.
 17. Typed failures: decryption, storage, and API errors carry machine-readable
     codes and structured fields, and a password check reports `false` only for an
     actual password failure.
 18. Validation at the signing boundary: term, phlo limit, phlo price, and shard id
     are checked where the deploy is signed rather than at each entry point, so
     submitting a deploy, transferring, and signing without submitting are all held
-    to one rule.
+    to one rule. The phlo price may not be below the minimum the node reports, so
+    a deploy the node would refuse for its price is not signed. The phlo price
+    bound and the serialization follow the node API
+    profile (int64 price on `scala`, uint256 price on `rust`), the maximum phlo
+    charge is bounded by uint256 and computed in `bigint`, and no amount or price
+    outside the exact integer range is converted through a floating-point
+    `Number` (the price signed as a number on `scala` is bounded by
+    `Number.MAX_SAFE_INTEGER`), so a wide value cannot be signed as a different
+    one.
 19. Explicit account targeting: operations name their wallet and account instead
     of mutating a shared "active account", so concurrent operations cannot
     redirect each other's signature, and an account is registered as busy for the
