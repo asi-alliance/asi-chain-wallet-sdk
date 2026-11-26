@@ -509,6 +509,11 @@ const useSdk = () => {
         [requireClient],
     );
 
+    const getMinPhloPrice = useCallback(
+        (): Promise<bigint> => requireClient().getMinPhloPrice(),
+        [requireClient],
+    );
+
     const getReservations = useCallback(
         (walletId: string): Promise<ITransactionReservation[]> =>
             requireClient().getReservations(walletId),
@@ -616,6 +621,7 @@ const useSdk = () => {
         getBalance,
         getAvailableBalance,
         getTransferGasReserve,
+        getMinPhloPrice,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,

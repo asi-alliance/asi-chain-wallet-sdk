@@ -30,4 +30,8 @@ export default class ValidatorClient extends BaseHttpClient {
     public getStatus() {
         return this.get("/status");
     }
+
+    public getApiStatus(): Promise<unknown> {
+        return this.get("/api/status");
+    }
 }
