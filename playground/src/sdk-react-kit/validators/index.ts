@@ -87,6 +87,27 @@ export const toIntegerRangeError = (
     return null;
 };
 
+export const toPhloLimitError = (
+    value: string,
+    maxPhloLimit: bigint | null,
+): string | null => {
+    const rangeError: string | null = toIntegerRangeError(value, {
+        label: "Phlo limit",
+        min: 1,
+        max: Number.MAX_SAFE_INTEGER,
+    });
+
+    if (rangeError) {
+        return rangeError;
+    }
+
+    if (maxPhloLimit !== null && BigInt(value) > maxPhloLimit) {
+        return `Phlo limit ${value} must not be greater than the node maximum ${maxPhloLimit}`;
+    }
+
+    return null;
+};
+
 export const toPhloPriceError = (
     value: string,
     minPhloPrice: bigint,
