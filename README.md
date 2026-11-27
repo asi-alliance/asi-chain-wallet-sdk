@@ -70,6 +70,9 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 npm install @asichain/asi-wallet-sdk
 ```
 
+For Node.js applications, use a supported LTS line (22.x, 24.x or 26.x).
+The package provides both ESM and CommonJS entry points.
+
 ---
 
 ## Quick Start
@@ -667,14 +670,15 @@ asi-chain-wallet-sdk/
 
 ### Prerequisites
 
-- Node.js 18.x or higher
-- npm 9.x or higher
+Use Node.js 26 LTS and its bundled npm for SDK development and the Playground.
+If you use nvm, run `nvm install` and `nvm use` from the repository root.
+The CI gate and release build read the same version from [`.nvmrc`](.nvmrc).
 
 ### Setup
 
 ```bash
 # Install SDK dependencies
-npm install
+npm ci
 
 # Build the SDK
 npm run build
