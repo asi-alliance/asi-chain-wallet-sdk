@@ -13,6 +13,7 @@ import {
     formatAssetAmount,
     isIntegerInputAllowed,
     toErrorText,
+    toPhloLimitError,
     toPhloPriceError,
     useNativeAsset,
     useSdkContext,
@@ -51,6 +52,19 @@ const toPhloPriceHint = (minPhloPrice: bigint | null): string =>
         ? "reading the node minimum..."
         : `node minimum is ${minPhloPrice}`;
 
+const toPhloLimitHint = (
+    isNodeRead: boolean,
+    maxPhloLimit: bigint | null,
+): string => {
+    if (!isNodeRead) {
+        return "reading the node maximum...";
+    }
+
+    return maxPhloLimit === null
+        ? `empty is the SDK default ${DEFAULT_PHLO_LIMIT}, the node reports no maximum`
+        : `empty is the SDK default ${DEFAULT_PHLO_LIMIT} or the node maximum ${maxPhloLimit} if lower`;
+};
+
 const DeployPage = (): ReactElement => {
     const {
         openWallets,
@@ -59,6 +73,7 @@ const DeployPage = (): ReactElement => {
         exploreDeploy,
         getAvailableBalance,
         getMinPhloPrice,
+        getMaxPhloLimit,
     } = useSdkContext();
     const asset: Asset = useNativeAsset(currentNetwork);
     const runSecureAction = useSecureAction();
@@ -75,6 +90,7 @@ const DeployPage = (): ReactElement => {
     );
     const [phloPrice, setPhloPrice] = useState<string>("");
     const [minPhloPrice, setMinPhloPrice] = useState<bigint | null>(null);
+    const [maxPhloLimit, setMaxPhloLimit] = useState<bigint | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -99,19 +115,28 @@ const DeployPage = (): ReactElement => {
         const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
 
         setMinPhloPrice(null);
+        setMaxPhloLimit(null);
 
-        void getMinPhloPrice().then((price: bigint) => {
-            if (isResultRelevant()) {
-                setMinPhloPrice(price);
-                setPhloPrice(price.toString());
-            }
-        });
+        void Promise.all([getMinPhloPrice(), getMaxPhloLimit()]).then(
+            ([price, limit]: [bigint, bigint | null]) => {
+                if (isResultRelevant()) {
+                    setMinPhloPrice(price);
+                    setMaxPhloLimit(limit);
+                    setPhloPrice(price.toString());
+                }
+            },
+        );
     }, [currentNetwork?.id]);
 
     const phloPriceError: string | null =
         minPhloPrice === null
             ? null
             : toPhloPriceError(phloPrice, minPhloPrice);
+
+    const phloLimitError: string | null =
+        minPhloPrice === null || !phloLimit.trim()
+            ? null
+            : toPhloLimitError(phloLimit, maxPhloLimit);
 
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
@@ -325,19 +350,28 @@ const DeployPage = (): ReactElement => {
                                 onChange={setSelectedAccountId}
                             />
                         </div>
-                        <div className="deploy-page__field">
-                            <label htmlFor="deploy-phlo-limit">
-                                Phlo limit:
-                            </label>
-                            <input
-                                id="deploy-phlo-limit"
-                                type="number"
-                                value={phloLimit}
-                                onChange={(event) =>
-                                    setPhloLimit(event.target.value)
-                                }
-                            />
-                        </div>
+                        <ConstrainedInput
+                            id="deploy-phlo-limit"
+                            label="Phlo limit:"
+                            value={phloLimit}
+                            onChange={setPhloLimit}
+                            isAllowed={(value: string) =>
+                                isIntegerInputAllowed(
+                                    value,
+                                    Number.MAX_SAFE_INTEGER,
+                                )
+                            }
+                            inputMode="numeric"
+                            hint={
+                                phloLimitError
+                                    ? undefined
+                                    : toPhloLimitHint(
+                                          minPhloPrice !== null,
+                                          maxPhloLimit,
+                                      )
+                            }
+                            error={phloLimitError}
+                        />
                         <ConstrainedInput
                             id="deploy-phlo-price"
                             label="Phlo price:"
@@ -384,7 +418,8 @@ const DeployPage = (): ReactElement => {
                             !code.trim() ||
                             !selectedEntry ||
                             minPhloPrice === null ||
-                            phloPriceError !== null
+                            phloPriceError !== null ||
+                            phloLimitError !== null
                         }
                     >
                         Deploy

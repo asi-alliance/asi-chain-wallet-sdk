@@ -478,7 +478,8 @@ validateDeployPayload(payload: TDeployDetails, bounds?: IPhloPriceBounds): { isV
 
 interface IPhloPriceBounds {
     maxPhloPrice: bigint;
-    minPhloPrice?: bigint; // defaults to 1
+    minPhloPrice?: bigint;         // defaults to 1
+    maxPhloLimit?: bigint | null;  // defaults to null, no upper bound for the limit
 }
 ```
 
@@ -516,7 +517,10 @@ node would reject, whichever entry point it used.
 it before it computes a reservation, and `validateDeployPayload` delegates to it.
 Both values are optional (an omitted limit falls back to the configured default,
 an omitted price to the node minimum). `phloLimit` must be an integer between `1` and
-`Number.MAX_SAFE_INTEGER`. `phloPrice` (`PhloPrice`: `number | string | bigint`)
+`Number.MAX_SAFE_INTEGER`, and not greater than `maxPhloLimit` when it is given;
+that error is "Phlo limit N must not be greater than the node maximum M". The
+comparison is done in `bigint`, so a maximum above `Number.MAX_SAFE_INTEGER` is
+accepted and never refuses a safe limit. `phloPrice` (`PhloPrice`: `number | string | bigint`)
 must be a canonical non-negative integer (`isUint256`) between `1` and
 `maxPhloPrice`; the error is "Phlo price must be a positive integer not greater
 than N". It must also not be below `minPhloPrice`; that error is "Phlo price must
@@ -525,7 +529,9 @@ profiles or nodes: the bounds come from the caller, which reads the upper one fr
 the node API adapter of the current network
 (`NodeApiAdapter.getMaxPhloPrice()`: `MAX_CLASSIC_PHLO_PRICE` on `scala`,
 `MAX_UINT256` on `rust`) and the lower one from its `NetworkSession`
-(`getMinPhloPrice()`). Without `minPhloPrice` the lower bound is `1`, as before.
+(`getMinPhloPrice()`), with the limit maximum from the same session
+(`getMaxPhloLimit()`). Without `minPhloPrice` the lower bound is `1`, and without
+`maxPhloLimit` (or with `null`) the limit has no node maximum, as before.
 On `scala` a string price within the bound is now
 accepted as well and signed as a number.
 
@@ -1058,16 +1064,19 @@ interface IDeployPhlo {
     maxPhloCharge: bigint; // phloLimit * phloPrice
 }
 
-createDeployPhlo(details: Pick<TDeployDetails, "phloLimit" | "phloPrice">, defaultPhloPrice: bigint): IDeployPhlo
+createDeployPhlo(details: Pick<TDeployDetails, "phloLimit" | "phloPrice">, defaultPhloPrice: bigint, maxPhloLimit?: bigint | null): IDeployPhlo
 ```
 
-`createDeployPhlo` applies `DEFAULT_PHLO_LIMIT` and the given `defaultPhloPrice`
-(the callers pass the node minimum from `NetworkSession`) once,
+`createDeployPhlo` applies the default limit and the given `defaultPhloPrice`
+(the callers pass the node minimum and maximum from `NetworkSession`) once. The
+default limit is `DEFAULT_PHLO_LIMIT`, or `maxPhloLimit` when that is lower; an
+explicit limit is never changed. It
 turns the price into a `bigint`, and computes the maximum phlo charge in
 `bigint`, never through `Number`. A charge above `MAX_UINT256` throws
 "createDeployPhlo: Maximum phlo charge exceeds uint256". It does not validate
 the values: callers run `validatePhloSettings` (or `validateDeployPayload`)
-with the bound of their node profile and the node minimum first.
+with the bound of their node profile, the node minimum and the node maximum
+first.
 
 `TransactionService.signDeploy` uses it before reading the latest block, so an
 overflow is refused without a network request. `ReservationAdapter` uses it to

@@ -103,7 +103,10 @@ Returned value (`UseSdkValue`):
   synchronous `getTransferGasReserve(): bigint` (the gas a transfer on the
   current network reserves, `client.getTransferGasReserve()`), and
   `getMinPhloPrice(): Promise<bigint>` (the node minimum phlo price of the
-  current network, `client.getMinPhloPrice()`).
+  current network, `client.getMinPhloPrice()`), and
+  `getMaxPhloLimit(): Promise<bigint | null>` (the node maximum phlo limit of
+  the current network, `null` when the node reports none,
+  `client.getMaxPhloLimit()`).
 - Reservations for externally submitted deploys:
   `addTransactionReservation(request, password?)`,
   `updateTransactionReservation(reservationId, request, password?)`,
@@ -531,7 +534,12 @@ page opens and on every network switch, and is validated by `toPhloPriceError`
 (`sdk-react-kit/validators`): required, a positive integer (`isPhloPrice`), not
 below the node minimum. Deploy stays disabled until the minimum is read and while
 the field has an error; the error replaces the hint line, so the field does not
-move. The pre-flight balance
+move. The **Phlo limit** field (`ConstrainedInput`, digits only) may be left
+empty for the SDK default; a value is validated by `toPhloLimitError`
+(`sdk-react-kit/validators`): a positive safe integer, not above the node
+maximum. The maximum is read with `sdk.getMaxPhloLimit()` together with the
+minimum price (one status request), the hint shows it, and Deploy stays disabled
+while the field has an error. The pre-flight balance
 check compares the balance against `phloLimit * phloPrice` in atomic
 units — the amount the deploy will actually reserve — instead of the ad-hoc
 division it used before. Amounts are formatted with the native asset of the
@@ -546,7 +554,9 @@ The deploy calls that sit outside the reserve-and-submit flow, in three panels:
   the raw `SignedResult` with a copy button, so it can be handed to whatever will
   submit it. The phlo price is not passed: the SDK signs the node minimum, and
   the read-only field shows it (`sdk.getMinPhloPrice()`, read again on a network
-  switch). The shard id is pinned to `"root"` in the UI: the chain does not
+  switch). The phlo limit is required and validated by `toPhloLimitError`
+  against the node maximum (`sdk.getMaxPhloLimit()`, shown in the hint when the
+  node reports one). The shard id is pinned to `"root"` in the UI: the chain does not
   currently finalize a deploy aimed at another shard, so a payload signed that
   way would fail downstream for reasons that say nothing about the signing.
 - **Watch a deploy by id** — `sdk.watchDeploy` with a configurable interval and

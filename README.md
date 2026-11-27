@@ -59,7 +59,7 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface, including the uint256 deploy signing of the Rust node API, via [NodeApiAdapter](docs/DOMAINS.md)
 - **Per-Network Token Precision** - Each network declares its native token decimals (8 by default, up to 18), and balances, transfers, reservations, and conversions follow the precision of their network, via [Network](docs/DOMAINS.md#network-srcdomainsnetworkindexts)
 - **Exact Wide Amounts** - Amounts, balances, and phlo prices up to `2^256 - 1` are handled as `bigint` and exact decimal strings, never rounded through `Number`, via [amount conversion](docs/UTILS.md#amount-conversion)
-- **Node Minimum Phlo Price** - Deploys and transfers are signed and reserved with the minimum phlo price the node of the selected network reports, read once per network, and a lower explicit price is refused before signing, via [NetworkSession](docs/DOMAINS.md#networksession-srcdomainsnetworksessionindexts)
+- **Node Minimum Phlo Price** - Deploys and transfers are signed and reserved with the minimum phlo price the node of the selected network reports, read once per network, and a lower explicit price is refused before signing; an explicit phlo limit above the maximum the node reports is refused the same way, via [NetworkSession](docs/DOMAINS.md#networksession-srcdomainsnetworksessionindexts)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
 
 ---
@@ -416,6 +416,14 @@ read, so call `getMinPhloPrice()` first when a network has just been selected.
 On TestNet the minimum is `100000000000`, so the default deploy budget and the
 transfer gas reserve are `500000 * 10^11` atomic units (0.05 ASI).
 
+The same status read also gives the largest phlo limit the node accepts
+(`maxPhloLimit`, reported by Rust nodes since node PR #1081). An explicit
+`phloLimit` above it is rejected before anything is signed or reserved ("Phlo
+limit N must not be greater than the node maximum M"), and an omitted limit is
+`DEFAULT_PHLO_LIMIT` (500000), or the node maximum when that is lower. `await
+client.getMaxPhloLimit()` returns the maximum, or `null` when the node does not
+report one (Scala nodes, older Rust nodes); then no limit is checked, as before.
+
 See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md#amount-conversion).
 
 ### Reserve Funds for a Deploy You Submit Yourself
@@ -476,7 +484,7 @@ const signed = await client.signDeploy(
         walletId: hdWallet.getId(),
         accountId: account.getId(),
         term: rholangTerm,
-        phloLimit: 500_000, // optional, defaults from config
+        phloLimit: 500_000, // optional, defaults from config; not above await client.getMaxPhloLimit() when it is not null
         phloPrice: await client.getMinPhloPrice(), // optional, the node minimum is also the default; a number, decimal string, or bigint not below it
         shardId: "root", // optional, defaults to "root"
     },
@@ -490,6 +498,7 @@ await submitToNode(signed);
 `validAfterBlockNumber` and `timestamp` are filled in by the SDK from the current
 chain head, so the call still needs the network. The payload is validated before
 anything is signed: a blank term, a non-positive or unsafe `phloLimit`, a
+`phloLimit` above the node maximum, a
 `phloPrice` below 1 or above the bound of the profile (`Number.MAX_SAFE_INTEGER`
 on `SCALA`, `2^256 - 1` on `RUST`), a `phloPrice` below the node minimum, a
 `phloLimit * phloPrice` above `2^256 - 1`, or a blank `shardId` are rejected.

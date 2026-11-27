@@ -30,6 +30,11 @@ interface IMinPhloPriceStatusCase {
     minPhloPrice: bigint;
 }
 
+interface IMaxPhloLimitStatusCase {
+    status: unknown;
+    maxPhloLimit: bigint | null;
+}
+
 const PASSWORD: string = "uint256-fixture-password";
 
 const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/uint256-flow" };
@@ -62,6 +67,13 @@ const BELOW_NODE_MIN_PHLO_PRICE: string = "99999999999";
 const SCALA_MIN_PHLO_PRICE: number = 100;
 const RAISED_MIN_PHLO_PRICE: string = "200000000000";
 
+const NODE_MAX_PHLO_LIMIT: string = "20000000";
+const ABOVE_NODE_MAX_PHLO_LIMIT: number = 20000001;
+const LOW_NODE_MAX_PHLO_LIMIT: number = 400000;
+
+const ABOVE_NODE_MAX_PHLO_LIMIT_ERROR: RegExp =
+    /Phlo limit 20000001 must not be greater than the node maximum 20000000/;
+
 const MIN_PHLO_CHARGE: bigint =
     BigInt(DEFAULT_PHLO_LIMIT) * BigInt(NODE_MIN_PHLO_PRICE);
 
@@ -84,6 +96,22 @@ const MIN_PHLO_PRICE_STATUS_CASES: IMinPhloPriceStatusCase[] = [
     { status: { minPhloPrice: "0" }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
     { status: { minPhloPrice: "1e11" }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
     { status: { minPhloPrice: 1.5 }, minPhloPrice: DEFAULT_MIN_PHLO_PRICE },
+];
+
+const MAX_PHLO_LIMIT_STATUS_CASES: IMaxPhloLimitStatusCase[] = [
+    {
+        status: { maxPhloLimit: NODE_MAX_PHLO_LIMIT },
+        maxPhloLimit: BigInt(NODE_MAX_PHLO_LIMIT),
+    },
+    {
+        status: { maxPhloLimit: LOW_NODE_MAX_PHLO_LIMIT },
+        maxPhloLimit: BigInt(LOW_NODE_MAX_PHLO_LIMIT),
+    },
+    { status: undefined, maxPhloLimit: null },
+    { status: {}, maxPhloLimit: null },
+    { status: { maxPhloLimit: "0" }, maxPhloLimit: null },
+    { status: { maxPhloLimit: "2e7" }, maxPhloLimit: null },
+    { status: { maxPhloLimit: 1.5 }, maxPhloLimit: null },
 ];
 
 let node: IPrecisionNode;
@@ -460,4 +488,256 @@ test("the minimum phlo price is read again after a failed read and after a netwo
     assert.equal(firstMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
     assert.equal(keptMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
     assert.equal(switchedMinPhloPrice, BigInt(RAISED_MIN_PHLO_PRICE));
+});
+
+test("a phlo limit up to the node maximum is signed and a limit above it is refused before signing and reserving", async () => {
+    console.log("\n=== PHLO LIMIT AGAINST THE NODE MAXIMUM ===");
+
+    node.setStatusResponse({
+        minPhloPrice: NODE_MIN_PHLO_PRICE,
+        maxPhloLimit: NODE_MAX_PHLO_LIMIT,
+    });
+
+    const { wallet, account, request }: IFundedWallet = await createFundedWallet();
+    const reservationAdapter: ReservationAdapter = new ReservationAdapter([]);
+
+    try {
+        await client.deploy({
+            ...request,
+            term: DEPLOY_TERM,
+            phloLimit: Number(NODE_MAX_PHLO_LIMIT),
+        });
+
+        const maxLimitDeploy: SignedResult = getLastSubmittedDeploy();
+
+        await client.deploy({ ...request, term: DEPLOY_TERM });
+
+        const defaultLimitDeploy: SignedResult = getLastSubmittedDeploy();
+
+        const submittedCount: number = node.getSubmittedDeploys().length;
+
+        await assert.rejects(
+            client.deploy({
+                ...request,
+                term: DEPLOY_TERM,
+                phloLimit: ABOVE_NODE_MAX_PHLO_LIMIT,
+            }),
+            ABOVE_NODE_MAX_PHLO_LIMIT_ERROR,
+        );
+        await assert.rejects(
+            client.signDeploy({
+                ...request,
+                term: DEPLOY_TERM,
+                phloLimit: ABOVE_NODE_MAX_PHLO_LIMIT,
+            }),
+            ABOVE_NODE_MAX_PHLO_LIMIT_ERROR,
+        );
+        await assert.rejects(
+            reservationAdapter.transfer(wallet, account.getId(), {
+                to: account.getAddress(),
+                amount: TRANSFER_AMOUNT,
+                asset: getNativeAsset(client.getCurrentNetwork().config),
+                phloLimit: ABOVE_NODE_MAX_PHLO_LIMIT,
+            }),
+            ABOVE_NODE_MAX_PHLO_LIMIT_ERROR,
+        );
+        assert.throws(
+            () =>
+                ReservationAdapter.getTransferGasReserve({
+                    phloLimit: ABOVE_NODE_MAX_PHLO_LIMIT,
+                }),
+            ABOVE_NODE_MAX_PHLO_LIMIT_ERROR,
+        );
+
+        const reservations: ITransactionReservation[] =
+            await client.getReservations(request.walletId);
+
+        console.log("    Maximum limit signed:", maxLimitDeploy.data.phloLimit);
+        console.log(
+            "    Default limit signed:",
+            defaultLimitDeploy.data.phloLimit,
+        );
+        console.log(
+            "    Submitted deploys above the maximum:",
+            node.getSubmittedDeploys().length - submittedCount,
+        );
+        console.log("    Reservations:", reservations.length);
+        console.log(
+            "    Adapter reservations:",
+            reservationAdapter.getReservations().length,
+        );
+
+        assert.equal(
+            maxLimitDeploy.data.phloLimit,
+            Number(NODE_MAX_PHLO_LIMIT),
+        );
+        assert.equal(defaultLimitDeploy.data.phloLimit, DEFAULT_PHLO_LIMIT);
+        assert.equal(node.getSubmittedDeploys().length, submittedCount);
+        assert.equal(reservations.length, 2);
+        assert.equal(reservationAdapter.getReservations().length, 0);
+    } finally {
+        reservationAdapter.dispose();
+    }
+});
+
+test("a node maximum below the default phlo limit is signed and reserved as the limit", async () => {
+    console.log("\n=== NODE MAXIMUM BELOW THE DEFAULT PHLO LIMIT ===");
+
+    node.setStatusResponse({
+        minPhloPrice: NODE_MIN_PHLO_PRICE,
+        maxPhloLimit: LOW_NODE_MAX_PHLO_LIMIT,
+    });
+
+    const { account, request }: IFundedWallet = await createFundedWallet();
+
+    const statusRequestCount: number = countStatusRequests();
+
+    const lowMaxPhloCharge: bigint =
+        BigInt(LOW_NODE_MAX_PHLO_LIMIT) * BigInt(NODE_MIN_PHLO_PRICE);
+
+    await client.transfer({
+        ...request,
+        to: account.getAddress(),
+        amount: TRANSFER_AMOUNT,
+    });
+
+    const transferDeploy: SignedResult = getLastSubmittedDeploy();
+
+    await client.deploy({ ...request, term: DEPLOY_TERM });
+
+    const deployDeploy: SignedResult = getLastSubmittedDeploy();
+
+    const reservations: ITransactionReservation[] =
+        await client.getReservations(request.walletId);
+
+    console.log("    Transfer phlo limit:", transferDeploy.data.phloLimit);
+    console.log("    Deploy phlo limit:", deployDeploy.data.phloLimit);
+    console.log(
+        "    Status requests:",
+        countStatusRequests() - statusRequestCount,
+    );
+
+    assert.equal(transferDeploy.data.phloLimit, LOW_NODE_MAX_PHLO_LIMIT);
+    assert.equal(deployDeploy.data.phloLimit, LOW_NODE_MAX_PHLO_LIMIT);
+    assert.equal(
+        findReservation(reservations, transferDeploy.signature)?.pendingAmount,
+        (TRANSFER_AMOUNT + lowMaxPhloCharge).toString(),
+    );
+    assert.equal(
+        findReservation(reservations, deployDeploy.signature)?.pendingAmount,
+        lowMaxPhloCharge.toString(),
+    );
+    assert.equal(client.getTransferGasReserve(), lowMaxPhloCharge);
+    assert.equal(countStatusRequests() - statusRequestCount, 1);
+});
+
+test("without a node maximum any safe phlo limit is signed", async () => {
+    console.log("\n=== NO NODE MAXIMUM ===");
+
+    node.setStatusResponse({ minPhloPrice: SCALA_MIN_PHLO_PRICE });
+
+    const { request }: IFundedWallet = await createFundedWallet();
+
+    await client.deploy({
+        ...request,
+        term: DEPLOY_TERM,
+        phloLimit: ABOVE_NODE_MAX_PHLO_LIMIT,
+    });
+
+    const nodeMaxPhloLimit: bigint | null = await client.getMaxPhloLimit();
+
+    console.log(
+        "    Signed phlo limit:",
+        getLastSubmittedDeploy().data.phloLimit,
+    );
+    console.log("    Node maximum:", nodeMaxPhloLimit);
+
+    assert.equal(
+        getLastSubmittedDeploy().data.phloLimit,
+        ABOVE_NODE_MAX_PHLO_LIMIT,
+    );
+    assert.equal(nodeMaxPhloLimit, null);
+});
+
+for (const { status, maxPhloLimit } of MAX_PHLO_LIMIT_STATUS_CASES) {
+    test(`node status ${JSON.stringify(status)} gives the maximum phlo limit ${maxPhloLimit}`, async () => {
+        console.log(
+            `\n=== MAXIMUM PHLO LIMIT FROM ${JSON.stringify(status)} ===`,
+        );
+
+        node.setStatusResponse(status);
+
+        const nodeMaxPhloLimit: bigint | null = await client.getMaxPhloLimit();
+
+        console.log("    Maximum phlo limit:", nodeMaxPhloLimit);
+
+        assert.equal(nodeMaxPhloLimit, maxPhloLimit);
+    });
+}
+
+test("a malformed node maximum keeps the node minimum phlo price from the same status", async () => {
+    console.log("\n=== MALFORMED NODE MAXIMUM ===");
+
+    node.setStatusResponse({
+        minPhloPrice: NODE_MIN_PHLO_PRICE,
+        maxPhloLimit: "0",
+    });
+
+    const statusRequestCount: number = countStatusRequests();
+
+    const nodeMinPhloPrice: bigint = await client.getMinPhloPrice();
+    const nodeMaxPhloLimit: bigint | null = await client.getMaxPhloLimit();
+
+    console.log("    Minimum phlo price:", nodeMinPhloPrice.toString());
+    console.log("    Maximum phlo limit:", nodeMaxPhloLimit);
+    console.log(
+        "    Status requests:",
+        countStatusRequests() - statusRequestCount,
+    );
+
+    assert.equal(nodeMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
+    assert.equal(nodeMaxPhloLimit, null);
+    assert.equal(countStatusRequests() - statusRequestCount, 1);
+});
+
+test("the maximum phlo limit is read with the minimum price and again after a network switch", async () => {
+    console.log("\n=== MAXIMUM PHLO LIMIT LIFETIME ===");
+
+    node.setStatusResponse({
+        minPhloPrice: NODE_MIN_PHLO_PRICE,
+        maxPhloLimit: NODE_MAX_PHLO_LIMIT,
+    });
+
+    const statusRequestCount: number = countStatusRequests();
+
+    const [firstMinPhloPrice, firstMaxPhloLimit]: [bigint, bigint | null] =
+        await Promise.all([
+            client.getMinPhloPrice(),
+            client.getMaxPhloLimit(),
+        ]);
+
+    const sharedStatusRequests: number =
+        countStatusRequests() - statusRequestCount;
+
+    node.setStatusResponse({
+        minPhloPrice: NODE_MIN_PHLO_PRICE,
+        maxPhloLimit: LOW_NODE_MAX_PHLO_LIMIT,
+    });
+
+    const keptMaxPhloLimit: bigint | null = await client.getMaxPhloLimit();
+
+    client.setNetwork(WIDE_NETWORK);
+
+    const switchedMaxPhloLimit: bigint | null = await client.getMaxPhloLimit();
+
+    console.log("    First read:", firstMinPhloPrice, firstMaxPhloLimit);
+    console.log("    Status requests for both:", sharedStatusRequests);
+    console.log("    Same network:", keptMaxPhloLimit);
+    console.log("    After the switch:", switchedMaxPhloLimit);
+
+    assert.equal(firstMinPhloPrice, BigInt(NODE_MIN_PHLO_PRICE));
+    assert.equal(firstMaxPhloLimit, BigInt(NODE_MAX_PHLO_LIMIT));
+    assert.equal(sharedStatusRequests, 1);
+    assert.equal(keptMaxPhloLimit, BigInt(NODE_MAX_PHLO_LIMIT));
+    assert.equal(switchedMaxPhloLimit, BigInt(LOW_NODE_MAX_PHLO_LIMIT));
 });

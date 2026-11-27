@@ -1350,17 +1350,18 @@ interface IDeployPayload {
 
 `signDeploy` is the shared core and is now **public**, because a caller that
 submits the deploy itself needs exactly this half: resolve the node API adapter
-of the current network → read the node minimum phlo price
-(`nodeApiProvider.getNetworkSession().getMinPhloPrice()`, read once per network)
-→ validate the payload through `validateDeployPayload`
-with the adapter's price bound and that minimum (`ensureValid` turns a rejection
+of the current network → read the node minimum phlo price and maximum phlo limit
+(`nodeApiProvider.getNetworkSession().getPhloBounds()`, one status read per
+network) → validate the payload through `validateDeployPayload`
+with the adapter's price bound, that minimum and that maximum (`ensureValid` turns a rejection
 into a thrown error) → resolve the phlo values with `createDeployPhlo` (an overflowing
 `phloLimit * phloPrice` is refused here, before any request) → read the latest
 block number → build the appropriate `TSigningContext` (HD adds `index`) →
 assemble the `DeployData` with the price in the adapter's format
 (`toDeployPhloPrice`) → serialize with the adapter (`serializeDeployData`) +
 `blake2b-256` hash + sign, and return the `SignedResult`. Defaults
-`phloLimit` from config, `phloPrice` to the node minimum and `shardId` to
+`phloLimit` from config (or to the node maximum when it is lower), `phloPrice`
+to the node minimum and `shardId` to
 `"root"`, and sets
 `validAfterBlockNumber` to the chain head minus one.
 

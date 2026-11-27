@@ -15,6 +15,7 @@ import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
+import type { INodePhloBounds } from "@domains/NetworkSession";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
@@ -596,18 +597,19 @@ export default class ReservationAdapter {
     private static resolveDeployPhlo(
         api: NodeApiAdapter,
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-        minPhloPrice: bigint,
+        { minPhloPrice, maxPhloLimit }: INodePhloBounds,
         { context }: IErrorContext,
     ): IDeployPhlo {
         ensureValid(
             validatePhloSettings(phlo, {
                 maxPhloPrice: api.getMaxPhloPrice(),
                 minPhloPrice,
+                maxPhloLimit,
             }),
             { context },
         );
 
-        return createDeployPhlo(phlo, minPhloPrice);
+        return createDeployPhlo(phlo, minPhloPrice, maxPhloLimit);
     }
 
     public static getTransferGasReserve(
@@ -620,7 +622,7 @@ export default class ReservationAdapter {
             ReservationAdapter.resolveDeployPhlo(
                 api,
                 phlo,
-                nodeApiProvider.getNetworkSession().getKnownMinPhloPrice(),
+                nodeApiProvider.getNetworkSession().getKnownPhloBounds(),
                 { context: "ReservationAdapter.getTransferGasReserve" },
             );
 
@@ -648,7 +650,7 @@ export default class ReservationAdapter {
             ReservationAdapter.resolveDeployPhlo(
                 api,
                 requestedDetails,
-                await nodeApiProvider.getNetworkSession().getMinPhloPrice(),
+                await nodeApiProvider.getNetworkSession().getPhloBounds(),
                 { context: "ReservationAdapter.transfer" },
             );
 
@@ -733,7 +735,7 @@ export default class ReservationAdapter {
         }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(
             api,
             requestedDetails,
-            await nodeApiProvider.getNetworkSession().getMinPhloPrice(),
+            await nodeApiProvider.getNetworkSession().getPhloBounds(),
             { context: "ReservationAdapter.deploy" },
         );
 

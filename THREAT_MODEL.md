@@ -161,7 +161,8 @@ Current controls:
     are checked where the deploy is signed rather than at each entry point, so
     submitting a deploy, transferring, and signing without submitting are all held
     to one rule. The phlo price may not be below the minimum the node reports, so
-    a deploy the node would refuse for its price is not signed. The phlo price
+    a deploy the node would refuse for its price is not signed; the phlo limit
+    may not be above the maximum the node reports, for the same reason. The phlo price
     bound and the serialization follow the node API
     profile (int64 price on `scala`, uint256 price on `rust`), the maximum phlo
     charge is bounded by uint256 and computed in `bigint`, and no amount or price

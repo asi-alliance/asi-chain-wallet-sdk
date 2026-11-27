@@ -26,6 +26,7 @@ import {
     toDeployIdLengthError,
     toErrorText,
     toIntegerRangeError,
+    toPhloLimitError,
     useSdkContext,
 } from "../../sdk-react-kit";
 import {
@@ -49,7 +50,6 @@ const DEFAULT_WATCH_INTERVAL_MS: string = "5000";
 
 const FIXED_SHARD_ID: string = "root";
 
-const MIN_PHLO_LIMIT: number = 1;
 const MAX_PHLO_LIMIT: number = Number.MAX_SAFE_INTEGER;
 
 const MIN_WATCH_INTERVAL_MS: number = 1000;
@@ -83,6 +83,7 @@ const DeployUtilsPage = (): ReactElement => {
         watchDeploy,
         exploreDeploy,
         getMinPhloPrice,
+        getMaxPhloLimit,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
@@ -98,6 +99,7 @@ const DeployUtilsPage = (): ReactElement => {
         String(DEFAULT_PHLO_LIMIT),
     );
     const [minPhloPrice, setMinPhloPrice] = useState<string>("");
+    const [maxPhloLimit, setMaxPhloLimit] = useState<bigint | null>(null);
     const [isSigning, setIsSigning] = useState<boolean>(false);
     const [signedResult, setSignedResult] = useState<SignedResult | null>(null);
     const [signError, setSignError] = useState<string | null>(null);
@@ -136,12 +138,16 @@ const DeployUtilsPage = (): ReactElement => {
         const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
 
         setMinPhloPrice("");
+        setMaxPhloLimit(null);
 
-        void getMinPhloPrice().then((price: bigint) => {
-            if (isResultRelevant()) {
-                setMinPhloPrice(price.toString());
-            }
-        });
+        void Promise.all([getMinPhloPrice(), getMaxPhloLimit()]).then(
+            ([price, limit]: [bigint, bigint | null]) => {
+                if (isResultRelevant()) {
+                    setMinPhloPrice(price.toString());
+                    setMaxPhloLimit(limit);
+                }
+            },
+        );
     }, [currentNetwork?.id]);
 
     const accountEntries = useMemo<IAccountEntry[]>(
@@ -177,11 +183,10 @@ const DeployUtilsPage = (): ReactElement => {
         [accountEntries, selectedAccountId],
     );
 
-    const phloLimitError: string | null = toIntegerRangeError(phloLimit, {
-        label: "Phlo limit",
-        min: MIN_PHLO_LIMIT,
-        max: MAX_PHLO_LIMIT,
-    });
+    const phloLimitError: string | null = toPhloLimitError(
+        phloLimit,
+        maxPhloLimit,
+    );
 
     const deployPayloadError: string | null = useMemo(() => {
         const { isValid, error } = validateDeployPayload({
@@ -439,7 +444,11 @@ const DeployUtilsPage = (): ReactElement => {
                                 isIntegerInputAllowed(value, MAX_PHLO_LIMIT)
                             }
                             inputMode="numeric"
-                            hint={`SDK default is ${DEFAULT_PHLO_LIMIT}`}
+                            hint={
+                                maxPhloLimit === null
+                                    ? `SDK default is ${DEFAULT_PHLO_LIMIT}`
+                                    : `SDK default is ${DEFAULT_PHLO_LIMIT}, node maximum is ${maxPhloLimit}`
+                            }
                             error={phloLimitError}
                         />
 
