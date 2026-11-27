@@ -17,6 +17,7 @@ import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
 import CryptoService from "@services/Crypto";
 import {
     IPersistedStorageDump,
+    IPersistedStorageDumpContent,
     TPersistedStorageTables,
 } from "@services/ExportPersistedStorageService";
 import { PERSISTED_STORAGE_TABLES } from "@services/StorageBootstrap";
@@ -25,7 +26,7 @@ import {
     getErrorMessage,
     TPersistedStorageDumpValidation,
     validatePersistedStorageDump,
-    validatePersistedStorageTables,
+    validatePersistedStorageDumpContent,
 } from "@utils/index";
 
 export default class ImportPersistedStorageService {
@@ -103,7 +104,7 @@ export default class ImportPersistedStorageService {
         dump: IPersistedStorageDump,
         passwordProvider: SecretsProvider,
     ): Promise<TPersistedStorageTables> {
-        const tablesSource: unknown = ImportPersistedStorageService.fromJSON(
+        const contentSource: unknown = ImportPersistedStorageService.fromJSON(
             await ImportPersistedStorageService.decryptTablesSource(
                 dump,
                 passwordProvider,
@@ -111,8 +112,9 @@ export default class ImportPersistedStorageService {
         );
 
         const validation: TPersistedStorageDumpValidation =
-            validatePersistedStorageTables(
-                tablesSource,
+            validatePersistedStorageDumpContent(
+                contentSource,
+                dump,
                 PERSISTED_STORAGE_TABLES,
             );
 
@@ -123,7 +125,7 @@ export default class ImportPersistedStorageService {
             );
         }
 
-        return tablesSource as TPersistedStorageTables;
+        return (contentSource as IPersistedStorageDumpContent).tables;
     }
 
     private static async assertStorageIsEmpty(

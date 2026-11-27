@@ -127,7 +127,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         const recordWithTimestamp = {
             ...record,
             createdAt: record.createdAt || Date.now(),
-            updatedAt: Date.now(),
+            updatedAt: record.updatedAt ?? Date.now(),
         };
 
         await this.executeTransaction(tableName, "readwrite", (store) => {
@@ -142,7 +142,7 @@ export default class BrowserStorage implements ITableService<ITableRecord> {
         const recordsWithTimestamps = records.map((record) => ({
             ...record,
             createdAt: record.createdAt || Date.now(),
-            updatedAt: Date.now(),
+            updatedAt: record.updatedAt ?? Date.now(),
         }));
 
         await this.executeTransaction(tableName, "readwrite", (store) => {

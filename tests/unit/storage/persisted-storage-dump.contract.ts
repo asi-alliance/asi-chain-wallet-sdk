@@ -28,7 +28,9 @@ import {
 import { IStorageFabricOptions, storageFabric } from "@fabrics/storage";
 import ExportPersistedStorageService, {
     IPersistedStorageDump,
+    IPersistedStorageDumpContent,
 } from "@services/ExportPersistedStorageService";
+import CryptoService from "@services/Crypto";
 import ImportPersistedStorageService from "@services/ImportPersistedStorageService";
 import { PERSISTED_STORAGE_TABLES } from "@services/StorageBootstrap";
 import StorageMigrationRunner from "@services/StorageMigrationRunner";
@@ -145,6 +147,25 @@ export const runPersistedStorageDumpContract = (
 
     const countRecords = async (tableName: string): Promise<number> =>
         (await storage.getAll(tableName)).length;
+
+    const readTimestamps = async (): Promise<Record<string, string[]>> => {
+        const timestamps: Record<string, string[]> = {};
+
+        for (const tableName of [
+            SIGNERS_DATA_KEY,
+            ACCOUNTS_DATA_KEY,
+            CUSTOM_NETWORKS_DATA_KEY,
+        ]) {
+            timestamps[tableName] = (await storage.getAll(tableName))
+                .map(
+                    ({ id, createdAt, updatedAt }: ITableRecord) =>
+                        `${id}:${createdAt}:${updatedAt}`,
+                )
+                .sort();
+        }
+
+        return timestamps;
+    };
 
     const removeImportedAccount = async (): Promise<void> => {
         const importedAccount: ITableRecord | undefined = (
@@ -284,10 +305,15 @@ export const runPersistedStorageDumpContract = (
             (signer: ITableRecord) => signer.id,
         );
 
+        const exportedTimestamps: Record<string, string[]> =
+            await readTimestamps();
+
         const dumpJson: string = JSON.stringify(await exportStorage());
 
         await clearTables(false);
         await importStorage(dumpJson);
+
+        assert.deepEqual(await readTimestamps(), exportedTimestamps);
 
         const client: Client = await createClient();
 
@@ -368,6 +394,45 @@ export const runPersistedStorageDumpContract = (
                 ),
             isRejectedWith(PersistedStorageImportRejection.NEWER_SCHEMA),
         );
+    });
+
+    test("import refuses a dump whose header differs from its encrypted copy", async () => {
+        await seedStorage();
+
+        const dump: IPersistedStorageDump = await exportStorage();
+
+        const content: IPersistedStorageDumpContent = JSON.parse(
+            await CryptoService.decryptWithPassword(
+                dump.encryptedTables,
+                BACKUP_PASSWORD,
+            ),
+        );
+
+        const forgedDump: IPersistedStorageDump = {
+            ...dump,
+            encryptedTables: await CryptoService.encryptWithPassword(
+                JSON.stringify({
+                    ...content,
+                    header: {
+                        ...content.header,
+                        interruptedMigration: {
+                            pendingVersion: CURRENT_STORAGE_VERSION + 1,
+                            rollbackFailed: true,
+                        },
+                    },
+                }),
+                BACKUP_PASSWORD,
+            ),
+        };
+
+        await clearTables(true);
+
+        await assert.rejects(
+            () => importStorage(forgedDump),
+            isRejectedWith(PersistedStorageImportRejection.INVALID_FORMAT),
+        );
+
+        assert.equal(await countRecords(SIGNERS_DATA_KEY), 0);
     });
 
     test("import refuses an unknown envelope type or version", async () => {

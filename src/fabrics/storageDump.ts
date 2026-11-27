@@ -3,6 +3,8 @@ import SecretsProvider from "@domains/SecretsProvider";
 import CryptoService from "@services/Crypto";
 import type {
     IPersistedStorageDump,
+    IPersistedStorageDumpContent,
+    IPersistedStorageDumpHeader,
     IPersistedStorageInterruptedMigration,
     TPersistedStorageTables,
 } from "@services/ExportPersistedStorageService";
@@ -37,14 +39,22 @@ export const createPersistedStorageDump = async ({
     schemaRecord,
     tables,
     passwordProvider,
-}: ICreatePersistedStorageDumpPayload): Promise<IPersistedStorageDump> => ({
-    type: PERSISTED_STORAGE_DUMP_TYPE,
-    version: PERSISTED_STORAGE_DUMP_VERSION,
-    schemaVersion: schemaRecord?.version ?? BASELINE_STORAGE_VERSION,
-    interruptedMigration: resolveInterruptedMigration(schemaRecord),
-    createdAt: new Date().toISOString(),
-    encryptedTables: await CryptoService.encryptWithPassword(
-        JSON.stringify(tables),
-        passwordProvider.getSecret().password,
-    ),
-});
+}: ICreatePersistedStorageDumpPayload): Promise<IPersistedStorageDump> => {
+    const header: IPersistedStorageDumpHeader = {
+        schemaVersion: schemaRecord?.version ?? BASELINE_STORAGE_VERSION,
+        interruptedMigration: resolveInterruptedMigration(schemaRecord),
+    };
+
+    const content: IPersistedStorageDumpContent = { header, tables };
+
+    return {
+        type: PERSISTED_STORAGE_DUMP_TYPE,
+        version: PERSISTED_STORAGE_DUMP_VERSION,
+        ...header,
+        createdAt: new Date().toISOString(),
+        encryptedTables: await CryptoService.encryptWithPassword(
+            JSON.stringify(content),
+            passwordProvider.getSecret().password,
+        ),
+    };
+};

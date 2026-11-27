@@ -8,6 +8,10 @@ import { PersistedStorageImportRejection } from "@domains/CustomError";
 import Bip44Path from "@domains/Bip44Path";
 import { WalletTypes } from "@domains/Signer";
 import type { INetworkConfig, INetworkRecordInput } from "@domains/Network";
+import type {
+    IPersistedStorageDumpHeader,
+    IPersistedStorageInterruptedMigration,
+} from "@services/ExportPersistedStorageService";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import {
     isEncryptedData,
@@ -662,4 +666,47 @@ export const validatePersistedStorageTables = (
     }
 
     return validateDumpTablesContent(tablesReading.tables, tableNames);
+};
+
+const isSameInterruptedMigration = (
+    value: unknown,
+    expected: IPersistedStorageInterruptedMigration | null,
+): boolean => {
+    if (expected === null) {
+        return value === null;
+    }
+
+    return (
+        isRecord(value) &&
+        value.pendingVersion === expected.pendingVersion &&
+        value.rollbackFailed === expected.rollbackFailed
+    );
+};
+
+export const validatePersistedStorageDumpContent = (
+    source: unknown,
+    header: IPersistedStorageDumpHeader,
+    tableNames: IPersistedStorageTableNames,
+): TPersistedStorageDumpValidation => {
+    if (!isRecord(source) || !isRecord(source.header)) {
+        return rejectDump(
+            PersistedStorageImportRejection.INVALID_FORMAT,
+            "Dump has no encrypted copy of its header",
+        );
+    }
+
+    if (
+        source.header.schemaVersion !== header.schemaVersion ||
+        !isSameInterruptedMigration(
+            source.header.interruptedMigration,
+            header.interruptedMigration,
+        )
+    ) {
+        return rejectDump(
+            PersistedStorageImportRejection.INVALID_FORMAT,
+            "Dump header does not match its encrypted copy",
+        );
+    }
+
+    return validatePersistedStorageTables(source.tables, tableNames);
 };

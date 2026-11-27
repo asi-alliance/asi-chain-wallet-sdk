@@ -18,8 +18,10 @@ import { arrayBufferToBase64, encodeBase16 } from "@utils/codec";
 import {
     TPersistedStorageDumpValidation,
     validatePersistedStorageDump,
+    validatePersistedStorageDumpContent,
     validatePersistedStorageTables,
 } from "@utils/validators";
+import type { IPersistedStorageDumpHeader } from "@services/ExportPersistedStorageService";
 
 type TDumpTableRecord = Record<string, ITableRecord[string]>;
 
@@ -304,6 +306,88 @@ test("decrypted tables of a consistent storage are valid", () => {
         true,
         "a network with explicit native token decimals is valid",
     );
+});
+
+test("decrypted content must carry a copy of the header that matches it", () => {
+    console.log("\n=== ENCRYPTED HEADER COPY ===");
+
+    const header: IPersistedStorageDumpHeader = {
+        schemaVersion: CURRENT_STORAGE_VERSION,
+        interruptedMigration: null,
+    };
+
+    const interruptedHeader: IPersistedStorageDumpHeader = {
+        schemaVersion: CURRENT_STORAGE_VERSION,
+        interruptedMigration: {
+            pendingVersion: CURRENT_STORAGE_VERSION + 1,
+            rollbackFailed: false,
+        },
+    };
+
+    const validate = (
+        content: unknown,
+        expected: IPersistedStorageDumpHeader = header,
+    ): TPersistedStorageDumpValidation =>
+        validatePersistedStorageDumpContent(
+            content,
+            expected,
+            PERSISTED_STORAGE_TABLES,
+        );
+
+    assert.equal(validate({ header, tables: createTables() }).isValid, true);
+    assert.equal(
+        validate(
+            { header: interruptedHeader, tables: createTables() },
+            interruptedHeader,
+        ).isValid,
+        true,
+    );
+
+    const mismatches: [string, unknown, IPersistedStorageDumpHeader][] = [
+        ["tables without a header copy", createTables(), header],
+        [
+            "another schema version",
+            {
+                header: { ...header, schemaVersion: CURRENT_STORAGE_VERSION + 1 },
+                tables: createTables(),
+            },
+            header,
+        ],
+        [
+            "an interrupted migration hidden by the header",
+            { header: interruptedHeader, tables: createTables() },
+            header,
+        ],
+        [
+            "another pending migration version",
+            {
+                header: {
+                    ...interruptedHeader,
+                    interruptedMigration: {
+                        pendingVersion: CURRENT_STORAGE_VERSION + 2,
+                        rollbackFailed: false,
+                    },
+                },
+                tables: createTables(),
+            },
+            interruptedHeader,
+        ],
+    ];
+
+    for (const [reason, content, expected] of mismatches) {
+        const validation: TPersistedStorageDumpValidation = validate(
+            content,
+            expected,
+        );
+
+        console.log(`    ${reason}:`, describeValidation(validation));
+
+        assert.equal(validation.isValid, false, reason);
+        assert.equal(
+            !validation.isValid && validation.rejection,
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        );
+    }
 });
 
 test("malformed decrypted tables are rejected with their reason", () => {

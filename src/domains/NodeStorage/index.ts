@@ -87,7 +87,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
         table[String(record.id)] = {
             ...record,
             createdAt: record.createdAt || Date.now(),
-            updatedAt: Date.now(),
+            updatedAt: record.updatedAt ?? Date.now(),
         };
 
         await this.saveTable(tableName, table);
@@ -104,7 +104,7 @@ export default class NodeStorage implements ITableService<ITableRecord> {
             table[String(record.id)] = {
                 ...record,
                 createdAt: record.createdAt || Date.now(),
-                updatedAt: Date.now(),
+                updatedAt: record.updatedAt ?? Date.now(),
             };
         }
 

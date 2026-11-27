@@ -28,11 +28,19 @@ export interface IPersistedStorageInterruptedMigration {
 
 export type TPersistedStorageTables = Record<string, ITableRecord[]>;
 
-export interface IPersistedStorageDump {
-    type: string;
-    version: number;
+export interface IPersistedStorageDumpHeader {
     schemaVersion: number;
     interruptedMigration: IPersistedStorageInterruptedMigration | null;
+}
+
+export interface IPersistedStorageDumpContent {
+    header: IPersistedStorageDumpHeader;
+    tables: TPersistedStorageTables;
+}
+
+export interface IPersistedStorageDump extends IPersistedStorageDumpHeader {
+    type: string;
+    version: number;
     createdAt: string;
     encryptedTables: EncryptedData;
 }

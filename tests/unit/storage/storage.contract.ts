@@ -52,6 +52,32 @@ export const runStorageContract = (
         assert.equal(records.length, 3);
     });
 
+    test("insert keeps given timestamps and stamps missing ones", async () => {
+        const storage = createStorage();
+        const createdAt: number = 1_700_000_000_000;
+        const updatedAt: number = 1_700_000_100_000;
+
+        await storage.createTable("timestamps");
+
+        await storage.insert("timestamps", { id: "single", createdAt, updatedAt });
+
+        await storage.insertMany("timestamps", [
+            { id: "restored", createdAt, updatedAt },
+            { id: "fresh" },
+        ]);
+
+        const single = await storage.getById("timestamps", "single");
+        const restored = await storage.getById("timestamps", "restored");
+        const fresh = await storage.getById("timestamps", "fresh");
+
+        assert.equal(single?.createdAt, createdAt);
+        assert.equal(single?.updatedAt, updatedAt);
+        assert.equal(restored?.createdAt, createdAt);
+        assert.equal(restored?.updatedAt, updatedAt);
+        assert.ok(fresh?.createdAt > updatedAt);
+        assert.ok(fresh?.updatedAt > updatedAt);
+    });
+
     test("update", async () => {
         const storage = createStorage();
 
