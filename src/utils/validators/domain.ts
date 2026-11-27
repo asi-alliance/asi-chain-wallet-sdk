@@ -23,6 +23,7 @@ import {
     isKeyfileWalletAccount,
     isNativeTokenDecimals,
     isNodeApiProfile,
+    isNonEmptyString,
     isUint256,
 } from "@utils/guards";
 import { ASI_CHAIN_PREFIX, MAX_CLASSIC_PHLO_PRICE } from "@utils/constants";
@@ -264,6 +265,16 @@ export const validateNetworkConfigUrls = (
         if (!isValid) {
             return { isValid: false, error: `Invalid ${field}: ${error}` };
         }
+    }
+
+    return { isValid: true };
+};
+
+export const validateNetworkName = (
+    name: NetworkName,
+): { isValid: boolean; error?: string } => {
+    if (!isNonEmptyString(name)) {
+        return { isValid: false, error: "Network name is required" };
     }
 
     return { isValid: true };

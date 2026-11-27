@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import ApiClientManager from "@domains/ApiClientManager";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkConfig, INetworkRecord } from "@domains/Network";
-import { createNetworkConfigSnapshot } from "@fabrics/network";
+import {
+    createNetworkConfigSnapshot,
+    createNetworkRecord,
+    createUpdatedNetworkRecord,
+} from "@fabrics/network";
 import {
     CUSTOM_NETWORK_CONFIG,
     NETWORKS_CONFIG,
@@ -26,6 +30,10 @@ const SECOND_CUSTOM_NETWORK_CONFIG: INetworkConfig = {
 const SAME_CONFIG_ERROR: RegExp = /Network with the same config already exists/;
 
 const SAME_NAME_ERROR: RegExp = /Network with the same name already exists/;
+
+const BLANK_NAME_ERROR: RegExp = /Network name is required/;
+
+const BLANK_NETWORK_NAMES: string[] = ["", "   ", "\t\n"];
 
 const initApiClientManager = (): ApiClientManager => {
     const apiClientManager: ApiClientManager = ApiClientManager.getInstance();
@@ -264,6 +272,57 @@ test("updating a network to the name of another network throws", () => {
 
     console.log("    Name duplicates rejected on update");
 
+    assert.equal(apiClientManager.getNetwork(record.id).name, CUSTOM_NETWORK);
+
+    apiClientManager.close();
+});
+
+test("a blank network name is rejected on add and update", () => {
+    console.log("\n=== BLANK NETWORK NAME ===");
+
+    const apiClientManager: ApiClientManager = initApiClientManager();
+
+    const record: INetworkRecord = apiClientManager.addNetwork(
+        CUSTOM_NETWORK,
+        CUSTOM_NETWORK_CONFIG,
+    );
+
+    for (const name of BLANK_NETWORK_NAMES) {
+        assert.throws(
+            () =>
+                apiClientManager.addNetwork(name, SECOND_CUSTOM_NETWORK_CONFIG),
+            BLANK_NAME_ERROR,
+        );
+
+        assert.throws(
+            () => apiClientManager.updateNetwork(record.id, { name }),
+            BLANK_NAME_ERROR,
+        );
+
+        assert.throws(
+            () =>
+                createNetworkRecord({
+                    name,
+                    config: SECOND_CUSTOM_NETWORK_CONFIG,
+                    networks: apiClientManager.getNetworks(),
+                }),
+            BLANK_NAME_ERROR,
+        );
+
+        assert.throws(
+            () =>
+                createUpdatedNetworkRecord({
+                    record,
+                    update: { name },
+                    networks: apiClientManager.getNetworks(),
+                }),
+            BLANK_NAME_ERROR,
+        );
+    }
+
+    console.log("    Blank names rejected:", BLANK_NETWORK_NAMES.length);
+
+    assert.equal(apiClientManager.getNetworks().length, 3);
     assert.equal(apiClientManager.getNetwork(record.id).name, CUSTOM_NETWORK);
 
     apiClientManager.close();

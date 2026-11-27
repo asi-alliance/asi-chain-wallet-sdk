@@ -71,6 +71,14 @@ export class StorageMetadataStorageRepository extends BaseStorageRepository<ISto
         await this.updateSchemaRecord({ version, pendingVersion: null });
     }
 
+    public async restoreVersion(version: number): Promise<void> {
+        await this.updateSchemaRecord({
+            version,
+            pendingVersion: null,
+            rollbackFailure: null,
+        });
+    }
+
     public async getPendingVersion(): Promise<number | null> {
         const record: IStorageMetadataRecord | null = await this.getRecordById(
             STORAGE_SCHEMA_RECORD_ID,

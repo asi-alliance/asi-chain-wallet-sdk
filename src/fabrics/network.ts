@@ -11,6 +11,7 @@ import {
     generateRandomId,
     validateNativeTokenDecimals,
     validateNetworkConfigUrls,
+    validateNetworkName,
     validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
@@ -50,6 +51,9 @@ export const createNetworkRecord = ({
     config,
     networks,
 }: ICreateNetworkRecordPayload): INetworkRecord => {
+    ensureValid(validateNetworkName(name), {
+        context: "createNetworkRecord",
+    });
     ensureValid(validateNetworkConfigUrls(config, { allowEmpty: false }), {
         context: "createNetworkRecord",
     });
@@ -81,6 +85,12 @@ export const createUpdatedNetworkRecord = ({
 }: IUpdateNetworkRecordPayload): INetworkRecord => {
     if (record.isDefault) {
         throw new Error("Network config is not default");
+    }
+
+    if (update.name !== undefined) {
+        ensureValid(validateNetworkName(update.name), {
+            context: "createUpdatedNetworkRecord",
+        });
     }
 
     if (update.config) {

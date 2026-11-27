@@ -14,6 +14,7 @@ import {
     generateRandomId,
     validateNativeTokenDecimals,
     validateNetworkConfigUrls,
+    validateNetworkName,
     validateNetworkUniqueness,
     validateNodeApiProfile,
 } from "@utils/index";
@@ -109,6 +110,9 @@ export default class NetworkConfigProvider {
     @EnsureNetworkConfigProviderReady
     @EnsureNetworkRecordNotDefault
     public set(record: INetworkRecordInput): void {
+        ensureValid(validateNetworkName(record.name), {
+            context: "NetworkConfigProvider.set",
+        });
         ensureValid(
             validateNetworkConfigUrls(record.config, { allowEmpty: false }),
             { context: "NetworkConfigProvider.set" },
@@ -145,6 +149,9 @@ export default class NetworkConfigProvider {
         name: NetworkName,
         networkConfig: INetworkConfig,
     ): INetworkRecord {
+        ensureValid(validateNetworkName(name), {
+            context: "NetworkConfigProvider.add",
+        });
         ensureValid(
             validateNetworkConfigUrls(networkConfig, { allowEmpty: false }),
             { context: "NetworkConfigProvider.add" },
@@ -191,6 +198,12 @@ export default class NetworkConfigProvider {
     @EnsureNetworkExist
     @EnsureNetworkNotDefault
     public update(id: NetworkId, update: INetworkUpdate): void {
+        if (update.name !== undefined) {
+            ensureValid(validateNetworkName(update.name), {
+                context: "NetworkConfigProvider.update",
+            });
+        }
+
         if (update.config) {
             ensureValid(
                 validateNetworkConfigUrls(update.config, { allowEmpty: false }),
