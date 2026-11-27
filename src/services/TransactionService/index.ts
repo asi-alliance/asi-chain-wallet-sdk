@@ -20,7 +20,7 @@ import Signer, { TSigningContext, WalletTypes } from "@domains/Signer";
 import DeployService from "@services/DeployService";
 import BlockService from "@services/BlockService";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
-import { resolveDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
+import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 
 const { blake2bHex } = blakejs;
 
@@ -89,8 +89,9 @@ export default class TransactionService {
         passwordProvider,
     }: IDeployPayload): Promise<SignedResult> {
         const api: NodeApiAdapter = this.nodeApiProvider.getApi();
-        const session = this.nodeApiProvider.getNetworkSession();
-        const minPhloPrice: bigint = await session.getMinPhloPrice();
+        const minPhloPrice: bigint = await this.nodeApiProvider
+            .getNetworkSession()
+            .getMinPhloPrice();
 
         ensureValid(
             validateDeployPayload(
@@ -100,14 +101,9 @@ export default class TransactionService {
             { context: "TransactionService.signDeploy" },
         );
 
-        const deployPhlo: IDeployPhlo = resolveDeployPhlo(
-            api,
+        const deployPhlo: IDeployPhlo = createDeployPhlo(
             { phloLimit, phloPrice },
-            {
-                minPhloPrice,
-                maxPhloLimit: session.getKnownPhloParameters()?.maxPhloLimit,
-            },
-            { context: "TransactionService.signDeploy" },
+            minPhloPrice,
         );
 
         const latestBlockNumber: number =

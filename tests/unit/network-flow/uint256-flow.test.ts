@@ -161,31 +161,6 @@ test.after(async () => {
     await node.close();
 });
 
-test("a transfer quote and signed reservation share one validator status request", async () => {
-    node.setPhloStatus({ minPhloPrice: WIDE_PHLO_PRICE, maxPhloLimit: 2 });
-    const { request } = await createFundedWallet();
-    const { account: recipient } = await createFundedWallet();
-    const statusReads = () => node.requests.filter((path) => path === "/api/status").length;
-    const before = statusReads();
-    const [quote, concurrentQuote] = await Promise.all([
-        client.getTransferQuote(),
-        client.getTransferQuote(),
-    ]);
-    assert.deepEqual(quote, {
-        phloLimit: 2,
-        phloPrice: BigInt(WIDE_PHLO_PRICE),
-        gasReserve: 2n * BigInt(WIDE_PHLO_PRICE),
-    });
-    assert.deepEqual(concurrentQuote, quote);
-
-    await client.transfer({ ...request, to: recipient.getAddress(), amount: 1n });
-    assert.equal(getLastSubmittedDeploy().data.phloPrice, WIDE_PHLO_PRICE);
-    assert.equal(getLastSubmittedDeploy().data.phloLimit, quote.phloLimit);
-    const [reservation] = await client.getReservations(request.walletId);
-    assert.ok(reservation);
-    assert.equal(statusReads() - before, 1);
-});
-
 test("deploy reserves exact wide fees and overflow never reaches HTTP or storage", async () => {
     console.log("\n=== WIDE DEPLOY FEES ===");
 

@@ -195,11 +195,8 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
     return { account, signer };
 };
 
-const pricingClient = {
-    validator: { getPhloParameters: async () => ({ minPhloPrice: 1n }) },
-} as unknown as IApiClients;
-const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter(pricingClient);
-const rustApi: NodeApiAdapter = new RustNodeApiAdapter(pricingClient);
+const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
+const rustApi: NodeApiAdapter = new RustNodeApiAdapter({} as IApiClients);
 
 const createNodeApiProvider = (api: NodeApiAdapter): NodeApiProvider =>
     ({
@@ -484,7 +481,6 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
         const calls: (IGetBlocksParams | undefined)[] = [];
 
         const api: NodeApiAdapter = new RustNodeApiAdapter({
-            ...pricingClient,
             observer: {
                 getBlocks: async (params?: IGetBlocksParams) => {
                     calls.push(params);

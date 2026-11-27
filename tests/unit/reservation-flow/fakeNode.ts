@@ -184,11 +184,6 @@ export const startFakeNode = async (): Promise<IFakeNode> => {
     ): Promise<void> => {
         const url: string = request.url ?? "";
 
-        if (url === "/api/status" || url === "/status") {
-            sendJson(response, { minPhloPrice: "1" });
-            return;
-        }
-
         if (url.startsWith("/api/deploy-finalization-status/")) {
             sendJson(response, {
                 rejection_count: 0,
