@@ -332,8 +332,9 @@ with a fixed number of decimals. A balance is read exactly: the node may return 
 number or a decimal string (`ExprInt` / `ExprBigInt`), and a value outside
 `0 … MAX_UINT256` is refused with `BalanceUnavailableError`.
 
-`transfer` signs with the default phlo (`DEFAULT_PHLO_LIMIT` and the minimum
-phlo price of the current network, see [NetworkSession](#networksession-srcdomainsnetworksessionindexts))
+`transfer` signs with the default phlo (`DEFAULT_PHLO_LIMIT`, or the node
+maximum phlo limit when it is lower, and the minimum phlo price of the current
+network, see [NetworkSession](#networksession-srcdomainsnetworksessionindexts))
 and reserves `amount` plus the **transfer gas reserve** of
 the current network: `GasFee.MAX` on `scala`, the signed budget
 `phloLimit * phloPrice` on `rust`. `getTransferGasReserve()` returns that value,
@@ -499,7 +500,12 @@ node API profile of the current network: `Number.MAX_SAFE_INTEGER` on `scala`,
 `MAX_UINT256` on `rust`, and `phloLimit * phloPrice` must not exceed
 `MAX_UINT256`. Its lower bound is the minimum phlo price of the current
 network's node (`NetworkSession.getMinPhloPrice()`, `1` when the node does not
-report one); an omitted price defaults to that minimum. In the signed
+report one); an omitted price defaults to that minimum. `phloLimit` is a
+positive safe integer and must not be greater than the maximum phlo limit of
+the current network's node (`NetworkSession.getMaxPhloLimit()`, not checked when
+the node does not report one; the error names both values, "Phlo limit N must
+not be greater than the node maximum M"); an omitted limit is
+`DEFAULT_PHLO_LIMIT`, or that maximum when it is lower. In the signed
 `DeployData` the price is a number on `scala` and a
 decimal string on `rust`, as each node expects; read it with
 `BigInt(data.phloPrice)`.
@@ -748,6 +754,7 @@ toDisplayAmount(atomicAmount: bigint): string
 toAtomicAmount(amount: number | string): bigint // @deprecated, use toExactAtomicAmount
 getTransferGasReserve(): bigint                 // the gas a transfer on the current network reserves
 getMinPhloPrice(): Promise<bigint>              // the node minimum phlo price of the current network
+getMaxPhloLimit(): Promise<bigint | null>       // the node maximum phlo limit of the current network, null when not reported
 ```
 
 All three conversions read the decimals of the network selected **at the time of
@@ -762,11 +769,17 @@ compatibility and truncates excess digits.
 `getTransferGasReserve` is `ReservationAdapter.getTransferGasReserve()` for the
 current network with the default phlo: `GasFee.MAX` on `scala`,
 `DEFAULT_PHLO_LIMIT * minimum phlo price` on `rust`, where the minimum is the one
-already read for the network (`DEFAULT_PHLO_PRICE` before the first read).
+already read for the network (`DEFAULT_PHLO_PRICE` before the first read) and
+the limit is the node maximum instead when that is lower.
 `getMinPhloPrice` is `ApiClientManager.getNetworkSession().getMinPhloPrice()`:
 it reads the minimum from the node on the first call after a network is
 selected and returns the kept value afterwards (see
-[NetworkSession](#networksession-srcdomainsnetworksessionindexts)). The native
+[NetworkSession](#networksession-srcdomainsnetworksessionindexts)).
+`getMaxPhloLimit` is `ApiClientManager.getNetworkSession().getMaxPhloLimit()`:
+the largest phlo limit the node accepts, read with the minimum in the same
+request, or `null` when the node does not report one (Scala nodes, Rust nodes
+before node PR #1081); an explicit `phloLimit` above it is refused before
+signing. The native
 token decimals themselves are read from the network record:
 `client.getCurrentNetwork().config.nativeTokenDecimals`.
 
@@ -2234,27 +2247,52 @@ update of the active network) over the `NodeApiAdapter` of that network, and is
 dropped by the next switch or by `close()`.
 
 ```ts
+interface INodePhloBounds {
+    minPhloPrice: bigint;        // DEFAULT_PHLO_PRICE when the node reported none
+    maxPhloLimit: bigint | null; // null when the node reported none
+}
+
 new NetworkSession(api: NodeApiAdapter)
-getMinPhloPrice(): Promise<bigint> // reads the node minimum once, then returns the kept value
-getKnownMinPhloPrice(): bigint     // the kept value, DEFAULT_PHLO_PRICE before a successful read
+getPhloBounds(): Promise<INodePhloBounds>   // reads the node status once, then returns the kept values
+getMinPhloPrice(): Promise<bigint>          // getPhloBounds().minPhloPrice
+getMaxPhloLimit(): Promise<bigint | null>   // getPhloBounds().maxPhloLimit
+getKnownPhloBounds(): INodePhloBounds       // the kept values, without a request
+getKnownMinPhloPrice(): bigint              // the kept value, DEFAULT_PHLO_PRICE before a successful read
 ```
 
-`getMinPhloPrice` reads `minPhloPrice` from the validator's `GET /api/status`
-(`NodeApiAdapter.getValidatorApiStatus()`): a decimal string on `rust`, a number
-on `scala`, accepted when it is a positive uint256 (`isPhloPrice`). The read is
-lazy, so creating a client or switching a network sends no request; concurrent
-first calls share one request. A successful value is kept for the life of the
-session, on the assumption that the node minimum does not change while a network
-is selected. A failed request or an unusable answer is not kept: the call returns
-`DEFAULT_PHLO_PRICE` and the next call reads again.
+`getPhloBounds` reads the validator's `GET /api/status`
+(`NodeApiAdapter.getValidatorApiStatus()`) and takes two fields from it, each on
+its own:
 
-`TransactionService.signDeploy` and `ReservationAdapter.transfer` / `deploy` use
-the minimum as the default phlo price and as the lower bound of an explicit one
-(`validatePhloSettings`), so the signed price, the reservation and the balance
-check agree. `ReservationAdapter.getTransferGasReserve` is synchronous and uses
-`getKnownMinPhloPrice()`. Services reach the session through
-`NodeApiProvider.getNetworkSession()`, `Client.getMinPhloPrice()` through
-`ApiClientManager.getNetworkSession()`.
+- `minPhloPrice`: a decimal string on `rust`, a number on `scala`, accepted when
+  it is a positive uint256 (`isPhloPrice`).
+- `maxPhloLimit`: the largest phlo limit the node accepts in a signed deploy
+  (Rust nodes since node PR #1081), a decimal string or a number, accepted when
+  it is a positive uint256. A missing or unusable value (`"0"`, `"2e7"`, `1.5`)
+  leaves the maximum `null` and does not affect the minimum price.
+
+The read is lazy, so creating a client or switching a network sends no request;
+concurrent first calls share one request, and the price and the maximum always
+come from the same response. The status counts as read once it carries a usable
+`minPhloPrice`: from then on both values are kept for the life of the session,
+on the assumption that the node does not change them while a network is
+selected, and a status without `maxPhloLimit` keeps `null`. A failed request or
+a status without a usable minimum is not kept: the call returns
+`DEFAULT_PHLO_PRICE` (and the maximum, if that status had one) and the next call
+reads again. On `scala`, which reports neither field, the price stays
+`DEFAULT_PHLO_PRICE` and no limit is checked, as before.
+
+`TransactionService.signDeploy` and `ReservationAdapter.transfer` / `deploy`
+take both values with one `getPhloBounds()` call. The minimum is the default
+phlo price and the lower bound of an explicit one; the maximum is the upper
+bound of an explicit phlo limit (`validatePhloSettings`), so a deploy the node
+would refuse is rejected before anything is signed or reserved. An omitted limit
+is `DEFAULT_PHLO_LIMIT`, or the maximum when it is lower (`createDeployPhlo`).
+The signed values, the reservation and the balance check therefore agree.
+`ReservationAdapter.getTransferGasReserve` is synchronous and uses
+`getKnownPhloBounds()`. Services reach the session through
+`NodeApiProvider.getNetworkSession()`, `Client.getMinPhloPrice()` and
+`Client.getMaxPhloLimit()` through `ApiClientManager.getNetworkSession()`.
 
 ---
 
@@ -2385,7 +2423,9 @@ by `createApiClients` when the clients of a network are built.
 `TransactionService.signDeploy` takes the price bound, the signed price format
 and the signing bytes from the adapter of the current network, and
 `ReservationAdapter` takes the transfer gas reserve from it. The default price
-is the node minimum from `NetworkSession`. On `rust` the gas a
+is the node minimum from `NetworkSession`, and an explicit phlo limit is bounded
+by the node maximum from the same session when the node reports one (Rust nodes
+since node PR #1081; `scala` reports none). On `rust` the gas a
 transfer reserves equals the budget it is signed with (`phloLimit * phloPrice`,
 `500000 * minimum phlo price` by default: 500000 with a minimum of 1,
 `5 * 10^16` on TestNet with `10^11`). On `scala` it does not: a default transfer
@@ -2469,9 +2509,10 @@ A caller that needs the adapter of the current network for a whole operation
 (`TransactionService.signDeploy`, `ReservationAdapter.transfer` / `deploy`)
 resolves it once at the start and keeps it, so the price bound, the signed price
 format and the reserve come from the same profile. The same callers take the
-minimum phlo price from `getNetworkSession()`; unlike the adapter, the session is
-not rebuilt per call but lives until the next `switchNetwork`, which is what keeps
-the node minimum read once per network.
+minimum phlo price and the maximum phlo limit from `getNetworkSession()`
+(`getPhloBounds()`); unlike the adapter, the session is not rebuilt per call but
+lives until the next `switchNetwork`, which is what keeps the node status read
+once per network.
 
 ---
 
@@ -2778,9 +2819,10 @@ ReservationAdapter.getTransferGasReserve(phlo?: Pick<TDeployDetails, "phloLimit"
 ```
 
 `getTransferGasReserve` validates the phlo settings against the price bound of
-the current network's adapter and the minimum phlo price already read by the
-network's `NetworkSession` (`getKnownMinPhloPrice()`), resolves them with the
-defaults (`createDeployPhlo`, the price defaults to that minimum), and returns
+the current network's adapter and the minimum phlo price and maximum phlo limit
+already read by the network's `NetworkSession` (`getKnownPhloBounds()`), resolves
+them with the defaults (`createDeployPhlo`: the price defaults to that minimum,
+the limit to `DEFAULT_PHLO_LIMIT` or the maximum when it is lower), and returns
 `NodeApiAdapter.getTransferGasReserve` for the
 maximum phlo charge: `GasFee.MAX` on `scala`, `phloLimit * phloPrice` on `rust`.
 Invalid phlo settings throw with the prefix
@@ -2799,9 +2841,11 @@ transfer gas reserve of the network for a transfer (`GasFee.MAX` on `scala`,
 reserved balance is a plain sum with nothing added on top of it. The phlo values
 are read from `details` **once**, when the operation starts: `transfer` and
 `deploy` copy `details` before anything is awaited, read the node minimum phlo
-price (`NetworkSession.getMinPhloPrice()`), validate the phlo values against the
-price bound of the current network and that minimum, resolve them with
-`createDeployPhlo` (an omitted price becomes the minimum), and sign and reserve
+price and maximum phlo limit (`NetworkSession.getPhloBounds()`), validate the
+phlo values against the price bound of the current network, that minimum and
+that maximum, resolve them with `createDeployPhlo` (an omitted price becomes the
+minimum, an omitted limit `DEFAULT_PHLO_LIMIT` or the maximum when it is lower),
+and sign and reserve
 from that snapshot, so a caller changing the `details` object afterwards cannot
 make the reservation and the signed deploy disagree. Each reservation is created with the precision of
 the current network.
