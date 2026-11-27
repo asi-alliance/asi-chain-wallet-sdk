@@ -412,11 +412,16 @@ const MAX_PHLO_VALUE: number = Number.MAX_SAFE_INTEGER;
 export interface IPhloPriceBounds {
     maxPhloPrice: bigint;
     minPhloPrice?: bigint;
+    maxPhloLimit?: bigint | null;
 }
 
 export const validatePhloSettings = (
     { phloLimit, phloPrice }: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
-    { maxPhloPrice, minPhloPrice = BigInt(MIN_PHLO_VALUE) }: IPhloPriceBounds,
+    {
+        maxPhloPrice,
+        minPhloPrice = BigInt(MIN_PHLO_VALUE),
+        maxPhloLimit = null,
+    }: IPhloPriceBounds,
 ): { isValid: boolean; error?: string } => {
     if (
         phloLimit !== undefined &&
@@ -425,6 +430,17 @@ export const validatePhloSettings = (
         return {
             isValid: false,
             error: "Phlo limit must be a positive safe integer",
+        };
+    }
+
+    if (
+        phloLimit !== undefined &&
+        maxPhloLimit !== null &&
+        BigInt(phloLimit) > maxPhloLimit
+    ) {
+        return {
+            isValid: false,
+            error: `Phlo limit ${phloLimit} must not be greater than the node maximum ${maxPhloLimit}`,
         };
     }
 
