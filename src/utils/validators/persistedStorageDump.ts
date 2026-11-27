@@ -7,11 +7,12 @@ import {
 import { PersistedStorageImportRejection } from "@domains/CustomError";
 import Bip44Path from "@domains/Bip44Path";
 import { WalletTypes } from "@domains/Signer";
-import type { INetworkConfig, INetworkRecord } from "@domains/Network";
+import type { INetworkConfig, INetworkRecordInput } from "@domains/Network";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import {
     isEncryptedData,
     isFiniteNumber,
+    isNativeTokenDecimals,
     isNodeApiProfile,
     isNonEmptyString,
     isRecord,
@@ -453,7 +454,13 @@ const readDumpNetworkConfig = (config: unknown): INetworkConfig | null => {
         return null;
     }
 
-    const { ValidatorURL, ReadOnlyURL, IndexerURL, nodeApiProfile } = config;
+    const {
+        ValidatorURL,
+        ReadOnlyURL,
+        IndexerURL,
+        nodeApiProfile,
+        nativeTokenDecimals,
+    } = config;
 
     if (
         typeof ValidatorURL !== "string" ||
@@ -464,14 +471,28 @@ const readDumpNetworkConfig = (config: unknown): INetworkConfig | null => {
         return null;
     }
 
-    return { ValidatorURL, ReadOnlyURL, IndexerURL, nodeApiProfile };
+    if (nativeTokenDecimals === undefined) {
+        return { ValidatorURL, ReadOnlyURL, IndexerURL, nodeApiProfile };
+    }
+
+    if (!isNativeTokenDecimals(nativeTokenDecimals)) {
+        return null;
+    }
+
+    return {
+        ValidatorURL,
+        ReadOnlyURL,
+        IndexerURL,
+        nodeApiProfile,
+        nativeTokenDecimals,
+    };
 };
 
 const validateDumpCustomNetworks = (
     tableName: string,
     networks: TDumpRecord[],
 ): TPersistedStorageDumpValidation => {
-    const networkRecords: INetworkRecord[] = [];
+    const networkRecords: INetworkRecordInput[] = [];
 
     for (const network of networks) {
         if (!isNonEmptyString(network.name)) {

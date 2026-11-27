@@ -287,6 +287,23 @@ test("decrypted tables of a consistent storage are valid", () => {
         true,
         "tables missing from the dump count as empty",
     );
+
+    const tablesWithDecimals: TDumpTables = createTables();
+
+    findRecord(
+        tablesWithDecimals,
+        "CUSTOM_NETWORKS",
+        "custom-network",
+    ).config.nativeTokenDecimals = 18;
+
+    assert.equal(
+        validatePersistedStorageTables(
+            tablesWithDecimals,
+            PERSISTED_STORAGE_TABLES,
+        ).isValid,
+        true,
+        "a network with explicit native token decimals is valid",
+    );
 });
 
 test("malformed decrypted tables are rejected with their reason", () => {
@@ -590,6 +607,19 @@ test("malformed decrypted tables are rejected with their reason", () => {
                     "CUSTOM_NETWORKS",
                     "custom-network",
                 ).config.nodeApiProfile = "go";
+
+                return tables;
+            },
+            PersistedStorageImportRejection.INVALID_FORMAT,
+        ],
+        [
+            "network with fractional native token decimals",
+            (tables) => {
+                findRecord(
+                    tables,
+                    "CUSTOM_NETWORKS",
+                    "custom-network",
+                ).config.nativeTokenDecimals = 1.5;
 
                 return tables;
             },
