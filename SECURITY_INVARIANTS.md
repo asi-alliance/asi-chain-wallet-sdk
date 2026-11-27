@@ -179,15 +179,35 @@ This document defines the intended security guarantees for `asi-chain-wallet-sdk
    written without leading zeros. Two different strings must never derive the
    same key.
 8. Deploy payload validation must sit at the signing boundary, not at each entry
-   point. A non-empty term, a phlo limit and phlo price within the positive safe
-   integer range, and a non-blank shard id must be established before a deploy is
+   point. A non-empty term, a phlo limit within the positive safe integer range
+   and not above the node maximum (not checked when the node does not report
+   one), a
+   phlo price from the node minimum (1 when the node does not report one) up to
+   the bound of the node API profile (the positive safe
+   integer range on `scala`, uint256 on `rust`), a maximum phlo charge within
+   uint256, and a non-blank shard id must be established before a deploy is
    hashed and signed, so no caller can reach the signer with a payload that was
-   validated by a different rule or not at all.
+   validated by a different rule or not at all. Amounts, prices and the maximum
+   phlo charge are computed in `bigint`, and no amount or price outside the
+   exact integer range is converted through a floating-point `Number`: the only
+   such conversion is the price signed as a JSON number on `scala`, which is
+   bounded by `Number.MAX_SAFE_INTEGER`. The deprecated `toAtomicAmount` still
+   accepts a `number` input; `toExactAtomicAmount` takes a string only.
 9. Signing a deploy without submitting it must be held to the same rules as
    submitting one: the same payload validation, the same session or password
    requirement, and the same account addressing. A returned signed payload is a
    spendable authorization, so a sign-only path must never be the cheap way
    around a check that the submitting path performs.
+10. The bytes that are signed must be the bytes the node of the current profile
+    verifies: the price bound, the signed price format and the serialization
+    come from one node API adapter, resolved once per signature, and the default
+    and lower bound of the price and the upper bound of the limit come from one
+    status read of the `NetworkSession` of the same network. The gas a
+    reservation locks comes from the adapter of the same network: a deploy
+    reserves exactly its signed budget (`phloLimit * phloPrice`), and so does a
+    transfer on `rust`, both computed from the same snapshot of phlo values that
+    is signed. A transfer on `scala` reserves the fixed `GasFee.MAX` estimate
+    instead of its signed budget.
 
 ### 3a. Reservation Invariants
 
@@ -219,11 +239,22 @@ rather than merely displaying the wrong number.
     already be spent.
 11. A reservation may be released on a failed submission only when the deploy
     provably did not land: an explicit refusal by the node, or a submission
-    cancelled before anything was sent. An unknown outcome must keep the funds
-    locked until confirmation or expiry.
+    cancelled before anything was sent. An unknown outcome, including an
+    acceptance that does not name the signed deploy, must keep the funds locked
+    until confirmation, a verdict or expiry. The SDK must never resend a
+    refused deploy on its own; a retry is a new signed deploy started by the
+    caller.
 12. A wallet must not restore its reservations while one of its own submissions
     is still in flight; reopening must wait for it, and refuse after a bounded
     timeout rather than restore a stale picture.
+13. After a successful submission, a reservation may be released only by
+    confirmation, by a terminal verdict of the node (`Rejected`, `Expired`,
+    `Failed`) or by its expiry. A validator answer alone must never confirm a
+    deploy, and a validator `Failed` must wait for the observer. A watch
+    timeout or a polling error must keep the funds locked.
+14. A failing consumer callback must not block a release: watch and
+    reservation callbacks are isolated, and a release is reported as successful
+    only after the stored record was deleted.
 
 ## 4. Recovery Invariants
 

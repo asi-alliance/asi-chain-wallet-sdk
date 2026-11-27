@@ -3,15 +3,19 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
     DeployStatus,
     IReservedOperationResult,
     validateDeployPayload,
     Wallet,
+    type Asset,
 } from "asi-wallet-sdk";
 import {
     formatAssetAmount,
+    isIntegerInputAllowed,
     toErrorText,
+    toPhloLimitError,
+    toPhloPriceError,
+    useNativeAsset,
     useSdkContext,
 } from "../../sdk-react-kit";
 import {
@@ -24,6 +28,7 @@ import NetworkSelector from "@components/NetworkSelector";
 import SelectFilter, {
     type SelectFilterOption,
 } from "@components/common/SelectFilter";
+import ConstrainedInput from "@components/common/ConstrainedInput";
 
 const EXAMPLE_CONTRACT = `new stdout(\`rho:io:stdout\`), deployerId(\`rho:rchain:deployerId\`) in {
   stdout!("Hello from ASI Wallet!") |
@@ -42,6 +47,24 @@ const stringify = (value: unknown): string =>
         2,
     );
 
+const toPhloPriceHint = (minPhloPrice: bigint | null): string =>
+    minPhloPrice === null
+        ? "reading the node minimum..."
+        : `node minimum is ${minPhloPrice}`;
+
+const toPhloLimitHint = (
+    isNodeRead: boolean,
+    maxPhloLimit: bigint | null,
+): string => {
+    if (!isNodeRead) {
+        return "reading the node maximum...";
+    }
+
+    return maxPhloLimit === null
+        ? `empty is the SDK default ${DEFAULT_PHLO_LIMIT}, the node reports no maximum`
+        : `empty is the SDK default ${DEFAULT_PHLO_LIMIT} or the node maximum ${maxPhloLimit} if lower`;
+};
+
 const DeployPage = (): ReactElement => {
     const {
         openWallets,
@@ -49,9 +72,15 @@ const DeployPage = (): ReactElement => {
         deploy,
         exploreDeploy,
         getAvailableBalance,
+        getMinPhloPrice,
+        getMaxPhloLimit,
     } = useSdkContext();
+    const asset: Asset = useNativeAsset(currentNetwork);
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+    const startMinPhloPriceRequest: TStartRequest = useRelevantResultGuard(
         currentNetwork?.id,
     );
 
@@ -59,6 +88,9 @@ const DeployPage = (): ReactElement => {
     const [phloLimit, setPhloLimit] = useState<string>(
         String(DEFAULT_PHLO_LIMIT),
     );
+    const [phloPrice, setPhloPrice] = useState<string>("");
+    const [minPhloPrice, setMinPhloPrice] = useState<bigint | null>(null);
+    const [maxPhloLimit, setMaxPhloLimit] = useState<bigint | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -74,6 +106,37 @@ const DeployPage = (): ReactElement => {
         },
         [],
     );
+
+    useEffect(() => {
+        if (!currentNetwork) {
+            return;
+        }
+
+        const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
+
+        setMinPhloPrice(null);
+        setMaxPhloLimit(null);
+
+        void Promise.all([getMinPhloPrice(), getMaxPhloLimit()]).then(
+            ([price, limit]: [bigint, bigint | null]) => {
+                if (isResultRelevant()) {
+                    setMinPhloPrice(price);
+                    setMaxPhloLimit(limit);
+                    setPhloPrice(price.toString());
+                }
+            },
+        );
+    }, [currentNetwork?.id]);
+
+    const phloPriceError: string | null =
+        minPhloPrice === null
+            ? null
+            : toPhloPriceError(phloPrice, minPhloPrice);
+
+    const phloLimitError: string | null =
+        minPhloPrice === null || !phloLimit.trim()
+            ? null
+            : toPhloLimitError(phloLimit, maxPhloLimit);
 
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
@@ -169,12 +232,13 @@ const DeployPage = (): ReactElement => {
 
             const reservedGasCost: bigint =
                 BigInt(parsedPhloLimit ?? DEFAULT_PHLO_LIMIT) *
-                BigInt(DEFAULT_PHLO_PRICE);
+                BigInt(phloPrice);
 
             if (balance < reservedGasCost) {
                 setError(
                     `Transaction aborted: Insufficient balance, the deploy reserves ${formatAssetAmount(
                         reservedGasCost,
+                        asset,
                     )}`,
                 );
 
@@ -193,6 +257,7 @@ const DeployPage = (): ReactElement => {
                                 accountId: selectedEntry.account.getId(),
                                 term: code,
                                 phloLimit: parsedPhloLimit,
+                                phloPrice,
                             },
                             password,
                         ),
@@ -285,19 +350,47 @@ const DeployPage = (): ReactElement => {
                                 onChange={setSelectedAccountId}
                             />
                         </div>
-                        <div className="deploy-page__field">
-                            <label htmlFor="deploy-phlo-limit">
-                                Phlo limit:
-                            </label>
-                            <input
-                                id="deploy-phlo-limit"
-                                type="number"
-                                value={phloLimit}
-                                onChange={(event) =>
-                                    setPhloLimit(event.target.value)
-                                }
-                            />
-                        </div>
+                        <ConstrainedInput
+                            id="deploy-phlo-limit"
+                            label="Phlo limit:"
+                            value={phloLimit}
+                            onChange={setPhloLimit}
+                            isAllowed={(value: string) =>
+                                isIntegerInputAllowed(
+                                    value,
+                                    Number.MAX_SAFE_INTEGER,
+                                )
+                            }
+                            inputMode="numeric"
+                            hint={
+                                phloLimitError
+                                    ? undefined
+                                    : toPhloLimitHint(
+                                          minPhloPrice !== null,
+                                          maxPhloLimit,
+                                      )
+                            }
+                            error={phloLimitError}
+                        />
+                        <ConstrainedInput
+                            id="deploy-phlo-price"
+                            label="Phlo price:"
+                            value={phloPrice}
+                            onChange={setPhloPrice}
+                            isAllowed={(value: string) =>
+                                isIntegerInputAllowed(
+                                    value,
+                                    Number.POSITIVE_INFINITY,
+                                )
+                            }
+                            inputMode="numeric"
+                            hint={
+                                phloPriceError
+                                    ? undefined
+                                    : toPhloPriceHint(minPhloPrice)
+                            }
+                            error={phloPriceError}
+                        />
                     </div>
                 )}
             </section>
@@ -320,7 +413,14 @@ const DeployPage = (): ReactElement => {
                         type="button"
                         className="deploy-page__action"
                         onClick={handleDeployClick}
-                        disabled={isLoading || !code.trim() || !selectedEntry}
+                        disabled={
+                            isLoading ||
+                            !code.trim() ||
+                            !selectedEntry ||
+                            minPhloPrice === null ||
+                            phloPriceError !== null ||
+                            phloLimitError !== null
+                        }
                     >
                         Deploy
                     </button>

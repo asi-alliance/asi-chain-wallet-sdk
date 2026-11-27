@@ -4,7 +4,16 @@ import { verify } from "@noble/secp256k1";
 import blakejs from "blakejs";
 
 import Account from "@domains/Account";
+import { IApiClients } from "@domains/ApiClientManager";
 import Bip44Path from "@domains/Bip44Path";
+import BinaryWriter from "@domains/BinaryWriter";
+import { DeployData } from "@domains/Deploy";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
+import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
+import NetworkSession from "@domains/NetworkSession";
+import NodeApiProvider from "@domains/NodeApiProvider";
+import { IGetBlocksParams } from "@domains/ObserverClient";
 import SecretsProvider from "@domains/SecretsProvider";
 import Signer, { WalletTypes } from "@domains/Signer";
 import BlockService from "@services/BlockService";
@@ -18,7 +27,7 @@ import TransactionService, {
 import { createSigner } from "@fabrics/signer";
 import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { encodeBase16 } from "@utils/index";
-import { ASI_COIN_TYPE } from "@utils/constants";
+import { ASI_COIN_TYPE, MAX_UINT256 } from "@utils/constants";
 
 const { blake2bHex } = blakejs;
 
@@ -28,6 +37,25 @@ const LATEST_BLOCK_NUMBER = 100;
 const HD_ACCOUNT_INDEX = 3;
 const DEPLOY_HASH_LENGTH = 32;
 const DEFAULT_SHARD_ID = "root";
+const LARGE_FIELD_LENGTH = 1_000_000;
+const LARGE_FIELD_HEADER_LENGTH = 4;
+const LARGE_BYTES_FIELD_NUMBER = 15;
+const LARGE_STRING_FIELD_NUMBER = 2;
+const LARGE_FIELD_BYTE = 1;
+const LARGE_FIELD_CHAR_CODE = 0x61;
+const LARGE_BYTES_FIELD_HEADER_HEX = "7ac0843d";
+const LARGE_STRING_FIELD_HEADER_HEX = "12c0843d";
+const PREVIOUS_BLOCK_MINUS_ONE_HEX = "50ffffffffffffffffff01";
+const CLASSIC_PREVIOUS_BLOCK = 99;
+const GENESIS_PREVIOUS_BLOCK = -1;
+const ZERO_BLOCK_NUMBERS: unknown[] = [0, "0"];
+const OVERFLOW_PHLO_LIMIT = 2;
+const PHLO_CHARGE_OVERFLOW_ERROR: RegExp = /charge exceeds uint256/;
+
+const RUST_LATEST_BLOCK_PARAMS: IGetBlocksParams = {
+    depth: 1,
+    view: "summary",
+};
 
 interface ISigningContext {
     account: Account;
@@ -40,8 +68,65 @@ interface IInvalidPayloadCase {
     error: RegExp;
 }
 
+interface IClassicSerializationCase {
+    name: string;
+    data: DeployData;
+    protobufHex: string;
+}
+
+const CLASSIC_TERM = "new return in { return!(42) }";
+const CLASSIC_TIMESTAMP = 1760000000123;
+
+const CLASSIC_TERM_HEX =
+    "121d6e65772072657475726e20696e207b2072657475726e2128343229207d";
+const CLASSIC_TIMESTAMP_HEX = "18fb80b3c19c33";
+const CLASSIC_ROOT_SHARD_HEX = "5a04726f6f74";
+
+const CLASSIC_SERIALIZATION_CASES: IClassicSerializationCase[] = [
+    {
+        name: "minimal price and limit",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1,
+            phloLimit: 1,
+            validAfterBlockNumber: CLASSIC_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}380140015063${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+    {
+        name: "multi byte price and limit",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1000,
+            phloLimit: 500000,
+            validAfterBlockNumber: CLASSIC_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}38e80740a0c21e5063${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+    {
+        name: "genesis previous block",
+        data: {
+            term: CLASSIC_TERM,
+            timestamp: CLASSIC_TIMESTAMP,
+            phloPrice: 1,
+            phloLimit: 1,
+            validAfterBlockNumber: GENESIS_PREVIOUS_BLOCK,
+            shardId: DEFAULT_SHARD_ID,
+        },
+        protobufHex: `${CLASSIC_TERM_HEX}${CLASSIC_TIMESTAMP_HEX}3801400150ffffffffffffffffff01${CLASSIC_ROOT_SHARD_HEX}`,
+    },
+];
+
 class StubBlockService extends BlockService {
+    public requests: number = 0;
+
     public async getLatestBlockNumber(): Promise<number> {
+        this.requests += 1;
+
         return LATEST_BLOCK_NUMBER;
     }
 }
@@ -110,10 +195,26 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
     return { account, signer };
 };
 
+const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
+const rustApi: NodeApiAdapter = new RustNodeApiAdapter({} as IApiClients);
+
+const createNodeApiProvider = (api: NodeApiAdapter): NodeApiProvider =>
+    ({
+        getApi: () => api,
+        getNetworkSession: () =>
+            new NetworkSession({
+                getValidatorApiStatus: async () => ({}),
+            } as unknown as NodeApiAdapter),
+    }) as unknown as NodeApiProvider;
+
 const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
 ): TransactionService =>
-    new TransactionService(deployService, new StubBlockService());
+    new TransactionService(
+        deployService,
+        new StubBlockService(),
+        createNodeApiProvider(scalaApi),
+    );
 
 const hashSignedData = (signed: SignedResult): string =>
     blake2bHex(
@@ -243,6 +344,73 @@ test("signDeploy never submits the deploy", async () => {
     assert.equal(deployService.submitted.length, 0);
 });
 
+test("scala adapter and the classic serializer keep the classic protobuf bytes", () => {
+    console.log("\n=== SCALA CLASSIC SERIALIZATION ===");
+
+    for (const { name, data, protobufHex } of CLASSIC_SERIALIZATION_CASES) {
+        const adapterHex: string = encodeBase16(
+            scalaApi.serializeDeployData(data),
+        );
+        const serializerHex: string = encodeBase16(
+            SignerService.deployDataProtobufSerialize(data),
+        );
+
+        console.log("    Case:", name);
+        console.log("    Protobuf:", adapterHex);
+
+        assert.equal(adapterHex, protobufHex);
+        assert.equal(serializerHex, protobufHex);
+    }
+});
+
+test("binary writer writes byte and string fields of a million bytes", () => {
+    console.log("\n=== LARGE PROTOBUF FIELDS ===");
+
+    const writer: BinaryWriter = new BinaryWriter();
+
+    writer.writeBytes(
+        LARGE_BYTES_FIELD_NUMBER,
+        new Uint8Array(LARGE_FIELD_LENGTH).fill(LARGE_FIELD_BYTE),
+    );
+    writer.writeString(
+        LARGE_STRING_FIELD_NUMBER,
+        String.fromCharCode(LARGE_FIELD_CHAR_CODE).repeat(LARGE_FIELD_LENGTH),
+    );
+
+    const bytes: Uint8Array = writer.getResultBuffer();
+    const fieldLength: number = LARGE_FIELD_HEADER_LENGTH + LARGE_FIELD_LENGTH;
+
+    const bytesField: Uint8Array = bytes.subarray(
+        LARGE_FIELD_HEADER_LENGTH,
+        fieldLength,
+    );
+    const stringField: Uint8Array = bytes.subarray(
+        fieldLength + LARGE_FIELD_HEADER_LENGTH,
+    );
+
+    console.log("    Written bytes:", bytes.length);
+
+    assert.equal(bytes.length, fieldLength * 2);
+    assert.equal(
+        encodeBase16(bytes.subarray(0, LARGE_FIELD_HEADER_LENGTH)),
+        LARGE_BYTES_FIELD_HEADER_HEX,
+    );
+    assert.equal(
+        encodeBase16(
+            bytes.subarray(fieldLength, fieldLength + LARGE_FIELD_HEADER_LENGTH),
+        ),
+        LARGE_STRING_FIELD_HEADER_HEX,
+    );
+    assert.equal(
+        bytesField.every((byte: number) => byte === LARGE_FIELD_BYTE),
+        true,
+    );
+    assert.equal(
+        stringField.every((byte: number) => byte === LARGE_FIELD_CHAR_CODE),
+        true,
+    );
+});
+
 test("signDeploy rejects an invalid payload", async () => {
     console.log("\n=== INVALID PAYLOADS ARE REJECTED ===");
 
@@ -265,7 +433,12 @@ test("signDeploy rejects an invalid payload", async () => {
         {
             name: "phlo price that is not a number",
             details: { term: TERM, phloPrice: Number.NaN },
-            error: /Phlo price must be a positive safe integer/,
+            error: /Phlo price must be a positive integer/,
+        },
+        {
+            name: "phlo price above the classic range",
+            details: { term: TERM, phloPrice: 1n << 60n },
+            error: /Phlo price must be a positive integer not greater than 9007199254740991/,
         },
         {
             name: "blank shard id",
@@ -296,4 +469,86 @@ test("signDeploy rejects an invalid payload", async () => {
     }
 
     assert.equal(deployService.submitted.length, 0);
+});
+
+test("signDeploy at rust block height zero signs the previous block -1 as ten protobuf bytes", async () => {
+    console.log("\n=== RUST BLOCK HEIGHT ZERO ===");
+
+    const { account, signer }: ISigningContext =
+        await createPrivateKeyContext();
+
+    for (const blockNumber of ZERO_BLOCK_NUMBERS) {
+        const calls: (IGetBlocksParams | undefined)[] = [];
+
+        const api: NodeApiAdapter = new RustNodeApiAdapter({
+            observer: {
+                getBlocks: async (params?: IGetBlocksParams) => {
+                    calls.push(params);
+
+                    return [{ blockInfo: { blockNumber } }];
+                },
+            },
+        } as unknown as IApiClients);
+        const nodeApiProvider: NodeApiProvider = createNodeApiProvider(api);
+
+        const signed: SignedResult = await new TransactionService(
+            new SpyDeployService(),
+            new BlockService(nodeApiProvider),
+            nodeApiProvider,
+        ).signDeploy({
+            walletType: WalletTypes.PRIVATE_KEY,
+            account,
+            signer,
+            term: TERM,
+            passwordProvider: createPasswordProvider(),
+        });
+
+        const bytes: Uint8Array = api.serializeDeployData(signed.data);
+        const hash: string = blake2bHex(bytes, undefined, DEPLOY_HASH_LENGTH);
+
+        console.log("    Blocks request params:", JSON.stringify(calls[0]));
+        console.log("    Block number:", JSON.stringify(blockNumber));
+        console.log(
+            "    Previous block:",
+            signed.data.validAfterBlockNumber,
+        );
+
+        assert.deepEqual(calls, [RUST_LATEST_BLOCK_PARAMS]);
+        assert.equal(signed.data.validAfterBlockNumber, GENESIS_PREVIOUS_BLOCK);
+        assert.equal(
+            encodeBase16(bytes).includes(PREVIOUS_BLOCK_MINUS_ONE_HEX),
+            true,
+        );
+        assert.equal(verify(signed.signature, hash, signed.deployer), true);
+    }
+});
+
+test("signDeploy rejects a phlo charge above uint256 before requesting the block height", async () => {
+    console.log("\n=== PHLO CHARGE OVERFLOW BEFORE THE BLOCK REQUEST ===");
+
+    const blockService: StubBlockService = new StubBlockService();
+    const transactionService: TransactionService = new TransactionService(
+        new SpyDeployService(),
+        blockService,
+        createNodeApiProvider(rustApi),
+    );
+    const { account, signer }: ISigningContext =
+        await createPrivateKeyContext();
+
+    await assert.rejects(
+        transactionService.signDeploy({
+            walletType: WalletTypes.PRIVATE_KEY,
+            account,
+            signer,
+            term: TERM,
+            phloLimit: OVERFLOW_PHLO_LIMIT,
+            phloPrice: MAX_UINT256,
+            passwordProvider: createPasswordProvider(),
+        }),
+        PHLO_CHARGE_OVERFLOW_ERROR,
+    );
+
+    console.log("    Block height requests:", blockService.requests);
+
+    assert.equal(blockService.requests, 0);
 });

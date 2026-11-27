@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import ApiClientManager from "@domains/ApiClientManager";
 import { NodeApiProfile } from "@domains/NodeApiProfile";
 import { INetworkConfig, INetworkRecord } from "@domains/Network";
+import { createNetworkConfigSnapshot } from "@fabrics/network";
 import {
     CUSTOM_NETWORK_CONFIG,
     NETWORKS_CONFIG,
@@ -197,7 +198,7 @@ test("updating a network to the config of another network throws", () => {
 
     assert.deepEqual(
         apiClientManager.getNetwork(record.id).config,
-        CUSTOM_NETWORK_CONFIG,
+        createNetworkConfigSnapshot(CUSTOM_NETWORK_CONFIG),
     );
 
     apiClientManager.close();
@@ -290,7 +291,10 @@ test("updating a network with its own name and config succeeds", () => {
     console.log("    Updated name:", updated.name);
 
     assert.equal(updated.name, SECOND_CUSTOM_NETWORK);
-    assert.deepEqual(updated.config, CUSTOM_NETWORK_CONFIG);
+    assert.deepEqual(
+        updated.config,
+        createNetworkConfigSnapshot(CUSTOM_NETWORK_CONFIG),
+    );
 
     apiClientManager.close();
 });

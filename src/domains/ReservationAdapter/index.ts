@@ -5,6 +5,7 @@ import TransactionReservationsManager, {
 import {
     ISerializedTransactionReservationPrivateData,
     ITransactionReservation,
+    ITransactionReservationInput,
     Transaction,
 } from "@domains/Transaction";
 import Wallet from "@domains/Wallet";
@@ -12,13 +13,11 @@ import SecretsProvider from "@domains/SecretsProvider";
 import { NetworkId } from "@domains/Network";
 import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
+import NodeApiAdapter from "@domains/NodeApiAdapter";
+import NodeApiProvider from "@domains/NodeApiProvider";
+import type { INodePhloBounds } from "@domains/NetworkSession";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
-import {
-    DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
-    GasFee,
-    SUBMISSION_SETTLE_TIMEOUT_MS,
-} from "@config/index";
+import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
 import { IBalanceData } from "@services/AssetsService";
 import Account from "@domains/Account";
@@ -27,10 +26,13 @@ import { SignedResult } from "@services/Signer";
 import CryptoService, { EncryptedData } from "@services/Crypto";
 import TransactionReservationFabric, {
     TCreateTransactionReservationPayload,
+    TWithNativeTokenDecimals,
 } from "@fabrics/transactionReservation";
+import { createDeployPhlo, IDeployPhlo } from "@fabrics/deployPhlo";
 import {
     CorruptedDataSource,
     DeploySubmissionRejectedError,
+    DeployVerdictError,
     DomainClosedError,
     IErrorContext,
     ReservationAction,
@@ -45,6 +47,8 @@ import {
     isRestorableReservationData,
     isSerializedReservationPrivateData,
     parseDecryptedJson,
+    runProtected,
+    validatePhloSettings,
     validatePositiveAmount,
     validateReservationPayload,
     validateReservationUpdateTarget,
@@ -53,6 +57,14 @@ import {
 export interface IReservedOperationResult {
     deployId: string;
     subscribe: (callbacks: IDeployWatchCallbacks) => () => void;
+}
+
+export interface IReservationAdapterOptions
+    extends ITransactionReservationsManagerOptions {
+    onReleaseFailed?: (
+        reservation: ITransactionReservation,
+        error: unknown,
+    ) => void;
 }
 
 export default class ReservationAdapter {
@@ -64,37 +76,71 @@ export default class ReservationAdapter {
     private readonly reservationsManager: TransactionReservationsManager;
 
     constructor(
-        reservations: ITransactionReservation[],
-        reservationsManagerOptions: ITransactionReservationsManagerOptions = {},
+        reservations: ITransactionReservationInput[],
+        options: IReservationAdapterOptions = {},
     ) {
         this.reservationsManager = new TransactionReservationsManager(
-            reservations,
+            reservations.map((reservation: ITransactionReservationInput) =>
+                ReservationAdapter.withNetworkPrecision(reservation),
+            ),
             {
-                ...reservationsManagerOptions,
-                onConfirmed: (reservation: ITransactionReservation) => {
-                    void ReservationAdapter.releaseFromStorage(reservation.id);
-
-                    reservationsManagerOptions.onConfirmed?.(reservation);
-                },
-                onExpired: (reservation: ITransactionReservation) => {
-                    void ReservationAdapter.releaseFromStorage(reservation.id);
-
-                    reservationsManagerOptions.onExpired?.(reservation);
-                },
+                ...options,
+                onConfirmed: (reservation: ITransactionReservation) =>
+                    ReservationAdapter.releaseAndNotify(
+                        reservation,
+                        options.onReleaseFailed,
+                        () => options.onConfirmed?.(reservation),
+                    ),
+                onExpired: (reservation: ITransactionReservation) =>
+                    ReservationAdapter.releaseAndNotify(
+                        reservation,
+                        options.onReleaseFailed,
+                        () => options.onExpired?.(reservation),
+                    ),
+                onReleased: (
+                    reservation: ITransactionReservation,
+                    verdict: DeployVerdictError,
+                ) =>
+                    ReservationAdapter.releaseAndNotify(
+                        reservation,
+                        options.onReleaseFailed,
+                        () => options.onReleased?.(reservation, verdict),
+                    ),
             },
         );
     }
 
-    private static async releaseFromStorage(
-        reservationId: ITransactionReservation["id"],
-    ): Promise<void> {
-        return StorageManager.deleteTransactionReservation(reservationId).catch(
-            (error: unknown) =>
-                console.error(
-                    "ReservationAdapter: failed to delete released reservation:",
-                    error,
-                ),
+    private static runConsumerCallback(callback: () => void): void {
+        runProtected(callback, (error: unknown) =>
+            console.error("ReservationAdapter: callback failed:", error),
         );
+    }
+
+    private static reportDeleteFailure(error: unknown): void {
+        console.error(
+            "ReservationAdapter: failed to delete released reservation:",
+            error,
+        );
+    }
+
+    private static async releaseAndNotify(
+        reservation: ITransactionReservation,
+        onReleaseFailed: IReservationAdapterOptions["onReleaseFailed"],
+        notifyReleased: () => void,
+    ): Promise<void> {
+        try {
+            await StorageManager.deleteTransactionReservation(reservation.id);
+        } catch (error: unknown) {
+            ReservationAdapter.reportDeleteFailure(error);
+
+            ReservationAdapter.runConsumerCallback(() =>
+                onReleaseFailed?.(reservation, error),
+            );
+
+            return;
+        }
+
+        ReservationAdapter.runConsumerCallback(notifyReleased);
     }
 
     private async ensureSufficientBalance(
@@ -122,6 +168,22 @@ export default class ReservationAdapter {
         const remoteBalance: bigint = (await account.getBalance()).amount;
 
         return remoteBalance - totalReservedAmount >= 0n;
+    }
+
+    private static getNetworkPrecision(networkId: NetworkId): number {
+        return ApiClientManager.getInstance().getNetwork(networkId).config
+            .nativeTokenDecimals;
+    }
+
+    private static withNetworkPrecision<
+        T extends { networkId: NetworkId; nativeTokenDecimals?: number },
+    >(value: T): TWithNativeTokenDecimals<T> {
+        return {
+            ...value,
+            nativeTokenDecimals:
+                value.nativeTokenDecimals ??
+                ReservationAdapter.getNetworkPrecision(value.networkId),
+        };
     }
 
     public async add(
@@ -154,7 +216,9 @@ export default class ReservationAdapter {
                     );
 
                     const reservation: ITransactionReservation =
-                        TransactionReservationFabric.create(payload);
+                        TransactionReservationFabric.create(
+                            ReservationAdapter.withNetworkPrecision(payload),
+                        );
 
                     await this.persistReservation(
                         reservation,
@@ -224,7 +288,9 @@ export default class ReservationAdapter {
 
                             const reservation: ITransactionReservation =
                                 TransactionReservationFabric.create(
-                                    payload,
+                                    ReservationAdapter.withNetworkPrecision(
+                                        payload,
+                                    ),
                                     reservationId,
                                 );
 
@@ -290,7 +356,7 @@ export default class ReservationAdapter {
     public static async create(
         wallet: Wallet,
         passwordProvider?: SecretsProvider,
-        reservationsManagerOptions?: ITransactionReservationsManagerOptions,
+        options?: IReservationAdapterOptions,
     ): Promise<ReservationAdapter> {
         const knownNetworkIds: Set<NetworkId> = new Set(
             ApiClientManager.getInstance().getNetworkIds(),
@@ -306,7 +372,9 @@ export default class ReservationAdapter {
             SUBMISSION_SETTLE_TIMEOUT_MS,
         );
 
-        if (ReservationAdapter.submissionsGuard.hasPendingOperations(signerId)) {
+        if (
+            ReservationAdapter.submissionsGuard.hasPendingOperations(signerId)
+        ) {
             throw new WalletActionInProgressError(
                 WalletAction.SUBMIT_DEPLOY,
                 signerId,
@@ -339,7 +407,7 @@ export default class ReservationAdapter {
             );
         }
 
-        return new ReservationAdapter(reservations, reservationsManagerOptions);
+        return new ReservationAdapter(reservations, options);
     }
 
     private getReservedAmount(accountId: string, networkId: NetworkId): bigint {
@@ -475,7 +543,9 @@ export default class ReservationAdapter {
             error instanceof DeploySubmissionRejectedError ||
             error instanceof DomainClosedError
         ) {
-            await ReservationAdapter.releaseFromStorage(reservation.id);
+            await StorageManager.deleteTransactionReservation(
+                reservation.id,
+            ).catch(ReservationAdapter.reportDeleteFailure);
 
             return;
         }
@@ -524,6 +594,41 @@ export default class ReservationAdapter {
         };
     }
 
+    private static resolveDeployPhlo(
+        api: NodeApiAdapter,
+        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+        { minPhloPrice, maxPhloLimit }: INodePhloBounds,
+        { context }: IErrorContext,
+    ): IDeployPhlo {
+        ensureValid(
+            validatePhloSettings(phlo, {
+                maxPhloPrice: api.getMaxPhloPrice(),
+                minPhloPrice,
+                maxPhloLimit,
+            }),
+            { context },
+        );
+
+        return createDeployPhlo(phlo, minPhloPrice, maxPhloLimit);
+    }
+
+    public static getTransferGasReserve(
+        phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
+    ): bigint {
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const { maxPhloCharge }: IDeployPhlo =
+            ReservationAdapter.resolveDeployPhlo(
+                api,
+                phlo,
+                nodeApiProvider.getNetworkSession().getKnownPhloBounds(),
+                { context: "ReservationAdapter.getTransferGasReserve" },
+            );
+
+        return api.getTransferGasReserve(maxPhloCharge);
+    }
+
     public async transfer(
         wallet: Wallet,
         accountId: string,
@@ -533,7 +638,30 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const pendingAmount: bigint = details.amount + GasFee.MAX;
+        const nativeTokenDecimals: number =
+            ReservationAdapter.getNetworkPrecision(networkId);
+
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const requestedDetails: ITransferDetails = { ...details };
+
+        const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
+            ReservationAdapter.resolveDeployPhlo(
+                api,
+                requestedDetails,
+                await nodeApiProvider.getNetworkSession().getPhloBounds(),
+                { context: "ReservationAdapter.transfer" },
+            );
+
+        const transferDetails: ITransferDetails = {
+            ...requestedDetails,
+            phloLimit,
+            phloPrice,
+        };
+
+        const gasCost: bigint = api.getTransferGasReserve(maxPhloCharge);
+        const pendingAmount: bigint = transferDetails.amount + gasCost;
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.transfer",
@@ -555,7 +683,7 @@ export default class ReservationAdapter {
                             const signedDeploy: SignedResult =
                                 await wallet.signTransfer(
                                     accountId,
-                                    details,
+                                    transferDetails,
                                     passwordProvider,
                                 );
 
@@ -564,9 +692,11 @@ export default class ReservationAdapter {
                                     kind: "transfer",
                                     deployId: signedDeploy.signature,
                                     networkId,
+                                    nativeTokenDecimals,
                                     account,
                                     pendingAmount,
-                                    details,
+                                    details: transferDetails,
+                                    gasCost,
                                 });
 
                             return this.reserveAndSubmit(
@@ -591,9 +721,29 @@ export default class ReservationAdapter {
         const networkId: NetworkId =
             ApiClientManager.getInstance().getCurrentNetworkId();
 
-        const pendingAmount: bigint =
-            BigInt(details.phloLimit ?? DEFAULT_PHLO_LIMIT) *
-            BigInt(details.phloPrice ?? DEFAULT_PHLO_PRICE);
+        const nativeTokenDecimals: number =
+            ReservationAdapter.getNetworkPrecision(networkId);
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const requestedDetails: TDeployDetails = { ...details };
+
+        const {
+            phloLimit,
+            phloPrice,
+            maxPhloCharge: pendingAmount,
+        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(
+            api,
+            requestedDetails,
+            await nodeApiProvider.getNetworkSession().getPhloBounds(),
+            { context: "ReservationAdapter.deploy" },
+        );
+
+        const deployDetails: TDeployDetails = {
+            ...requestedDetails,
+            phloLimit,
+            phloPrice,
+        };
 
         ensureValid(validatePositiveAmount(pendingAmount), {
             context: "ReservationAdapter.deploy",
@@ -615,7 +765,7 @@ export default class ReservationAdapter {
                             const signedDeploy: SignedResult =
                                 await wallet.signDeploy(
                                     accountId,
-                                    details,
+                                    deployDetails,
                                     passwordProvider,
                                 );
 
@@ -624,9 +774,10 @@ export default class ReservationAdapter {
                                     kind: "deploy",
                                     deployId: signedDeploy.signature,
                                     networkId,
+                                    nativeTokenDecimals,
                                     account,
                                     pendingAmount,
-                                    term: details.term,
+                                    term: deployDetails.term,
                                 });
 
                             return this.reserveAndSubmit(

@@ -99,7 +99,14 @@ Returned value (`UseSdkValue`):
   [No active account](DOMAINS.md#no-active-account)).
 - Transfers & balances: `transfer(request, password?)` (password omitted while a
   session is active), `getBalance(address: Address)`,
-  `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`.
+  `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`, and the
+  synchronous `getTransferGasReserve(): bigint` (the gas a transfer on the
+  current network reserves, `client.getTransferGasReserve()`), and
+  `getMinPhloPrice(): Promise<bigint>` (the node minimum phlo price of the
+  current network, `client.getMinPhloPrice()`), and
+  `getMaxPhloLimit(): Promise<bigint | null>` (the node maximum phlo limit of
+  the current network, `null` when the node reports none,
+  `client.getMaxPhloLimit()`).
 - Reservations for externally submitted deploys:
   `addTransactionReservation(request, password?)`,
   `updateTransactionReservation(reservationId, request, password?)`,
@@ -107,9 +114,9 @@ Returned value (`UseSdkValue`):
   (they persist into the encrypted reservation store), so they run through
   `withSessionSync`; the removal does not.
 - Deploys: `deploy(request, password?)` (arbitrary Rholang term via
-  `IDeployRequest = { walletId, accountId, term, phloLimit? }`, same session
-  rules as `transfer`), `signDeploy(request, password?)` (signs without
-  submitting, `ISignDeployRequest` adds `phloPrice` and `shardId`, resolves to a
+  `IDeployRequest = { walletId, accountId, term, phloLimit?, phloPrice?, shardId? }`,
+  same session rules as `transfer`), `signDeploy(request, password?)` (signs
+  without submitting, same request fields in `ISignDeployRequest`, resolves to a
   `SignedResult`), `exploreDeploy(rholang)` (read-only, no unlock/password),
   `watchDeploy(deployId, callbacks?, options?)` (deploy status polling).
   `transfer` and `deploy` both resolve to an `IReservedOperationResult`
@@ -134,7 +141,8 @@ Returned value (`UseSdkValue`):
 Amount conversion is no longer proxied through the hook: `toDisplayAmount` and
 `toAtomicAmount` are gone from `UseSdkValue` in favour of the asset-aware
 [formatters](#formatters-formattersindexts), which read the decimals from the
-`Asset` instead of assuming the native token.
+`Asset` instead of assuming the native token. The native asset of the current
+network comes from [useNativeAsset](#usenativeasset-hooksusenativeassetts).
 
 Input types: `ICreateHDWalletInput = { name, mnemonic }`,
 `ICreatePkWalletInput = { name, privateKey }`.
@@ -176,6 +184,21 @@ count is a render input, a new reservation also triggers the balance reload that
 makes the available amount catch up. Errors are rendered through `toErrorText`,
 so a `CustomError` shows its code rather than a bare message.
 
+### useNativeAsset (`hooks/useNativeAsset.ts`)
+
+```ts
+useNativeAsset(currentNetwork: INetworkRecord | null): Asset
+```
+
+Returns the native asset of the current network, `getNativeAsset(config)` from
+the SDK, so amounts are formatted and parsed with that network's
+`nativeTokenDecimals` (8 on DevNet, 18 on Dev and TestNet). Before a network is
+known it returns `DEFAULT_ASSET`. Memoized on the network record, which is a new
+object on every `NETWORKS_CHANGED` event, so a precision change of the current
+network reaches every page. `AccountCard`, `DeployPage`, `TxHistoryPage`, and
+`ReservationsPage` use it and pass the asset down to the modals and
+`ReservationStatus`.
+
 ### useRelevantResultGuard (`hooks/useRelevantResultGuard.ts`)
 
 The SDK keeps no balances or history of its own: every read returns whatever the
@@ -212,8 +235,9 @@ of silently swallowed, and `security.autoLockMs` comes from
 ### networksConfig.ts
 
 Builds `NETWORKS_CONFIG: TNetworksConfig` from `import.meta.env` (`DevNet`, `Dev`,
-plus empty `MainNet`/`TestNet` placeholders) and exposes `DEFAULT_NETWORK`
-(default `"DevNet"`).
+`AlexanderNet`, `TestNet`, plus an empty `MainNet` placeholder) and exposes
+`DEFAULT_NETWORK` (default `"DevNet"`; set `VITE_DEFAULT_NETWORK` to `Dev` or
+`TestNet` to start on a Rust network).
 
 `nodeApiProfile` is read from env per network rather than hardcoded, the same way
 `DEFAULT_NETWORK` already was:
@@ -223,8 +247,28 @@ nodeApiProfile: toNodeApiProfile(env.VITE_DEVNET_NODE_API_PROFILE),
 ```
 
 Env keys: `VITE_DEVNET_NODE_API_PROFILE=scala`, `VITE_DEV_NODE_API_PROFILE=rust`,
-`VITE_MAINNET_NODE_API_PROFILE`, `VITE_TESTNET_NODE_API_PROFILE`. New keys must
-also be declared in `playground/src/vite-env.d.ts`.
+`VITE_TESTNET_NODE_API_PROFILE=rust`, `VITE_ALEXANDERNET_NODE_API_PROFILE`,
+`VITE_MAINNET_NODE_API_PROFILE`. New keys must also be declared in
+`playground/src/vite-env.d.ts`.
+
+TestNet endpoints come from env too (`VITE_TESTNET_VALIDATOR_URL`,
+`VITE_TESTNET_READONLY_URL`, `VITE_TESTNET_INDEXER_URL`), like the other
+networks.
+
+`nativeTokenDecimals` is read per network the same way, through
+`toNativeTokenDecimals`:
+
+```ts
+nativeTokenDecimals: toNativeTokenDecimals(env.VITE_DEV_NATIVE_TOKEN_DECIMALS),
+```
+
+Env keys: `VITE_DEVNET_NATIVE_TOKEN_DECIMALS`, `VITE_DEV_NATIVE_TOKEN_DECIMALS`,
+`VITE_TESTNET_NATIVE_TOKEN_DECIMALS`, `VITE_ALEXANDERNET_NATIVE_TOKEN_DECIMALS`,
+`VITE_MAINNET_NATIVE_TOKEN_DECIMALS`. A missing or blank key leaves the field
+unset, so the SDK applies 8; any other value is passed to the SDK as a number,
+and an invalid one (`19`, `1.5`, text) makes `Client.create` throw at startup
+rather than run with a wrong precision. Dev and TestNet run with 18 decimals,
+DevNet with 8.
 
 The value is narrowed through `toNodeApiProfile` rather than cast with
 `as NodeApiProfile`: env vars are strings of unknown content, and a cast only
@@ -236,24 +280,38 @@ boot. An application that would rather refuse an unknown profile should throw in
 its own wrapper instead — the SDK still rejects an invalid value it is given
 directly.
 
-`DevNet` runs the legacy Scala node, `Dev` the new Rust node. `AlexanderNet` exists
-only in the repository-root `.env` (`VITE_NETWORKS`) so far, not in the playground.
+`DevNet` runs the legacy Scala node, `Dev` and `TestNet` the Rust node with the
+#881 API (profile `rust`). `AlexanderNet` is configured only through its env
+keys and is not a target of the SDK.
 
 ### formatters (`formatters/index.ts`)
 
 ```ts
 formatAddress(address: string): string   // 10-char prefix … 8-char suffix
-formatAmount(amount: bigint | null | undefined, asset?: Asset): string      // "N/A" or the decimal amount
-formatAssetAmount(amount: bigint | null | undefined, asset?: Asset): string // the amount plus the asset name
-parseAmount(amount: string | number, asset?: Asset): bigint                 // decimal string to atomic units
+formatAmount(amount: bigint | null | undefined, asset: Asset): string      // "N/A" or the decimal amount
+formatAssetAmount(amount: bigint | null | undefined, asset: Asset): string // the amount plus the asset name
+parseAmount(amount: string, asset: Asset): bigint                         // exact decimal string to atomic units
+formatTransactionAmount(amount: string | undefined, decimals: number): string // history amount without trailing zeros
 formatDate(date: Date): string
 ```
 
-All three amount helpers default to `DEFAULT_ASSET` and take the decimals from
-`asset.getDecimals()` instead of the `NATIVE_TOKEN_DECIMALS_AMOUNT` constant, so
-a non-native asset formats and parses correctly without a second code path.
-`formatAssetAmount` is what UI surfaces use, which is why the hardcoded `"ASI"`
-suffix disappeared from components: the unit now comes from `asset.getName()`.
+The amount helpers take the decimals from `asset.getDecimals()`, and `asset` is
+**required**: there is no `DEFAULT_ASSET` fallback, because a default of 8
+decimals would silently misformat an 18-decimal network. Callers pass the asset
+of the current network from `useNativeAsset`. `parseAmount` uses the SDK's
+`toExactAtomicAmount`, so extra fractional zeros are accepted and a nonzero
+digit beyond the network's decimals is rejected instead of truncated. `formatAssetAmount` is what UI
+surfaces use, so the unit comes from `asset.getName()` rather than a hardcoded
+`"ASI"`.
+
+`formatTransactionAmount` renders a history amount, which the SDK passes on as
+the indexer returned it (the TestNet indexer sends 77 fractional digits). It
+converts exactly with the SDK (`fromAtomicAmount(toExactAtomicAmount(amount,
+decimals), decimals)`), which drops trailing zeros; a missing amount renders as
+`-`, and a value the conversion rejects (malformed, or with a nonzero digit
+beyond the decimals) is shown as the original string. The decimals are the
+transaction's own `nativeTokenDecimals` for a pending row and the current
+network's otherwise.
 
 ### errors (`errors/index.ts`)
 
@@ -277,8 +335,9 @@ over SDK primitives (`validateAddress`, `validateAccountName`,
 
 ```ts
 toNodeApiProfile(value: unknown): NodeApiProfile
+toNativeTokenDecimals(value: string | undefined): number | undefined // env value; blank means unset
 
-isAmountInputAllowed(value: string): boolean          // keystroke guard, respects the asset decimals
+isAmountInputAllowed(value: string, decimals: number): boolean // keystroke guard, at most `decimals` fractional digits
 isIntegerInputAllowed(value: string, max?: number): boolean
 isDeployIdInputAllowed(value: string): boolean        // hex only
 
@@ -415,8 +474,12 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
 - Because the poller and the indexer advance independently, a just confirmed
   transaction can flicker — see the eventual-consistency note in
   [SERVICES.md](SERVICES.md).
-- `TxList/index.tsx` — renders the transactions table (or empty/N-A states).
-- `TxList/TxListItem/index.tsx` — one row; formats address/date, truncates the
+- `TxList/index.tsx` — renders the transactions table (or empty/N-A states). It
+  takes `nativeTokenDecimals`, the precision of the current network, and passes
+  it to every row.
+- `TxList/TxListItem/index.tsx` — one row; formats the amount with
+  `formatTransactionAmount` (the row's own `nativeTokenDecimals` for a pending
+  transaction, otherwise the network's), formats address/date, truncates the
   deploy id and block hash, and offers a copy-deploy-id button. Every cell
   carries a `data-label`, which is what the shared table styles use to restack
   the row as a labeled card on a narrow screen. The details cell shows the gas
@@ -428,8 +491,8 @@ transactions using `client.getTransactionsHistory(walletId, accountId, options)`
 Manages the SDK network list (custom-networks flow). Renders `sdk.networkRecords`
 as cards showing the network name, a `default`/`custom` badge, an `active` badge
 when the card id equals `sdk.currentNetwork?.id`, the Validator/Read-only/Indexer
-URLs, and a **Node API** row with the raw `config.nodeApiProfile` value (`scala` /
-`rust`). Actions per card: **Switch** (disabled for the active network), and
+URLs, a **Node API** row with the raw `config.nodeApiProfile` value (`scala` /
+`rust`), and a **Decimals** row with `config.nativeTokenDecimals`. Actions per card: **Switch** (disabled for the active network), and
 — only for `custom` (`!isDefault`) networks — **Edit** and **Remove**. A header
 **Add network** button opens the create form. Everything is keyed by the stable
 `network.id`; the editable `name` is just data. Default networks cannot be edited
@@ -443,9 +506,10 @@ or confirm removal and call the matching `useSdk` methods through `withLoader`
 cards and the active badge follow `NETWORKS_CHANGED`, so a successful write shows
 up on its own and a rejected one (a duplicate name or config, a busy network, a
 failed storage write) leaves the page as it was and is reported through `alert`.
-Removing or changing the endpoints of a network that still has pending
-reservations asks for confirmation first, because those reservations lose their
-tracking.
+Removing a network that still has pending reservations, or changing its
+endpoints or node API profile (`isNetworkConnectionChanged`), asks for
+confirmation first, because the SDK drops those reservations. Changing only the
+decimals does not ask: the reservations keep their own precision and survive.
 
 ### DeployPage (`pages/DeployPage/index.tsx`)
 
@@ -453,7 +517,7 @@ Runs arbitrary Rholang against the current network (restores the `Deploy` /
 `DeployLiteModeWidget` flow from the web wallet). Lets the user pick an unlocked
 account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
 example contract), and set a phlo limit. **Deploy** runs
-`sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
+`sdk.deploy({ walletId, accountId, term, phloLimit, phloPrice }, password?)` through
 `useSecureAction` (a confirm when the wallet session is active, otherwise a
 `PasswordModal`), then tracks status through the returned
 `IReservedOperationResult`: `reserved.subscribe({ onStatus, onConfirmed, onError })`
@@ -464,10 +528,22 @@ explore/deploy result are shown inline.
 The account picker now carries its own `walletId` instead of searching the open
 wallets for the account, and the form validates through the SDK's
 `validateDeployPayload` rather than its own `Number.isFinite` check, so the page
-refuses exactly what the signing boundary would refuse. The pre-flight balance
-check compares the balance against `phloLimit * DEFAULT_PHLO_PRICE` in atomic
+refuses exactly what the signing boundary would refuse. The **Phlo price** field
+(`ConstrainedInput`, digits only) is filled with `sdk.getMinPhloPrice()` when the
+page opens and on every network switch, and is validated by `toPhloPriceError`
+(`sdk-react-kit/validators`): required, a positive integer (`isPhloPrice`), not
+below the node minimum. Deploy stays disabled until the minimum is read and while
+the field has an error; the error replaces the hint line, so the field does not
+move. The **Phlo limit** field (`ConstrainedInput`, digits only) may be left
+empty for the SDK default; a value is validated by `toPhloLimitError`
+(`sdk-react-kit/validators`): a positive safe integer, not above the node
+maximum. The maximum is read with `sdk.getMaxPhloLimit()` together with the
+minimum price (one status request), the hint shows it, and Deploy stays disabled
+while the field has an error. The pre-flight balance
+check compares the balance against `phloLimit * phloPrice` in atomic
 units — the amount the deploy will actually reserve — instead of the ad-hoc
-division it used before.
+division it used before. Amounts are formatted with the native asset of the
+current network.
 
 ### DeployUtilsPage (`pages/DeployUtilsPage/index.tsx`)
 
@@ -476,11 +552,13 @@ The deploy calls that sit outside the reserve-and-submit flow, in three panels:
 - **Sign deploy without submitting** — `sdk.signDeploy` through `useSecureAction`,
   with account, phlo limit, phlo price, and shard id. The result is rendered as
   the raw `SignedResult` with a copy button, so it can be handed to whatever will
-  submit it. Phlo price and shard id are pinned to `DEFAULT_PHLO_PRICE` and
-  `"root"` in the UI: the SDK passes both through as given, but the chain does
-  not currently finalize a deploy priced differently or aimed at another shard,
-  so a payload signed that way would fail downstream for reasons that say nothing
-  about the signing.
+  submit it. The phlo price is not passed: the SDK signs the node minimum, and
+  the read-only field shows it (`sdk.getMinPhloPrice()`, read again on a network
+  switch). The phlo limit is required and validated by `toPhloLimitError`
+  against the node maximum (`sdk.getMaxPhloLimit()`, shown in the hint when the
+  node reports one). The shard id is pinned to `"root"` in the UI: the chain does not
+  currently finalize a deploy aimed at another shard, so a payload signed that
+  way would fail downstream for reasons that say nothing about the signing.
 - **Watch a deploy by id** — `sdk.watchDeploy` with a configurable interval and
   timeout, appending every `IDeployStatusResult` to a status log. It polls the
   node of the current network and needs no wallet, so any deploy id works,
@@ -504,9 +582,19 @@ the SDK.
   reserved total is derived, not typed — `amount + gasCost` for a transfer, the
   gas cost alone for a deploy — which is the invariant
   `validateReservationPayload` enforces on the SDK side.
-- Gas cost defaults per kind (`GasFee.MAX` for a transfer,
-  `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy) and a transfer's gas is
-  held between `GasFee.MIN` and `GasFee.MAX`.
+- Gas cost defaults per kind: the transfer gas reserve of the current network
+  for a transfer (`sdk.getTransferGasReserve()`: `GasFee.MAX` on `scala`,
+  `DEFAULT_PHLO_LIMIT * minimum phlo price` on `rust`, with the minimum already
+  read for the network or `DEFAULT_PHLO_PRICE` before that; `GasFee.MAX` before a
+  network is known), and `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy
+  (an editable starting value, not the node minimum).
+  A transfer's gas must be at least `GasFee.MIN`; there is no upper cap in the
+  form, the hint shows the minimum and the default reserve. Every amount field
+  accepts at most as many fractional digits as the network has decimals.
+- All amounts are parsed and formatted with the native asset of the current
+  network. The form resets (and leaves edit mode) when the current network, its
+  decimals, or its transfer gas reserve changes, so a value typed for one
+  network is never submitted on another.
 - The deploy id field flags a deploy id that already has a reservation in the
   listed ones (`toDuplicateDeployIdError`, the edited row excluded) and blocks
   **Create**/**Save**, mirroring `ensureUniqueDeployId` on the SDK side. The
@@ -542,8 +630,11 @@ The transfer itself runs inside `withLoader`, so the loader stays up until the
 reservation exists and the balance has been re-read, and the subscription to the
 returned `IReservedOperationResult` is attached before that await — a deploy
 confirmed quickly still triggers the reload. Amounts are rendered with
-`formatAssetAmount`, so the unit comes from the asset rather than a hardcoded
-`"ASI"`, and `reservationCount` is passed to `ReservationStatus` from the hook.
+`formatAssetAmount` and the native asset of the current network
+(`useNativeAsset`), so the unit and the decimals come from the network rather
+than a hardcoded `"ASI"` with 8 decimals. The card passes that asset to
+`ReservationStatus`, `TransferModal`, and `TransferCompletedModal`, and
+`reservationCount` to `ReservationStatus` from the hook.
 
 ```ts
 interface IAccountCardProps {
@@ -564,8 +655,12 @@ disabled.
 ### NetworkModal (`components/NetworkModal/index.tsx`)
 
 Add or edit a network. Collects `name` (editable in both modes), the node API
-profile, and the Validator/Read-only/Indexer URLs. Only `name` is required
-locally; empty URLs are allowed (matching the placeholder default networks). On
+profile, the native token decimals, and the Validator/Read-only/Indexer URLs.
+Only `name` is required locally; empty URLs are allowed (matching the
+placeholder default networks). **Native token decimals** is a number field from
+`0` to `MAX_NATIVE_TOKEN_DECIMALS` (18), prefilled with the network's value when
+editing and with `NATIVE_TOKEN_DECIMALS_AMOUNT` (8) when adding; a value outside
+the range is reported through `toIntegerRangeError` before submit. On
 submit it emits an `INetworkModalPayload`; the page maps that to
 `addNetwork(name, config)` or `updateNetwork(id, { name, config })`.
 
@@ -603,6 +698,7 @@ amount and the reservation count. The reserved amount is derived as
 interface IReservationStatusProps {
     balance: WalletBalance;       // { total, available }
     reservationCount: number;
+    asset: Asset;                 // native asset of the current network
     isFetching?: boolean;
     error?: string | null;
 }
@@ -612,13 +708,15 @@ interface IReservationStatusProps {
 
 Collects recipient and amount, validating the recipient through `toAddressError`
 (the SDK's `validateAddress`, so a malformed address is refused before the SDK
-sees it) and the amount against `availableBalance` (parsed with `parseAmount`).
-Confirms with a branded `Address` and an atomic `bigint`.
+sees it) and the amount against `availableBalance` (parsed with `parseAmount` and
+the given `asset`, so the network's decimals apply). Confirms with a branded
+`Address` and an atomic `bigint`.
 
 ```ts
 interface ITransferModalProps {
     fromAddress: Address;
     availableBalance: bigint;
+    asset: Asset;
     onConfirm: (toAddress: Address, amount: bigint) => void;
     onClose: () => void;
 }
@@ -630,14 +728,15 @@ Addresses travel as the SDK's branded `Address` rather than `string`, so the
 
 ### TransferCompletedModal (`components/TransferCompletedModal/index.tsx`)
 
-Shows the completed transfer (from/to, human amount via `formatAmount`, deploy id)
-and a copy-deploy-id button.
+Shows the completed transfer (from/to, human amount via `formatAssetAmount` with
+the given `asset`, deploy id) and a copy-deploy-id button.
 
 ```ts
 interface ITransferCompletedModalProps {
     fromAddress: string;
     toAddress: string;
     amount: bigint;
+    asset: Asset;
     deployId: string;
     onClose: () => void;
 }

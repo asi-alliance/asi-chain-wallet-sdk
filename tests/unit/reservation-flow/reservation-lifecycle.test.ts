@@ -6,14 +6,24 @@ import Wallet from "@domains/Wallet";
 import Account from "@domains/Account";
 import StorageManager from "@services/StorageManager";
 import TransactionReservationsManager from "@services/TransactionReservationsManager";
+import ReservationAdapter from "@domains/ReservationAdapter";
 import { ITransactionReservation } from "@domains/Transaction";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { INetworkConfig, INetworkRecord, NetworkId } from "@domains/Network";
+import { DeployStatus } from "@domains/Deploy";
 import {
+    DeployVerdictError,
     DomainClosedError,
     OperationsSuspendedError,
 } from "@domains/CustomError";
-import { FAKE_NETWORK, IFakeNode, IHeldStep, startFakeNode } from "./fakeNode";
+import { NATIVE_TOKEN_DECIMALS_AMOUNT } from "@config/index";
+import {
+    FAKE_NETWORK,
+    IFakeNode,
+    IHeldStep,
+    createHeldStep,
+    startFakeNode,
+} from "./fakeNode";
 
 const PRIVATE_KEY_HEX =
     "7e4c2412f4694ea426d7f7adbfdfdec46fb0396b491d530a740cfa4761851d35";
@@ -24,6 +34,11 @@ const STORAGE_OPTIONS = { nodeStorageDir: ".tmp/reservation-lifecycle" };
 
 const BALANCE: bigint = 1_000_000_000n;
 const TRANSFER_AMOUNT: bigint = 100_000_000n;
+
+const WATCH_INTERVAL_MS = 5;
+const WATCH_TIMEOUT_MS = 30;
+const VERDICT_RESERVATION_ID = "verdict-deploy";
+const TIMEOUT_RESERVATION_ID = "timeout-deploy";
 
 const privateKey: Uint8Array = Uint8Array.from(
     Buffer.from(PRIVATE_KEY_HEX, "hex"),
@@ -83,6 +98,7 @@ const createReservation = (
 ): ITransactionReservation => ({
     id,
     networkId,
+    nativeTokenDecimals: NATIVE_TOKEN_DECIMALS_AMOUNT,
     accountId: "account-id",
     pendingAmount: "1000",
     expirationTime: Date.now() + 5 * 60 * 1000,
@@ -108,6 +124,26 @@ const captureError = async (operation: () => Promise<unknown>) => {
 const nextTurn = (): Promise<void> =>
     new Promise<void>((resolve) => setImmediate(resolve));
 
+const originalDeleteReservation = StorageManager.deleteTransactionReservation;
+
+const holdReservationDelete = (events: string[]): IHeldStep => {
+    const step: IHeldStep = createHeldStep();
+
+    StorageManager.deleteTransactionReservation = async (
+        ...args: Parameters<typeof originalDeleteReservation>
+    ) => {
+        events.push("delete:started");
+
+        await step.wait();
+
+        await originalDeleteReservation(...args);
+
+        events.push("delete:finished");
+    };
+
+    return step;
+};
+
 const createExternalReservationRequest = (
     walletId: string,
     accountId: string,
@@ -131,10 +167,13 @@ test.after(async () => {
 test.beforeEach(() => {
     fakeNode.setBalance(BALANCE);
     fakeNode.setSubmitOutcome({ kind: "accepted" });
+    fakeNode.setFinalizationStatus({ state: "Pending" });
     fakeNode.onBeforeSubmitResponse(async () => {});
 });
 
 test.afterEach(async () => {
+    StorageManager.deleteTransactionReservation = originalDeleteReservation;
+
     await StorageManager.clear();
 });
 
@@ -209,6 +248,322 @@ test("a closed reservations manager stops tracking new reservations", async () =
     assert.equal(trackedWhileActive, 1);
     assert.equal(manager.isActive(), false);
     assert.equal(manager.getAll().length, 0);
+
+    manager.close();
+
+    await client.close();
+});
+
+test("a deploy verdict releases a tracked reservation through onReleased", async () => {
+    console.log("\n=== VERDICT RELEASES THROUGH ON RELEASED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+                markReleased();
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        });
+
+    manager.add(
+        VERDICT_RESERVATION_ID,
+        createReservation(VERDICT_RESERVATION_ID, networkId),
+    );
+
+    await released;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after verdict:", manager.getAll().length);
+
+    assert.deepEqual(events, [`onReleased:${DeployStatus.REJECTED}`]);
+    assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
+
+    manager.close();
+
+    await client.close();
+});
+
+test("a throwing verdict subscriber does not block the other subscriber or the release", async () => {
+    console.log("\n=== THROWING SUBSCRIBER DOES NOT BLOCK THE RELEASE ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+                markReleased();
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        });
+
+    manager.add(
+        VERDICT_RESERVATION_ID,
+        createReservation(VERDICT_RESERVATION_ID, networkId),
+    );
+
+    manager.subscribe(VERDICT_RESERVATION_ID, {
+        onVerdict: () => {
+            events.push("throwing:onVerdict");
+
+            throw new Error("Subscriber failure");
+        },
+    });
+
+    manager.subscribe(VERDICT_RESERVATION_ID, {
+        onVerdict: (verdict: DeployVerdictError) => {
+            events.push(`second:onVerdict:${verdict.state}`);
+        },
+        onError: (error: Error) => {
+            events.push(`second:onError:${error.constructor.name}`);
+        },
+    });
+
+    await released;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after verdict:", manager.getAll().length);
+
+    assert.deepEqual(events, [
+        "throwing:onVerdict",
+        `second:onVerdict:${DeployStatus.REJECTED}`,
+        `onReleased:${DeployStatus.REJECTED}`,
+        "second:onError:DeployVerdictError",
+    ]);
+    assert.equal(manager.get(VERDICT_RESERVATION_ID), null);
+
+    manager.close();
+
+    await client.close();
+});
+
+test("onReleased reports a verdict release after the reservation leaves the storage", async () => {
+    console.log("\n=== ON RELEASED WAITS FOR THE STORAGE ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    const deletion: IHeldStep = holdReservationDelete(events);
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: (
+                _reservation: ITransactionReservation,
+                verdict: DeployVerdictError,
+            ) => {
+                events.push(`onReleased:${verdict.state}`);
+                markReleased();
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    await deletion.reached;
+    await nextTurn();
+
+    const eventsWhileDeleting: string[] = [...events];
+
+    deletion.release();
+
+    await released;
+
+    console.log("    Events while deleting:", eventsWhileDeleting);
+    console.log("    Events:", events);
+
+    assert.deepEqual(eventsWhileDeleting, ["delete:started"]);
+    assert.deepEqual(events, [
+        "delete:started",
+        "delete:finished",
+        `onReleased:${DeployStatus.REJECTED}`,
+    ]);
+
+    adapter.dispose();
+
+    await client.close();
+});
+
+test("a rejecting async onReleased is reported instead of being lost", async (t) => {
+    console.log("\n=== ASYNC ON RELEASED FAILURE IS REPORTED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const failure: Error = new Error("Consumer failure");
+    const consoleError = t.mock.method(console, "error", () => {});
+
+    let markReleased!: () => void;
+
+    const released: Promise<void> = new Promise<void>((resolve) => {
+        markReleased = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: async () => {
+                markReleased();
+
+                throw failure;
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    await released;
+    await nextTurn();
+
+    const reportedErrors: unknown[] = consoleError.mock.calls.map(
+        (call) => call.arguments[1],
+    );
+
+    console.log("    Reported errors:", reportedErrors.length);
+
+    assert.ok(reportedErrors.includes(failure));
+
+    adapter.dispose();
+
+    await client.close();
+});
+
+test("a failed storage delete reports onReleaseFailed instead of onReleased", async (t) => {
+    console.log("\n=== FAILED STORAGE DELETE IS REPORTED ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const storageFailure: Error = new Error("Storage failure");
+    const events: string[] = [];
+
+    t.mock.method(console, "error", () => {});
+
+    StorageManager.deleteTransactionReservation = async () => {
+        throw storageFailure;
+    };
+
+    let markReleaseFailed!: (error: unknown) => void;
+
+    const releaseFailed: Promise<unknown> = new Promise<unknown>((resolve) => {
+        markReleaseFailed = resolve;
+    });
+
+    fakeNode.setFinalizationStatus({ state: DeployStatus.REJECTED });
+
+    const adapter: ReservationAdapter = new ReservationAdapter(
+        [createReservation(VERDICT_RESERVATION_ID, networkId)],
+        {
+            onReleased: () => {
+                events.push("onReleased");
+            },
+            onReleaseFailed: (
+                _reservation: ITransactionReservation,
+                error: unknown,
+            ) => {
+                events.push("onReleaseFailed");
+                markReleaseFailed(error);
+            },
+            watchOptions: { intervalMs: WATCH_INTERVAL_MS },
+        },
+    );
+
+    const reportedError: unknown = await releaseFailed;
+
+    await nextTurn();
+
+    console.log("    Events:", events);
+
+    assert.deepEqual(events, ["onReleaseFailed"]);
+    assert.equal(reportedError, storageFailure);
+
+    adapter.dispose();
+
+    await client.close();
+});
+
+test("a watch timeout keeps the reservation and does not call onReleased", async () => {
+    console.log("\n=== WATCH TIMEOUT KEEPS THE RESERVATION ===");
+
+    const client: Client = await createClient();
+    const networkId: NetworkId = client.getNetworks()[0].id;
+    const events: string[] = [];
+
+    let markFailed!: () => void;
+
+    const failed: Promise<void> = new Promise<void>((resolve) => {
+        markFailed = resolve;
+    });
+
+    const manager: TransactionReservationsManager =
+        new TransactionReservationsManager([], {
+            onReleased: () => {
+                events.push("onReleased");
+            },
+            onFailed: (_reservation: ITransactionReservation, error: Error) => {
+                events.push(`onFailed:${error.constructor.name}`);
+                markFailed();
+            },
+            watchOptions: {
+                intervalMs: WATCH_INTERVAL_MS,
+                timeoutMs: WATCH_TIMEOUT_MS,
+            },
+        });
+
+    manager.add(
+        TIMEOUT_RESERVATION_ID,
+        createReservation(TIMEOUT_RESERVATION_ID, networkId),
+    );
+
+    await failed;
+
+    console.log("    Events:", events);
+    console.log("    Tracked after timeout:", manager.getAll().length);
+
+    assert.deepEqual(events, ["onFailed:DeployTimeoutError"]);
+    assert.notEqual(manager.get(TIMEOUT_RESERVATION_ID), null);
 
     manager.close();
 

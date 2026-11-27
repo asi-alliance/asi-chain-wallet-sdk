@@ -35,9 +35,7 @@ export default class BlockService {
 
     public async getLatestBlockNumber(): Promise<number> {
         try {
-            const block: IBlockDto = await this.getLatestBlock();
-
-            return block.blockNumber ?? INVALID_BLOCK_NUMBER;
+            return await this.api.getLatestBlockNumber();
         } catch {
             return INVALID_BLOCK_NUMBER;
         }

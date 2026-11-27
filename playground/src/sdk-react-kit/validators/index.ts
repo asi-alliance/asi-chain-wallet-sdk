@@ -1,9 +1,9 @@
 import {
-    DEFAULT_ASSET,
     DEFAULT_NODE_API_PROFILE,
     genRandomHex,
     isIntegerInRange,
     isNodeApiProfile,
+    isPhloPrice,
     NodeApiProfile,
     NON_NEGATIVE_INTEGER_REGEX,
     validateAccountName,
@@ -19,6 +19,16 @@ export const toNodeApiProfile = (value: unknown): NodeApiProfile => {
     return DEFAULT_NODE_API_PROFILE;
 };
 
+export const toNativeTokenDecimals = (
+    value: string | undefined,
+): number | undefined => {
+    if (value === undefined || !value.trim()) {
+        return undefined;
+    }
+
+    return Number(value);
+};
+
 const SIGNATURE_HEX_LENGTH: number = 142;
 
 export const SIGNATURE_HEX_MIN_LENGTH: number = 128;
@@ -28,14 +38,17 @@ const AMOUNT_INPUT_REGEX: RegExp = /^\d*(?:\.\d*)?$/;
 
 const HEX_REGEX: RegExp = /^[0-9a-fA-F]+$/;
 
-export const isAmountInputAllowed = (value: string): boolean => {
+export const isAmountInputAllowed = (
+    value: string,
+    decimals: number,
+): boolean => {
     if (!AMOUNT_INPUT_REGEX.test(value)) {
         return false;
     }
 
     const fraction: string = value.split(".")[1] ?? "";
 
-    return fraction.length <= DEFAULT_ASSET.getDecimals();
+    return fraction.length <= decimals;
 };
 
 export const isIntegerInputAllowed = (
@@ -69,6 +82,46 @@ export const toIntegerRangeError = (
 
     if (!isIntegerInRange(Number(value), min, max)) {
         return `${label} must be an integer between ${min} and ${max}`;
+    }
+
+    return null;
+};
+
+export const toPhloLimitError = (
+    value: string,
+    maxPhloLimit: bigint | null,
+): string | null => {
+    const rangeError: string | null = toIntegerRangeError(value, {
+        label: "Phlo limit",
+        min: 1,
+        max: Number.MAX_SAFE_INTEGER,
+    });
+
+    if (rangeError) {
+        return rangeError;
+    }
+
+    if (maxPhloLimit !== null && BigInt(value) > maxPhloLimit) {
+        return `Phlo limit ${value} must not be greater than the node maximum ${maxPhloLimit}`;
+    }
+
+    return null;
+};
+
+export const toPhloPriceError = (
+    value: string,
+    minPhloPrice: bigint,
+): string | null => {
+    if (!value.trim()) {
+        return "Phlo price is required";
+    }
+
+    if (!isPhloPrice(value)) {
+        return "Phlo price must be a positive integer";
+    }
+
+    if (BigInt(value) < minPhloPrice) {
+        return `Phlo price must not be less than the node minimum ${minPhloPrice}`;
     }
 
     return null;

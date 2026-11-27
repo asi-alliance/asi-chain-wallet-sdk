@@ -7,8 +7,9 @@ import {
 } from "react";
 import {
     Account,
-    DEFAULT_ASSET,
+    GasFee,
     Wallet,
+    type Asset,
     type ITransactionReservation,
     type TTransactionReservationMeta,
     type TTransactionReservationRequest,
@@ -23,6 +24,7 @@ import {
     isAmountInputAllowed,
     isDeployIdInputAllowed,
     toDeployIdError,
+    useNativeAsset,
     useSdkContext,
 } from "../../sdk-react-kit";
 import useSecureAction from "@hooks/useSecureAction";
@@ -32,12 +34,10 @@ import SelectFilter, {
 } from "@components/common/SelectFilter";
 import ConstrainedInput from "@components/common/ConstrainedInput";
 import {
-    DEFAULT_DEPLOY_GAS_COST,
-    EMPTY_FORM_STATE,
-    isGasCostAllowed,
-    MAX_GAS_COST,
-    MIN_GAS_COST,
+    createEmptyFormState,
+    toDefaultDeployGasCost,
     toDefaultGasCost,
+    toMinGasCost,
     toDuplicateDeployIdError,
     toExpirationLabel,
     toFormState,
@@ -63,16 +63,24 @@ const ReservationsPage = (): ReactElement => {
         currentNetwork,
         isCurrentNetworkBusy,
         getAvailableBalance,
+        getTransferGasReserve,
         getReservations,
         addTransactionReservation,
         updateTransactionReservation,
         removeTransactionReservation,
     } = useSdkContext();
+    const asset: Asset = useNativeAsset(currentNetwork);
+    const transferGasReserve: bigint = useMemo(
+        () => (currentNetwork ? getTransferGasReserve() : GasFee.MAX),
+        [currentNetwork, getTransferGasReserve],
+    );
     const runSecureAction = useSecureAction();
 
     const [selectedWalletId, setSelectedWalletId] = useState<string>("");
     const [selectedAccountId, setSelectedAccountId] = useState<string>("");
-    const [form, setForm] = useState<IReservationFormState>(EMPTY_FORM_STATE);
+    const [form, setForm] = useState<IReservationFormState>(() =>
+        createEmptyFormState(asset, transferGasReserve),
+    );
     const [editedReservationId, setEditedReservationId] = useState<
         string | null
     >(null);
@@ -201,8 +209,8 @@ const ReservationsPage = (): ReactElement => {
     ]);
 
     const reservedAmount: bigint | null = useMemo(
-        () => toReservedAmount(form),
-        [form],
+        () => toReservedAmount(form, asset),
+        [form, asset],
     );
 
     const deployIdError: string | null =
@@ -215,7 +223,7 @@ const ReservationsPage = (): ReactElement => {
 
     const recipientError: string | null = toRecipientError(form);
 
-    const gasCostError: string | null = toGasCostError(form);
+    const gasCostError: string | null = toGasCostError(form, asset);
 
     const editedReservation: ITransactionReservation | null =
         reservations.find(
@@ -236,14 +244,18 @@ const ReservationsPage = (): ReactElement => {
     const balanceLimitError: string | null = isOverAvailable
         ? `${
               editedReservation ? "Reserve increase" : "Reserved amount"
-          } exceeds the available balance of ${formatAssetAmount(available)}`
+          } exceeds the available balance of ${formatAssetAmount(available, asset)}`
         : null;
 
     const resetForm = (): void => {
-        setForm(EMPTY_FORM_STATE);
+        setForm(createEmptyFormState(asset, transferGasReserve));
         setEditedReservationId(null);
         setError(null);
     };
+
+    useEffect(() => {
+        resetForm();
+    }, [currentNetwork?.id, asset.getDecimals(), transferGasReserve]);
 
     const updateForm = (patch: Partial<IReservationFormState>): void => {
         setNotice(null);
@@ -257,11 +269,14 @@ const ReservationsPage = (): ReactElement => {
     const handleKindChange = (value: string): void => {
         const kind = value as TransactionReservationKind;
 
-        updateForm({ kind, gasCost: toDefaultGasCost(kind) });
+        updateForm({
+            kind,
+            gasCost: toDefaultGasCost(kind, asset, transferGasReserve),
+        });
     };
 
-    const isGasCostInputAllowed = (value: string): boolean =>
-        isAmountInputAllowed(value) && isGasCostAllowed(form.kind, value);
+    const isAssetAmountInputAllowed = (value: string): boolean =>
+        isAmountInputAllowed(value, asset.getDecimals());
 
     const startEditing = (reservation: ITransactionReservation): void => {
         setNotice(null);
@@ -318,7 +333,7 @@ const ReservationsPage = (): ReactElement => {
         let meta: TTransactionReservationMeta;
 
         try {
-            meta = toReservationMeta(form, reservedAmount);
+            meta = toReservationMeta(form, reservedAmount, asset);
         } catch (parseError) {
             setError(toErrorText(parseError, "Reservation form is invalid"));
 
@@ -409,7 +424,7 @@ const ReservationsPage = (): ReactElement => {
         gasCostError === null &&
         balanceLimitError === null;
     const isEditing = editedReservationId !== null;
-    const assetName: string = DEFAULT_ASSET.getName();
+    const assetName: string = asset.getName();
 
     return (
         <main className="reservations-page">
@@ -471,7 +486,7 @@ const ReservationsPage = (): ReactElement => {
                             {selectedAccountId && (
                                 <span className="reservations-page__field-hint">
                                     available:{" "}
-                                    {formatAssetAmount(available)}
+                                    {formatAssetAmount(available, asset)}
                                 </span>
                             )}
                         </div>
@@ -568,7 +583,7 @@ const ReservationsPage = (): ReactElement => {
                                     onChange={(value: string) =>
                                         updateForm({ amount: value })
                                     }
-                                    isAllowed={isAmountInputAllowed}
+                                    isAllowed={isAssetAmountInputAllowed}
                                     inputMode="decimal"
                                 />
                             </>
@@ -581,12 +596,12 @@ const ReservationsPage = (): ReactElement => {
                             onChange={(value: string) =>
                                 updateForm({ gasCost: value })
                             }
-                            isAllowed={isGasCostInputAllowed}
+                            isAllowed={isAssetAmountInputAllowed}
                             inputMode="decimal"
                             hint={
                                 form.kind === "transfer"
-                                    ? `network charges ${MIN_GAS_COST} to ${MAX_GAS_COST}`
-                                    : `default deploy budget is ${DEFAULT_DEPLOY_GAS_COST}`
+                                    ? `at least ${toMinGasCost(asset)}, default transfer reserve is ${formatAmount(transferGasReserve, asset)}`
+                                    : `default deploy budget is ${toDefaultDeployGasCost(asset)}`
                             }
                             error={form.gasCost ? gasCostError : null}
                         />
@@ -594,7 +609,7 @@ const ReservationsPage = (): ReactElement => {
                         <ConstrainedInput
                             id="reservation-reserved"
                             label={`Reserved amount, ${assetName}:`}
-                            value={formatAmount(reservedAmount)}
+                            value={formatAmount(reservedAmount, asset)}
                             error={balanceLimitError}
                             readOnly
                         />
@@ -717,6 +732,7 @@ const ReservationsPage = (): ReactElement => {
                                                         BigInt(
                                                             reservation.pendingAmount,
                                                         ),
+                                                        asset,
                                                     )}
                                                 </td>
                                                 <td data-label="Details">

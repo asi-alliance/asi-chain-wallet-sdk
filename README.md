@@ -56,7 +56,10 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 - **Explicit Account Targeting** - No active-account state: every call names its wallet and account, so concurrent operations on one wallet cannot sign for the wrong account, via [Client](docs/DOMAINS.md#no-active-account)
 - **Typed Failures** - Decryption, storage, and node errors carry a machine-readable code and structured fields instead of an assembled message string, via [CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts)
 - **Multi-Network Access** - Runtime network switching over validator, read-only, and GraphQL indexer clients via [ApiClientManager](docs/DOMAINS.md)
-- **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface via [NodeApiAdapter](docs/DOMAINS.md)
+- **Per-Network Node Profiles** - Legacy Scala and new Rust f1r3node request contracts behind one interface, including the uint256 deploy signing of the Rust node API, via [NodeApiAdapter](docs/DOMAINS.md)
+- **Per-Network Token Precision** - Each network declares its native token decimals (8 by default, up to 18), and balances, transfers, reservations, and conversions follow the precision of their network, via [Network](docs/DOMAINS.md#network-srcdomainsnetworkindexts)
+- **Exact Wide Amounts** - Amounts, balances, and phlo prices up to `2^256 - 1` are handled as `bigint` and exact decimal strings, never rounded through `Number`, via [amount conversion](docs/UTILS.md#amount-conversion)
+- **Node Minimum Phlo Price** - Deploys and transfers are signed and reserved with the minimum phlo price the node of the selected network reports, read once per network, and a lower explicit price is refused before signing; an explicit phlo limit above the maximum the node reports is refused the same way, via [NetworkSession](docs/DOMAINS.md#networksession-srcdomainsnetworksessionindexts)
 - **Transaction History** - Indexed transfer history through a GraphQL anti-corruption layer via [AccountDataService](docs/SERVICES.md)
 
 ---
@@ -66,6 +69,9 @@ ASI Chain Wallet SDK is a modular TypeScript library designed to simplify wallet
 ```bash
 npm install @asichain/asi-wallet-sdk
 ```
+
+For Node.js applications, use a supported LTS line (22.x, 24.x or 26.x).
+The package provides both ESM and CommonJS entry points.
 
 ---
 
@@ -95,6 +101,7 @@ const networksConfig: TNetworksConfig = {
         ReadOnlyURL: "",
         IndexerURL: "",
         nodeApiProfile: NodeApiProfile.RUST,
+        nativeTokenDecimals: 18, // optional, defaults to 8
     },
     MainNet: {
         ValidatorURL: "",
@@ -106,7 +113,8 @@ const networksConfig: TNetworksConfig = {
         ValidatorURL: "",
         ReadOnlyURL: "",
         IndexerURL: "",
-        nodeApiProfile: NodeApiProfile.SCALA,
+        nodeApiProfile: NodeApiProfile.RUST,
+        nativeTokenDecimals: 18,
     },
 };
 
@@ -129,7 +137,15 @@ one — and that choice drives the HTTP request shape, the endpoint a given call
 targets, and which Rholang vault contract the built-in terms address. There is no
 default: an omitted or unknown profile throws at `Client.create`, because guessing
 it would silently send legacy-shaped requests to a new node. Custom networks added
-at runtime through `client.addNetwork` must supply it too.
+at runtime through `client.addNetwork` must supply it too. The `RUST` profile
+targets the Rust node API with uint256 deploy signing (node #881 and later);
+older Rust nodes are not supported.
+
+`nativeTokenDecimals` is the precision of the network's native token: 1 ASI is
+`10^nativeTokenDecimals` atomic units. It is optional, an integer from `0` to
+`18`, and defaults to `8`; the SDK takes it from the config and does not ask the
+node. Every network record the SDK returns has it set, so read it as
+`client.getCurrentNetwork().config.nativeTokenDecimals`.
 
 ### Create Wallets
 
@@ -316,13 +332,13 @@ const available = await client.getAvailableBalance(
 );
 console.log("Balance:", client.toDisplayAmount(balance));
 
-// Transfer tokens (amount in atomic units)
+// Transfer tokens (amount in atomic units of the current network)
 const reserved = await client.transfer(
     {
         walletId: hdWallet.getId(),
         accountId: account.getId(),
         to: recipientAddress,
-        amount: client.toAtomicAmount("10"), // 10 ASI
+        amount: client.toExactAtomicAmount("10"), // 10 ASI
     },
     "wallet-password",
 );
@@ -336,20 +352,38 @@ const unsubscribe = reserved.subscribe({
 ```
 
 `transfer` and `deploy` store the reservation **before** they send the deploy,
-and `deployId` is the deploy signature, known before the node answers. If the
-submission fails, what happens to the locked funds depends on the error:
+and `deployId` is the deploy signature, known before the node answers. What
+happens to the locked funds depends on how the submission ends:
 
-- `DeploySubmissionRejectedError` (`400`): the node refused the deploy, the
-  reservation is released;
-- `ApiRequestError` (`502`): the outcome is unknown (dropped connection,
-  timeout, `5xx`), the reservation is kept until the deploy is confirmed or the
-  reservation expires;
+- the node acknowledged the same deploy id, or answered HTTP `409`
+  `duplicate_deploy`: the reservation is kept and the deploy is watched;
+- `DeploySubmissionRejectedError`: the node refused the deploy, the reservation
+  is released. A refusal the SDK recognizes by the node's error code is one of
+  the typed `DeployRefusalError` subclasses (`DeployAdmissionRefusedError`,
+  `DeployRefusedError`, `DeployQueueRefusedError`), which carry `deployId`,
+  `retryable` and `retryAfterMs`; any other HTTP `4xx` stays a plain
+  `DeploySubmissionRejectedError`. In both cases `reason` is the node's
+  `message` when the response body carries one;
+- `DeploySubmissionUnknownError` (`502`, code `API_REQUEST_FAILED`, extends
+  `ApiRequestError`): the outcome is unknown (dropped connection, timeout, an
+  unrecognized server error, or an acknowledgement without the expected deploy
+  id). It carries `deployId`, and the reservation is kept until the deploy is
+  confirmed, gets a verdict or the reservation expires;
 - `DomainClosedError` (`410`): the wallet was closed before the deploy was sent,
   nothing reached the node and the reservation is released.
 
-`DeploySubmissionRejectedError` extends `ApiRequestError`, so existing
-`ApiRequestError` handling keeps working. See
-[Client](docs/DOMAINS.md#client-srcdomainsclientindexts).
+The SDK never resends a refused deploy on its own. When `retryable` is `true`,
+the caller may try again after `retryAfterMs` (when the node sent one) with a
+new `transfer` or `deploy`, which signs a new deploy.
+
+While the deploy is watched, a `Rejected`, `Expired` or `Failed` verdict ends
+the watch with `DeployVerdictError` (passed to `onVerdict`, then `onError`) and
+releases the reservation. A watch timeout (`DeployTimeoutError`) keeps the
+reservation until it expires, because the deploy may still land. Both
+`DeploySubmissionRejectedError` and `DeploySubmissionUnknownError` extend
+`ApiRequestError`, so existing `ApiRequestError` handling keeps working. See
+[Client](docs/DOMAINS.md#client-srcdomainsclientindexts) and
+[CustomError](docs/DOMAINS.md#customerror-srcdomainscustomerrorindexts).
 
 A balance read that cannot be trusted now throws `BalanceUnavailableError`
 (status `502`) carrying the address and a reason, instead of resolving to `0n`.
@@ -357,7 +391,40 @@ A node that is unreachable, a vault that reports an error, and an account with n
 funds are three different outcomes, so handle the error rather than reading a
 falsy balance as "empty".
 
-See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md).
+Amounts are atomic `bigint` values in the precision of the current network.
+`client.toExactAtomicAmount(string)` converts user input exactly: extra
+fractional zeros are accepted, and a nonzero digit beyond the network's decimals
+is rejected; `client.toDisplayAmount`
+formats back. Both read the decimals of the network selected at the time of the
+call. `client.toAtomicAmount` still works but is deprecated: it accepts numbers
+and truncates excess digits.
+
+A transfer reserves `amount` plus the transfer gas reserve of the current
+network: `GasFee.MAX` on `SCALA`, the signed budget `phloLimit * phloPrice` on
+`RUST`. Use `client.getTransferGasReserve()` for a "Max" button or a
+confirmation total, so the UI shows exactly what the SDK will lock.
+
+Without an explicit `phloPrice`, `transfer`, `deploy` and `signDeploy` sign the
+minimum phlo price of the current network's node (`minPhloPrice` from the
+validator's `GET /api/status`). The SDK reads it on the first operation after a
+network is selected and keeps it until the network is switched; a failed read is
+not kept and the operation falls back to `DEFAULT_PHLO_PRICE`. An explicit
+`phloPrice` below that minimum is rejected before anything is signed or
+reserved. `await client.getMinPhloPrice()` returns the minimum and reads it if
+needed; `getTransferGasReserve()` is synchronous and uses the minimum already
+read, so call `getMinPhloPrice()` first when a network has just been selected.
+On TestNet the minimum is `100000000000`, so the default deploy budget and the
+transfer gas reserve are `500000 * 10^11` atomic units (0.05 ASI).
+
+The same status read also gives the largest phlo limit the node accepts
+(`maxPhloLimit`, reported by Rust nodes since node PR #1081). An explicit
+`phloLimit` above it is rejected before anything is signed or reserved ("Phlo
+limit N must not be greater than the node maximum M"), and an omitted limit is
+`DEFAULT_PHLO_LIMIT` (500000), or the node maximum when that is lower. `await
+client.getMaxPhloLimit()` returns the maximum, or `null` when the node does not
+report one (Scala nodes, older Rust nodes); then no limit is checked, as before.
+
+See [Client](docs/DOMAINS.md) for the full API reference. For amount conversions, see [functions utilities](docs/UTILS.md#amount-conversion).
 
 ### Reserve Funds for a Deploy You Submit Yourself
 
@@ -373,9 +440,9 @@ const request = {
     kind: "transfer" as const,
     deployId, // the deploy you submitted yourself
     to: recipientAddress,
-    amount: client.toAtomicAmount("10"),
-    gasCost: client.toAtomicAmount("0.1"),
-    pendingAmount: client.toAtomicAmount("10.1"), // must cover amount + gasCost
+    amount: client.toExactAtomicAmount("10"),
+    gasCost: client.toExactAtomicAmount("0.1"),
+    pendingAmount: client.toExactAtomicAmount("10.1"), // must cover amount + gasCost
 };
 
 const reservation = await client.addTransactionReservation(
@@ -386,8 +453,8 @@ const reservation = await client.addTransactionReservation(
 // Correct it while it is still pending, keeping the same reservation id
 await client.updateTransactionReservation(reservation.id, {
     ...request,
-    amount: client.toAtomicAmount("12"),
-    pendingAmount: client.toAtomicAmount("12.1"),
+    amount: client.toExactAtomicAmount("12"),
+    pendingAmount: client.toExactAtomicAmount("12.1"),
 });
 
 // Or release the funds early
@@ -417,8 +484,8 @@ const signed = await client.signDeploy(
         walletId: hdWallet.getId(),
         accountId: account.getId(),
         term: rholangTerm,
-        phloLimit: 500_000, // optional, defaults from config
-        phloPrice: 1, // optional, defaults from config
+        phloLimit: 500_000, // optional, defaults from config; not above await client.getMaxPhloLimit() when it is not null
+        phloPrice: await client.getMinPhloPrice(), // optional, the node minimum is also the default; a number, decimal string, or bigint not below it
         shardId: "root", // optional, defaults to "root"
     },
     "wallet-password", // omit while a signing session is active
@@ -430,8 +497,18 @@ await submitToNode(signed);
 
 `validAfterBlockNumber` and `timestamp` are filled in by the SDK from the current
 chain head, so the call still needs the network. The payload is validated before
-anything is signed: a blank term, a non-positive or unsafe `phloLimit` /
-`phloPrice`, or a blank `shardId` are rejected.
+anything is signed: a blank term, a non-positive or unsafe `phloLimit`, a
+`phloLimit` above the node maximum, a
+`phloPrice` below 1 or above the bound of the profile (`Number.MAX_SAFE_INTEGER`
+on `SCALA`, `2^256 - 1` on `RUST`), a `phloPrice` below the node minimum, a
+`phloLimit * phloPrice` above `2^256 - 1`, or a blank `shardId` are rejected.
+
+The signed bytes follow the node API profile of the current network: on `RUST`
+the price is signed as a 32-byte uint256 field and `signed.data.phloPrice` is a
+decimal string, on `SCALA` it is an int64 field and a number. Submit a signed
+deploy to a node of the profile it was signed for, and do not switch networks
+between signing and submitting. `client.deploy` accepts the same `phloPrice`
+and `shardId` options.
 
 ---
 
@@ -561,7 +638,7 @@ asi-chain-wallet-sdk/
 
 | Document                                 | Description                                                                                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, `NodeApiAdapter`, storage repositories, and types) |
+| [docs/DOMAINS.md](docs/DOMAINS.md)       | Domain models & transport (`Client`, `Wallet`, `Account`, `Signer`, `ReservationAdapter`, `ApiClientManager`, `NetworkSession`, `NodeApiAdapter`, storage repositories, and types) |
 | [docs/SERVICES.md](docs/SERVICES.md)     | Managers & services (`WalletManager`, `AccountManager`, `StorageManager`, `DeployService`, `AssetsService`, `TransactionService`, `CryptoService`) |
 | [docs/UTILS.md](docs/UTILS.md)           | Utilities & config (`codec`, `constants`, `validators`, `functions`, `guards`, `decorators`, `fabrics`, `polyfills`)                               |
 | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) | Playground components, the `sdk-react-kit` integration layer, and usage examples                                                                   |
@@ -593,14 +670,15 @@ asi-chain-wallet-sdk/
 
 ### Prerequisites
 
-- Node.js 18.x or higher
-- npm 9.x or higher
+Use Node.js 26 LTS and its bundled npm for SDK development and the Playground.
+If you use nvm, run `nvm install` and `nvm use` from the repository root.
+The CI gate and release build read the same version from [`.nvmrc`](.nvmrc).
 
 ### Setup
 
 ```bash
 # Install SDK dependencies
-npm install
+npm ci
 
 # Build the SDK
 npm run build
@@ -736,6 +814,9 @@ npm install
 # VITE_DEVNET_VALIDATOR_URL=...
 # VITE_DEVNET_READONLY_URL=...
 # VITE_DEVNET_INDEXER_URL=...
+# VITE_DEVNET_NODE_API_PROFILE=scala
+# VITE_DEV_NODE_API_PROFILE=rust
+# VITE_DEV_NATIVE_TOKEN_DECIMALS=18   # optional per network, defaults to 8
 
 npm run dev
 ```

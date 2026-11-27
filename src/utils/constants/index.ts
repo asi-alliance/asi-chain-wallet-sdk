@@ -22,13 +22,25 @@ export const POWER_BASE: number = 10;
 
 export const ASI_BASE_UNIT = BigInt(POWER_BASE) ** BigInt(ASI_DECIMALS);
 
+export const MAX_INT64: bigint = (1n << 63n) - 1n;
+export const MAX_UINT256: bigint = (1n << 256n) - 1n;
+export const MAX_CLASSIC_PHLO_PRICE: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+
 export const SCALA_FAULT_TOLERANCE_THRESHOLD: number = 0.99;
+// TODO(next-major): Remove; the rust node reports finalization through
+// finalizationState instead of faultTolerance.
+/** @deprecated The rust node API profile reads deploy finalization from finalizationState. */
 export const RUST_FAULT_TOLERANCE_THRESHOLD: number = 0.33;
 
 export const INVALID_BLOCK_NUMBER = -1;
 
 export const HTTP_CLIENT_ERROR_MIN_STATUS: number = 400;
 export const HTTP_CLIENT_ERROR_MAX_STATUS: number = 499;
+export const HTTP_CONFLICT_STATUS: number = 409;
+export const HTTP_SERVICE_UNAVAILABLE_STATUS: number = 503;
+
+export const MILLISECONDS_IN_SECOND: number = 1000;
+export const MAX_TIMER_DELAY_MS: number = 2_147_483_647;
 
 export const DIGITS_ONLY_REGEX: RegExp = /^\d+$/;
 export const CANONICAL_INTEGER_REGEX: RegExp = /^(0|[1-9]\d*)$/;

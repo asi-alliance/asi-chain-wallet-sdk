@@ -94,6 +94,10 @@ const NetworksPage = (): ReactElement => {
                                     <dt>Node API</dt>
                                     <dd>{config.nodeApiProfile}</dd>
                                 </div>
+                                <div className="network-card__config-row">
+                                    <dt>Decimals</dt>
+                                    <dd>{config.nativeTokenDecimals}</dd>
+                                </div>
                             </dl>
 
                             <div className="network-card__actions">

@@ -2,7 +2,7 @@ import BaseHttpClient from "@domains/BaseHttpClient";
 import { buildUrl } from "@utils/index";
 
 export interface IBalanceResponse {
-    balance: number;
+    balance: number | string;
 }
 
 export interface IBlockDto {
@@ -15,8 +15,11 @@ export type TBlocksView = "summary" | "full";
 export interface IGetBlocksParams {
     start?: number;
     end?: number;
+    depth?: number;
     view?: TBlocksView;
 }
+
+const BLOCKS_PATH: string = "api/blocks";
 
 export default class ObserverClient extends BaseHttpClient {
     public getDeploy(deployHash: string) {
@@ -27,15 +30,18 @@ export default class ObserverClient extends BaseHttpClient {
         return this.get(`/api/block/${blockHash}`);
     }
 
+    // TODO(next-major): type the response for both node API profiles; the
+    // Rust node returns the block number in blockInfo.blockNumber.
     public getBlocks(params: IGetBlocksParams = {}): Promise<IBlockDto[]> {
-        const { start, end, view } = params;
+        const { start, end, depth, view } = params;
 
-        const path: string = buildUrl("api/blocks", {
+        const path: string = buildUrl(BLOCKS_PATH, {
             path: {
                 start,
                 end,
                 view,
             },
+            pathSegments: [depth],
         });
 
         return this.get(path, view ? { params: { view } } : undefined);

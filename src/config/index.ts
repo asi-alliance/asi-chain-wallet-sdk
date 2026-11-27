@@ -1,4 +1,5 @@
 export const NATIVE_TOKEN_DECIMALS_AMOUNT: number = 8;
+export const MAX_NATIVE_TOKEN_DECIMALS: number = 18;
 
 export const DEFAULT_PHLO_LIMIT: number = 500000;
 export const DEFAULT_PHLO_PRICE: number = 1;
@@ -45,6 +46,7 @@ export const GasFee = {
 export const DEPLOY_STATUS_POLLING_TIMEOUT: number = 3 * 60 * 1000;
 export const RESERVATION_EXPIRATION_TIME: number = 5 * 60 * 1000;
 export const DEFAULT_REQUEST_TIMEOUT: number = 30 * 1000;
+export const DEPLOY_VERDICT_REQUEST_TIMEOUT: number = 2 * 1000;
 
 export const RequirePassword = {
     ONCE_PER_SESSION: "once-per-session",

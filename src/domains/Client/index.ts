@@ -1,6 +1,5 @@
 import {
     DEFAULT_AUTO_LOCK_MS,
-    NATIVE_TOKEN_DECIMALS_AMOUNT,
     RequirePassword,
 } from "@config/index";
 import {
@@ -25,6 +24,7 @@ import {
 } from "@services/DeployStatusPoller";
 import Wallet, { Address } from "@domains/Wallet";
 import Account from "@domains/Account";
+import { PhloPrice } from "@domains/Deploy";
 import ClientLifecycleGuard from "@services/ClientLifecycleGuard";
 import ClosableDomain from "@domains/ClosableDomain";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -55,9 +55,10 @@ import ExportKeyfileService, {
 import { IImportWalletKeyfileOptions } from "@services/ImportKeyfileService";
 import {
     fromAtomicAmount,
-    isNetworkConfigChanged,
+    isNetworkConnectionChanged,
     isPrivateKeyValid,
     toAtomicAmount,
+    toExactAtomicAmount,
 } from "@utils/index";
 import { Pagination } from "@services/GraphqlParser/queryOptions";
 import { ICreatedAccountData } from "@services/AccountManager";
@@ -70,7 +71,7 @@ import {
     EnsureWithInsensitiveCacheStorage,
     TrackOperation,
 } from "@utils/decorators";
-import { DEFAULT_ASSET } from "@domains/Asset";
+import { getNativeAsset } from "@domains/Asset";
 import { registerEventDispatcher } from "@fabrics/client/eventDispatcherBridge";
 import ClientEventBus, {
     ClientEvent,
@@ -114,6 +115,8 @@ export interface IDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
+    phloPrice?: PhloPrice;
+    shardId?: string;
 }
 
 export interface ISignDeployRequest {
@@ -121,7 +124,7 @@ export interface ISignDeployRequest {
     accountId: string;
     term: string;
     phloLimit?: number;
-    phloPrice?: number;
+    phloPrice?: PhloPrice;
     shardId?: string;
 }
 
@@ -822,7 +825,7 @@ export default class Client extends ClosableDomain {
         const balance =
             await ApiServiceRegistry.getInstance().assets.getBalance(
                 address,
-                DEFAULT_ASSET,
+                getNativeAsset(this.getCurrentNetwork().config),
             );
 
         return balance.amount;
@@ -897,6 +900,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
+                        this.getCurrentNetwork().config.nativeTokenDecimals,
                     );
 
                 const reservation: ITransactionReservation =
@@ -945,6 +949,7 @@ export default class Client extends ClosableDomain {
                         request,
                         account,
                         ApiClientManager.getInstance().getCurrentNetworkId(),
+                        this.getCurrentNetwork().config.nativeTokenDecimals,
                     );
 
                 const reservation: ITransactionReservation =
@@ -1017,7 +1022,7 @@ export default class Client extends ClosableDomain {
         }
 
         if (!pendingTransactions.length) {
-            return account.getTransactionsHistory(undefined, pagination);
+            return account.getTransactionsHistory(networkId, pagination);
         }
 
         const historyWindow: ITransactionsHistoryWindow =
@@ -1029,7 +1034,7 @@ export default class Client extends ClosableDomain {
 
         const executedTransactions: Transaction[] =
             await account.getTransactionsHistory(
-                undefined,
+                networkId,
                 historyWindow.executedPagination,
             );
 
@@ -1068,7 +1073,11 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.transfer(
                     wallet,
                     accountId,
-                    { to, amount, asset: DEFAULT_ASSET },
+                    {
+                        to,
+                        amount,
+                        asset: getNativeAsset(this.getCurrentNetwork().config),
+                    },
                     passwordProvider,
                 );
             },
@@ -1079,7 +1088,14 @@ export default class Client extends ClosableDomain {
     @EnsureActive
     @TrackOperation
     public deploy(
-        { walletId, accountId, term, phloLimit }: IDeployRequest,
+        {
+            walletId,
+            accountId,
+            term,
+            phloLimit,
+            phloPrice,
+            shardId,
+        }: IDeployRequest,
         password?: string,
     ): Promise<IReservedOperationResult> {
         return ApiClientManager.getInstance().runNetworkOperation(
@@ -1105,7 +1121,7 @@ export default class Client extends ClosableDomain {
                 return reservationAdapter.deploy(
                     wallet,
                     accountId,
-                    { term, phloLimit },
+                    { term, phloLimit, phloPrice, shardId },
                     passwordProvider,
                 );
             },
@@ -1168,11 +1184,43 @@ export default class Client extends ClosableDomain {
     }
 
     public toDisplayAmount(atomicAmount: bigint): string {
-        return fromAtomicAmount(atomicAmount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+        return fromAtomicAmount(
+            atomicAmount,
+            this.getCurrentNetwork().config.nativeTokenDecimals,
+        );
     }
 
+    /** @deprecated Use {@link Client.toExactAtomicAmount} instead. */
     public toAtomicAmount(amount: number | string): bigint {
-        return toAtomicAmount(amount, NATIVE_TOKEN_DECIMALS_AMOUNT);
+        return toAtomicAmount(
+            amount,
+            this.getCurrentNetwork().config.nativeTokenDecimals,
+        );
+    }
+
+    public toExactAtomicAmount(amount: string): bigint {
+        return toExactAtomicAmount(
+            amount,
+            this.getCurrentNetwork().config.nativeTokenDecimals,
+        );
+    }
+
+    public getTransferGasReserve(): bigint {
+        return ReservationAdapter.getTransferGasReserve();
+    }
+
+    @EnsureActive
+    public getMinPhloPrice(): Promise<bigint> {
+        return ApiClientManager.getInstance()
+            .getNetworkSession()
+            .getMinPhloPrice();
+    }
+
+    @EnsureActive
+    public getMaxPhloLimit(): Promise<bigint | null> {
+        return ApiClientManager.getInstance()
+            .getNetworkSession()
+            .getMaxPhloLimit();
     }
 
     private getOpenWallet(walletId: string): Wallet {
@@ -1242,16 +1290,17 @@ export default class Client extends ClosableDomain {
         return this.reservationAdapterManager.runExclusiveNetworkAction(
             id,
             async () => {
-                const isConfigChanged: boolean = isNetworkConfigChanged(
-                    ApiClientManager.getInstance().getNetwork(id).config,
-                    update.config,
-                );
+                const isConnectionChanged: boolean =
+                    isNetworkConnectionChanged(
+                        ApiClientManager.getInstance().getNetwork(id).config,
+                        update.config,
+                    );
 
                 await NetworkManager.updateNetwork(id, update);
 
                 this.emitNetworksChanged();
 
-                if (!isConfigChanged) {
+                if (!isConnectionChanged) {
                     return;
                 }
 
