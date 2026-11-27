@@ -130,6 +130,10 @@ export const isUint256 = (
     return typeof value === "bigint" && value >= 0n && value <= MAX_UINT256;
 };
 
+export const isPhloPrice = (
+    value: unknown,
+): value is number | string | bigint => isUint256(value) && BigInt(value) > 0n;
+
 const isStoredPrivateKey = (value: unknown): boolean => {
     try {
         return isPrivateKeyValid(toUint8Array(value));

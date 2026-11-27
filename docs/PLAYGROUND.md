@@ -101,7 +101,12 @@ Returned value (`UseSdkValue`):
   session is active), `getBalance(address: Address)`,
   `getAvailableBalance(walletId, accountId)`, `getReservations(walletId)`, and the
   synchronous `getTransferGasReserve(): bigint` (the gas a transfer on the
-  current network reserves, `client.getTransferGasReserve()`).
+  current network reserves, `client.getTransferGasReserve()`), and
+  `getMinPhloPrice(): Promise<bigint>` (the node minimum phlo price of the
+  current network, `client.getMinPhloPrice()`), and
+  `getMaxPhloLimit(): Promise<bigint | null>` (the node maximum phlo limit of
+  the current network, `null` when the node reports none,
+  `client.getMaxPhloLimit()`).
 - Reservations for externally submitted deploys:
   `addTransactionReservation(request, password?)`,
   `updateTransactionReservation(reservationId, request, password?)`,
@@ -512,7 +517,7 @@ Runs arbitrary Rholang against the current network (restores the `Deploy` /
 `DeployLiteModeWidget` flow from the web wallet). Lets the user pick an unlocked
 account (`SelectFilter`), edit the Rholang term in a textarea (seeded with an
 example contract), and set a phlo limit. **Deploy** runs
-`sdk.deploy({ walletId, accountId, term, phloLimit }, password?)` through
+`sdk.deploy({ walletId, accountId, term, phloLimit, phloPrice }, password?)` through
 `useSecureAction` (a confirm when the wallet session is active, otherwise a
 `PasswordModal`), then tracks status through the returned
 `IReservedOperationResult`: `reserved.subscribe({ onStatus, onConfirmed, onError })`
@@ -523,8 +528,19 @@ explore/deploy result are shown inline.
 The account picker now carries its own `walletId` instead of searching the open
 wallets for the account, and the form validates through the SDK's
 `validateDeployPayload` rather than its own `Number.isFinite` check, so the page
-refuses exactly what the signing boundary would refuse. The pre-flight balance
-check compares the balance against `phloLimit * DEFAULT_PHLO_PRICE` in atomic
+refuses exactly what the signing boundary would refuse. The **Phlo price** field
+(`ConstrainedInput`, digits only) is filled with `sdk.getMinPhloPrice()` when the
+page opens and on every network switch, and is validated by `toPhloPriceError`
+(`sdk-react-kit/validators`): required, a positive integer (`isPhloPrice`), not
+below the node minimum. Deploy stays disabled until the minimum is read and while
+the field has an error; the error replaces the hint line, so the field does not
+move. The **Phlo limit** field (`ConstrainedInput`, digits only) may be left
+empty for the SDK default; a value is validated by `toPhloLimitError`
+(`sdk-react-kit/validators`): a positive safe integer, not above the node
+maximum. The maximum is read with `sdk.getMaxPhloLimit()` together with the
+minimum price (one status request), the hint shows it, and Deploy stays disabled
+while the field has an error. The pre-flight balance
+check compares the balance against `phloLimit * phloPrice` in atomic
 units — the amount the deploy will actually reserve — instead of the ad-hoc
 division it used before. Amounts are formatted with the native asset of the
 current network.
@@ -536,11 +552,13 @@ The deploy calls that sit outside the reserve-and-submit flow, in three panels:
 - **Sign deploy without submitting** — `sdk.signDeploy` through `useSecureAction`,
   with account, phlo limit, phlo price, and shard id. The result is rendered as
   the raw `SignedResult` with a copy button, so it can be handed to whatever will
-  submit it. Phlo price and shard id are pinned to `DEFAULT_PHLO_PRICE` and
-  `"root"` in the UI: the SDK passes both through as given, but the chain does
-  not currently finalize a deploy priced differently or aimed at another shard,
-  so a payload signed that way would fail downstream for reasons that say nothing
-  about the signing.
+  submit it. The phlo price is not passed: the SDK signs the node minimum, and
+  the read-only field shows it (`sdk.getMinPhloPrice()`, read again on a network
+  switch). The phlo limit is required and validated by `toPhloLimitError`
+  against the node maximum (`sdk.getMaxPhloLimit()`, shown in the hint when the
+  node reports one). The shard id is pinned to `"root"` in the UI: the chain does not
+  currently finalize a deploy aimed at another shard, so a payload signed that
+  way would fail downstream for reasons that say nothing about the signing.
 - **Watch a deploy by id** — `sdk.watchDeploy` with a configurable interval and
   timeout, appending every `IDeployStatusResult` to a status log. It polls the
   node of the current network and needs no wallet, so any deploy id works,
@@ -566,8 +584,10 @@ the SDK.
   `validateReservationPayload` enforces on the SDK side.
 - Gas cost defaults per kind: the transfer gas reserve of the current network
   for a transfer (`sdk.getTransferGasReserve()`: `GasFee.MAX` on `scala`,
-  `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` on `rust`; `GasFee.MAX` before a
-  network is known), and `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy.
+  `DEFAULT_PHLO_LIMIT * minimum phlo price` on `rust`, with the minimum already
+  read for the network or `DEFAULT_PHLO_PRICE` before that; `GasFee.MAX` before a
+  network is known), and `DEFAULT_PHLO_LIMIT * DEFAULT_PHLO_PRICE` for a deploy
+  (an editable starting value, not the node minimum).
   A transfer's gas must be at least `GasFee.MIN`; there is no upper cap in the
   form, the hint shows the minimum and the default reserve. Every amount field
   accepts at most as many fractional digits as the network has decimals.

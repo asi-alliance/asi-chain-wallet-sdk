@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { getPublicKey, sign, verify } from "@noble/secp256k1";
 import blakejs from "blakejs";
 
+import { DEFAULT_PHLO_LIMIT, DEFAULT_PHLO_PRICE } from "@config/index";
 import { IApiClients } from "@domains/ApiClientManager";
 import { DeployData, PhloPrice } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
@@ -43,11 +44,17 @@ const SYNTHETIC_PRIVATE_KEY: Uint8Array = new Uint8Array(
 
 const CLASSIC_PHLO_PRICE: number = 1;
 
+const DEFAULT_MIN_PHLO_PRICE: bigint = BigInt(DEFAULT_PHLO_PRICE);
+
 const WIDE_PHLO_PRICE: string = "9007199254740993";
 const WIDE_PHLO_LIMIT: number = 3;
 const WIDE_MAX_PHLO_CHARGE: bigint = 27021597764222979n;
 
 const PHLO_CHARGE_OVERFLOW_ERROR: RegExp = /charge exceeds uint256/;
+
+const NODE_MAX_PHLO_LIMIT: bigint = 20000000n;
+const LOW_NODE_MAX_PHLO_LIMIT: bigint = 400000n;
+const EXPLICIT_PHLO_LIMIT: number = 1000000;
 
 const SUBMITTED_VECTOR_INDEX: number = 2;
 
@@ -224,15 +231,15 @@ test("deploy phlo keeps the exact maximum charge and refuses a charge above uint
     console.log("\n=== DEPLOY PHLO CHARGE ===");
 
     const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-        createDeployPhlo({
-            phloLimit: WIDE_PHLO_LIMIT,
-            phloPrice: WIDE_PHLO_PRICE,
-        });
+        createDeployPhlo(
+            { phloLimit: WIDE_PHLO_LIMIT, phloPrice: WIDE_PHLO_PRICE },
+            DEFAULT_MIN_PHLO_PRICE,
+        );
 
-    const maxPriceCharge: bigint = createDeployPhlo({
-        phloLimit: 1,
-        phloPrice: MAX_UINT256,
-    }).maxPhloCharge;
+    const maxPriceCharge: bigint = createDeployPhlo(
+        { phloLimit: 1, phloPrice: MAX_UINT256 },
+        DEFAULT_MIN_PHLO_PRICE,
+    ).maxPhloCharge;
 
     console.log("    Maximum charge:", maxPhloCharge.toString());
 
@@ -241,9 +248,89 @@ test("deploy phlo keeps the exact maximum charge and refuses a charge above uint
     assert.equal(maxPhloCharge, WIDE_MAX_PHLO_CHARGE);
     assert.equal(maxPriceCharge, MAX_UINT256);
     assert.throws(
-        () => createDeployPhlo({ phloLimit: 2, phloPrice: MAX_UINT256 }),
+        () =>
+            createDeployPhlo(
+                { phloLimit: 2, phloPrice: MAX_UINT256 },
+                DEFAULT_MIN_PHLO_PRICE,
+            ),
         PHLO_CHARGE_OVERFLOW_ERROR,
     );
+});
+
+test("phlo settings refuse a phlo limit above the node maximum only when the node reports one", () => {
+    console.log("\n=== PHLO LIMIT AND THE NODE MAXIMUM ===");
+
+    const maxPhloPrice: bigint = rustApi.getMaxPhloPrice();
+    const nodeMaxPhloLimit: number = Number(NODE_MAX_PHLO_LIMIT);
+
+    const aboveMaximum: { isValid: boolean; error?: string } =
+        validatePhloSettings(
+            { phloLimit: nodeMaxPhloLimit + 1 },
+            { maxPhloPrice, maxPhloLimit: NODE_MAX_PHLO_LIMIT },
+        );
+
+    console.log("    Above the maximum:", aboveMaximum.error);
+
+    assert.equal(
+        validatePhloSettings(
+            { phloLimit: nodeMaxPhloLimit },
+            { maxPhloPrice, maxPhloLimit: NODE_MAX_PHLO_LIMIT },
+        ).isValid,
+        true,
+    );
+    assert.deepEqual(aboveMaximum, {
+        isValid: false,
+        error: "Phlo limit 20000001 must not be greater than the node maximum 20000000",
+    });
+    assert.equal(
+        validatePhloSettings(
+            { phloLimit: Number.MAX_SAFE_INTEGER },
+            { maxPhloPrice, maxPhloLimit: null },
+        ).isValid,
+        true,
+    );
+    assert.equal(
+        validatePhloSettings(
+            { phloLimit: Number.MAX_SAFE_INTEGER },
+            { maxPhloPrice, maxPhloLimit: MAX_UINT256 },
+        ).isValid,
+        true,
+    );
+});
+
+test("deploy phlo lowers only the default phlo limit to a lower node maximum", () => {
+    console.log("\n=== DEFAULT PHLO LIMIT AND THE NODE MAXIMUM ===");
+
+    const lowMaximumLimit: number = createDeployPhlo(
+        {},
+        DEFAULT_MIN_PHLO_PRICE,
+        LOW_NODE_MAX_PHLO_LIMIT,
+    ).phloLimit;
+    const highMaximumLimit: number = createDeployPhlo(
+        {},
+        DEFAULT_MIN_PHLO_PRICE,
+        NODE_MAX_PHLO_LIMIT,
+    ).phloLimit;
+    const unknownMaximumLimit: number = createDeployPhlo(
+        {},
+        DEFAULT_MIN_PHLO_PRICE,
+        null,
+    ).phloLimit;
+    const explicitLimit: number = createDeployPhlo(
+        { phloLimit: EXPLICIT_PHLO_LIMIT },
+        DEFAULT_MIN_PHLO_PRICE,
+        LOW_NODE_MAX_PHLO_LIMIT,
+    ).phloLimit;
+
+    console.log("    Below the default:", lowMaximumLimit);
+    console.log("    Above the default:", highMaximumLimit);
+    console.log("    Unknown maximum:", unknownMaximumLimit);
+    console.log("    Explicit limit:", explicitLimit);
+
+    assert.equal(lowMaximumLimit, Number(LOW_NODE_MAX_PHLO_LIMIT));
+    assert.equal(highMaximumLimit, DEFAULT_PHLO_LIMIT);
+    assert.equal(unknownMaximumLimit, DEFAULT_PHLO_LIMIT);
+    assert.equal(explicitLimit, EXPLICIT_PHLO_LIMIT);
 });
 
 test("scala and rust adapters serialize the same deploy into different price fields", () => {

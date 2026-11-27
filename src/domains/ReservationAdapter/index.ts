@@ -15,6 +15,7 @@ import ApiClientManager from "@domains/ApiClientManager";
 import ApiServiceRegistry from "@domains/ApiServiceRegistry";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import NodeApiProvider from "@domains/NodeApiProvider";
+import type { INodePhloBounds } from "@domains/NetworkSession";
 import { ITransactionReservationsStorageRecord } from "@domains/TransactionReservationsStorageRepository";
 import { SUBMISSION_SETTLE_TIMEOUT_MS } from "@config/index";
 import { IDeployWatchCallbacks } from "@services/DeployStatusPoller";
@@ -596,27 +597,34 @@ export default class ReservationAdapter {
     private static resolveDeployPhlo(
         api: NodeApiAdapter,
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice">,
+        { minPhloPrice, maxPhloLimit }: INodePhloBounds,
         { context }: IErrorContext,
     ): IDeployPhlo {
         ensureValid(
             validatePhloSettings(phlo, {
                 maxPhloPrice: api.getMaxPhloPrice(),
+                minPhloPrice,
+                maxPhloLimit,
             }),
             { context },
         );
 
-        return createDeployPhlo(phlo);
+        return createDeployPhlo(phlo, minPhloPrice, maxPhloLimit);
     }
 
     public static getTransferGasReserve(
         phlo: Pick<TDeployDetails, "phloLimit" | "phloPrice"> = {},
     ): bigint {
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
 
         const { maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, phlo, {
-                context: "ReservationAdapter.getTransferGasReserve",
-            });
+            ReservationAdapter.resolveDeployPhlo(
+                api,
+                phlo,
+                nodeApiProvider.getNetworkSession().getKnownPhloBounds(),
+                { context: "ReservationAdapter.getTransferGasReserve" },
+            );
 
         return api.getTransferGasReserve(maxPhloCharge);
     }
@@ -633,15 +641,21 @@ export default class ReservationAdapter {
         const nativeTokenDecimals: number =
             ReservationAdapter.getNetworkPrecision(networkId);
 
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const requestedDetails: ITransferDetails = { ...details };
 
         const { phloLimit, phloPrice, maxPhloCharge }: IDeployPhlo =
-            ReservationAdapter.resolveDeployPhlo(api, details, {
-                context: "ReservationAdapter.transfer",
-            });
+            ReservationAdapter.resolveDeployPhlo(
+                api,
+                requestedDetails,
+                await nodeApiProvider.getNetworkSession().getPhloBounds(),
+                { context: "ReservationAdapter.transfer" },
+            );
 
         const transferDetails: ITransferDetails = {
-            ...details,
+            ...requestedDetails,
             phloLimit,
             phloPrice,
         };
@@ -709,18 +723,24 @@ export default class ReservationAdapter {
 
         const nativeTokenDecimals: number =
             ReservationAdapter.getNetworkPrecision(networkId);
-        const api: NodeApiAdapter = NodeApiProvider.getInstance().getApi();
+        const nodeApiProvider: NodeApiProvider = NodeApiProvider.getInstance();
+        const api: NodeApiAdapter = nodeApiProvider.getApi();
+
+        const requestedDetails: TDeployDetails = { ...details };
 
         const {
             phloLimit,
             phloPrice,
             maxPhloCharge: pendingAmount,
-        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(api, details, {
-            context: "ReservationAdapter.deploy",
-        });
+        }: IDeployPhlo = ReservationAdapter.resolveDeployPhlo(
+            api,
+            requestedDetails,
+            await nodeApiProvider.getNetworkSession().getPhloBounds(),
+            { context: "ReservationAdapter.deploy" },
+        );
 
         const deployDetails: TDeployDetails = {
-            ...details,
+            ...requestedDetails,
             phloLimit,
             phloPrice,
         };

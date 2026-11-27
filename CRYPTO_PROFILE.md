@@ -182,7 +182,11 @@ would not be the one the path string names.
     has a different digest per profile, and a signature made for one profile does
     not verify on the other.
   - The payload is validated before it is hashed: non-empty term, phlo limit
-    within the positive safe integer range, phlo price from 1 up to the bound of
+    within the positive safe integer range and not above the node maximum
+    (`maxPhloLimit` of the same `/api/status`, not checked when it is not
+    reported), phlo price from the node minimum
+    (`minPhloPrice` of the validator's `/api/status`, 1 when it is not reported)
+    up to the bound of
     the profile (`Number.MAX_SAFE_INTEGER` on `scala`, `2^256 - 1` on `rust`),
     a maximum phlo charge (`phloLimit * phloPrice`) within `2^256 - 1`, non-blank
     shard id. The uint256 serializer checks the price once more and refuses a

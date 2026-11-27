@@ -1221,7 +1221,8 @@ from the node's status and `error` code into `DeployAdmissionRefusedError`,
 `queueCause` from the body), `DeployRefusedError`, a plain
 `DeploySubmissionRejectedError` for any other `4xx`, or
 `DeploySubmissionUnknownError` when the deploy may still have been accepted.
-The refusal `reason` is the node's `message` when the body has one. The full
+The refusal `reason`, the plain `DeploySubmissionRejectedError` included, is the
+node's `message` when the body has one. The full
 order is under
 [CustomError](DOMAINS.md#customerror-srcdomainscustomerrorindexts). The service
 submits once and never resends.
@@ -1349,15 +1350,19 @@ interface IDeployPayload {
 
 `signDeploy` is the shared core and is now **public**, because a caller that
 submits the deploy itself needs exactly this half: resolve the node API adapter
-of the current network → validate the payload through `validateDeployPayload`
-with the adapter's price bound (`ensureValid` turns a rejection into a thrown
-error) → resolve the phlo values with `createDeployPhlo` (an overflowing
+of the current network → read the node minimum phlo price and maximum phlo limit
+(`nodeApiProvider.getNetworkSession().getPhloBounds()`, one status read per
+network) → validate the payload through `validateDeployPayload`
+with the adapter's price bound, that minimum and that maximum (`ensureValid` turns a rejection
+into a thrown error) → resolve the phlo values with `createDeployPhlo` (an overflowing
 `phloLimit * phloPrice` is refused here, before any request) → read the latest
 block number → build the appropriate `TSigningContext` (HD adds `index`) →
 assemble the `DeployData` with the price in the adapter's format
 (`toDeployPhloPrice`) → serialize with the adapter (`serializeDeployData`) +
 `blake2b-256` hash + sign, and return the `SignedResult`. Defaults
-`phloLimit`/`phloPrice` from config and `shardId` to `"root"`, and sets
+`phloLimit` from config (or to the node maximum when it is lower), `phloPrice`
+to the node minimum and `shardId` to
+`"root"`, and sets
 `validAfterBlockNumber` to the chain head minus one.
 
 The adapter is resolved once per call, so the bound, the price format and the

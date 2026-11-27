@@ -11,6 +11,7 @@ import { DeployData } from "@domains/Deploy";
 import NodeApiAdapter from "@domains/NodeApiAdapter";
 import RustNodeApiAdapter from "@domains/NodeApiAdapter/Rust";
 import ScalaNodeApiAdapter from "@domains/NodeApiAdapter/Scala";
+import NetworkSession from "@domains/NetworkSession";
 import NodeApiProvider from "@domains/NodeApiProvider";
 import { IGetBlocksParams } from "@domains/ObserverClient";
 import SecretsProvider from "@domains/SecretsProvider";
@@ -197,12 +198,23 @@ const createHDContext = async (index: number): Promise<ISigningContext> => {
 const scalaApi: NodeApiAdapter = new ScalaNodeApiAdapter({} as IApiClients);
 const rustApi: NodeApiAdapter = new RustNodeApiAdapter({} as IApiClients);
 
+const createNodeApiProvider = (api: NodeApiAdapter): NodeApiProvider =>
+    ({
+        getApi: () => api,
+        getNetworkSession: () =>
+            new NetworkSession({
+                getValidatorApiStatus: async () => ({}),
+            } as unknown as NodeApiAdapter),
+    }) as unknown as NodeApiProvider;
+
 const createTransactionService = (
     deployService: DeployService = new SpyDeployService(),
 ): TransactionService =>
-    new TransactionService(deployService, new StubBlockService(), {
-        getApi: () => scalaApi,
-    } as unknown as NodeApiProvider);
+    new TransactionService(
+        deployService,
+        new StubBlockService(),
+        createNodeApiProvider(scalaApi),
+    );
 
 const hashSignedData = (signed: SignedResult): string =>
     blake2bHex(
@@ -477,9 +489,7 @@ test("signDeploy at rust block height zero signs the previous block -1 as ten pr
                 },
             },
         } as unknown as IApiClients);
-        const nodeApiProvider: NodeApiProvider = {
-            getApi: () => api,
-        } as unknown as NodeApiProvider;
+        const nodeApiProvider: NodeApiProvider = createNodeApiProvider(api);
 
         const signed: SignedResult = await new TransactionService(
             new SpyDeployService(),
@@ -520,7 +530,7 @@ test("signDeploy rejects a phlo charge above uint256 before requesting the block
     const transactionService: TransactionService = new TransactionService(
         new SpyDeployService(),
         blockService,
-        { getApi: () => rustApi } as unknown as NodeApiProvider,
+        createNodeApiProvider(rustApi),
     );
     const { account, signer }: ISigningContext =
         await createPrivateKeyContext();

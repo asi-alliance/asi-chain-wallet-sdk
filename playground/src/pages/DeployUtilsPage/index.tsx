@@ -9,7 +9,6 @@ import "./style.css";
 import {
     Account,
     DEFAULT_PHLO_LIMIT,
-    DEFAULT_PHLO_PRICE,
     DEPLOY_STATUS_POLLING_TIMEOUT,
     DeployStatus,
     validateDeployPayload,
@@ -27,6 +26,7 @@ import {
     toDeployIdLengthError,
     toErrorText,
     toIntegerRangeError,
+    toPhloLimitError,
     useSdkContext,
 } from "../../sdk-react-kit";
 import {
@@ -50,7 +50,6 @@ const DEFAULT_WATCH_INTERVAL_MS: string = "5000";
 
 const FIXED_SHARD_ID: string = "root";
 
-const MIN_PHLO_LIMIT: number = 1;
 const MAX_PHLO_LIMIT: number = Number.MAX_SAFE_INTEGER;
 
 const MIN_WATCH_INTERVAL_MS: number = 1000;
@@ -83,9 +82,14 @@ const DeployUtilsPage = (): ReactElement => {
         signDeploy,
         watchDeploy,
         exploreDeploy,
+        getMinPhloPrice,
+        getMaxPhloLimit,
     } = useSdkContext();
     const runSecureAction = useSecureAction();
     const startRequest: TStartRequest = useRelevantResultGuard(
+        currentNetwork?.id,
+    );
+    const startMinPhloPriceRequest: TStartRequest = useRelevantResultGuard(
         currentNetwork?.id,
     );
 
@@ -94,6 +98,8 @@ const DeployUtilsPage = (): ReactElement => {
     const [phloLimit, setPhloLimit] = useState<string>(
         String(DEFAULT_PHLO_LIMIT),
     );
+    const [minPhloPrice, setMinPhloPrice] = useState<string>("");
+    const [maxPhloLimit, setMaxPhloLimit] = useState<bigint | null>(null);
     const [isSigning, setIsSigning] = useState<boolean>(false);
     const [signedResult, setSignedResult] = useState<SignedResult | null>(null);
     const [signError, setSignError] = useState<string | null>(null);
@@ -123,6 +129,26 @@ const DeployUtilsPage = (): ReactElement => {
         },
         [],
     );
+
+    useEffect(() => {
+        if (!currentNetwork) {
+            return;
+        }
+
+        const isResultRelevant: TIsResultRelevant = startMinPhloPriceRequest();
+
+        setMinPhloPrice("");
+        setMaxPhloLimit(null);
+
+        void Promise.all([getMinPhloPrice(), getMaxPhloLimit()]).then(
+            ([price, limit]: [bigint, bigint | null]) => {
+                if (isResultRelevant()) {
+                    setMinPhloPrice(price.toString());
+                    setMaxPhloLimit(limit);
+                }
+            },
+        );
+    }, [currentNetwork?.id]);
 
     const accountEntries = useMemo<IAccountEntry[]>(
         () =>
@@ -157,17 +183,15 @@ const DeployUtilsPage = (): ReactElement => {
         [accountEntries, selectedAccountId],
     );
 
-    const phloLimitError: string | null = toIntegerRangeError(phloLimit, {
-        label: "Phlo limit",
-        min: MIN_PHLO_LIMIT,
-        max: MAX_PHLO_LIMIT,
-    });
+    const phloLimitError: string | null = toPhloLimitError(
+        phloLimit,
+        maxPhloLimit,
+    );
 
     const deployPayloadError: string | null = useMemo(() => {
         const { isValid, error } = validateDeployPayload({
             term,
             phloLimit: phloLimit.trim() ? Number(phloLimit) : undefined,
-            phloPrice: DEFAULT_PHLO_PRICE,
             shardId: FIXED_SHARD_ID,
         });
 
@@ -251,7 +275,6 @@ const DeployUtilsPage = (): ReactElement => {
                             accountId: selectedEntry.account.getId(),
                             term,
                             phloLimit: Number(phloLimit),
-                            phloPrice: DEFAULT_PHLO_PRICE,
                             shardId: FIXED_SHARD_ID,
                         },
                         password,
@@ -387,12 +410,13 @@ const DeployUtilsPage = (): ReactElement => {
                 </p>
 
                 <p className="deploy-utils-page__hint">
-                    The phlo price is pinned to {DEFAULT_PHLO_PRICE} and the
-                    shard id to <code>{FIXED_SHARD_ID}</code> here. The SDK
-                    passes both through as given, but at this stage the chain
-                    does not finalize a deploy priced differently or aimed at
-                    another shard, so such a signed payload would be rejected
-                    downstream and tell nothing about the signing itself.
+                    The phlo price is left to the SDK, which signs the minimum
+                    price the node reports in <code>/api/status</code>, and
+                    the shard id is pinned to <code>{FIXED_SHARD_ID}</code>{" "}
+                    here. At this stage the chain does not finalize a deploy
+                    aimed at another shard, so such a signed payload would be
+                    rejected downstream and tell nothing about the signing
+                    itself.
                 </p>
 
                 {accountEntries.length === 0 ? (
@@ -420,15 +444,19 @@ const DeployUtilsPage = (): ReactElement => {
                                 isIntegerInputAllowed(value, MAX_PHLO_LIMIT)
                             }
                             inputMode="numeric"
-                            hint={`SDK default is ${DEFAULT_PHLO_LIMIT}`}
+                            hint={
+                                maxPhloLimit === null
+                                    ? `SDK default is ${DEFAULT_PHLO_LIMIT}`
+                                    : `SDK default is ${DEFAULT_PHLO_LIMIT}, node maximum is ${maxPhloLimit}`
+                            }
                             error={phloLimitError}
                         />
 
                         <ConstrainedInput
                             id="sign-phlo-price"
                             label="Phlo price:"
-                            value={String(DEFAULT_PHLO_PRICE)}
-                            hint="fixed for now, the chain does not finalize deploys with another price"
+                            value={minPhloPrice}
+                            hint="the node minimum, the SDK signs it when no price is given"
                             readOnly
                         />
 
